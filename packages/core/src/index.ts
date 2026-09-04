@@ -1,0 +1,1 @@
+export { toRupeeString } from './paise';

@@ -1,0 +1,22 @@
+{
+  "name": "dsb-pro",
+  "private": true,
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "test": "pnpm -r --if-present run test",
+    "build": "pnpm --filter @dsb-pro/admin run build",
+    "gen:types": "mkdir -p packages/db/src && supabase gen types typescript --local > packages/db/src/types.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.9.1",
+    "typescript": "^7.0.2",
+    "typescript-eslint": "^8.69.0",
+    "vitest": "^5.0.0"
+  }
+}
