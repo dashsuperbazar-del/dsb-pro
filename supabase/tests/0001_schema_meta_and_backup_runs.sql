@@ -3,28 +3,20 @@ create extension if not exists pgtap with schema extensions;
 
 select plan(4);
 
--- backup_runs: anon/authenticated must not be able to read it at all. On this
--- project, the default table privileges don't grant anon/authenticated SELECT
--- in the first place (verified: only TRUNCATE/REFERENCES/TRIGGER are granted
--- by default), so the query is rejected at the grant level (42501) before RLS
--- is even evaluated — a stricter default-deny than an RLS policy filtering to
--- zero rows would be. RLS being enabled with no policies is defense in depth
--- on top of that, not the only thing standing in the way.
+-- backup_runs: RLS must deny anon and authenticated SELECT (default-deny, no
+-- policies). anon/authenticated hold the table-level SELECT grant (see
+-- migration), so RLS itself is what's actually under test here.
 set role anon;
-select throws_ok(
+select is_empty(
   $$ select * from backup_runs $$,
-  '42501',
-  null,
-  'anon cannot read backup_runs (no SELECT grant)'
+  'anon cannot read backup_runs (RLS default-deny)'
 );
 reset role;
 
 set role authenticated;
-select throws_ok(
+select is_empty(
   $$ select * from backup_runs $$,
-  '42501',
-  null,
-  'authenticated cannot read backup_runs (no SELECT grant)'
+  'authenticated cannot read backup_runs (RLS default-deny)'
 );
 reset role;
 

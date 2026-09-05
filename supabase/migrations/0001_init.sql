@@ -14,12 +14,15 @@ insert into schema_meta (id, current_version, min_supported_version)
 values (true, 1, 1);
 
 alter table schema_meta enable row level security;
--- No policies: default-deny for anon/authenticated via RLS. On this project,
--- anon/authenticated also have no default SELECT grant on new tables at all
--- (verified against information_schema.role_table_grants), so direct access
--- is rejected at the grant level before RLS is even evaluated; RLS is
--- defense in depth here, not the sole barrier. Only the service role
--- (bypasses RLS and holds real grants) may read/write this table directly.
+grant select on schema_meta to anon, authenticated;
+-- No policies: RLS is the actual barrier here. The explicit grant above
+-- matters because default privileges for tables vary by which role applies
+-- the migration (Supabase's own tooling normally runs as supabase_admin,
+-- whose defaults grant anon/authenticated full CRUD server-side; a table
+-- created by a different role, e.g. a direct `postgres` connection, may not
+-- inherit that default at all) — granting explicitly makes the RLS-is-the-
+-- barrier design hold regardless of how the migration gets applied.
+-- Only the service role (bypasses RLS) may write to this table.
 
 create table backup_runs (
   id uuid primary key default gen_random_uuid(),
@@ -37,6 +40,8 @@ create table backup_runs (
 );
 
 alter table backup_runs enable row level security;
--- No policies here either: the base table stays fully locked down.
--- get_latest_backup_status() (0002_backup_status_rpc.sql) exposes a narrow,
--- non-sensitive read path for the admin app's health panel.
+grant select on backup_runs to anon, authenticated;
+-- No policies here either: RLS default-deny (no policies) is the actual
+-- barrier, same reasoning as schema_meta above. get_latest_backup_status()
+-- (0002_backup_status_rpc.sql) exposes a narrow, non-sensitive read path for
+-- the admin app's health panel; only the service role may write directly.
