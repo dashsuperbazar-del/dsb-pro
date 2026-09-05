@@ -99,13 +99,13 @@ jobs:
           APP_VERSION: ${{ github.sha }}
           RUN_ID: ${{ steps.start.outputs.run_id }}
         run: |
-          # Values come from real bash variables ($VAR), not GitHub Actions
-          # ${{ }} expressions spliced directly into the SQL text: a ${{ }}
-          # substitution happens before bash ever parses this script, so the
-          # manifest JSON's embedded double quotes became literal source
-          # text and were consumed as bash quoting syntax. A $VAR expansion
-          # happens after parsing, so embedded quotes in its value are
-          # inserted as plain data instead.
+          # Values come from real bash variables ($VAR), not GitHub Actions'
+          # own template expressions spliced directly into the SQL text: that
+          # kind of substitution happens before bash ever parses this script,
+          # so the manifest JSON's embedded double quotes became literal
+          # source text and were consumed as bash quoting syntax. A $VAR
+          # expansion happens after parsing, so embedded quotes in its value
+          # are inserted as plain data instead.
           psql "${{ secrets.SUPABASE_DB_URL }}" -c "
             update backup_runs set
               finished_at = now(),
