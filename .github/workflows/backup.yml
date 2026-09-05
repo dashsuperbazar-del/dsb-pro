@@ -99,27 +99,25 @@ jobs:
           APP_VERSION: ${{ github.sha }}
           RUN_ID: ${{ steps.start.outputs.run_id }}
         run: |
-          # Values are passed via psql -v/:'name' (safe SQL-literal
-          # substitution), not spliced into the shell string directly — the
-          # manifest JSON contains literal double quotes, which broke when
-          # interpolated into this step's outer double-quoted -c argument
-          # (bash consumed them as quoting syntax instead of literal content).
-          psql "${{ secrets.SUPABASE_DB_URL }}" \
-            -v manifest="$MANIFEST_JSON" \
-            -v sha256="$SHA256" \
-            -v size="$SIZE" \
-            -v appver="$APP_VERSION" \
-            -v runid="$RUN_ID" \
-            -c "update backup_runs set
-                  finished_at = now(),
-                  status = 'success',
-                  dump_size_bytes = :size,
-                  sha256 = :'sha256',
-                  destinations = '[{\"name\":\"b2\",\"verified\":true},{\"name\":\"r2\",\"verified\":true}]'::jsonb,
-                  app_version = :'appver',
-                  schema_version = 1,
-                  manifest = :'manifest'::jsonb
-                where id = :'runid';"
+          # Values come from real bash variables ($VAR), not GitHub Actions
+          # ${{ }} expressions spliced directly into the SQL text: a ${{ }}
+          # substitution happens before bash ever parses this script, so the
+          # manifest JSON's embedded double quotes became literal source
+          # text and were consumed as bash quoting syntax. A $VAR expansion
+          # happens after parsing, so embedded quotes in its value are
+          # inserted as plain data instead.
+          psql "${{ secrets.SUPABASE_DB_URL }}" -c "
+            update backup_runs set
+              finished_at = now(),
+              status = 'success',
+              dump_size_bytes = $SIZE,
+              sha256 = '$SHA256',
+              destinations = '[{\"name\":\"b2\",\"verified\":true},{\"name\":\"r2\",\"verified\":true}]'::jsonb,
+              app_version = '$APP_VERSION',
+              schema_version = 1,
+              manifest = '$MANIFEST_JSON'::jsonb
+            where id = '$RUN_ID';
+          "
 
       - name: Mark backup run as failed
         if: failure()
