@@ -1,8 +1,11 @@
 -- Narrow, non-sensitive read path onto backup_runs for apps/admin's health panel.
--- backup_runs itself stays fully locked down (0001_init.sql); this function is
--- security definer so it can read the table despite RLS/missing grants, and
--- returns only operational metadata — never `error` or `manifest`, which could
--- carry more detail than we want exposed pre-auth (Phase 1 adds real auth).
+-- backup_runs itself stays fully locked down by RLS (0001_init.sql — anon and
+-- authenticated hold the table's SELECT grant, but RLS has no policies, so a
+-- direct query returns nothing); this function is security definer, so it
+-- runs as its owner (the table owner), who is exempt from RLS by default and
+-- can read the real rows. Returns only operational metadata — never `error`
+-- or `manifest`, which could carry more detail than we want exposed pre-auth
+-- (Phase 1 adds real auth).
 create function get_latest_backup_status()
 returns table (
   status text,
