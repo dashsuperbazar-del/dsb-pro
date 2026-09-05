@@ -12,16 +12,15 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y age rclone curl ca-certificates
-          # Ubuntu's default postgresql-client is older than the Postgres 17
-          # server (pg_dump refuses to dump from a newer server than itself),
-          # so pull a matching client from the official PostgreSQL apt repo.
-          sudo install -d /usr/share/postgresql-common/pgdg
-          curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
-            https://www.postgresql.org/media/keys/ACCC4CF8.asc
-          sudo sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client-17
+          sudo apt-get install -y age rclone
+          # psql (for the backup_runs bookkeeping below) ships preinstalled
+          # on ubuntu-latest and tolerates the version gap fine. pg_dump does
+          # not — it refuses to dump from a server newer than itself, and the
+          # preinstalled client is older than the dev project's Postgres 17 —
+          # so the actual dump runs via the official postgres:17 Docker image
+          # instead (see "Dump database" below), guaranteeing a matching
+          # major version without fighting apt package versions.
+          docker pull postgres:17
 
       - name: Configure rclone
         run: |
@@ -49,7 +48,10 @@ jobs:
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
 
       - name: Dump database
-        run: pg_dump --format=custom "${{ secrets.BACKUP_RO_DATABASE_URL }}" -f dump.pgcustom
+        run: |
+          docker run --rm -v "$PWD:/dump" postgres:17 \
+            pg_dump --format=custom "${{ secrets.BACKUP_RO_DATABASE_URL }}" -f /dump/dump.pgcustom
+          sudo chown "$(id -u):$(id -g)" dump.pgcustom
 
       - name: Encrypt dump
         run: age -r "${{ vars.AGE_PUBLIC_KEY }}" -o dump.pgcustom.age dump.pgcustom
