@@ -36,7 +36,7 @@ jobs:
         id: start
         run: |
           RUN_ID=$(psql "${{ secrets.SUPABASE_DB_URL }}" -t -A -c \
-            "insert into backup_runs (started_at, status) values (now(), 'running') returning id;")
+            "insert into backup_runs (started_at, status) values (now(), 'running') returning id;" | head -n 1)
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
 
       - name: Dump database
@@ -57,7 +57,7 @@ jobs:
         id: manifest
         run: |
           MANIFEST=$(psql "${{ secrets.SUPABASE_DB_URL }}" -t -A -c \
-            "select json_build_object('schema_meta', (select count(*) from schema_meta), 'backup_runs', (select count(*) from backup_runs));")
+            "select json_build_object('schema_meta', (select count(*) from schema_meta), 'backup_runs', (select count(*) from backup_runs));" | head -n 1)
           echo "json=$MANIFEST" >> "$GITHUB_OUTPUT"
 
       - name: Upload to B2 (primary) and verify
