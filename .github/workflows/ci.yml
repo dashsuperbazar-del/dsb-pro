@@ -75,3 +75,29 @@ jobs:
         with:
           name: admin-dist
           path: apps/admin/dist
+
+  deploy:
+    needs: [build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: admin-dist
+          path: apps/admin/dist
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/admin/dist --project-name=dsb-pro
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/admin/dist
+      - uses: actions/deploy-pages@v4
