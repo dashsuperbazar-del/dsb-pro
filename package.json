@@ -11,11 +11,12 @@
     "typecheck": "pnpm -r --if-present run typecheck",
     "test": "pnpm -r --if-present run test",
     "build": "pnpm --filter @dsb-pro/admin run build",
-    "gen:types": "mkdir -p packages/db/src && supabase gen types typescript --local > packages/db/src/types.ts"
+    "gen:types": "node scripts/gen-types.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.9.1",
+    "globals": "^17.12.0",
     "pg": "^8.23.0",
     "supabase": "^2.116.0",
     "typescript": "6.0.3",
