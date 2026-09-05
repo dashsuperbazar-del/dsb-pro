@@ -92,19 +92,34 @@ jobs:
 
       - name: Mark backup run as succeeded
         if: success()
+        env:
+          MANIFEST_JSON: ${{ steps.manifest.outputs.json }}
+          SHA256: ${{ steps.checksum.outputs.sha256 }}
+          SIZE: ${{ steps.checksum.outputs.size }}
+          APP_VERSION: ${{ github.sha }}
+          RUN_ID: ${{ steps.start.outputs.run_id }}
         run: |
-          psql "${{ secrets.SUPABASE_DB_URL }}" -c "
-            update backup_runs set
-              finished_at = now(),
-              status = 'success',
-              dump_size_bytes = ${{ steps.checksum.outputs.size }},
-              sha256 = '${{ steps.checksum.outputs.sha256 }}',
-              destinations = '[{\"name\":\"b2\",\"verified\":true},{\"name\":\"r2\",\"verified\":true}]'::jsonb,
-              app_version = '${{ github.sha }}',
-              schema_version = 1,
-              manifest = '${{ steps.manifest.outputs.json }}'::jsonb
-            where id = '${{ steps.start.outputs.run_id }}';
-          "
+          # Values are passed via psql -v/:'name' (safe SQL-literal
+          # substitution), not spliced into the shell string directly — the
+          # manifest JSON contains literal double quotes, which broke when
+          # interpolated into this step's outer double-quoted -c argument
+          # (bash consumed them as quoting syntax instead of literal content).
+          psql "${{ secrets.SUPABASE_DB_URL }}" \
+            -v manifest="$MANIFEST_JSON" \
+            -v sha256="$SHA256" \
+            -v size="$SIZE" \
+            -v appver="$APP_VERSION" \
+            -v runid="$RUN_ID" \
+            -c "update backup_runs set
+                  finished_at = now(),
+                  status = 'success',
+                  dump_size_bytes = :size,
+                  sha256 = :'sha256',
+                  destinations = '[{\"name\":\"b2\",\"verified\":true},{\"name\":\"r2\",\"verified\":true}]'::jsonb,
+                  app_version = :'appver',
+                  schema_version = 1,
+                  manifest = :'manifest'::jsonb
+                where id = :'runid';"
 
       - name: Mark backup run as failed
         if: failure()
