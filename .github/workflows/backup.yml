@@ -1,0 +1,100 @@
+name: Nightly backup
+
+on:
+  schedule:
+    - cron: '30 20 * * *'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client age rclone
+
+      - name: Configure rclone
+        run: |
+          mkdir -p ~/.config/rclone
+          cat > ~/.config/rclone/rclone.conf <<CONF
+          [b2]
+          type = b2
+          account = ${{ secrets.B2_ACCOUNT_ID }}
+          key = ${{ secrets.B2_APPLICATION_KEY }}
+
+          [r2]
+          type = s3
+          provider = Cloudflare
+          access_key_id = ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret_access_key = ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          endpoint = ${{ secrets.R2_ENDPOINT }}
+          no_check_bucket = true
+          CONF
+
+      - name: Mark backup run as started
+        id: start
+        run: |
+          RUN_ID=$(psql "${{ secrets.SUPABASE_DB_URL }}" -t -A -c \
+            "insert into backup_runs (started_at, status) values (now(), 'running') returning id;")
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Dump database
+        run: pg_dump --format=custom "${{ secrets.BACKUP_RO_DATABASE_URL }}" -f dump.pgcustom
+
+      - name: Encrypt dump
+        run: age -r "${{ vars.AGE_PUBLIC_KEY }}" -o dump.pgcustom.age dump.pgcustom
+
+      - name: Checksum
+        id: checksum
+        run: |
+          SHA=$(sha256sum dump.pgcustom.age | cut -d' ' -f1)
+          SIZE=$(stat -c%s dump.pgcustom.age)
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
+
+      - name: Build manifest
+        id: manifest
+        run: |
+          MANIFEST=$(psql "${{ secrets.SUPABASE_DB_URL }}" -t -A -c \
+            "select json_build_object('schema_meta', (select count(*) from schema_meta), 'backup_runs', (select count(*) from backup_runs));")
+          echo "json=$MANIFEST" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to B2 (primary) and verify
+        run: |
+          NAME="backup-$(date +%F).pgcustom.age"
+          rclone copyto dump.pgcustom.age "b2:APD-BB/$NAME"
+          rclone cat "b2:APD-BB/$NAME" | sha256sum | cut -d' ' -f1 > b2_sha.txt
+          diff <(echo "${{ steps.checksum.outputs.sha256 }}") b2_sha.txt
+
+      - name: Upload to R2 (secondary) and verify
+        run: |
+          NAME="backup-$(date +%F).pgcustom.age"
+          rclone copyto dump.pgcustom.age "r2:apd-dsb/$NAME"
+          rclone cat "r2:apd-dsb/$NAME" | sha256sum | cut -d' ' -f1 > r2_sha.txt
+          diff <(echo "${{ steps.checksum.outputs.sha256 }}") r2_sha.txt
+
+      - name: Mark backup run as succeeded
+        if: success()
+        run: |
+          psql "${{ secrets.SUPABASE_DB_URL }}" -c "
+            update backup_runs set
+              finished_at = now(),
+              status = 'success',
+              dump_size_bytes = ${{ steps.checksum.outputs.size }},
+              sha256 = '${{ steps.checksum.outputs.sha256 }}',
+              destinations = '[{\"name\":\"b2\",\"verified\":true},{\"name\":\"r2\",\"verified\":true}]'::jsonb,
+              app_version = '${{ github.sha }}',
+              schema_version = 1,
+              manifest = '${{ steps.manifest.outputs.json }}'::jsonb
+            where id = '${{ steps.start.outputs.run_id }}';
+          "
+
+      - name: Mark backup run as failed
+        if: failure()
+        run: |
+          psql "${{ secrets.SUPABASE_DB_URL }}" -c "
+            update backup_runs set finished_at = now(), status = 'failed',
+              error = 'CI job failed — see Actions run ${{ github.run_id }}'
+            where id = '${{ steps.start.outputs.run_id }}';
+          " || true
