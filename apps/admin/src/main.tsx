@@ -1,5 +1,6 @@
 import { render } from 'preact';
 import * as Sentry from '@sentry/browser';
+import { HealthPanel } from './HealthPanel';
 import './style.css';
 
 const dsn = import.meta.env.VITE_SENTRY_DSN;
@@ -15,6 +16,7 @@ function App() {
       <button onClick={() => Sentry.captureMessage('Phase 0 Sentry wiring test')}>
         Send test event to Sentry
       </button>
+      <HealthPanel />
     </main>
   );
 }
