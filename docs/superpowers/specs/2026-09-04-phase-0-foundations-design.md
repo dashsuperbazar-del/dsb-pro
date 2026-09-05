@@ -109,7 +109,9 @@ script and checked in.
 **Variables** (not Secrets) and the Cloudflare Pages project's environment variables, with a
 placeholder in a committed `.env.example`.
 
-## 7. Backup pipeline (`infra/backup.yml`)
+## 7. Backup pipeline (`.github/workflows/backup.yml`)
+
+(Corrected during implementation: GitHub Actions only recognizes workflow files under `.github/workflows/` — `infra/backup.yml`, as originally written here and in the build plan's §4 repo-layout diagram, would never actually run. The build plan itself is locked per §17 and is left as-is; this is the one place in this session's own working docs worth correcting.)
 
 Triggered on `schedule: '30 20 * * *'` (02:00 IST) plus `workflow_dispatch` for manual test runs:
 

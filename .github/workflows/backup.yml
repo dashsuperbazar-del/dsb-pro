@@ -5,9 +5,15 @@ on:
     - cron: '30 20 * * *'
   workflow_dispatch:
 
+concurrency:
+  group: nightly-backup
+  cancel-in-progress: false
+
 jobs:
   backup:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions: {}
     steps:
       - name: Install tools
         run: |
@@ -40,8 +46,25 @@ jobs:
           no_check_bucket = true
           CONF
 
+      - name: Verify encryption recipient
+        env:
+          AGE_PUBLIC_KEY: ${{ vars.AGE_PUBLIC_KEY }}
+        run: |
+          # The private key deliberately never reaches CI (physical custody
+          # only), so decryptability is never exercised here — a wrong or
+          # rotated-without-updating recipient would otherwise produce
+          # backups that check out (checksums match, uploads verify) but are
+          # permanently unopenable. Pin the expected public key so that
+          # failure mode is loud instead of silent.
+          EXPECTED="age1n4zj5ymapz5xsur6a5v3en6np5ary3pmmmndpaf5a0vhyeazed7qq3jnrq"
+          if [ "$AGE_PUBLIC_KEY" != "$EXPECTED" ]; then
+            echo "AGE_PUBLIC_KEY does not match the expected recipient — refusing to encrypt. Got: $AGE_PUBLIC_KEY" >&2
+            exit 1
+          fi
+
       - name: Mark backup run as started
         id: start
+        shell: bash
         run: |
           RUN_ID=$(psql "${{ secrets.SUPABASE_DB_URL }}" -t -A -c \
             "insert into backup_runs (started_at, status) values (now(), 'running') returning id;" | head -n 1)
@@ -54,6 +77,8 @@ jobs:
           # access (Supabase's auth/realtime/storage schemas need a deliberate
           # decision later, once Phase 1 actually puts something in them —
           # not an incidental side effect of pg_dump's dump-everything default).
+          # Recorded as manifest.scope below so a widening need is visible in
+          # backup_runs itself, not just in this comment.
           docker run --rm -v "$PWD:/dump" postgres:17 \
             pg_dump --format=custom --schema=public "${{ secrets.BACKUP_RO_DATABASE_URL }}" -f /dump/dump.pgcustom
           sudo chown "$(id -u):$(id -g)" dump.pgcustom
@@ -69,11 +94,33 @@ jobs:
           echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
           echo "size=$SIZE" >> "$GITHUB_OUTPUT"
 
+      - name: Sanity-check dump size
+        run: |
+          # Cheap floor against the silent-empty-dump failure mode: if
+          # BACKUP_RO_DATABASE_URL is ever pointed at the wrong database or
+          # an empty schema, pg_dump still exits 0 with a small-but-valid
+          # archive, and every downstream check (checksums, uploads) would
+          # otherwise pass on a backup that protects nothing.
+          if [ "${{ steps.checksum.outputs.size }}" -lt 1000 ]; then
+            echo "Dump is suspiciously small (${{ steps.checksum.outputs.size }} bytes) — refusing to treat this as a valid backup." >&2
+            exit 1
+          fi
+
       - name: Build manifest
         id: manifest
+        shell: bash
         run: |
-          MANIFEST=$(psql "${{ secrets.SUPABASE_DB_URL }}" -t -A -c \
-            "select json_build_object('schema_meta', (select count(*) from schema_meta), 'backup_runs', (select count(*) from backup_runs));" | head -n 1)
+          # Queried over BACKUP_RO_DATABASE_URL (the same connection that
+          # produced the dump), not SUPABASE_DB_URL — a manifest built from a
+          # different connection can't actually attest to what was dumped if
+          # the two secrets ever point at different databases.
+          # quote_literal() wraps the JSON as a complete, self-escaping SQL
+          # string literal (quotes and all) so the value can be spliced
+          # directly into the UPDATE below regardless of its contents — the
+          # general fix for the shell-splicing bug hit earlier, since the
+          # manifest may carry text values later (not just integer counts).
+          MANIFEST=$(psql "${{ secrets.BACKUP_RO_DATABASE_URL }}" -t -A -c \
+            "select quote_literal(json_build_object('scope', 'public', 'schema_meta', (select count(*) from schema_meta), 'backup_runs', (select count(*) from backup_runs))::text);" | head -n 1)
           echo "json=$MANIFEST" >> "$GITHUB_OUTPUT"
 
       - name: Upload to B2 (primary) and verify
@@ -93,7 +140,9 @@ jobs:
       - name: Mark backup run as succeeded
         if: success()
         env:
-          MANIFEST_JSON: ${{ steps.manifest.outputs.json }}
+          # manifest.outputs.json is already a complete SQL string literal
+          # (see "Build manifest") — spliced in unquoted below, deliberately.
+          MANIFEST_LITERAL: ${{ steps.manifest.outputs.json }}
           SHA256: ${{ steps.checksum.outputs.sha256 }}
           SIZE: ${{ steps.checksum.outputs.size }}
           APP_VERSION: ${{ github.sha }}
@@ -102,10 +151,10 @@ jobs:
           # Values come from real bash variables ($VAR), not GitHub Actions'
           # own template expressions spliced directly into the SQL text: that
           # kind of substitution happens before bash ever parses this script,
-          # so the manifest JSON's embedded double quotes became literal
-          # source text and were consumed as bash quoting syntax. A $VAR
-          # expansion happens after parsing, so embedded quotes in its value
-          # are inserted as plain data instead.
+          # so a value's embedded double quotes would become literal source
+          # text and get consumed as bash quoting syntax. A $VAR expansion
+          # happens after parsing, so embedded quotes in its value are
+          # inserted as plain data instead.
           psql "${{ secrets.SUPABASE_DB_URL }}" -c "
             update backup_runs set
               finished_at = now(),
@@ -115,7 +164,7 @@ jobs:
               destinations = '[{\"name\":\"b2\",\"verified\":true},{\"name\":\"r2\",\"verified\":true}]'::jsonb,
               app_version = '$APP_VERSION',
               schema_version = 1,
-              manifest = '$MANIFEST_JSON'::jsonb
+              manifest = ($MANIFEST_LITERAL)::jsonb
             where id = '$RUN_ID';
           "
 
@@ -126,4 +175,4 @@ jobs:
             update backup_runs set finished_at = now(), status = 'failed',
               error = 'CI job failed — see Actions run ${{ github.run_id }}'
             where id = '${{ steps.start.outputs.run_id }}';
-          " || true
+          " || echo "::warning::could not mark backup_runs row as failed (run_id may be empty or DB unreachable)"
