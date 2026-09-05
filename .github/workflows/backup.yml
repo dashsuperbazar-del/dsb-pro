@@ -49,8 +49,13 @@ jobs:
 
       - name: Dump database
         run: |
+          # Scoped to schema public: backup_ro only has grants there, and
+          # Phase 0 has no real auth/storage data yet to justify widening its
+          # access (Supabase's auth/realtime/storage schemas need a deliberate
+          # decision later, once Phase 1 actually puts something in them —
+          # not an incidental side effect of pg_dump's dump-everything default).
           docker run --rm -v "$PWD:/dump" postgres:17 \
-            pg_dump --format=custom "${{ secrets.BACKUP_RO_DATABASE_URL }}" -f /dump/dump.pgcustom
+            pg_dump --format=custom --schema=public "${{ secrets.BACKUP_RO_DATABASE_URL }}" -f /dump/dump.pgcustom
           sudo chown "$(id -u):$(id -g)" dump.pgcustom
 
       - name: Encrypt dump
