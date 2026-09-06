@@ -92,3 +92,59 @@ Until this is done, every session runs the table-fallback path (proven equivalen
 by pgTAP — see 0005_claims_resolver.sql's test, which asserts both paths give
 identical results). Enabling the hook is a performance optimization (one fewer
 table lookup per request), not a correctness requirement.
+
+## Phase 1 — Tenancy, auth, RLS (complete)
+
+- Tables: `permissions`/`role_permissions` (global catalog), `tenants`, `shops`,
+  `tenant_users` (unique per user — one tenant per login in this app),
+  `invites`, `devices`, `audit_log`, `doc_sequences`.
+- `current_membership()`/`current_tenant_id()`/`current_role()`/`current_shop_ids()`/
+  `has_perm()`: JWT custom-claim resolution (`tenant_id`/`app_role`/`shop_ids`) with a
+  `tenant_users` table fallback when the claim is absent — proven equivalent by pgTAP,
+  not assumed.
+- RPCs: `create_tenant`, `create_invite`, `revoke_invite`, `accept_invite`,
+  `set_user_role`, `register_device`, `revoke_device`, `next_doc_no`. All
+  `security definer`; `tenant_users`/`invites` have no direct client
+  insert/update grant at all — these RPCs are the only way in.
+- Generic `audit_row_change()` trigger on every Phase 1 table; later phases attach
+  the same trigger rather than writing per-feature audit code.
+- `custom_access_token_hook()` deployed; enabling it in the Dashboard is a manual,
+  one-time step (see Phase 1's migration comments) — not required for correctness,
+  since the table-fallback path is proven equivalent.
+
+**Gate status — verified fresh, not assumed:**
+- pgTAP 100%: all 10 test files (`0003_permissions.sql` through `0012_explicit_revokes.sql`,
+  12 migrations total counting `0001`/`0002` from Phase 0) run directly against `dsb-pro-dev`
+  via `psql "service=dsbprodev"`, in order. Every file printed `plan(N)` then exactly N `ok`
+  lines and `ROLLBACK` — zero `not ok` lines anywhere. Per-file counts: `0003`=7, `0004`=9,
+  `0005`=8, `0006`=8, `0007`=17, `0008`=6, `0009`=5, `0010`=4, `0011`=3, `0012`=9 → 76/76
+  assertions passed. Full raw psql output is captured in this task's SDD report
+  (`.superpowers/sdd/2026-09-06-phase-1-tenancy-auth-rls/task-11-report.md`).
+- CI green: pushed `worktree-phase-1-tenancy-auth-rls` (already tracked by open PR
+  [#1](https://github.com/dashsuperbazar-del/dsb-pro/pull/1)); triggered run
+  [34026201421](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/34026201421)
+  completed `success` in 2m49s — `pgtap` job (Docker-backed, fresh `supabase db reset` +
+  `supabase test db`) passed in 2m23s, along with `test`, `lint`, `typecheck`, `build`
+  (`deploy` correctly skipped — not on `main`). This independently re-proves Step 1's result
+  against a genuinely fresh Postgres instance, closing the gap Task 10 fixed (see "Real bugs
+  found" below).
+- Two tenants isolated / cashier cannot escalate / hook-disabled fallback proven:
+  see `supabase/tests/0006_tenancy_rls.sql`, `0007_tenant_lifecycle_rpcs.sql`,
+  `0005_claims_resolver.sql`.
+
+## Real bugs found and fixed this phase (worth knowing before later phases touch this infrastructure)
+
+- **`auto_expose_new_tables` (`supabase/config.toml`) defaults to `true` when commented out**, and a fresh `supabase db reset` — exactly what CI's `pgtap` job runs — auto-grants full CRUD to `anon`/`authenticated`/`service_role` on every new table. This silently undid several tables' "no grant statement means no access" design (`permissions`, `role_permissions`, `doc_sequences`, and the anon-denial half of `tenants`/`shops`/`tenant_users`/`invites`/`devices`/`audit_log`) — invisible against the long-lived `dsb-pro-dev` project (which isn't affected), only caught once CI ran against a genuinely fresh instance. Fixed by Task 10: explicit `revoke all ... from anon, authenticated` on every affected table (portable, works regardless of this config) plus flipping the config to explicit `false` so future fresh resets don't reintroduce it for new tables. **Any future phase's migration that creates a table meant to have less-than-full anon/authenticated access must include its own explicit grants/revokes — never rely on the absence of a grant statement alone**, even though `auto_expose_new_tables` is now `false`.
+
+## Known Phase 1-only simplifications, to revisit later
+
+- Device revocation (`devices.revoked_at`) is audit-only — nothing yet checks it
+  against incoming requests. Enforcement arrives with Phase 5's sync layer, which
+  is the first thing to carry a per-request device identity.
+- `next_doc_no()`'s row-lock correctness is proven sequentially, not under true
+  concurrent load — that test lands in Phase 4/5 once real document series exist.
+- `login/signup/invite/device` UI is a separate follow-up spec — this phase only
+  closes the backend half of the gate.
+
+**Next:** Phase 1's UI follow-up spec, then Phase 2 — Core library
+(`DSB_PRO_BUILD_PLAN.md` v1.5 §13).
