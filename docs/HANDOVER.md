@@ -79,3 +79,16 @@
   ever needed.
 
 **Next:** Phase 1 — Tenancy, auth, RLS (`DSB_PRO_BUILD_PLAN.md` v1.5 §13).
+
+## Manual step needed: enable the Phase 1 access-token hook
+
+`custom_access_token_hook()` (0011_access_token_hook.sql) is deployed but not yet
+wired to Auth — this is a one-time, per-project Dashboard action:
+1. Supabase Dashboard → Authentication → Hooks.
+2. Under "Custom Access Token", enable it and select `public.custom_access_token_hook`.
+3. Save.
+
+Until this is done, every session runs the table-fallback path (proven equivalent
+by pgTAP — see 0005_claims_resolver.sql's test, which asserts both paths give
+identical results). Enabling the hook is a performance optimization (one fewer
+table lookup per request), not a correctness requirement.
