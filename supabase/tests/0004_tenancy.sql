@@ -16,34 +16,39 @@ set role anon;
 select throws_ok(
   $$ select * from tenants $$,
   '42501', null,
-  'anon cannot read tenants (no grant)'
+  'anon cannot read tenants (no grant, enforced independent of RLS policies)'
 );
 select throws_ok(
   $$ select * from shops $$,
   '42501', null,
-  'anon cannot read shops (no grant)'
+  'anon cannot read shops (no grant, enforced independent of RLS policies)'
 );
 select throws_ok(
   $$ select * from tenant_users $$,
   '42501', null,
-  'anon cannot read tenant_users (no grant)'
+  'anon cannot read tenant_users (no grant, enforced independent of RLS policies)'
 );
 select throws_ok(
   $$ select * from invites $$,
   '42501', null,
-  'anon cannot read invites (no grant)'
+  'anon cannot read invites (no grant, enforced independent of RLS policies)'
 );
 select throws_ok(
   $$ select * from devices $$,
   '42501', null,
-  'anon cannot read devices (no grant)'
+  'anon cannot read devices (no grant, enforced independent of RLS policies)'
 );
 reset role;
 
+-- These three now run after 0006_tenancy_rls.sql's SELECT policies exist
+-- (every migration through the latest applies before any test runs), so
+-- they no longer describe "no policy yet" — they instead genuinely prove
+-- that a user with no tenant_users membership at all sees zero rows even
+-- though a real per-tenant SELECT policy is in force.
 set role authenticated;
-select is_empty($$ select * from tenants $$, 'authenticated cannot read tenants (no policy yet)');
-select is_empty($$ select * from tenant_users $$, 'authenticated cannot read tenant_users (no policy yet)');
-select is_empty($$ select * from devices $$, 'authenticated cannot read devices (no policy yet)');
+select is_empty($$ select * from tenants $$, 'authenticated with no tenant membership sees no tenants (RLS policy resolves to zero rows)');
+select is_empty($$ select * from tenant_users $$, 'authenticated with no tenant membership sees no tenant_users rows (RLS policy resolves to zero rows)');
+select is_empty($$ select * from devices $$, 'authenticated with no tenant membership sees no devices (RLS policy resolves to zero rows)');
 reset role;
 
 select * from finish();

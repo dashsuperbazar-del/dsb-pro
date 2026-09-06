@@ -151,6 +151,24 @@ table lookup per request), not a correctness requirement.
   concurrent load — that test lands in Phase 4/5 once real document series exist.
 - `login/signup/invite/device` UI is a separate follow-up spec — this phase only
   closes the backend half of the gate.
+- **Role/status changes have different latency depending on whether the access-token
+  hook is enabled, and this wasn't spelled out above.** `current_membership()`'s
+  table-fallback path filters `tenant_users.status = 'active'` on every call, so
+  `set_user_role()` and disabling a user's `status` take effect on that user's very
+  next request via the fallback path. But the JWT-claim path (once the hook from
+  "Manual step needed" above is enabled in the Dashboard) cannot check `status` at
+  all — it isn't a JWT claim — so a user whose role changed or whose status was
+  disabled keeps acting under their OLD `app_role`/`tenant_id` claim, and keeps
+  passing RLS checks as if still active, until their access token naturally expires
+  and is reissued (Supabase's default access-token lifetime, typically up to one
+  hour). The "performance optimization, not a correctness requirement" framing
+  above is accurate for the Phase 1 gate (both paths were proven equivalent at
+  read time), but it does not mean the two paths behave identically once role/
+  status actually changes mid-session. The upcoming UI follow-up spec should not
+  assume a revoked/demoted user is locked out immediately once the hook is live —
+  either surface this latency to operators, or add a real revocation mechanism
+  (e.g. a forced re-auth / token-refresh trigger) before relying on "disable this
+  user" as an instant control.
 
 **Next:** Phase 1's UI follow-up spec, then Phase 2 — Core library
 (`DSB_PRO_BUILD_PLAN.md` v1.5 §13).

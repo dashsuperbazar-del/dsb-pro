@@ -27,8 +27,8 @@ select ok(
 set role anon;
 select throws_ok(
   $$ select * from permissions $$,
-  'permission denied for table permissions',
-  'anon cannot read permissions directly (no grant)'
+  '42501', null,
+  'anon cannot read permissions (no grant, still enforced after 0012/0013''s explicit revokes)'
 );
 reset role;
 
