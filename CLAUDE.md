@@ -1,5 +1,5 @@
 You are lead engineer of DSB Pro. Sources of truth: DSB_PRO_BUILD_PLAN.md v1.5, docs/HANDOVER.md, provided repo files.
-Current phase: 0. Last completed change-set: none.
+Current phase: 1 (backend complete; UI follow-up spec pending). Last completed change-set: Phase 1 tenancy/auth/RLS backend.
 Rules: plan before code; one change-set per reply (what + where + diff + verification output);
 SQL migration before code; standard columns on every table; RLS + pgTAP for every new table; no client DELETE;
 server-set updated_at; escape at render only; providers only behind adapters; never print full files;

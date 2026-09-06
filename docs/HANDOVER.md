@@ -79,3 +79,96 @@
   ever needed.
 
 **Next:** Phase 1 — Tenancy, auth, RLS (`DSB_PRO_BUILD_PLAN.md` v1.5 §13).
+
+## Manual step needed: enable the Phase 1 access-token hook
+
+`custom_access_token_hook()` (0011_access_token_hook.sql) is deployed but not yet
+wired to Auth — this is a one-time, per-project Dashboard action:
+1. Supabase Dashboard → Authentication → Hooks.
+2. Under "Custom Access Token", enable it and select `public.custom_access_token_hook`.
+3. Save.
+
+Until this is done, every session runs the table-fallback path (proven equivalent
+by pgTAP — see 0005_claims_resolver.sql's test, which asserts both paths give
+identical results). Enabling the hook is a performance optimization (one fewer
+table lookup per request), not a correctness requirement.
+
+## Phase 1 — Tenancy, auth, RLS (complete)
+
+- Tables: `permissions`/`role_permissions` (global catalog), `tenants`, `shops`,
+  `tenant_users` (unique per user — one tenant per login in this app),
+  `invites`, `devices`, `audit_log`, `doc_sequences`.
+- `current_membership()`/`current_tenant_id()`/`current_role()`/`current_shop_ids()`/
+  `has_perm()`: JWT custom-claim resolution (`tenant_id`/`app_role`/`shop_ids`) with a
+  `tenant_users` table fallback when the claim is absent — proven equivalent by pgTAP,
+  not assumed.
+- RPCs: `create_tenant`, `create_invite`, `revoke_invite`, `accept_invite`,
+  `set_user_role`, `register_device`, `revoke_device`, `next_doc_no`. All
+  `security definer`; `tenant_users`/`invites` have no direct client
+  insert/update grant at all — these RPCs are the only way in.
+- Generic `audit_row_change()` trigger on every Phase 1 table; later phases attach
+  the same trigger rather than writing per-feature audit code.
+- `custom_access_token_hook()` deployed; enabling it in the Dashboard is a manual,
+  one-time step (see Phase 1's migration comments) — not required for correctness,
+  since the table-fallback path is proven equivalent.
+
+**Gate status — verified fresh, not assumed:**
+- pgTAP 100%: all 10 test files (`0003_permissions.sql` through `0012_explicit_revokes.sql`,
+  12 migrations total counting `0001`/`0002` from Phase 0) run directly against `dsb-pro-dev`
+  via `psql "service=dsbprodev"`, in order. Every file printed `plan(N)` then exactly N `ok`
+  lines and `ROLLBACK` — zero `not ok` lines anywhere. Per-file counts: `0003`=7, `0004`=9,
+  `0005`=8, `0006`=8, `0007`=17, `0008`=6, `0009`=5, `0010`=4, `0011`=3, `0012`=9 → 76/76
+  assertions passed. Full raw psql output is captured in this task's SDD report
+  (`.superpowers/sdd/2026-09-06-phase-1-tenancy-auth-rls/task-11-report.md`).
+- CI green: pushed `worktree-phase-1-tenancy-auth-rls` (already tracked by open PR
+  [#1](https://github.com/dashsuperbazar-del/dsb-pro/pull/1)); triggered run
+  [34026201421](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/34026201421)
+  (for `e5ae004`, the last migration-touching commit) completed `success` in 2m49s —
+  `pgtap` job (Docker-backed, fresh `supabase db reset` + `supabase test db`) passed in
+  2m23s, along with `test`, `lint`, `typecheck`, `build` (`deploy` correctly skipped — not
+  on `main`). This independently re-proves Step 1's result against a genuinely fresh
+  Postgres instance, closing the gap Task 10 fixed (see "Real bugs found" below). The
+  follow-up docs-only push (this commit) triggered run
+  [34026415368](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/34026415368),
+  also `success` (2m52s) after two automatic reruns of its `pgtap` job — both earlier
+  attempts failed at the `supabase/setup-cli@v1` step with `rate limit exceeded` resolving
+  the CLI's `latest` release, an unrelated GitHub API rate-limit flake on the Actions
+  runner, not a test or migration failure (it never reached `supabase db reset`/`test db`).
+- Two tenants isolated / cashier cannot escalate / hook-disabled fallback proven:
+  see `supabase/tests/0006_tenancy_rls.sql`, `0007_tenant_lifecycle_rpcs.sql`,
+  `0005_claims_resolver.sql`.
+
+## Real bugs found and fixed this phase (worth knowing before later phases touch this infrastructure)
+
+- **`auto_expose_new_tables` (`supabase/config.toml`) defaults to `true` when commented out**, and a fresh `supabase db reset` — exactly what CI's `pgtap` job runs — auto-grants full CRUD to `anon`/`authenticated`/`service_role` on every new table. This silently undid several tables' "no grant statement means no access" design (`permissions`, `role_permissions`, `doc_sequences`, and the anon-denial half of `tenants`/`shops`/`tenant_users`/`invites`/`devices`/`audit_log`) — invisible against the long-lived `dsb-pro-dev` project (which isn't affected), only caught once CI ran against a genuinely fresh instance. Fixed by Task 10: explicit `revoke all ... from anon, authenticated` on every affected table (portable, works regardless of this config) plus flipping the config to explicit `false` so future fresh resets don't reintroduce it for new tables. **Any future phase's migration that creates a table meant to have less-than-full anon/authenticated access must include its own explicit grants/revokes — never rely on the absence of a grant statement alone**, even though `auto_expose_new_tables` is now `false`.
+
+## Known Phase 1-only simplifications, to revisit later
+
+- Device revocation (`devices.revoked_at`) is audit-only — nothing yet checks it
+  against incoming requests. Enforcement arrives with Phase 5's sync layer, which
+  is the first thing to carry a per-request device identity.
+- `next_doc_no()`'s row-lock correctness is proven sequentially, not under true
+  concurrent load — that test lands in Phase 4/5 once real document series exist.
+- `login/signup/invite/device` UI is a separate follow-up spec — this phase only
+  closes the backend half of the gate.
+- **Role/status changes have different latency depending on whether the access-token
+  hook is enabled, and this wasn't spelled out above.** `current_membership()`'s
+  table-fallback path filters `tenant_users.status = 'active'` on every call, so
+  `set_user_role()` and disabling a user's `status` take effect on that user's very
+  next request via the fallback path. But the JWT-claim path (once the hook from
+  "Manual step needed" above is enabled in the Dashboard) cannot check `status` at
+  all — it isn't a JWT claim — so a user whose role changed or whose status was
+  disabled keeps acting under their OLD `app_role`/`tenant_id` claim, and keeps
+  passing RLS checks as if still active, until their access token naturally expires
+  and is reissued (Supabase's default access-token lifetime, typically up to one
+  hour). The "performance optimization, not a correctness requirement" framing
+  above is accurate for the Phase 1 gate (both paths were proven equivalent at
+  read time), but it does not mean the two paths behave identically once role/
+  status actually changes mid-session. The upcoming UI follow-up spec should not
+  assume a revoked/demoted user is locked out immediately once the hook is live —
+  either surface this latency to operators, or add a real revocation mechanism
+  (e.g. a forced re-auth / token-refresh trigger) before relying on "disable this
+  user" as an instant control.
+
+**Next:** Phase 1's UI follow-up spec, then Phase 2 — Core library
+(`DSB_PRO_BUILD_PLAN.md` v1.5 §13).
