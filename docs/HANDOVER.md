@@ -123,11 +123,17 @@ table lookup per request), not a correctness requirement.
 - CI green: pushed `worktree-phase-1-tenancy-auth-rls` (already tracked by open PR
   [#1](https://github.com/dashsuperbazar-del/dsb-pro/pull/1)); triggered run
   [34026201421](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/34026201421)
-  completed `success` in 2m49s — `pgtap` job (Docker-backed, fresh `supabase db reset` +
-  `supabase test db`) passed in 2m23s, along with `test`, `lint`, `typecheck`, `build`
-  (`deploy` correctly skipped — not on `main`). This independently re-proves Step 1's result
-  against a genuinely fresh Postgres instance, closing the gap Task 10 fixed (see "Real bugs
-  found" below).
+  (for `e5ae004`, the last migration-touching commit) completed `success` in 2m49s —
+  `pgtap` job (Docker-backed, fresh `supabase db reset` + `supabase test db`) passed in
+  2m23s, along with `test`, `lint`, `typecheck`, `build` (`deploy` correctly skipped — not
+  on `main`). This independently re-proves Step 1's result against a genuinely fresh
+  Postgres instance, closing the gap Task 10 fixed (see "Real bugs found" below). The
+  follow-up docs-only push (this commit) triggered run
+  [34026415368](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/34026415368),
+  also `success` (2m52s) after two automatic reruns of its `pgtap` job — both earlier
+  attempts failed at the `supabase/setup-cli@v1` step with `rate limit exceeded` resolving
+  the CLI's `latest` release, an unrelated GitHub API rate-limit flake on the Actions
+  runner, not a test or migration failure (it never reached `supabase db reset`/`test db`).
 - Two tenants isolated / cashier cannot escalate / hook-disabled fallback proven:
   see `supabase/tests/0006_tenancy_rls.sql`, `0007_tenant_lifecycle_rpcs.sql`,
   `0005_claims_resolver.sql`.
