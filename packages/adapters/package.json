@@ -1,0 +1,19 @@
+{
+  "name": "@dsb-pro/adapters",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.58.0"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.0",
+    "typescript": "6.0.3",
+    "vitest": "^5.0.0"
+  }
+}
