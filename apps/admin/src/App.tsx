@@ -5,6 +5,7 @@ import { LoginScreen } from './screens/LoginScreen';
 import { SignupScreen } from './screens/SignupScreen';
 import { NoTenantScreen } from './screens/NoTenantScreen';
 import { JoinInviteScreen } from './screens/JoinInviteScreen';
+import { VerificationBanner } from './components/VerificationBanner';
 
 export function App() {
   const session = useSession();
@@ -26,13 +27,21 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
     return <LoginScreen />;
   }
   if (session.status === 'no-tenant') {
-    return <NoTenantScreen />;
+    return (
+      <>
+        <VerificationBanner session={session.session} />
+        <NoTenantScreen />
+      </>
+    );
   }
   return (
-    <main>
-      <h1>DSB Pro — Admin</h1>
-      <p>Signed in as tenant {session.membership.tenantId}, role {session.membership.role}.</p>
-      <HealthPanel />
-    </main>
+    <>
+      <VerificationBanner session={session.session} />
+      <main>
+        <h1>DSB Pro — Admin</h1>
+        <p>Signed in as tenant {session.membership.tenantId}, role {session.membership.role}.</p>
+        <HealthPanel />
+      </main>
+    </>
   );
 }
