@@ -5,6 +5,7 @@ import { LoginScreen } from './screens/LoginScreen';
 import { SignupScreen } from './screens/SignupScreen';
 import { NoTenantScreen } from './screens/NoTenantScreen';
 import { JoinInviteScreen } from './screens/JoinInviteScreen';
+import { TeamScreen } from './screens/TeamScreen';
 import { VerificationBanner } from './components/VerificationBanner';
 
 export function App() {
@@ -14,6 +15,7 @@ export function App() {
     <Router>
       <Route path="/signup" component={SignupScreen} />
       <Route path="/join/:token?" component={JoinInviteScreen} />
+      <Route path="/team" component={TeamScreen} />
       <Route default component={() => <Home session={session} />} />
     </Router>
   );
@@ -40,6 +42,7 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
       <main>
         <h1>DSB Pro — Admin</h1>
         <p>Signed in as tenant {session.membership.tenantId}, role {session.membership.role}.</p>
+        <p><a href="/team">Team</a> · <a href="/devices">Devices</a></p>
         <HealthPanel />
       </main>
     </>
