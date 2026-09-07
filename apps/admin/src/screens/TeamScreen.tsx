@@ -17,6 +17,7 @@ const ROLES: Role[] = ['manager', 'cashier', 'accountant'];
 
 export function TeamScreen() {
   const session = useSession();
+  const [refreshInvites, setRefreshInvites] = useState(0);
 
   if (session.status !== 'active') {
     return <p>Sign in to view your team.</p>;
@@ -28,14 +29,14 @@ export function TeamScreen() {
   return (
     <main>
       <h1>Team</h1>
-      {canManageInvites && <InviteForm />}
-      {canManageInvites && <PendingInvites />}
+      {canManageInvites && <InviteForm onInviteCreated={() => setRefreshInvites((n) => n + 1)} />}
+      {canManageInvites && <PendingInvites key={refreshInvites} />}
       <MembersList canManageMembers={canManageMembers} />
     </main>
   );
 }
 
-function InviteForm() {
+function InviteForm({ onInviteCreated }: { onInviteCreated: () => void }) {
   const [role, setRole] = useState<Role>('cashier');
   const [link, setLink] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +47,7 @@ function InviteForm() {
     try {
       const invite = await createInvite(role);
       setLink(`${window.location.origin}/join/${invite.token}`);
+      onInviteCreated();
     } catch (err) {
       setError(errorMessage(classifyError(err), err));
     }

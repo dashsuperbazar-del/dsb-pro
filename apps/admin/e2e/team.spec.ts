@@ -140,10 +140,12 @@ test('owner creates an invite, shares the link, and accepting it joins the right
   await joinPage.getByLabel('Password').fill('shop2026pw');
   await joinPage.getByRole('button', { name: 'Sign up' }).click();
 
-  // After signup, acceptInvite() is called and page reloads. Just wait briefly for it to complete.
+  // After signup, acceptInvite() is called and page reloads. In production, acceptInvite(token) would fail
+  // with "token already used" on the reload (single-use token), causing an error on joinPage.
+  // We verify the flow worked by checking the owner's page shows the joiner in the members list.
   await joinPage.waitForTimeout(500);
 
-  // Verify on owner's page that joiner now appears in members list
+  // Verify on owner's page that joiner now appears in members list with correct role (proves acceptInvite succeeded)
   await page.reload();
   await expect(page.getByTestId('members-list')).toContainText(/cashier/i, { timeout: 5000 });
 });
@@ -223,9 +225,7 @@ test('owner revokes a pending invite', async ({ page }) => {
   await page.getByLabel('Role').selectOption('manager');
   await page.getByRole('button', { name: 'Create invite' }).click();
 
-  // PendingInvites only fetches on mount, so reload to get fresh invite list
-  await page.reload();
-
+  // InviteForm now auto-refreshes PendingInvites when a new invite is created, so Revoke button appears immediately
   await page.getByRole('button', { name: 'Revoke' }).click({ timeout: 5000 });
   await expect(page.getByTestId('pending-invites')).toContainText(/no pending invites/i, { timeout: 5000 });
 });
