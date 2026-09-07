@@ -172,3 +172,154 @@ table lookup per request), not a correctness requirement.
 
 **Next:** Phase 1's UI follow-up spec, then Phase 2 — Core library
 (`DSB_PRO_BUILD_PLAN.md` v1.5 §13).
+
+## Login/signup/invite/device UI (complete)
+
+- `packages/adapters` created: `AuthAdapter` (`auth.ts`), tenancy RPCs (`tenancy.ts`), device
+  RPCs (`devices.ts`) — the first real implementation of `DSB_PRO_BUILD_PLAN.md` §4's adapter
+  layer. No provider name appears in `apps/admin` outside Phase 0's pre-existing HealthPanel.
+- `packages/core` gained `hasPerm()` (mirrors `role_permissions`), `makeTenantSlug()`,
+  `passwordStrength()`.
+- One new migration: `0014_device_label.sql` (`devices.label` + `set_device_label()` RPC) —
+  Phase 1 shipped devices with no name column; this UI needed one.
+- `apps/admin` screens: Login, Signup, no-tenant landing (create shop / join code), join-invite
+  deep link (`/join/:token`), email-verification reminder banner (soft gate, dismissible),
+  Team (invite create/share/revoke, member role change), Devices (self-service rename/revoke +
+  owner/manager all-devices view).
+- Playwright bootstrapped for the first time (`apps/admin/playwright.config.ts`,
+  `apps/admin/e2e/`, 6 spec files, 12 tests) with a new CI `e2e` job, run against a disposable
+  `supabase start` instance — never against `dsb-pro-dev`.
+
+### Gate status
+
+- **Local full-suite run, this task (2026-09-07):** `pnpm lint` clean, `pnpm typecheck` clean,
+  `pnpm test` 47/47 (`packages/core` 17, `packages/adapters` 30), `pnpm --filter
+  @dsb-pro/admin run build` succeeds, `pnpm --filter @dsb-pro/admin run e2e` 9/12 (3 known
+  failures, see below — not code bugs). Migration `0014_device_label.sql`'s pgTAP file
+  re-run directly against `dsb-pro-dev` (transaction-wrapped, rolled back — a safe way to
+  re-verify DDL that isn't itself idempotent): 6/6 `ok`, matching Task 1's original
+  application exactly; a separate read-only `\d devices` / `\df set_device_label` check
+  confirms the column and function are live on `dsb-pro-dev`.
+- **CI: pending controller push/PR.** This task's dispatch was explicitly scoped to stop
+  short of `git push`/`gh pr create` — that is the controller's job, done separately after
+  confirmation. Until that push happens and the Actions run is inspected, CI's `e2e` job
+  (fresh local Docker-based `supabase start` instance, matching the declared
+  `supabase/config.toml`) has **not** been confirmed green for this plan — it is expected to
+  be, since it doesn't share `dsb-pro-dev`'s config drift or rate-limit state (see below), but
+  "expected" is not "verified." Whoever does the push should confirm `lint`, `typecheck`,
+  `test`, `pgtap`, `e2e`, and `build` are all green on the resulting PR before treating this
+  phase as closed, and update this entry with the run link once done.
+- **Full raw command output for every check above is in this task's SDD report**
+  (`.superpowers/sdd/2026-09-06-login-signup-invite-device-ui/task-13-report.md`).
+
+### Architectural regression, deliberately accepted: `apps/admin/vite.config.ts`'s `base`
+
+**`base` changed from Phase 0's `'./'` to `'/'`, and this breaks the GitHub Pages fallback
+mirror that Phase 0's gate established as a requirement.** `/join/:token` (a spec-required
+shareable deep link, `DSB_PRO_BUILD_PLAN.md` §5) needs absolute asset paths to load correctly
+on a fresh, direct navigation — a relative base resolves `./assets/...` against the URL's last
+path segment, so loading `/join/abc123` directly 404s on `/join/assets/...` instead of finding
+`/assets/...`. Absolute `base: '/'` is also the *correct* long-term choice, since the real
+deployment is at a domain root (`dsbpro.in`) — but Cloudflare Pages (primary,
+`dsb-pro.pages.dev`, root-served) and GitHub Pages (secondary,
+`dashsuperbazar-del.github.io/dsb-pro`, served from a `/dsb-pro/` **subpath**) need different
+`base` values to both work, and this plan's build only produces one artifact. With `base: '/'`,
+GH Pages' copy now requests assets from the Pages *domain* root instead of its repo subpath and
+404s.
+
+The user was explicitly asked and chose: **keep `base: '/'`, accept that GitHub Pages breaks
+for now** (Cloudflare Pages, the primary mirror, is unaffected), and fix it properly later —
+either a second build with a different `base` for the GH Pages target, or dropping GH Pages
+entirely once a real domain is live. This is a real, known regression against Phase 0's
+"two hosting mirrors serving an identical build" gate, not an oversight — flagging it here
+prominently so a future phase doesn't rediscover it as a mystery 404. The full reasoning is
+also inlined as a comment directly above `base: '/'` in `apps/admin/vite.config.ts`.
+
+### Environment / test caveats: `dsb-pro-dev` config drift and rate-limiting
+
+`dsb-pro-dev` (the hosted Supabase dev project used for local manual verification throughout
+this plan, same as every phase before it) has **real config drift from `supabase/config.toml`'s
+declared settings**: the dashboard's "Confirm email" (`mailer_autoconfirm: false`, i.e.
+confirmation *required*) does not match the repo's declared `enable_confirmations = false`
+(confirmation disabled) for local/CI. This means a real signup against `dsb-pro-dev` never
+yields an immediate session — the account is created but stays in a pending-confirmation state
+— unlike CI's fresh local instance, which matches the declared config and gets a session
+immediately. Combined with this session's cumulative test-signup traffic against the same
+project across Tasks 1-13, `dsb-pro-dev` also hit Supabase's real signup rate-limiting.
+
+As a direct result, **3 e2e specs are permanently expected to fail when run locally against
+`dsb-pro-dev`** — confirmed failing consistently, including in this task's own final run:
+- `auth.spec.ts` › "signup then login with the same credentials"
+- `invite-join.spec.ts` › "create your shop takes an owner straight into the app"
+- `invite-join.spec.ts` › "visiting a join link while signed out routes through signup first, then joins"
+
+These are **not code bugs** — they're a documented environment limitation of verifying against
+a long-lived, drifted, rate-limited hosted project rather than a fresh instance. CI's `e2e` job
+runs against a disposable `supabase start` instance built from the declared config every time,
+so it does not share either problem and is the authoritative gate for these three specs (see
+"pending controller push/PR" above — this still needs to actually go green on CI once pushed).
+
+Anyone continuing this work locally needs their **own** `apps/admin/.env`
+(`VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`) pointed at `dsb-pro-dev` or a local Supabase
+instance to run e2e at all — it's gitignored and was never committed. CI needs none of this; it
+provisions its own fresh instance per run.
+
+### A pattern worth naming: this plan's own text had an unusual number of real bugs
+
+Across nearly every task in this plan, implementation surfaced **genuine defects in the plan's
+own verbatim brief text** — not implementer mistakes, but things the brief specified that were
+simply wrong and had to be caught and fixed during execution or review:
+- Task 2/5: an arithmetic error undercounting expected test totals in the brief (harmless —
+  just a wrong number to check output against).
+- Task 3: a missing test-environment config, caught when the package's own test suite couldn't
+  run as specified.
+- Task 4: a mismatched mock call in a test the brief specified verbatim.
+- Task 5: a broken mock chain in a brief-specified test.
+- Task 8: two real bugs in the brief's own routing/build-config assumptions —
+  `path="/*"` never matches anything in `preact-router` v4 (needs the library's actual
+  catch-all mechanism, the `default` prop, instead); and an unused import that fails the build
+  outright under this project's `noUnusedLocals`, not just lint.
+- Task 9: a component-nesting mistake in the brief that silently dropped the invite token on
+  the signup happy path — caught before it shipped.
+- Task 11 (Team screen) was the most involved: **three separate rejection rounds** in formal
+  review. Two were test-only workarounds sent back for real component fixes — a `PendingInvites`
+  refresh bug, and a genuine bug where `JoinInviteScreen` would re-attempt `acceptInvite` on an
+  already-used single-use token after its own post-accept page reload, showing a freshly-joined
+  user a scary "invalid invite" error instead of just letting them in. The third round caught a
+  real Rules-of-Hooks violation, fixed afterward.
+- Task 13 (this task): the first full-workspace `pnpm lint`/`pnpm typecheck` run since Phase
+  0's baseline (Tasks 1-12 each verified their own package/screen in isolation, never the whole
+  workspace together) surfaced a `packages/adapters` devDependency gap (`vite` needed for
+  `vite/client` types, only ever declared in `apps/admin`), a mistyped Vitest mock that
+  undercounted a test's real call arity, and a handful of `eslint`-only issues (`any`,
+  unused vars, `let` vs `const`) in e2e spec files that no earlier task's per-task checks
+  happened to run. Fixed directly in a preceding commit on this branch — no production
+  behavior changed by any of these fixes.
+
+This reflects on **this plan's own authorship quality**, not on execution quality — future
+readers should know this particular plan required unusually heavy scrutiny at nearly every
+step, and treat its literal text as a starting point to verify against the real codebase, not
+as ground truth to transcribe.
+
+**Known simplifications, carried forward honestly rather than silently assumed away:**
+- Device revocation (self or by an owner/manager) still has no real enforcement against an
+  already-revoked device continuing to make requests — Phase 5's sync layer is still where
+  that lands. The one exception: revoking your OWN other device also calls
+  `supabase.auth.signOut({scope:'others'})`, which Supabase Auth does enforce immediately.
+  Revoking someone ELSE's device only removes it from the list — the Devices screen says so.
+- No deactivate/reactivate/remove exists for a `tenant_users` row — only role change
+  (`set_user_role`). Dropped from this plan's Team screen scope rather than adding a new RPC
+  for it; add one when it's actually needed.
+- Role changes take effect on the affected user's next request via the table-fallback path,
+  or up to ~1 hour (JWT lifetime) if the access-token hook is enabled and they're already
+  signed in. The Team screen's copy says this; nothing was built to make it instant.
+- Dark mode and Hindi strings (`DSB_PRO_BUILD_PLAN.md` §10) are not in this plan — every
+  screen is literal English JSX text with no theming, matching Phase 0's own placeholder
+  screen. Deferred to whichever later phase first needs i18n/theming broadly enough to be
+  worth building once instead of screen-by-screen.
+- Multi-shop picker, TOTP (two-factor), and a Dexie purge on device revocation are all
+  explicitly out of scope per the spec itself, not gaps discovered during this plan — noted
+  here so a later phase doesn't mistake their absence for an oversight.
+
+**Next:** Phase 2 — Core library (`DSB_PRO_BUILD_PLAN.md` v1.5 §13), once the controller's
+push/PR confirms CI green end-to-end for this plan.
