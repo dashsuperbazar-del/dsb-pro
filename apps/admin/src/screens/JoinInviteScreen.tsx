@@ -39,6 +39,16 @@ export function JoinInviteScreen({ token }: { token?: string }) {
   const [error, setError] = useState<string | null>(null);
   const [attempted, setAttempted] = useState(false);
 
+  // If user is already active (has accepted the invite on this or another attempt),
+  // redirect to home to show them the app instead of trying to accept again.
+  // Without this check, the component remounts after reload and tries acceptInvite
+  // again with a single-use token, causing "already used" error.
+  useEffect(() => {
+    if (session.status === 'active') {
+      window.location.href = '/';
+    }
+  }, [session.status]);
+
   if (session.status === 'loading') {
     return <p>Loading…</p>;
   }
@@ -51,16 +61,6 @@ export function JoinInviteScreen({ token }: { token?: string }) {
       </div>
     );
   }
-
-  // If user is already active (has accepted the invite on this or another attempt),
-  // redirect to home to show them the app instead of trying to accept again.
-  // Without this check, the component remounts after reload and tries acceptInvite
-  // again with a single-use token, causing "already used" error.
-  useEffect(() => {
-    if (session.status === 'active') {
-      window.location.href = '/';
-    }
-  }, [session.status]);
 
   // Only attempt to accept the invite while in 'no-tenant' state
   // (authenticated but not yet a member of the tenant)
