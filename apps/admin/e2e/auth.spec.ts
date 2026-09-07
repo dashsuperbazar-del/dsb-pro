@@ -14,12 +14,12 @@ test('signup then login with the same credentials', async ({ page }) => {
   await page.getByRole('button', { name: 'Sign up' }).click();
 
   // Local supabase config has enable_confirmations = false, so this lands
-  // straight on the no-tenant placeholder (real NoTenantScreen is Task 9).
-  await expect(page.getByText(/no tenant yet/i)).toBeVisible();
+  // straight on the no-tenant screen (NoTenantScreen, Task 9).
+  await expect(page.getByRole('heading', { name: 'Welcome' })).toBeVisible();
 
   await page.reload();
   // Reloading keeps the same Supabase session (signed in) — still no-tenant.
-  await expect(page.getByText(/no tenant yet/i)).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Welcome' })).toBeVisible();
 });
 
 test('shows a user-facing error for wrong credentials', async ({ page }) => {

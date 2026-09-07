@@ -3,6 +3,8 @@ import { useSession } from './lib/useSession';
 import { HealthPanel } from './HealthPanel';
 import { LoginScreen } from './screens/LoginScreen';
 import { SignupScreen } from './screens/SignupScreen';
+import { NoTenantScreen } from './screens/NoTenantScreen';
+import { JoinInviteScreen } from './screens/JoinInviteScreen';
 
 export function App() {
   const session = useSession();
@@ -10,6 +12,7 @@ export function App() {
   return (
     <Router>
       <Route path="/signup" component={SignupScreen} />
+      <Route path="/join/:token?" component={JoinInviteScreen} />
       <Route default component={() => <Home session={session} />} />
     </Router>
   );
@@ -23,7 +26,7 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
     return <LoginScreen />;
   }
   if (session.status === 'no-tenant') {
-    return <p>Signed in, no tenant yet. NoTenantScreen lands in Task 9.</p>;
+    return <NoTenantScreen />;
   }
   return (
     <main>
