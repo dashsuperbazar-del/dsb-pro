@@ -2,7 +2,6 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { __setSupabaseClientForTest } from './client';
 import {
   createTenant,
-  getDefaultShopId,
   createInvite,
   revokeInvite,
   acceptInvite,
