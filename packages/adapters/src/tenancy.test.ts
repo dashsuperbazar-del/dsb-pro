@@ -13,7 +13,9 @@ import {
 
 function makeMockClient(rpcResults: Record<string, unknown> = {}, fromResults: Record<string, unknown> = {}) {
   return {
-    rpc: vi.fn((fn: string) => Promise.resolve({ data: rpcResults[fn] ?? null, error: null })),
+    rpc: vi.fn<(fn: string, params?: Record<string, unknown>) => Promise<{ data: unknown; error: null }>>(
+      (fn) => Promise.resolve({ data: rpcResults[fn] ?? null, error: null }),
+    ),
     from: vi.fn((table: string) => ({
       select: () => ({
         eq: () => ({
@@ -39,11 +41,12 @@ describe('tenancy adapter', () => {
     const id = await createTenant("Ramesh's Store");
     expect(id).toBe('tenant-1');
     const call = client.rpc.mock.calls[0];
+    const params = call[1]!;
     expect(call[0]).toBe('create_tenant');
-    expect(call[1].p_name).toBe("Ramesh's Store");
-    expect(call[1].p_shop_name).toBe("Ramesh's Store");
-    expect(call[1].p_slug).toMatch(/^ramesh-s-store-[a-z0-9]{4}$/);
-    expect(typeof call[1].p_client_id).toBe('string');
+    expect(params.p_name).toBe("Ramesh's Store");
+    expect(params.p_shop_name).toBe("Ramesh's Store");
+    expect(params.p_slug).toMatch(/^ramesh-s-store-[a-z0-9]{4}$/);
+    expect(typeof params.p_client_id).toBe('string');
   });
 
   it('createInvite looks up the default shop then calls create_invite', async () => {
@@ -76,8 +79,9 @@ describe('tenancy adapter', () => {
     const tenantId = await acceptInvite('abc123');
     expect(tenantId).toBe('tenant-2');
     const call = client.rpc.mock.calls[0];
-    expect(call[1].p_token).toBe('abc123');
-    expect(typeof call[1].p_client_id).toBe('string');
+    const params = call[1]!;
+    expect(params.p_token).toBe('abc123');
+    expect(typeof params.p_client_id).toBe('string');
   });
 
   it('setUserRole calls set_user_role with user id and role', async () => {

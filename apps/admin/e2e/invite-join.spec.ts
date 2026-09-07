@@ -18,7 +18,7 @@ test('create your shop takes an owner straight into the app', async ({ page }) =
   await expect(page.getByText(/role owner/i)).toBeVisible();
 });
 
-test('visiting a join link while signed out routes through signup first, then joins', async ({ page, request, context }) => {
+test('visiting a join link while signed out routes through signup first, then joins', async ({ page, context }) => {
   // Seed a real invite by creating an owner account + tenant + invite via the UI first.
   const ownerEmail = uniqueEmail();
   await page.goto('/signup');

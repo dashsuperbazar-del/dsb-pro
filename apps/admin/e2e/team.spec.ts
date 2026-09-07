@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 function uniqueEmail() {
   return `test-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`;
@@ -12,9 +12,9 @@ test('owner creates an invite, shares the link, and accepting it joins the right
   const tenantId = 'tenant-1';
   const shopId = 'shop-1';
 
-  let state = { ownerLoggedIn: false, joinerLoggedIn: false, tenantCreated: false };
+  const state = { ownerLoggedIn: false, joinerLoggedIn: false, tenantCreated: false };
 
-  const setupPageMocks = (p: any) => {
+  const setupPageMocks = (p: Page) => {
     p.route('**/auth/v1/signup', async (route) => {
       const body = route.request().postDataJSON();
       const isOwner = body.email === ownerEmail;
@@ -156,9 +156,9 @@ test('owner revokes a pending invite', async ({ page }) => {
   const tenantId = 'tenant-2';
   const shopId = 'shop-2';
 
-  let state = { ownerLoggedIn: false, tenantCreated: false, inviteExists: false };
+  const state = { ownerLoggedIn: false, tenantCreated: false, inviteExists: false };
 
-  const setupMocks = (p: any) => {
+  const setupMocks = (p: Page) => {
     p.route('**/auth/v1/signup', async (route) => {
       state.ownerLoggedIn = true;
       await route.fulfill({
@@ -238,9 +238,9 @@ test('owner changes a member\'s role, with the latency caveat shown', async ({ p
   const tenantId = 'tenant-3';
   const shopId = 'shop-3';
 
-  let state = { ownerLoggedIn: false, joinerLoggedIn: false, tenantCreated: false, joinerRole: 'cashier' };
+  const state = { ownerLoggedIn: false, joinerLoggedIn: false, tenantCreated: false, joinerRole: 'cashier' };
 
-  const setupMocks = (p: any) => {
+  const setupMocks = (p: Page) => {
     p.route('**/auth/v1/signup', async (route) => {
       const body = route.request().postDataJSON();
       if (body.email === ownerEmail) state.ownerLoggedIn = true;

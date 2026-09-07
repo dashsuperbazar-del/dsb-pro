@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page, type Route } from '@playwright/test';
 
 function uniqueEmail() {
   return `test-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`;
@@ -14,13 +14,15 @@ type DeviceRow = {
   revoked_at: string | null;
 };
 
+type MockState = { loggedIn: boolean; tenantCreated: boolean; devices: DeviceRow[] };
+
 function setupPageMocks(
-  p: any,
-  opts: { email: string; userId: string; tenantId: string; shopId: string; state: any },
+  p: Page,
+  opts: { email: string; userId: string; tenantId: string; shopId: string; state: MockState },
 ) {
   const { email, userId, tenantId, shopId, state } = opts;
 
-  p.route('**/auth/v1/signup', async (route: any) => {
+  p.route('**/auth/v1/signup', async (route: Route) => {
     state.loggedIn = true;
     await route.fulfill({
       status: 200,
@@ -45,7 +47,7 @@ function setupPageMocks(
     });
   });
 
-  p.route('**/rest/v1/rpc/register_device', async (route: any) => {
+  p.route('**/rest/v1/rpc/register_device', async (route: Route) => {
     const body = route.request().postDataJSON();
     // Mirrors register_device()'s real "on conflict (tenant_id, user_id,
     // device_id) do update" semantics — a second call for the same browser
@@ -70,30 +72,30 @@ function setupPageMocks(
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(id) });
   });
 
-  p.route('**/rest/v1/rpc/set_device_label', async (route: any) => {
+  p.route('**/rest/v1/rpc/set_device_label', async (route: Route) => {
     const body = route.request().postDataJSON();
     const device = state.devices.find((d: DeviceRow) => d.id === body.p_id);
     if (device) device.label = body.p_label;
     await route.fulfill({ status: 200, contentType: 'application/json', body: 'null' });
   });
 
-  p.route('**/rest/v1/rpc/current_membership', async (route: any) => {
+  p.route('**/rest/v1/rpc/current_membership', async (route: Route) => {
     const members = state.tenantCreated && state.loggedIn
       ? [{ tenant_id: tenantId, role: 'owner', shop_ids: [shopId] }]
       : [];
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(members) });
   });
 
-  p.route('**/rest/v1/rpc/create_tenant', async (route: any) => {
+  p.route('**/rest/v1/rpc/create_tenant', async (route: Route) => {
     state.tenantCreated = true;
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(tenantId) });
   });
 
-  p.route('**/rest/v1/shops**', async (route: any) => {
+  p.route('**/rest/v1/shops**', async (route: Route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ id: shopId, is_default: true }]) });
   });
 
-  p.route('**/rest/v1/devices**', async (route: any) => {
+  p.route('**/rest/v1/devices**', async (route: Route) => {
     const url = new URL(route.request().url());
     const userFilter = url.searchParams.get('user_id');
     let rows = state.devices as DeviceRow[];
