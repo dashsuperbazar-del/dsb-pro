@@ -6,6 +6,7 @@ import { SignupScreen } from './screens/SignupScreen';
 import { NoTenantScreen } from './screens/NoTenantScreen';
 import { JoinInviteScreen } from './screens/JoinInviteScreen';
 import { TeamScreen } from './screens/TeamScreen';
+import { DevicesScreen } from './screens/DevicesScreen';
 import { VerificationBanner } from './components/VerificationBanner';
 
 export function App() {
@@ -16,6 +17,7 @@ export function App() {
       <Route path="/signup" component={SignupScreen} />
       <Route path="/join/:token?" component={JoinInviteScreen} />
       <Route path="/team" component={TeamScreen} />
+      <Route path="/devices" component={DevicesScreen} />
       <Route default component={() => <Home session={session} />} />
     </Router>
   );
