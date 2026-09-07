@@ -1,27 +1,26 @@
 import { Router, Route } from 'preact-router';
 import { useSession } from './lib/useSession';
 import { HealthPanel } from './HealthPanel';
+import { LoginScreen } from './screens/LoginScreen';
+import { SignupScreen } from './screens/SignupScreen';
 
 export function App() {
   const session = useSession();
 
   return (
     <Router>
-      <Route path="/*" component={() => <Home session={session} />} />
+      <Route path="/signup" component={SignupScreen} />
+      <Route default component={() => <Home session={session} />} />
     </Router>
   );
 }
 
-// Screens land in Tasks 8-12: LoginScreen/SignupScreen (signed-out),
-// NoTenantScreen (no-tenant), the real app shell (active). This placeholder
-// keeps Phase 0's HealthPanel reachable so the plan's earlier tasks stay
-// green before those screens exist.
 function Home({ session }: { session: ReturnType<typeof useSession> }) {
   if (session.status === 'loading') {
     return <p>Loading…</p>;
   }
   if (session.status === 'signed-out') {
-    return <p>Signed out. Login/Signup screens land in Task 8.</p>;
+    return <LoginScreen />;
   }
   if (session.status === 'no-tenant') {
     return <p>Signed in, no tenant yet. NoTenantScreen lands in Task 9.</p>;

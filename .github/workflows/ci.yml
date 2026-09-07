@@ -59,8 +59,33 @@ jobs:
       - run: supabase db reset
       - run: supabase test db
 
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - run: supabase start
+      - name: Export local Supabase URL/anon key
+        run: |
+          API_URL=$(supabase status -o env | grep '^API_URL=' | cut -d= -f2- | tr -d '"')
+          ANON_KEY=$(supabase status -o env | grep '^ANON_KEY=' | cut -d= -f2- | tr -d '"')
+          echo "VITE_SUPABASE_URL=$API_URL" >> "$GITHUB_ENV"
+          echo "VITE_SUPABASE_ANON_KEY=$ANON_KEY" >> "$GITHUB_ENV"
+      - run: supabase db reset
+      - run: pnpm --filter @dsb-pro/admin run build
+      - run: pnpm --filter @dsb-pro/admin exec playwright install --with-deps chromium
+      - run: pnpm --filter @dsb-pro/admin run e2e
+
   build:
-    needs: [lint, typecheck, test, pgtap]
+    needs: [lint, typecheck, test, pgtap, e2e]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

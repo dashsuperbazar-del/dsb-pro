@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@dsb-pro/adapters": "workspace:*",
@@ -16,6 +17,7 @@
     "preact-router": "^4.1.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.48.0",
     "@preact/preset-vite": "^2.10.6",
     "@types/node": "^24.13.3",
     "typescript": "~6.0.2",
