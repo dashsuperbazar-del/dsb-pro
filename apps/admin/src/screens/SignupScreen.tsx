@@ -4,7 +4,17 @@ import { signUp } from '@dsb-pro/adapters';
 import { classifyError, errorMessage } from '@dsb-pro/adapters';
 import { passwordStrength } from '@dsb-pro/core';
 
-export function SignupScreen() {
+// onSignedUp: escape hatch for a caller that nests SignupScreen somewhere
+// other than its own top-level "/signup" route (e.g. JoinInviteScreen) and
+// needs to control what happens after an immediate-session signup itself.
+// Without this, SignupScreen's own unconditional route('/') fires the
+// instant signUp() resolves with a session — under a project with email
+// confirmation disabled, that unmounts the nesting parent before it ever
+// gets a chance to react to the new session (e.g. JoinInviteScreen's
+// accept_invite(token) call never runs; the invite is silently dropped).
+// Defaults to the original top-level behavior (route('/')) so the existing
+// standalone "/signup" route usage is unaffected.
+export function SignupScreen({ onSignedUp }: { onSignedUp?: () => void } = {}) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -26,12 +36,16 @@ export function SignupScreen() {
     try {
       const session = await signUp(email, password);
       if (session) {
-        // SignupScreen is its own top-level route (unlike LoginScreen, which
-        // is nested inside Home's signed-out branch and needs no navigation
-        // of its own). Route back to "/" so the default route's
-        // session-based branching in Home takes over now that useSession
-        // has a session to pick up.
-        route('/');
+        if (onSignedUp) {
+          onSignedUp();
+        } else {
+          // SignupScreen is its own top-level route (unlike LoginScreen, which
+          // is nested inside Home's signed-out branch and needs no navigation
+          // of its own). Route back to "/" so the default route's
+          // session-based branching in Home takes over now that useSession
+          // has a session to pick up.
+          route('/');
+        }
       } else {
         // Supabase resolves signUp() without throwing even when the
         // project's Auth settings require email confirmation — no session

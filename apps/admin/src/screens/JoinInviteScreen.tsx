@@ -8,7 +8,7 @@ import { SignupScreen } from './SignupScreen';
 // account and land right back here; once signed in, auto-submits
 // accept_invite(token) exactly once.
 //
-// BUG FIX (beyond the brief's verbatim code): the brief rendered both
+// BUG FIX #1 (beyond the brief's verbatim code): the brief rendered both
 // <SignupScreen /> and <LoginScreen /> here at once. Both forms have their
 // own "Email"/"Password" labels and their own "Sign up"/"Log in" buttons, so
 // with both mounted simultaneously `getByLabel('Email')` (used by this
@@ -20,6 +20,20 @@ import { SignupScreen } from './SignupScreen';
 // via SignupScreen's own "Already have an account? Log in" link — it routes
 // to "/" and loses the token, a known limitation the brief explicitly defers
 // ("Team screen (Task 11) will make this a UI click").
+//
+// BUG FIX #2 (found in review): SignupScreen's own onSubmit unconditionally
+// calls route('/') the instant signUp() resolves with an immediate session
+// (i.e. whenever email confirmation is disabled — exactly CI's fresh local
+// instance config). That fires before this component's own `session` here
+// ever moves past 'signed-out', so JoinInviteScreen unmounts and the
+// `!attempted && token` branch below never runs — the invite token is
+// silently dropped and the new hire lands on NoTenantScreen as if they had
+// never had one. Passing onSignedUp (a no-op) suppresses SignupScreen's own
+// navigation in this nested context; nothing else needs to happen here
+// because this component's own useSession() call re-renders past
+// 'signed-out' once the auth-state listener picks up the new session, and
+// the existing `!attempted && token` logic below then runs acceptInvite
+// exactly as it already did for the "already signed in" case.
 export function JoinInviteScreen({ token }: { token?: string }) {
   const session = useSession();
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +47,7 @@ export function JoinInviteScreen({ token }: { token?: string }) {
     return (
       <div>
         <p>Sign up or log in to accept this invite.</p>
-        <SignupScreen />
+        <SignupScreen onSignedUp={() => {}} />
       </div>
     );
   }
