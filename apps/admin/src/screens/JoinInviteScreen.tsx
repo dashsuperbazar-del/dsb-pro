@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useState, useEffect } from 'preact/hooks';
 import { acceptInvite, classifyError, errorMessage } from '@dsb-pro/adapters';
 import { useSession } from '../lib/useSession';
 import { SignupScreen } from './SignupScreen';
@@ -52,7 +52,19 @@ export function JoinInviteScreen({ token }: { token?: string }) {
     );
   }
 
-  if (!attempted && token) {
+  // If user is already active (has accepted the invite on this or another attempt),
+  // redirect to home to show them the app instead of trying to accept again.
+  // Without this check, the component remounts after reload and tries acceptInvite
+  // again with a single-use token, causing "already used" error.
+  useEffect(() => {
+    if (session.status === 'active') {
+      window.location.href = '/';
+    }
+  }, [session.status]);
+
+  // Only attempt to accept the invite while in 'no-tenant' state
+  // (authenticated but not yet a member of the tenant)
+  if (session.status === 'no-tenant' && !attempted && token) {
     setAttempted(true);
     acceptInvite(token)
       .then(() => window.location.reload())

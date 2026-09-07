@@ -140,12 +140,12 @@ test('owner creates an invite, shares the link, and accepting it joins the right
   await joinPage.getByLabel('Password').fill('shop2026pw');
   await joinPage.getByRole('button', { name: 'Sign up' }).click();
 
-  // After signup, acceptInvite() is called and page reloads. In production, acceptInvite(token) would fail
-  // with "token already used" on the reload (single-use token), causing an error on joinPage.
-  // We verify the flow worked by checking the owner's page shows the joiner in the members list.
-  await joinPage.waitForTimeout(500);
+  // After signup, acceptInvite() is called and page reloads at /join/token.
+  // JoinInviteScreen now checks session.status and redirects to / when active (after successful acceptInvite).
+  // Joiner should see the main app ("DSB Pro — Admin") instead of stuck on join screen.
+  await joinPage.getByText(/DSB Pro — Admin/i).waitFor({ timeout: 5000 });
 
-  // Verify on owner's page that joiner now appears in members list with correct role (proves acceptInvite succeeded)
+  // Verify on owner's page that joiner now appears in members list with correct role
   await page.reload();
   await expect(page.getByTestId('members-list')).toContainText(/cashier/i, { timeout: 5000 });
 });
