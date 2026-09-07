@@ -3,9 +3,16 @@ import { getSupabaseClient } from './client';
 
 export type { Session };
 
-export async function signUp(email: string, password: string): Promise<void> {
-  const { error } = await getSupabaseClient().auth.signUp({ email, password });
+// Returns the new session, or null when email confirmation is required (the
+// project's Auth settings have confirmations enabled) — Supabase resolves
+// signUp() successfully in that case with data.session: null rather than
+// throwing, so callers must check the return value to tell "signed up and
+// signed in" apart from "signed up, confirmation email pending" and give
+// the user feedback accordingly.
+export async function signUp(email: string, password: string): Promise<Session | null> {
+  const { data, error } = await getSupabaseClient().auth.signUp({ email, password });
   if (error) throw error;
+  return data?.session ?? null;
 }
 
 export async function signIn(email: string, password: string): Promise<void> {
