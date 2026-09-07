@@ -8,6 +8,18 @@ export type ErrorClass = 'user' | 'offline' | 'auth-expired' | 'server';
 function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === 'string') return error;
+  // supabase-js's default (non-throwing) path returns PostgREST/RPC errors as
+  // a plain object ({ message, code, ... }), not a PostgrestError class
+  // instance — instanceof Error is false for it. Extract .message from any
+  // object that has one before falling back to String(error), which would
+  // otherwise stringify these as the useless literal "[object Object]".
+  if (
+    error &&
+    typeof error === 'object' &&
+    typeof (error as { message?: unknown }).message === 'string'
+  ) {
+    return (error as { message: string }).message;
+  }
   return String(error);
 }
 

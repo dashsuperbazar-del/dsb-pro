@@ -5,9 +5,11 @@ import {
   listInvites,
   listTenantUsers,
   setUserRole,
+  isEmailVerified,
   classifyError,
   errorMessage,
   type Invite,
+  type Session,
   type TenantUser,
 } from '@dsb-pro/adapters';
 import { hasPerm, type Role } from '@dsb-pro/core';
@@ -19,6 +21,9 @@ export function TeamScreen() {
   const session = useSession();
   const [refreshInvites, setRefreshInvites] = useState(0);
 
+  if (session.status === 'loading') {
+    return <p>Loading…</p>;
+  }
   if (session.status !== 'active') {
     return <p>Sign in to view your team.</p>;
   }
@@ -29,20 +34,24 @@ export function TeamScreen() {
   return (
     <main>
       <h1>Team</h1>
-      {canManageInvites && <InviteForm onInviteCreated={() => setRefreshInvites((n) => n + 1)} />}
+      {canManageInvites && (
+        <InviteForm session={session.session} onInviteCreated={() => setRefreshInvites((n) => n + 1)} />
+      )}
       {canManageInvites && <PendingInvites key={refreshInvites} />}
       <MembersList canManageMembers={canManageMembers} />
     </main>
   );
 }
 
-function InviteForm({ onInviteCreated }: { onInviteCreated: () => void }) {
+function InviteForm({ session, onInviteCreated }: { session: Session; onInviteCreated: () => void }) {
   const [role, setRole] = useState<Role>('cashier');
   const [link, setLink] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const verified = isEmailVerified(session);
 
   async function onSubmit(e: Event) {
     e.preventDefault();
+    if (!verified) return;
     setError(null);
     try {
       const invite = await createInvite(role);
@@ -67,8 +76,11 @@ function InviteForm({ onInviteCreated }: { onInviteCreated: () => void }) {
             ))}
           </select>
         </label>
-        <button type="submit">Create invite</button>
+        <button type="submit" disabled={!verified}>
+          Create invite
+        </button>
       </form>
+      {!verified && <p>Verify your email to send invites.</p>}
       {error && <p role="alert">{error}</p>}
       {link && (
         <p>
@@ -91,8 +103,13 @@ function PendingInvites() {
   }, []);
 
   async function onRevoke(id: string) {
-    await revokeInvite(id);
-    setInvites((prev) => (prev ? prev.filter((i) => i.id !== id) : prev));
+    setError(null);
+    try {
+      await revokeInvite(id);
+      setInvites((prev) => (prev ? prev.filter((i) => i.id !== id) : prev));
+    } catch (err) {
+      setError(errorMessage(classifyError(err), err));
+    }
   }
 
   const pending = invites?.filter((i) => new Date(i.expiresAt) > new Date()) ?? [];
@@ -141,27 +158,32 @@ function MembersList({ canManageMembers }: { canManageMembers: boolean }) {
       {caveat && (
         <p>A role change takes effect on that person's next sign-in — or up to about an hour if they're already signed in.</p>
       )}
-      <ul>
-        {members?.map((member) => (
-          <li key={member.userId}>
-            {member.userId} — {member.status}
-            {canManageMembers && member.role !== 'owner' ? (
-              <select
-                value={member.role}
-                onChange={(e) => onRoleChange(member.userId, (e.target as HTMLSelectElement).value as Role)}
-              >
-                {ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <span> ({member.role})</span>
-            )}
-          </li>
-        ))}
-      </ul>
+      {members === null ? (
+        <p>Loading…</p>
+      ) : (
+        <ul>
+          {members.length === 0 && <li>No members yet.</li>}
+          {members.map((member) => (
+            <li key={member.userId}>
+              {member.userId} — {member.status}
+              {canManageMembers && member.role !== 'owner' ? (
+                <select
+                  value={member.role}
+                  onChange={(e) => onRoleChange(member.userId, (e.target as HTMLSelectElement).value as Role)}
+                >
+                  {ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span> ({member.role})</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

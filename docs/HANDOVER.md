@@ -320,6 +320,31 @@ as ground truth to transcribe.
 - Multi-shop picker, TOTP (two-factor), and a Dexie purge on device revocation are all
   explicitly out of scope per the spec itself, not gaps discovered during this plan — noted
   here so a later phase doesn't mistake their absence for an oversight.
+- "Forgot password?" is not wired to any UI. `resetPasswordForEmail()` exists in
+  `packages/adapters` and is unit-tested, but no screen calls it, even though spec §3 calls
+  for it. A plan-authoring gap (no task in this plan's text ever asked for it), not something
+  deferred deliberately.
+- Team members are identified by raw user ID, not name/email — `tenant_users` has no email
+  column, so a real fix needs a new backend view/RPC exposing member email/name, which is
+  beyond this plan's declared scope (Task 1's migration was the only backend addition this
+  plan made). The Team screen currently shows `{userId} — {status}`.
+- `useSession()` is called independently by `App`, `TeamScreen`, `DevicesScreen`, and
+  `JoinInviteScreen`, each running its own `getSession()`/`registerCurrentDevice()`/
+  `getCurrentMembership()` round trip and `onAuthStateChange` subscription. `register_device()`
+  is idempotent so this doesn't corrupt anything, just duplicates work — a shared session
+  context/provider would remove the duplication, deferred as an efficiency improvement, not a
+  correctness fix.
+- Adapter functions cast RPC/table results with `as {...}` throughout, with no runtime shape
+  validation — a known characteristic of this adapter layer (also the underlying reason
+  Critical Fix 1 of the final-review fix wave went undetected as long as it did: an incorrect
+  assumption about an error shape wasn't caught by any type check). Worth keeping in mind if
+  `dsb-pro-dev`'s schema or Supabase's client behavior ever drifts from what the adapters
+  assume.
+- `App.tsx`'s inline `component={() => <Home session={session} />}` creates a new component
+  identity on every render, so `preact-router` remounts (rather than updates) the `Home`
+  subtree on every session-state change — including `VerificationBanner`, whose
+  `dismissed`/`sent` state resets as a result. A dismissed banner can silently reappear.
+  Low-impact today, worth hoisting `Home` out of the inline arrow in a later pass.
 
 **Next:** Phase 2 — Core library (`DSB_PRO_BUILD_PLAN.md` v1.5 §13), once the controller's
 push/PR confirms CI green end-to-end for this plan.

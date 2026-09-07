@@ -14,6 +14,9 @@ import { useSession } from '../lib/useSession';
 export function DevicesScreen() {
   const session = useSession();
 
+  if (session.status === 'loading') {
+    return <p>Loading…</p>;
+  }
   if (session.status !== 'active') {
     return <p>Sign in to view devices.</p>;
   }
@@ -92,10 +95,13 @@ function DeviceRow({
 
 function MyDevices({ userId }: { userId: string }) {
   const [devices, setDevices] = useState<Device[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const currentDeviceId = getOrCreateDeviceId();
 
   useEffect(() => {
-    listDevices({ onlyUserId: userId }).then(setDevices);
+    listDevices({ onlyUserId: userId })
+      .then(setDevices)
+      .catch((err) => setError(errorMessage(classifyError(err), err)));
   }, [userId]);
 
   function onRenamed(id: string, label: string) {
@@ -109,27 +115,36 @@ function MyDevices({ userId }: { userId: string }) {
     <section aria-label="My devices" data-testid="my-devices">
       <h2>My devices</h2>
       <p>Revoking one of your own other devices also signs you out everywhere else.</p>
-      <ul>
-        {devices?.map((d) => (
-          <DeviceRow
-            key={d.id}
-            device={d}
-            isSelf
-            isCurrentBrowser={d.deviceId === currentDeviceId}
-            onRenamed={onRenamed}
-            onRevoked={onRevoked}
-          />
-        ))}
-      </ul>
+      {error && <p role="alert">{error}</p>}
+      {devices === null ? (
+        <p>Loading…</p>
+      ) : (
+        <ul>
+          {devices.length === 0 && <li>No devices yet.</li>}
+          {devices.map((d) => (
+            <DeviceRow
+              key={d.id}
+              device={d}
+              isSelf
+              isCurrentBrowser={d.deviceId === currentDeviceId}
+              onRenamed={onRenamed}
+              onRevoked={onRevoked}
+            />
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
 
 function AllDevices({ selfUserId }: { selfUserId: string }) {
   const [devices, setDevices] = useState<Device[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    listDevices({}).then((all) => setDevices(all.filter((d) => d.userId !== selfUserId)));
+    listDevices({})
+      .then((all) => setDevices(all.filter((d) => d.userId !== selfUserId)))
+      .catch((err) => setError(errorMessage(classifyError(err), err)));
   }, [selfUserId]);
 
   function onRenamed(id: string, label: string) {
@@ -146,18 +161,24 @@ function AllDevices({ selfUserId }: { selfUserId: string }) {
         Revoking someone else's device removes it from this list. It does not yet block that device from
         continuing to use the app — that protection is planned for a later update.
       </p>
-      <ul>
-        {devices?.map((d) => (
-          <DeviceRow
-            key={d.id}
-            device={d}
-            isSelf={false}
-            isCurrentBrowser={false}
-            onRenamed={onRenamed}
-            onRevoked={onRevoked}
-          />
-        ))}
-      </ul>
+      {error && <p role="alert">{error}</p>}
+      {devices === null ? (
+        <p>Loading…</p>
+      ) : (
+        <ul>
+          {devices.length === 0 && <li>No devices yet.</li>}
+          {devices.map((d) => (
+            <DeviceRow
+              key={d.id}
+              device={d}
+              isSelf={false}
+              isCurrentBrowser={false}
+              onRenamed={onRenamed}
+              onRevoked={onRevoked}
+            />
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

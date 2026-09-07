@@ -19,6 +19,15 @@ describe('classifyError', () => {
     expect(classifyError(new Error('anything'))).toBe('offline');
     vi.restoreAllMocks();
   });
+
+  it('extracts the message from a bare PostgREST/RPC error object (not an Error instance)', () => {
+    // supabase-js's default non-throwing path returns errors like this —
+    // instanceof Error is false, which previously fell through to
+    // String(error) and produced the literal "[object Object]".
+    const rpcError = { message: 'invite invalid, expired, or already used', code: 'P0001' };
+    expect(classifyError(rpcError)).toBe('user');
+    expect(errorMessage('user', rpcError)).toBe('invite invalid, expired, or already used');
+  });
 });
 
 describe('errorMessage', () => {

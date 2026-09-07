@@ -1,4 +1,5 @@
 import { Router, Route } from 'preact-router';
+import { signOut } from '@dsb-pro/adapters';
 import { useSession } from './lib/useSession';
 import { HealthPanel } from './HealthPanel';
 import { LoginScreen } from './screens/LoginScreen';
@@ -44,7 +45,10 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
       <main>
         <h1>DSB Pro — Admin</h1>
         <p>Signed in as tenant {session.membership.tenantId}, role {session.membership.role}.</p>
-        <p><a href="/team">Team</a> · <a href="/devices">Devices</a></p>
+        <p>
+          <a href="/team">Team</a> · <a href="/devices">Devices</a> ·{' '}
+          <button onClick={() => void signOut()}>Sign out</button>
+        </p>
         <HealthPanel />
       </main>
     </>
