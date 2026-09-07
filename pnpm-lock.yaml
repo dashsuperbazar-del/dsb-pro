@@ -38,12 +38,21 @@ importers:
 
   apps/admin:
     dependencies:
+      '@dsb-pro/adapters':
+        specifier: workspace:*
+        version: link:../../packages/adapters
+      '@dsb-pro/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@sentry/browser':
         specifier: ^10.73.0
         version: 10.73.0
       preact:
         specifier: ^10.29.8
         version: 10.29.8
+      preact-router:
+        specifier: ^4.1.2
+        version: 4.1.2(preact@10.29.8)
     devDependencies:
       '@preact/preset-vite':
         specifier: ^2.10.6
@@ -1666,6 +1675,11 @@ packages:
   postgres-interval@1.2.0:
     resolution: {integrity: sha512-9ZhXKM/rw350N1ovuWHbGxnGh/SNJ4cnxHiM0rxE4VN41wsg8P8zWn9hv/buK00RP4WvlOyr/RBDiptyxVbkZQ==}
     engines: {node: '>=0.10.0'}
+
+  preact-router@4.1.2:
+    resolution: {integrity: sha512-uICUaUFYh+XQ+6vZtQn1q+X6rSqwq+zorWOCLWPF5FAsQh3EJ+RsDQ9Ee+fjk545YWQHfUxhrBAaemfxEnMOUg==}
+    peerDependencies:
+      preact: '>=10'
 
   preact@10.29.8:
     resolution: {integrity: sha512-ej2aVZ+vZ8WO7tvlQWRM9N63A0KzF9q4mWJfDUHgYaIofWY9hu74QdnQrjoPMmZi2/nZ5gN0bJCQF49xQqx09Q==}
@@ -3427,6 +3441,10 @@ snapshots:
   postgres-interval@1.2.0:
     dependencies:
       xtend: 4.0.2
+
+  preact-router@4.1.2(preact@10.29.8):
+    dependencies:
+      preact: 10.29.8
 
   preact@10.29.8: {}
 
