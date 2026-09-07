@@ -4,6 +4,8 @@ import {
   onAuthStateChange,
   getCurrentMembership,
   registerCurrentDevice,
+  classifyError,
+  errorMessage,
   type Session,
   type Membership,
 } from '@dsb-pro/adapters';
@@ -38,7 +40,21 @@ export function useSession(): SessionState {
           // convenience list for the owner, not an access gate.
         });
       }
-      const membership = await getCurrentMembership();
+      let membership: Membership | null;
+      try {
+        membership = await getCurrentMembership();
+      } catch (error) {
+        // getCurrentMembership() failing (network blip, transient RLS
+        // misconfig, a 500) must not leave the app stuck at `loading`
+        // forever. Fall back to `signed-out`: not a perfect semantic fit
+        // (the user IS still authenticated), but it's fully recoverable —
+        // the user sees the Login screen and can retry — versus a silent
+        // infinite hang. Stays within the existing four-state contract.
+        const errorClass = classifyError(error);
+        console.error('useSession: getCurrentMembership failed:', errorMessage(errorClass, error));
+        if (!cancelled) setState({ status: 'signed-out' });
+        return;
+      }
       if (cancelled) return;
       setState(
         membership
@@ -47,9 +63,9 @@ export function useSession(): SessionState {
       );
     }
 
-    getSession().then(resolve);
+    void getSession().then(resolve);
     const unsubscribe = onAuthStateChange((session) => {
-      resolve(session);
+      void resolve(session);
     });
 
     return () => {
