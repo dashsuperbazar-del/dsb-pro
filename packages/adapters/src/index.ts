@@ -24,3 +24,12 @@ export {
   listTenantUsers,
   listInvites,
 } from './tenancy';
+export type { Device } from './devices';
+export {
+  getOrCreateDeviceId,
+  guessDeviceLabel,
+  registerCurrentDevice,
+  listDevices,
+  renameDevice,
+  revokeDevice,
+} from './devices';
