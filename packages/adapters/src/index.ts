@@ -9,3 +9,5 @@ export type { Device } from './devices';
 export { getOrCreateDeviceId, guessDeviceLabel, registerCurrentDevice, listDevices, renameDevice, revokeDevice } from './devices';
 export type { Item, Party, StockRow, PurchaseLine } from './masterData';
 export { listItems, listParties, createItem, createParty, listStock, postPurchase, voidPurchase, archiveMaster, uploadItemImage, purgeItemImage } from './masterData';
+export type { ItemPrice } from './pricing';
+export { listCurrentPrices, setItemPrice } from './pricing';
