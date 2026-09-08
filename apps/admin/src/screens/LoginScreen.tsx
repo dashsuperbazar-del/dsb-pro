@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks';
 import { signIn } from '@dsb-pro/adapters';
 import { classifyError, errorMessage } from '@dsb-pro/adapters';
 
-export function LoginScreen() {
+export function LoginScreen({ onSignedIn }: { onSignedIn?: () => void } = {}) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -14,8 +14,8 @@ export function LoginScreen() {
     setBusy(true);
     try {
       await signIn(email, password);
-      // useSession's onAuthStateChange listener picks up the new session and
-      // re-renders Home — no manual navigation needed here.
+      if (onSignedIn) onSignedIn();
+      // Otherwise useSession's auth listener picks up the new session.
     } catch (err) {
       setError(errorMessage(classifyError(err), err));
     } finally {
