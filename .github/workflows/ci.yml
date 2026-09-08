@@ -62,6 +62,8 @@ jobs:
       - run: supabase test db
       - name: Prove invite single-use under concurrent redemption
         run: node scripts/test-invite-concurrency.mjs
+      - name: Prove sale stock locking and idempotency under concurrency
+        run: node scripts/test-sale-concurrency.mjs
 
   e2e:
     runs-on: ubuntu-latest
