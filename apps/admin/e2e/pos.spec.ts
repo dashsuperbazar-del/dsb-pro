@@ -52,7 +52,7 @@ test('real browser money path posts stock then finalizes a paid sale',async({pag
   await page.getByLabel('Item').selectOption({label:'POS E2E Item'});
   await page.getByLabel('Quantity').fill('1');
   await page.getByRole('button',{name:'Add line'}).click();
-  await expect(page.getByText('POS E2E Item')).toBeVisible();
+  await expect(page.getByRole('cell',{name:/POS E2E Item/})).toBeVisible();
   await page.getByLabel('Amount ₹').first().fill('10');
   await page.getByRole('button',{name:'Finalize sale'}).click();
   await expect(page.getByRole('status')).toContainText('Sale finalized');
