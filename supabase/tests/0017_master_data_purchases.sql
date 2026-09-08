@@ -16,7 +16,7 @@ select set_config('p3.tenant_a',current_tenant_id()::text,false);
 select set_config('p3.shop_a',(select id::text from shops where tenant_id=current_tenant_id() and is_default limit 1),false);
 select lives_ok($$insert into categories(tenant_id,name,client_id) values(current_tenant_id(),'Food','p3-cat-a')$$,'owner creates category');
 select lives_ok($$insert into parties(tenant_id,name,client_id) values(current_tenant_id(),'Supplier A','p3-party-a')$$,'owner creates party');
-select lives_ok($$insert into items(tenant_id,name,sku,unit1,unit2,conv1,tax_rate_bp,client_id) values(current_tenant_id(),'Rice','RICE-A','kg','bag',25,500,'p3-item-a')$$,'owner creates item');
+select lives_ok($$insert into items(tenant_id,name,sku,unit1,unit2,conv1,tax_rate_bp,client_id) values(current_tenant_id(),'Rice','RICE-A','bag','kg',25,500,'p3-item-a')$$,'owner creates item');
 select set_config('p3.item_a',(select id::text from items where client_id='p3-item-a'),false);
 select set_config('p3.party_a',(select id::text from parties where client_id='p3-party-a'),false);
 select lives_ok($$insert into item_prices(tenant_id,item_id,kind,unit_level,price_paise,effective_from,effective_to,client_id) values(current_tenant_id(),current_setting('p3.item_a')::uuid,'retail',1,6500,'2026-01-01','2026-02-01','p3-price-a1')$$,'first price interval accepted');
@@ -24,7 +24,7 @@ select throws_ok($$insert into item_prices(tenant_id,item_id,kind,unit_level,pri
 
 select lives_ok(format($q$select post_purchase(%L::uuid,%L::uuid,'PB-1','2026-09-08',100,50,'p3-purchase-a',jsonb_build_array(jsonb_build_object('item_id',%L,'unit_level',2,'qty',2,'unit_price_paise',50000)),null)$q$,current_setting('p3.shop_a'),current_setting('p3.party_a'),current_setting('p3.item_a')),'post_purchase succeeds');
 select is((select total_paise from purchase_bills where client_id='p3-purchase-a'),99950::bigint,'purchase total uses integer paise');
-select is((select qty_base from stock_current where item_id=current_setting('p3.item_a')::uuid and shop_id=current_setting('p3.shop_a')::uuid),50::numeric,'purchase creates exact base stock');
+select is((select qty_base from stock_current where item_id=current_setting('p3.item_a')::uuid and shop_id=current_setting('p3.shop_a')::uuid),2::numeric,'unit2 stock uses smallest-unit semantics');
 select is((select count(*) from purchase_bills where client_id='p3-purchase-a'),1::bigint,'purchase exists once');
 select lives_ok(format($q$select post_purchase(%L::uuid,%L::uuid,'PB-1','2026-09-08',100,50,'p3-purchase-a',jsonb_build_array(jsonb_build_object('item_id',%L,'unit_level',2,'qty',2,'unit_price_paise',50000)),null)$q$,current_setting('p3.shop_a'),current_setting('p3.party_a'),current_setting('p3.item_a')),'duplicate client_id returns existing purchase');
 select is((select count(*) from stock_movements where client_id like 'p3-purchase-a:stock:%'),1::bigint,'duplicate client_id creates no duplicate stock');
