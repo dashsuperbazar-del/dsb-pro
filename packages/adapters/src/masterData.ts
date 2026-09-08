@@ -1,0 +1,50 @@
+import { getSupabaseClient } from './client';
+import { errorMessage } from './errors';
+
+export type Item = { id:string; name:string; sku:string|null; unit1:string; unit2:string|null; unit3:string|null; conv1:number|null; conv2:number|null; tax_rate_bp:number; min_stock:number; image_path:string|null };
+export type Party = { id:string; name:string; phone:string|null; gstin:string|null };
+export type StockRow = { tenant_id:string; shop_id:string; item_id:string; qty_base:number };
+export type PurchaseLine = { itemId:string; unitLevel:1|2|3; qty:number; unitPricePaise:number };
+
+function must<T>(value:T|null, error:unknown):T { if (error) throw new Error(errorMessage(error)); if (value===null) throw new Error('Expected data was not returned.'); return value; }
+
+export async function listItems():Promise<Item[]> {
+ const {data,error}=await getSupabaseClient().from('items').select('id,name,sku,unit1,unit2,unit3,conv1,conv2,tax_rate_bp,min_stock,image_path').order('name');
+ if(error) throw new Error(errorMessage(error)); return (data??[]) as Item[];
+}
+export async function listParties():Promise<Party[]> {
+ const {data,error}=await getSupabaseClient().from('parties').select('id,name,phone,gstin').order('name');
+ if(error) throw new Error(errorMessage(error)); return (data??[]) as Party[];
+}
+export async function createItem(input:{tenantId:string;name:string;sku?:string;unit1:string;unit2?:string;unit3?:string;conv1?:number;conv2?:number;taxRateBp?:number;clientId:string}):Promise<Item> {
+ const {data,error}=await getSupabaseClient().from('items').insert({tenant_id:input.tenantId,name:input.name,sku:input.sku??null,unit1:input.unit1,unit2:input.unit2??null,unit3:input.unit3??null,conv1:input.conv1??null,conv2:input.conv2??null,tax_rate_bp:input.taxRateBp??0,client_id:input.clientId}).select().single();
+ return must(data,error) as Item;
+}
+export async function createParty(input:{tenantId:string;name:string;phone?:string;gstin?:string;clientId:string}):Promise<Party> {
+ const {data,error}=await getSupabaseClient().from('parties').insert({tenant_id:input.tenantId,name:input.name,phone:input.phone??null,gstin:input.gstin??null,client_id:input.clientId}).select().single();
+ return must(data,error) as Party;
+}
+export async function listStock(shopId:string):Promise<StockRow[]> {
+ const {data,error}=await getSupabaseClient().from('stock_current').select('tenant_id,shop_id,item_id,qty_base').eq('shop_id',shopId);
+ if(error) throw new Error(errorMessage(error)); return (data??[]) as StockRow[];
+}
+export async function postPurchase(input:{shopId:string;partyId?:string;billNo?:string;businessDate:string;discountPaise?:number;extraChargesPaise?:number;clientId:string;lines:PurchaseLine[];billImagePath?:string}):Promise<string> {
+ const {data,error}=await getSupabaseClient().rpc('post_purchase',{p_shop_id:input.shopId,p_party_id:input.partyId??null,p_bill_no:input.billNo??null,p_business_date:input.businessDate,p_discount_paise:input.discountPaise??0,p_extra_charges_paise:input.extraChargesPaise??0,p_client_id:input.clientId,p_lines:input.lines.map(l=>({item_id:l.itemId,unit_level:l.unitLevel,qty:l.qty,unit_price_paise:l.unitPricePaise})),p_bill_image_path:input.billImagePath??null});
+ return must(data,error) as string;
+}
+export async function voidPurchase(purchaseId:string,clientId:string):Promise<string> {
+ const {data,error}=await getSupabaseClient().rpc('void_purchase',{p_purchase_id:purchaseId,p_client_id:clientId}); return must(data,error) as string;
+}
+export async function archiveMaster(table:'categories'|'parties'|'items',id:string):Promise<void> {
+ const {error}=await getSupabaseClient().rpc('archive_master',{p_table:table,p_id:id}); if(error) throw new Error(errorMessage(error));
+}
+
+export async function uploadItemImage(tenantId:string,itemId:string,file:Blob):Promise<string> {
+ if(file.size>150*1024) throw new Error('Compressed item image must be 150 KB or smaller.');
+ const path=`${tenantId}/items/${itemId}/${Date.now()}.webp`;
+ const {error}=await getSupabaseClient().storage.from('item-images').upload(path,file,{contentType:'image/webp',upsert:false});
+ if(error) throw new Error(errorMessage(error)); return path;
+}
+export async function purgeItemImage(path:string):Promise<void> {
+ const {error}=await getSupabaseClient().storage.from('item-images').remove([path]); if(error) throw new Error(errorMessage(error));
+}
