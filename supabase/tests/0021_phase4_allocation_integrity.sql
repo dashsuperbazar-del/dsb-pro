@@ -32,7 +32,7 @@ select throws_ok(format($q$insert into payment_allocations(tenant_id,payment_id,
 select is((select count(*) from payment_allocations where client_id='p4a-direct-over:alloc'),0::bigint,'rejected direct allocation leaves no row');
 set role authenticated;
 
-select lives_ok($select void_payment((select id from payments where client_id='p4a-pay-2'))$,'void second payment');
+select lives_ok($$select void_payment((select id from payments where client_id='p4a-pay-2'))$$,'void second payment');
 select is((select outstanding_paise from customer_invoice_outstanding where sale_invoice_id=current_setting('p4a.sale')::uuid),40::bigint,'voiding payment restores invoice outstanding amount');
 
 reset role;
