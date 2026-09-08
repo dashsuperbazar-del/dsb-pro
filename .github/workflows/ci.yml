@@ -146,7 +146,9 @@ jobs:
               ('post_purchase', to_regprocedure('public.post_purchase(uuid,uuid,text,date,bigint,bigint,text,jsonb,text)') is not null),
               ('post_sale', to_regprocedure('public.post_sale(uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text)') is not null),
               ('record_customer_payment', to_regprocedure('public.record_customer_payment(uuid,uuid,date,bigint,text,text,jsonb,text)') is not null),
-              ('phase4_idempotency_wrapper', to_regprocedure('public.phase4_post_sale_unlocked(uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text)') is not null)
+              ('phase4_idempotency_wrapper', to_regprocedure('public.phase4_post_sale_unlocked(uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text)') is not null),
+              ('legacy_import_runs', to_regclass('public.legacy_import_runs') is not null),
+              ('legacy_import_rpc', to_regprocedure('public.import_legacy_dsb_master(uuid,jsonb,text)') is not null)
           )
           select name from required where not present order by name;
           SQL
