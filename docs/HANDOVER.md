@@ -348,3 +348,49 @@ as ground truth to transcribe.
 
 **Next:** Phase 2 — Core library (`DSB_PRO_BUILD_PLAN.md` v1.5 §13), once the controller's
 push/PR confirms CI green end-to-end for this plan.
+
+## Phase 1 final gate — 2026-09-08
+
+This section supersedes the stale/pending caveats in the earlier UI-follow-up notes above.
+Those notes are retained as execution history, but they are no longer the current state.
+
+- PR #3 (`fix/phase1-e2e-join-signed-out-state`) completed the Phase 1 hardening/UI follow-up.
+  The last code commit before this handover update was `fea5dc5ef6b29db833fe0827b8d5f5a61a289a82`.
+- CI run [#91 / 34204679361](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/34204679361)
+  completed `success` on that code head: lint, typecheck, unit tests, pgTAP, Playwright E2E,
+  and build all passed. The PR deploy job remained correctly skipped because deployment only
+  runs from `main`.
+- The pgTAP job runs from a fresh local Supabase reset and also executes a two-connection
+  concurrency proof for invite redemption. Both passed, proving the `accept_invite()` row lock
+  enforces single-use under concurrent redemption rather than only sequential tests.
+- The strict Phase 1 database gate remains satisfied: two-tenant isolation, cashier privilege
+  boundaries, and hook-disabled table fallback are covered by the pgTAP suite. Privileged
+  lifecycle operations are `SECURITY DEFINER` RPCs with fixed `search_path`, explicit
+  EXECUTE grants/revokes, and no direct client DELETE path.
+- Invite acceptance, auth/session races, signup → sign-out → login, signed-out invite join,
+  invalid invite behavior, device/team flows, and owner member lifecycle are covered by the
+  Playwright suite. The final Team lifecycle test exercises role change → disable → reactivate
+  → remove through the actual SPA Team navigation.
+- Password-reset UI is now wired to `resetPasswordForEmail()` and uses privacy-safe feedback.
+- Team member administration is now backed by migration `0016_team_member_lifecycle.sql`:
+  owner-only member listing exposes email/display name, and owner-only status/remove RPCs
+  support disable/reactivate/soft-remove while preventing owner self-disable/removal.
+- The earlier GitHub Pages regression is fixed. Vite's base is deployment-configurable;
+  Cloudflare Pages builds at `/`, GitHub Pages builds at `/dsb-pro/`, app routes/invite links
+  are base-aware, and the GitHub Pages artifact gets `404.html` copied from `index.html` so
+  direct SPA deep links such as `/dsb-pro/join/:token` can boot. CI structurally validates the
+  subpath asset references and 404 fallback on every PR build.
+- Production deployment no longer reuses a generic CI artifact. On `main`, CI rebuilds with
+  `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, fails fast when either value is missing,
+  then builds a separate GitHub Pages fallback artifact with the correct base path.
+- Repository code search found no `service_role` use in application code during the final
+  audit. Frontend configuration continues to use only the public Supabase URL/anon key.
+- Remaining known items are intentionally later-phase work, not Phase 1 blockers: device
+  revocation enforcement needs Phase 5 per-request device identity; restore/fallback drills
+  are Phase 6 gates; enabling the custom access-token hook is optional/performance-only and
+  the hook-disabled fallback remains the Phase 1 correctness path.
+- PR #3 is intentionally **not merged**. Merge/main deployment requires explicit authorization;
+  Phase 1 implementation and pre-merge verification are complete on the PR branch.
+
+**Next:** once PR #3 merge is explicitly authorized, merge/deploy it; Phase 2 is Core library
+(`DSB_PRO_BUILD_PLAN.md` v1.5 §13).
