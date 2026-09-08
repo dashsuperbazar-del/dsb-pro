@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, phase-4-pos-customers-payments]
   pull_request:
 
 jobs:
@@ -117,6 +117,38 @@ jobs:
           test -s apps/admin/dist/404.html
           grep -q '/dsb-pro/assets/' apps/admin/dist/index.html
           grep -q '/dsb-pro/assets/' apps/admin/dist/404.html
+
+  phase4_preview:
+    needs: [build]
+    if: github.ref == 'refs/heads/phase-4-pos-customers-payments' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Validate Phase 4 preview config
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://zmtvvdgsbdwhowrzkcwr.supabase.co' }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InptdHZ2ZGdzYmR3aG93cnprY3dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg1MTY2NjgsImV4cCI6MjEwNDA5MjY2OH0.I6O33AReqJBkKwgtzejlS31Djwmdrp5pVF6Mxj4gnig' }}
+        run: |
+          test -n "$VITE_SUPABASE_URL" || { echo 'VITE_SUPABASE_URL is required'; exit 1; }
+          test -n "$VITE_SUPABASE_ANON_KEY" || { echo 'VITE_SUPABASE_ANON_KEY is required'; exit 1; }
+      - name: Build Phase 4 shop-test preview
+        env:
+          VITE_TEST_MODE: phase4-shop-test
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://zmtvvdgsbdwhowrzkcwr.supabase.co' }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InptdHZ2ZGdzYmR3aG93cnprY3dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg1MTY2NjgsImV4cCI6MjEwNDA5MjY2OH0.I6O33AReqJBkKwgtzejlS31Djwmdrp5pVF6Mxj4gnig' }}
+        run: pnpm --filter @dsb-pro/admin run build
+      - name: Deploy Phase 4 branch preview to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/admin/dist --project-name=dsb-pro --branch=phase-4-pos-customers-payments
 
   deploy:
     needs: [build]
