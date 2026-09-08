@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, phase-4-pos-customers-payments]
   pull_request:
 
 jobs:
@@ -62,6 +62,8 @@ jobs:
       - run: supabase test db
       - name: Prove invite single-use under concurrent redemption
         run: node scripts/test-invite-concurrency.mjs
+      - name: Prove sale stock locking and idempotency under concurrency
+        run: node scripts/test-sale-concurrency.mjs
 
   e2e:
     runs-on: ubuntu-latest
@@ -115,6 +117,81 @@ jobs:
           test -s apps/admin/dist/404.html
           grep -q '/dsb-pro/assets/' apps/admin/dist/index.html
           grep -q '/dsb-pro/assets/' apps/admin/dist/404.html
+
+  phase4_db_readiness:
+    needs: [build]
+    if: github.ref == 'refs/heads/phase-4-pos-customers-payments' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify live Phase 4 database schema
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          test -n "$SUPABASE_DB_URL" || { echo 'SUPABASE_DB_URL is required for the shop-test readiness check'; exit 1; }
+          MISSING=$(psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -At <<'SQL'
+          with required(name,present) as (
+            values
+              ('items', to_regclass('public.items') is not null),
+              ('item_prices', to_regclass('public.item_prices') is not null),
+              ('purchase_bills', to_regclass('public.purchase_bills') is not null),
+              ('customers', to_regclass('public.customers') is not null),
+              ('sale_invoices', to_regclass('public.sale_invoices') is not null),
+              ('payments', to_regclass('public.payments') is not null),
+              ('payment_allocations', to_regclass('public.payment_allocations') is not null),
+              ('customer_invoice_outstanding', to_regclass('public.customer_invoice_outstanding') is not null),
+              ('stock_current_table', exists(
+                select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
+                where n.nspname='public' and c.relname='stock_current' and c.relkind in ('r','p')
+              )),
+              ('post_purchase', to_regprocedure('public.post_purchase(uuid,uuid,text,date,bigint,bigint,text,jsonb,text)') is not null),
+              ('post_sale', to_regprocedure('public.post_sale(uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text)') is not null),
+              ('record_customer_payment', to_regprocedure('public.record_customer_payment(uuid,uuid,date,bigint,text,text,jsonb,text)') is not null),
+              ('phase4_idempotency_wrapper', to_regprocedure('public.phase4_post_sale_unlocked(uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text)') is not null),
+              ('legacy_import_runs', to_regclass('public.legacy_import_runs') is not null),
+              ('legacy_import_rpc', to_regprocedure('public.import_legacy_dsb_master(uuid,jsonb,text)') is not null),
+              ('day_reconciliation_rpc', to_regprocedure('public.get_shop_day_reconciliation(uuid,date)') is not null)
+          )
+          select name from required where not present order by name;
+          SQL
+          )
+          if [ -n "$MISSING" ]; then
+            echo "Live Supabase is not Phase 4 ready. Missing objects:"
+            echo "$MISSING"
+            exit 1
+          fi
+          echo "Live Supabase Phase 4 schema readiness: PASS"
+
+  phase4_preview:
+    needs: [build, phase4_db_readiness]
+    if: github.ref == 'refs/heads/phase-4-pos-customers-payments' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Validate Phase 4 preview config
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://zmtvvdgsbdwhowrzkcwr.supabase.co' }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InptdHZ2ZGdzYmR3aG93cnprY3dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg1MTY2NjgsImV4cCI6MjEwNDA5MjY2OH0.I6O33AReqJBkKwgtzejlS31Djwmdrp5pVF6Mxj4gnig' }}
+        run: |
+          test -n "$VITE_SUPABASE_URL" || { echo 'VITE_SUPABASE_URL is required'; exit 1; }
+          test -n "$VITE_SUPABASE_ANON_KEY" || { echo 'VITE_SUPABASE_ANON_KEY is required'; exit 1; }
+      - name: Build Phase 4 shop-test preview
+        env:
+          VITE_TEST_MODE: phase4-shop-test
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://zmtvvdgsbdwhowrzkcwr.supabase.co' }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InptdHZ2ZGdzYmR3aG93cnprY3dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg1MTY2NjgsImV4cCI6MjEwNDA5MjY2OH0.I6O33AReqJBkKwgtzejlS31Djwmdrp5pVF6Mxj4gnig' }}
+        run: pnpm --filter @dsb-pro/admin run build
+      - name: Deploy Phase 4 branch preview to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/admin/dist --project-name=dsb-pro --branch=phase-4-pos-customers-payments
 
   deploy:
     needs: [build]

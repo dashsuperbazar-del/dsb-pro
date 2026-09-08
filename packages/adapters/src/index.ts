@@ -12,3 +12,13 @@ export { listItems, listParties, createItem, createParty, addItemBarcode, findIt
 export type { ItemPrice } from './pricing';
 export { listCurrentPrices, setItemPrice } from './pricing';
 export { replaceItemImage } from './itemImages';
+export type { Customer, SaleLineInput, SalePaymentInput, SaleInvoice, CustomerBalance, PaymentAllocationInput, CustomerLedgerRow, SaleReceipt, SaleReceiptLine, SaleReceiptPayment } from './sales';
+export { listCustomers, createCustomer, postSale, voidSale, recordCustomerPayment, voidPayment, listRecentSales, listCustomerBalances, listCustomerLedger, listOpenCustomerSales, getSaleReceipt } from './sales';
+export type { CustomerOutstandingInvoice } from './receivables';
+export { listCustomerOutstandingInvoices } from './receivables';
+
+export type { LegacyDsbImportSummary } from './legacyImport';
+export { importLegacyDsbMaster } from './legacyImport';
+
+export type { ShopDayReconciliation, DayReconciliationPaymentModes, DayReconciliationSoldItem } from './reconciliation';
+export { getShopDayReconciliation } from './reconciliation';

@@ -19,8 +19,11 @@ select ok(
   'manager holds MANAGE_DEVICES'
 );
 select ok(
-  not exists(select 1 from role_permissions where role = 'cashier'),
-  'cashier holds no permissions this phase'
+  not exists(
+    select 1 from role_permissions
+    where role='cashier' and code in ('MANAGE_TENANT_USERS','MANAGE_INVITES','MANAGE_DEVICES','VIEW_AUDIT_LOG')
+  ),
+  'cashier never receives Phase 1 administrative permissions'
 );
 
 set role anon;

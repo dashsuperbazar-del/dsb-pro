@@ -38,3 +38,15 @@ export type {
   LegacyDsbParityReport,
   LegacyDsbParityResult,
 } from './parity';
+
+export { buildLegacyDsbImportPlan } from './legacyDsbImport';
+export type {
+  LegacyDsbImportPlan,
+  LegacyDsbImportItem,
+  LegacyDsbImportParty,
+  LegacyDsbImportCustomer,
+  LegacyDsbImportPrice,
+} from './legacyDsbImport';
+
+export { summarizeLegacyDsbDayBackup, compareLegacyDsbDayToPro } from './legacyDsbReconciliation';
+export type { LegacyDsbDayPaymentModes, LegacyDsbDaySummary, DsbProComparableDay, LegacyDsbDayComparisonRow, LegacyDsbDayComparison } from './legacyDsbReconciliation';
