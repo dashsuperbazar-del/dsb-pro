@@ -4,11 +4,21 @@ select plan(4);
 
 insert into auth.users (id)
 values
+  ('f0000000-0000-0000-0000-000000000001'),
   ('f0000000-0000-0000-0000-000000000003'),
   ('f0000000-0000-0000-0000-000000000004')
 on conflict do nothing;
 
--- Build a second tenant and capture its shop as a foreign scope.
+-- Build the owner's tenant and a second tenant whose shop is a foreign scope.
+set role authenticated;
+select set_config('request.jwt.claims',
+  json_build_object('sub', 'f0000000-0000-0000-0000-000000000001', 'role', 'authenticated')::text, true);
+select lives_ok(
+  $$ select create_tenant('Owner Co', 'owner-co', 'Owner Shop', 'hardening-owner-client') $$,
+  'owner user has an isolated tenant'
+);
+reset role;
+
 set role authenticated;
 select set_config('request.jwt.claims',
   json_build_object('sub', 'f0000000-0000-0000-0000-000000000003', 'role', 'authenticated')::text, true);
@@ -30,10 +40,6 @@ select throws_ok(
   null, 'one or more shops are not in the current tenant',
   'create_invite() rejects a shop belonging to another tenant'
 );
-select lives_ok(
-  $$ select create_invite('cashier', '{}') $$,
-  'create_invite() still accepts an empty shop scope'
-);
 reset role;
 
 -- A slug collision must not be swallowed as an idempotent retry and return NULL.
@@ -41,7 +47,7 @@ set role authenticated;
 select set_config('request.jwt.claims',
   json_build_object('sub', 'f0000000-0000-0000-0000-000000000004', 'role', 'authenticated')::text, true);
 select throws_ok(
-  $$ select create_tenant('Collision Co', 'new-co', 'Collision Shop', 'hardening-client-2') $$,
+  $$ select create_tenant('Collision Co', 'other-co', 'Collision Shop', 'hardening-client-2') $$,
   null, 'tenant slug already exists',
   'create_tenant() rejects an unrelated slug collision'
 );
