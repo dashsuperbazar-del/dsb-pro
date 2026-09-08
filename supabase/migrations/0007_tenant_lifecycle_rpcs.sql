@@ -121,11 +121,16 @@ begin
     raise exception 'user already belongs to a tenant';
   end if;
 
+  -- Lock the invite row for the duration of this transaction. Without the
+  -- row lock, two concurrent acceptors can both observe accepted_at IS NULL
+  -- before either transaction marks the invite accepted, defeating the
+  -- single-use invariant.
   select * into v_invite from invites
   where token = p_token
     and revoked_at is null
     and accepted_at is null
-    and expires_at > now();
+    and expires_at > now()
+  for update;
 
   if not found then
     raise exception 'invite invalid, expired, or already used';
