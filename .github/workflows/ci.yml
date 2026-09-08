@@ -55,6 +55,8 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: latest
+      - name: Clear stale Supabase containers
+        run: docker ps -aq --filter 'name=supabase_' | xargs -r docker rm -f
       - run: supabase start
       - run: supabase db reset
       - run: supabase test db
@@ -72,6 +74,8 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: latest
+      - name: Clear stale Supabase containers
+        run: docker ps -aq --filter 'name=supabase_' | xargs -r docker rm -f
       - run: supabase start
       - name: Export local Supabase URL/anon key
         run: |
