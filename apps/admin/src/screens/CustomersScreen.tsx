@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import {
   createCustomer, getCurrentMembership, getDefaultShopId, getShopBusinessDate, listCustomerBalances,
-  listCustomerLedger, listCustomers, listOpenCustomerSales, recordCustomerPayment, voidPayment,
-  type Customer, type CustomerLedgerRow, type SaleInvoice,
+  listCustomerLedger, listCustomerOutstandingInvoices, listCustomers, recordCustomerPayment, voidPayment,
+  type Customer, type CustomerLedgerRow, type CustomerOutstandingInvoice,
 } from '@dsb-pro/adapters';
 import { appRoute } from '../lib/paths';
 
@@ -13,7 +13,7 @@ type AllocationDraft={saleId:string;docNo:string;checked:boolean;amount:string};
 
 export function CustomersScreen(){
   const [customers,setCustomers]=useState<Customer[]>([]); const [balances,setBalances]=useState<Record<string,number>>({});
-  const [selected,setSelected]=useState(''); const [ledger,setLedger]=useState<CustomerLedgerRow[]>([]); const [openSales,setOpenSales]=useState<SaleInvoice[]>([]);
+  const [selected,setSelected]=useState(''); const [ledger,setLedger]=useState<CustomerLedgerRow[]>([]); const [openSales,setOpenSales]=useState<CustomerOutstandingInvoice[]>([]);
   const [allocations,setAllocations]=useState<AllocationDraft[]>([]); const [tenantId,setTenantId]=useState(''); const [shopId,setShopId]=useState(''); const [businessDate,setBusinessDate]=useState('');
   const [amount,setAmount]=useState(''); const [mode,setMode]=useState<'cash'|'upi'|'card'|'bank'|'other'>('cash'); const [reference,setReference]=useState(''); const [error,setError]=useState(''); const [message,setMessage]=useState(''); const [busy,setBusy]=useState(false);
 
@@ -24,8 +24,8 @@ export function CustomersScreen(){
   }
   async function refreshCustomer(customerId=selected){
     if(!customerId){setLedger([]);setOpenSales([]);setAllocations([]);return;}
-    const [l,s]=await Promise.all([listCustomerLedger(customerId),listOpenCustomerSales(customerId)]); setLedger(l); setOpenSales(s);
-    setAllocations(s.map(x=>({saleId:x.id,docNo:x.doc_no,checked:false,amount:''})));
+    const [l,s]=await Promise.all([listCustomerLedger(customerId),listCustomerOutstandingInvoices(customerId)]); setLedger(l); setOpenSales(s);
+    setAllocations(s.map(x=>({saleId:x.sale_invoice_id,docNo:x.doc_no,checked:false,amount:''})));
   }
   useEffect(()=>{void refreshBase().catch(e=>setError(String(e)));},[]);
   useEffect(()=>{void refreshCustomer(selected).catch(e=>setError(String(e)));},[selected]);
@@ -38,6 +38,9 @@ export function CustomersScreen(){
 
   async function receive(ev:Event){ev.preventDefault();if(!selected)return;setBusy(true);setError('');try{
     const paymentPaise=toPaise(amount); if(paymentPaise<=0) throw new Error('Payment must be greater than zero.'); if(allocated>paymentPaise) throw new Error('Selected allocations exceed the payment amount.');
+    for(const draft of allocations.filter(a=>a.checked)){
+      const invoice=openSales.find(s=>s.sale_invoice_id===draft.saleId); if(invoice&&toPaise(draft.amount)>invoice.outstanding_paise) throw new Error(`Allocation for ${draft.docNo} exceeds its outstanding amount.`);
+    }
     await recordCustomerPayment({shopId,customerId:selected,businessDate,amountPaise:paymentPaise,mode,reference:reference||undefined,clientId:crypto.randomUUID(),allocations:allocations.filter(a=>a.checked&&toPaise(a.amount)>0).map(a=>({saleInvoiceId:a.saleId,amountPaise:toPaise(a.amount)}))});
     setAmount('');setReference('');setMessage('Payment recorded. Any unallocated remainder is retained as customer advance.');await refreshBase();await refreshCustomer(selected);
   }catch(e){setError(String(e));}finally{setBusy(false);}}
@@ -56,7 +59,7 @@ export function CustomersScreen(){
 
     {selected&&<section class="card"><h2>Receive payment / allocate invoices</h2><form onSubmit={receive}>
       <div class="grid-form"><label>Business date<input type="date" value={businessDate} onInput={e=>setBusinessDate((e.currentTarget as HTMLInputElement).value)} required/></label><label>Amount ₹<input type="number" min="0.01" step="0.01" value={amount} onInput={e=>setAmount((e.currentTarget as HTMLInputElement).value)} required/></label><label>Mode<select value={mode} onChange={e=>setMode((e.currentTarget as HTMLSelectElement).value as typeof mode)}><option value="cash">Cash</option><option value="upi">UPI</option><option value="card">Card</option><option value="bank">Bank</option><option value="other">Other</option></select></label><label>Reference<input value={reference} onInput={e=>setReference((e.currentTarget as HTMLInputElement).value)}/></label></div>
-      <h3>Invoice allocation</h3>{!openSales.length?<p class="muted">No finalized customer invoices.</p>:<div class="table-wrap"><table><thead><tr><th>Select</th><th>Invoice</th><th>Date</th><th>Invoice total</th><th>Allocate ₹</th></tr></thead><tbody>{openSales.map(s=>{const a=allocations.find(x=>x.saleId===s.id);return <tr><td><input aria-label={`Allocate ${s.doc_no}`} type="checkbox" checked={a?.checked??false} onChange={e=>setAllocations(v=>v.map(x=>x.saleId===s.id?{...x,checked:(e.currentTarget as HTMLInputElement).checked}:x))}/></td><td>{s.doc_no}</td><td>{s.business_date}</td><td>{money(s.total_paise)}</td><td><input aria-label={`Amount for ${s.doc_no}`} type="number" min="0" step="0.01" disabled={!a?.checked} value={a?.amount??''} onInput={e=>setAllocations(v=>v.map(x=>x.saleId===s.id?{...x,amount:(e.currentTarget as HTMLInputElement).value}:x))}/></td></tr>})}</tbody></table></div>}
+      <h3>Invoice allocation</h3>{!openSales.length?<p class="muted">No outstanding customer invoices.</p>:<div class="table-wrap"><table><thead><tr><th>Select</th><th>Invoice</th><th>Date</th><th>Total</th><th>Outstanding</th><th>Allocate ₹</th></tr></thead><tbody>{openSales.map(s=>{const a=allocations.find(x=>x.saleId===s.sale_invoice_id);return <tr><td><input aria-label={`Allocate ${s.doc_no}`} type="checkbox" checked={a?.checked??false} onChange={e=>setAllocations(v=>v.map(x=>x.saleId===s.sale_invoice_id?{...x,checked:(e.currentTarget as HTMLInputElement).checked}:x))}/></td><td>{s.doc_no}</td><td>{s.business_date}</td><td>{money(s.total_paise)}</td><td>{money(s.outstanding_paise)}</td><td><input aria-label={`Amount for ${s.doc_no}`} type="number" min="0" max={(s.outstanding_paise/100).toFixed(2)} step="0.01" disabled={!a?.checked} value={a?.amount??''} onInput={e=>setAllocations(v=>v.map(x=>x.saleId===s.sale_invoice_id?{...x,amount:(e.currentTarget as HTMLInputElement).value}:x))}/></td></tr>})}</tbody></table></div>}
       <p>Allocated {money(allocated)} · Unallocated advance {money(Math.max(0,toPaise(amount)-allocated))}</p><button class="primary" disabled={busy}>{busy?'Saving…':'Record payment'}</button>
     </form></section>}
 
