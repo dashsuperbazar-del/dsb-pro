@@ -1,36 +1,11 @@
 -- Complete the approved Phase 1 Team UI contract with owner-only member
 -- listing/status/removal RPCs. Membership lifecycle is enforced in Postgres;
 -- clients never receive direct tenant_users UPDATE/DELETE grants.
-
--- Even when the access-token hook has populated tenant claims, validate the
--- current database membership on every request. This makes role/status/removal
--- changes effective immediately instead of trusting a stale JWT until expiry.
-create or replace function current_membership()
-returns table (tenant_id uuid, role text, shop_ids uuid[])
-language plpgsql
-stable
-security definer
-set search_path = public
-as $$
-declare
-  claim_tenant_id uuid;
-begin
-  claim_tenant_id := nullif(auth.jwt() ->> 'tenant_id', '')::uuid;
-
-  return query
-    select tu.tenant_id, tu.role, tu.shop_ids
-    from tenant_users tu
-    where tu.user_id = auth.uid()
-      and tu.status = 'active'
-      and tu.deleted_at is null
-      and (claim_tenant_id is null or tu.tenant_id = claim_tenant_id)
-    limit 1;
-end;
-$$;
-
-revoke all on function current_membership() from public;
-revoke execute on function current_membership() from anon, authenticated;
-grant execute on function current_membership() to authenticated;
+--
+-- Deliberately preserve the Phase 1 JWT-first current_membership() resolver
+-- from 0005_claims_resolver.sql. The approved design accepts token-lifetime
+-- latency when the optional access-token hook is enabled; the table fallback
+-- remains the correctness path when claims are absent.
 
 create or replace function list_tenant_users_admin()
 returns table (
