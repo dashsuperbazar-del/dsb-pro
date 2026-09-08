@@ -60,8 +60,8 @@ export function PosScreen(){
     }catch(e){setError(String(e));} finally{setBusy(false);}
   }
 
-  async function addCustomer(ev:Event){ ev.preventDefault(); setError(''); const f=new FormData(ev.currentTarget as HTMLFormElement);
-    try{ const c=await createCustomer({tenantId,name:String(f.get('name')),phone:String(f.get('phone')||'')||undefined,clientId:crypto.randomUUID()}); setCustomers(v=>[...v,c].sort((a,b)=>a.name.localeCompare(b.name))); setCustomerId(c.id); setMessage(`Customer ${c.name} created.`); (ev.currentTarget as HTMLFormElement).reset(); }catch(e){setError(String(e));}
+  async function addCustomer(ev:Event){ ev.preventDefault(); setError(''); if(!tenantId){setError('Shop data is still loading.');return;} const form=ev.currentTarget as HTMLFormElement; const f=new FormData(form);
+    try{ const c=await createCustomer({tenantId,name:String(f.get('name')),phone:String(f.get('phone')||'')||undefined,clientId:crypto.randomUUID()}); setCustomers(v=>[...v,c].sort((a,b)=>a.name.localeCompare(b.name))); setCustomerId(c.id); form.reset(); setMessage(`Customer ${c.name} created.`); }catch(e){setError(String(e));}
   }
 
   function handlePosKeyDown(ev:KeyboardEvent){ if(ev.ctrlKey&&ev.key==='Enter'){ ev.preventDefault(); void finalizeSale(); } }
