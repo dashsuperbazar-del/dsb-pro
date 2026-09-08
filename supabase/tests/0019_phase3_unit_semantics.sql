@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(11);
+select plan(13);
 
 insert into auth.users(id) values ('a3100000-0000-0000-0000-000000000001') on conflict do nothing;
 set role authenticated;
@@ -17,7 +17,9 @@ select is((select base_qty from purchase_bill_items where client_id='p3u-small:l
 select lives_ok(format($q$select post_purchase(%L::uuid,null,'PIECE','2026-09-08',0,0,'p3u-piece',jsonb_build_array(jsonb_build_object('item_id',%L,'unit_level',3,'qty',4,'unit_price_paise',100)),null)$q$,current_setting('p3u.shop'),current_setting('p3u.item')),'4 pieces post');
 select is((select base_qty from purchase_bill_items where client_id='p3u-piece:line:1'),4::numeric,'tier3 piece is already smallest unit');
 select is((select qty_base from stock_current where shop_id=current_setting('p3u.shop')::uuid and item_id=current_setting('p3u.item')::uuid),119::numeric,'all tiers aggregate to 119 smallest units');
-select lives_ok($$select void_purchase((select id from purchase_bills where client_id='p3u-big'),'p3u-void-big'); select void_purchase((select id from purchase_bills where client_id='p3u-small'),'p3u-void-small'); select void_purchase((select id from purchase_bills where client_id='p3u-piece'),'p3u-void-piece')$$,'void all three purchases');
+select lives_ok($$select void_purchase((select id from purchase_bills where client_id='p3u-big'),'p3u-void-big')$$,'void big-unit purchase');
+select lives_ok($$select void_purchase((select id from purchase_bills where client_id='p3u-small'),'p3u-void-small')$$,'void small-unit purchase');
+select lives_ok($$select void_purchase((select id from purchase_bills where client_id='p3u-piece'),'p3u-void-piece')$$,'void piece-unit purchase');
 select is((select coalesce(qty_base,0) from stock_current where shop_id=current_setting('p3u.shop')::uuid and item_id=current_setting('p3u.item')::uuid),0::numeric,'voids reverse every tier exactly');
 reset role;
 select * from finish();
