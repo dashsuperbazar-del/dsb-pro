@@ -46,7 +46,7 @@ security definer
 set search_path = public
 as $$
 begin
-  if current_role() <> 'owner' then
+  if public.current_role() <> 'owner' then
     raise exception 'not permitted';
   end if;
 
@@ -62,7 +62,7 @@ begin
       tu.status
     from tenant_users tu
     join auth.users u on u.id = tu.user_id
-    where tu.tenant_id = current_tenant_id()
+    where tu.tenant_id = public.current_tenant_id()
       and tu.deleted_at is null
     order by case when tu.role = 'owner' then 0 else 1 end, u.email nulls last, tu.created_at;
 end;
@@ -81,7 +81,7 @@ as $$
 declare
   v_target tenant_users%rowtype;
 begin
-  if current_role() <> 'owner' then
+  if public.current_role() <> 'owner' then
     raise exception 'not permitted';
   end if;
   if p_status not in ('active', 'disabled') then
@@ -90,7 +90,7 @@ begin
 
   select * into v_target
   from tenant_users
-  where tenant_id = current_tenant_id()
+  where tenant_id = public.current_tenant_id()
     and user_id = p_user_id
     and deleted_at is null
   for update;
@@ -121,13 +121,13 @@ as $$
 declare
   v_target tenant_users%rowtype;
 begin
-  if current_role() <> 'owner' then
+  if public.current_role() <> 'owner' then
     raise exception 'not permitted';
   end if;
 
   select * into v_target
   from tenant_users
-  where tenant_id = current_tenant_id()
+  where tenant_id = public.current_tenant_id()
     and user_id = p_user_id
     and deleted_at is null
   for update;
