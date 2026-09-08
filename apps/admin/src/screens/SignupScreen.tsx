@@ -8,6 +8,7 @@ import { appRoute } from '../lib/paths';
 export function SignupScreen({ onSignedUp, onLogIn }: { onSignedUp?: () => void; onLogIn?: () => void } = {}) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [confirmationPending, setConfirmationPending] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -19,6 +20,10 @@ export function SignupScreen({ onSignedUp, onLogIn }: { onSignedUp?: () => void;
     const strength = passwordStrength(password);
     if (!strength.valid) {
       setError(strength.message);
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
       return;
     }
     setBusy(true);
@@ -55,6 +60,15 @@ export function SignupScreen({ onSignedUp, onLogIn }: { onSignedUp?: () => void;
         <label>
           Password
           <input type="password" value={password} onInput={(e) => setPassword((e.target as HTMLInputElement).value)} required />
+        </label>
+        <label>
+          Confirm password
+          <input
+            type="password"
+            value={confirmPassword}
+            onInput={(e) => setConfirmPassword((e.target as HTMLInputElement).value)}
+            required
+          />
         </label>
         {error && <p role="alert">{error}</p>}
         {confirmationPending && <p role="status">Check your email to confirm your account before logging in.</p>}
