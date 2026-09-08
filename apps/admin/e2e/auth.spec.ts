@@ -6,12 +6,17 @@ function uniqueEmail() {
 
 const TEST_PASSWORD = 'TestOnly-2026!pw';
 
+async function fillSignup(page: import('@playwright/test').Page, email: string, password = TEST_PASSWORD) {
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Password', { exact: true }).fill(password);
+  await page.getByLabel('Confirm password').fill(password);
+}
+
 test('signup, sign out, then login with the same credentials', async ({ page }) => {
   const email = uniqueEmail();
 
   await page.goto('/signup');
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(TEST_PASSWORD);
+  await fillSignup(page, email);
   await page.getByRole('button', { name: 'Sign up' }).click();
   await expect(page.getByRole('heading', { name: 'Welcome' })).toBeVisible();
 
@@ -53,10 +58,18 @@ test('password reset requires an email and then gives privacy-safe feedback', as
   await expect(page.getByRole('status')).toContainText(/if that account exists/i);
 });
 
-test('signup rejects a weak password before calling the server', async ({ page }) => {
+test('signup rejects mismatched passwords before calling the server', async ({ page }) => {
   await page.goto('/signup');
   await page.getByLabel('Email').fill(uniqueEmail());
-  await page.getByLabel('Password').fill('short');
+  await page.getByLabel('Password', { exact: true }).fill(TEST_PASSWORD);
+  await page.getByLabel('Confirm password').fill(`${TEST_PASSWORD}x`);
+  await page.getByRole('button', { name: 'Sign up' }).click();
+  await expect(page.getByRole('alert')).toContainText(/do not match/i);
+});
+
+test('signup rejects a weak password before calling the server', async ({ page }) => {
+  await page.goto('/signup');
+  await fillSignup(page, uniqueEmail(), 'short');
   await page.getByRole('button', { name: 'Sign up' }).click();
   await expect(page.getByRole('alert')).toContainText(/8 characters/);
 });
