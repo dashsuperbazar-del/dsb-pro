@@ -14,6 +14,7 @@ import {
 } from '@dsb-pro/adapters';
 import { hasPerm, type Role } from '@dsb-pro/core';
 import { useSession } from '../lib/useSession';
+import { appPath } from '../lib/paths';
 
 const ROLES: Role[] = ['manager', 'cashier', 'accountant'];
 
@@ -55,7 +56,7 @@ function InviteForm({ session, onInviteCreated }: { session: Session; onInviteCr
     setError(null);
     try {
       const invite = await createInvite(role);
-      setLink(`${window.location.origin}/join/${invite.token}`);
+      setLink(`${window.location.origin}${appPath(`/join/${invite.token}`)}`);
       onInviteCreated();
     } catch (err) {
       setError(errorMessage(classifyError(err), err));
