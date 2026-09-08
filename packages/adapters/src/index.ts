@@ -20,6 +20,8 @@ export {
   revokeInvite,
   acceptInvite,
   setUserRole,
+  setUserStatus,
+  removeTenantUser,
   getCurrentMembership,
   listTenantUsers,
   listInvites,
