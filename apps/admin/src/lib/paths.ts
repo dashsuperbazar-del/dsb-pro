@@ -13,4 +13,5 @@ export const appRoute = {
   devices: appPath('/devices'),
   inventory: appPath('/inventory'),
   pos: appPath('/pos'),
+  customers: appPath('/customers'),
 };
