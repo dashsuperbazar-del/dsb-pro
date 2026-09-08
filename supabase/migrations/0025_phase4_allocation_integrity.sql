@@ -63,4 +63,8 @@ select
   (s.total_paise-coalesce(sum(a.amount_paise) filter(where a.status='POSTED'),0))::bigint outstanding_paise
 from sale_invoices s
 left join payment_allocations a on a.tenant_id=s.tenant_id and a.sale_invoice_id=s.id
-a where false;
+where s.customer_id is not null and s.status='FINALIZED' and s.deleted_at is null
+group by s.tenant_id,s.customer_id,s.id,s.doc_no,s.business_date,s.total_paise
+having s.total_paise-coalesce(sum(a.amount_paise) filter(where a.status='POSTED'),0)>0;
+
+grant select on customer_invoice_outstanding to authenticated;
