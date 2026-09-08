@@ -15,8 +15,10 @@ test('signup, sign out, then login with the same credentials', async ({ page }) 
   await page.getByRole('button', { name: 'Sign up' }).click();
   await expect(page.getByRole('heading', { name: 'Welcome' })).toBeVisible();
 
+  // Signup establishes a real session immediately; the no-tenant home therefore
+  // exposes Sign out before the user creates their first shop.
   await page.goto('/');
-  await expect(page.getByRole('button', { name: 'Sign out' })).not.toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
 
   // Create a tenant so the authenticated home has a stable post-login target.
   await page.getByLabel('Shop name').fill('Auth Test Shop');
