@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { getDefaultShopId, getSaleReceipt, listRecentSales, voidSale, type SaleInvoice, type SaleReceipt } from '@dsb-pro/adapters';
+import { getDefaultShopId, getSaleReceipt, getShopBusinessDate, getShopDayReconciliation, listRecentSales, voidSale, type SaleInvoice, type SaleReceipt, type ShopDayReconciliation } from '@dsb-pro/adapters';
 import { LanguageToggle } from '../components/LanguageToggle';
 import { appRoute } from '../lib/paths';
 import { getLocale, t } from '../lib/i18n';
@@ -10,18 +10,50 @@ type PrintMode='thermal'|'a4';
 
 export function SalesHistoryScreen(){
   const [sales,setSales]=useState<SaleInvoice[]>([]); const [receipt,setReceipt]=useState<SaleReceipt|null>(null); const [printMode,setPrintMode]=useState<PrintMode>('a4');
+  const [shopId,setShopId]=useState(''); const [reportDate,setReportDate]=useState(''); const [report,setReport]=useState<ShopDayReconciliation|null>(null); const [reportBusy,setReportBusy]=useState(false);
   const [error,setError]=useState(''); const [message,setMessage]=useState(''); const [busy,setBusy]=useState(false);
   const [,forceLocale]=useState(0);
 
-  async function refresh(){const shop=await getDefaultShopId();setSales(await listRecentSales(shop,100));}
+  async function loadReport(shop:string,date:string){setReportBusy(true);try{setReport(await getShopDayReconciliation(shop,date));}finally{setReportBusy(false);}}
+  async function refresh(){
+    const shop=await getDefaultShopId(); setShopId(shop);
+    const date=reportDate||await getShopBusinessDate(shop); if(!reportDate)setReportDate(date);
+    const [recent,day]=await Promise.all([listRecentSales(shop,100),getShopDayReconciliation(shop,date)]);
+    setSales(recent); setReport(day);
+  }
   useEffect(()=>{void refresh().catch(e=>setError(String(e)));const h=()=>forceLocale(v=>v+1);window.addEventListener('dsb-locale-change',h);return()=>window.removeEventListener('dsb-locale-change',h);},[]);
 
   async function openReceipt(sale:SaleInvoice,mode:PrintMode){setBusy(true);setError('');try{setPrintMode(mode);setReceipt(await getSaleReceipt(sale.id));setTimeout(()=>window.print(),50);}catch(e){setError(String(e));}finally{setBusy(false);}}
   async function doVoid(sale:SaleInvoice){if(!confirm(`Void invoice ${sale.doc_no}? This creates reversing stock movements; history is retained.`))return;setBusy(true);setError('');try{await voidSale(sale.id,crypto.randomUUID());setMessage(`Invoice ${sale.doc_no} voided.`);await refresh();if(receipt?.invoice.id===sale.id)setReceipt(null);}catch(e){setError(String(e));}finally{setBusy(false);}}
+  async function refreshReport(){if(!shopId||!reportDate)return;setError('');try{await loadReport(shopId,reportDate);}catch(e){setError(String(e));}}
 
   const locale=getLocale();
   return <main class="page wide"><div class="row no-print"><a href={appRoute.home}>← {t('home',locale)}</a><LanguageToggle/></div><h1 class="no-print">{t('salesHistory',locale)}</h1>
     {error&&<p role="alert" class="alert no-print">{error}</p>}{message&&<p role="status" class="success no-print">{message}</p>}
+    <section class="card no-print" aria-label="Day reconciliation">
+      <div class="row"><div><h2>Day reconciliation</h2><p class="muted">Use this at shop close to compare DSB Pro with legacy DSB for the same business date.</p></div></div>
+      <div class="row"><label>Business date <input aria-label="Reconciliation business date" type="date" value={reportDate} onInput={e=>setReportDate((e.currentTarget as HTMLInputElement).value)}/></label><button type="button" disabled={reportBusy||!shopId||!reportDate} onClick={()=>void refreshReport()}>{reportBusy?'Refreshing…':'Refresh totals'}</button></div>
+      {report&&<div data-testid="day-reconciliation-summary">
+        <div class="table-wrap"><table><tbody>
+          <tr><th>Finalized invoices</th><td>{report.invoiceCount}</td></tr>
+          <tr><th>Sales total</th><td>{money(report.salesTotalPaise)}</td></tr>
+          <tr><th>Discounts</th><td>{money(report.discountPaise)}</td></tr>
+          <tr><th>Extra charges</th><td>{money(report.extraChargesPaise)}</td></tr>
+          <tr><th>Direct sale receipts</th><td>{money(report.directSaleReceiptsPaise)}</td></tr>
+          <tr><th>Credit created on sales</th><td>{money(report.creditCreatedPaise)}</td></tr>
+          <tr><th>Standalone customer receipts</th><td>{money(report.standaloneCustomerReceiptsPaise)}</td></tr>
+          <tr><th>Customer advance created today</th><td>{money(report.standaloneAdvancePaise)}</td></tr>
+          <tr><th>All customer receipts</th><td>{money(report.allCustomerReceiptsPaise)}</td></tr>
+          <tr><th>Voided invoices</th><td>{report.voidCount} · {money(report.voidedTotalPaise)}</td></tr>
+        </tbody></table></div>
+        <h3>Payment modes</h3>
+        <div class="table-wrap"><table><thead><tr><th>Cash</th><th>UPI</th><th>Card</th><th>Bank</th><th>Other</th></tr></thead><tbody><tr><td>{money(report.paymentModes.cash)}</td><td>{money(report.paymentModes.upi)}</td><td>{money(report.paymentModes.card)}</td><td>{money(report.paymentModes.bank)}</td><td>{money(report.paymentModes.other)}</td></tr></tbody></table></div>
+        <p><strong>Current customer outstanding:</strong> {money(report.currentCustomerOutstandingPaise)} · <strong>Current customer advance:</strong> {money(report.currentCustomerAdvancePaise)}</p>
+        <h3>Items sold on {report.businessDate}</h3>
+        {report.soldItems.length?<div class="table-wrap"><table><thead><tr><th>Item</th><th>Sold</th><th>Current stock</th></tr></thead><tbody>{report.soldItems.map(i=><tr><td>{i.name}</td><td>{i.soldQtySmallest} {i.smallestUnit}</td><td>{i.currentStockSmallest} {i.smallestUnit}</td></tr>)}</tbody></table></div>:<p>No finalized sale items for this date.</p>}
+      </div>}
+    </section>
+
     <section class="card no-print"><div class="table-wrap"><table><thead><tr><th>Invoice</th><th>Date</th><th>Status</th><th>Total</th><th>Actions</th></tr></thead><tbody>{sales.map(s=><tr><td>{s.doc_no}</td><td>{s.business_date}</td><td>{s.status}</td><td>{money(s.total_paise)}</td><td><div class="row"><button disabled={busy} onClick={()=>void openReceipt(s,'thermal')}>{t('printThermal',locale)}</button><button disabled={busy} onClick={()=>void openReceipt(s,'a4')}>{t('printA4',locale)}</button>{s.status==='FINALIZED'&&<button disabled={busy} onClick={()=>void doVoid(s)}>{t('voidSale',locale)}</button>}</div></td></tr>)}</tbody></table></div></section>
 
     {receipt&&<article class={`receipt-print receipt-${printMode}`} aria-label="invoice receipt">
