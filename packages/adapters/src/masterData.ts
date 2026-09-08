@@ -5,6 +5,7 @@ export type Item = { id:string; name:string; sku:string|null; unit1:string; unit
 export type Party = { id:string; name:string; phone:string|null; gstin:string|null };
 export type StockRow = { tenant_id:string; shop_id:string; item_id:string; qty_base:number };
 export type PurchaseLine = { itemId:string; unitLevel:1|2|3; qty:number; unitPricePaise:number };
+export type ItemBarcode = { id:string; item_id:string; barcode:string; unit_level:1|2|3 };
 
 const friendly=(error:unknown)=>errorMessage(classifyError(error),error);
 function must<T>(value:T|null, error:unknown):T { if (error) throw new Error(friendly(error)); if (value===null) throw new Error('Expected data was not returned.'); return value; }
@@ -20,6 +21,15 @@ export async function listParties():Promise<Party[]> {
 export async function createItem(input:{tenantId:string;name:string;sku?:string;unit1:string;unit2?:string;unit3?:string;conv1?:number;conv2?:number;taxRateBp?:number;clientId:string}):Promise<Item> {
  const {data,error}=await getSupabaseClient().from('items').insert({tenant_id:input.tenantId,name:input.name,sku:input.sku??null,unit1:input.unit1,unit2:input.unit2??null,unit3:input.unit3??null,conv1:input.conv1??null,conv2:input.conv2??null,tax_rate_bp:input.taxRateBp??0,client_id:input.clientId}).select().single();
  return must(data,error) as Item;
+}
+export async function addItemBarcode(input:{tenantId:string;itemId:string;barcode:string;unitLevel:1|2|3;clientId:string}):Promise<ItemBarcode>{
+ const barcode=input.barcode.trim(); if(!barcode) throw new Error('Barcode is required.');
+ const {data,error}=await getSupabaseClient().from('item_barcodes').insert({tenant_id:input.tenantId,item_id:input.itemId,barcode,unit_level:input.unitLevel,client_id:input.clientId}).select('id,item_id,barcode,unit_level').single();
+ return must(data,error) as ItemBarcode;
+}
+export async function findItemByBarcode(barcode:string):Promise<ItemBarcode|null>{
+ const {data,error}=await getSupabaseClient().from('item_barcodes').select('id,item_id,barcode,unit_level').eq('barcode',barcode.trim()).maybeSingle();
+ if(error) throw new Error(friendly(error)); return data as ItemBarcode|null;
 }
 export async function createParty(input:{tenantId:string;name:string;phone?:string;gstin?:string;clientId:string}):Promise<Party> {
  const {data,error}=await getSupabaseClient().from('parties').insert({tenant_id:input.tenantId,name:input.name,phone:input.phone??null,gstin:input.gstin??null,client_id:input.clientId}).select().single();
