@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(12);
+select plan(14);
 
 insert into auth.users (id, email) values
   ('f1000000-0000-0000-0000-000000000001', 'owner@example.com'),
@@ -41,7 +41,6 @@ select lives_ok($$ select set_user_status('f1000000-0000-0000-0000-000000000002'
 select lives_ok($$ select remove_tenant_user('f1000000-0000-0000-0000-000000000002') $$, 'owner can soft-remove cashier');
 select is((select count(*)::int from list_tenant_users_admin()), 1, 'removed member disappears from owner team list');
 select throws_ok($$ select remove_tenant_user('f1000000-0000-0000-0000-000000000001') $$, null, 'owner cannot be removed', 'owner cannot remove self');
-
 select lives_ok($$ select create_invite('cashier', array['b1000000-0000-0000-0000-000000000001'::uuid]) $$, 'owner can create rejoin invite');
 reset role;
 
