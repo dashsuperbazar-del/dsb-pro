@@ -14,3 +14,5 @@ export { listCurrentPrices, setItemPrice } from './pricing';
 export { replaceItemImage } from './itemImages';
 export type { Customer, SaleLineInput, SalePaymentInput, SaleInvoice, CustomerBalance, PaymentAllocationInput, CustomerLedgerRow, SaleReceipt, SaleReceiptLine, SaleReceiptPayment } from './sales';
 export { listCustomers, createCustomer, postSale, voidSale, recordCustomerPayment, voidPayment, listRecentSales, listCustomerBalances, listCustomerLedger, listOpenCustomerSales, getSaleReceipt } from './sales';
+export type { CustomerOutstandingInvoice } from './receivables';
+export { listCustomerOutstandingInvoices } from './receivables';
