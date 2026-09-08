@@ -22,7 +22,7 @@ This is a waiver of timing/evidence availability only. It does not redefine synt
 
 ## Deferred post-Phase-7 verification
 
-After Phase 7 migration/cut-over, create or retain at least 50 real DSB/DSB Pro invoices suitable for reconciliation and run them through the existing parity harness.
+After Phase 7 migration/cut-over, retain or create at least 50 real invoices suitable for DSB-vs-DSB-Pro reconciliation and run them through the existing parity harness.
 
 The deferred gate passes only when:
 
@@ -31,7 +31,7 @@ The deferred gate passes only when:
 3. maximum absolute delta is 0 paise; and
 4. any mismatch is investigated and fixed rather than weakening the test.
 
-If this deferred real-invoice validation fails, it is a release-hardening defect that must be resolved before treating migration/cut-over as financially reconciled.
+If this deferred real-invoice validation fails, it becomes a blocking financial-reconciliation defect and must be resolved before migration/cut-over is treated as fully reconciled.
 
 ## Phase 2 close condition
 
