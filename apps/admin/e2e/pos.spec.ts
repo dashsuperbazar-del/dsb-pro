@@ -57,4 +57,12 @@ test('real browser money path posts stock then finalizes a paid sale',async({pag
   await page.getByRole('button',{name:'Finalize sale'}).click();
   await expect(page.getByRole('status')).toContainText('Sale finalized');
   await expect(page.locator('table').last()).toContainText('₹10.00');
+
+  await page.goto('/sales-history');
+  const reconciliation=page.locator('section[aria-label="Day reconciliation"]');
+  await expect(reconciliation.getByRole('heading',{name:'Day reconciliation'})).toBeVisible();
+  await expect(reconciliation.locator('tr').filter({hasText:'Finalized invoices'})).toContainText('1');
+  await expect(reconciliation.locator('tr').filter({hasText:'Sales total'})).toContainText('₹10.00');
+  await expect(reconciliation.locator('tr').filter({hasText:'All customer receipts'})).toContainText('₹10.00');
+  await expect(reconciliation.locator('table').nth(1).locator('tbody td').first()).toHaveText('₹10.00');
 });
