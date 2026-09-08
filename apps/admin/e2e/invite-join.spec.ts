@@ -12,10 +12,8 @@ test('create your shop takes an owner straight into the app', async ({ page }) =
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill(TEST_PASSWORD);
   await page.getByRole('button', { name: 'Sign up' }).click();
-
   await page.getByLabel('Shop name').fill('Ramesh Store');
   await page.getByRole('button', { name: 'Create your shop' }).click();
-
   await expect(page.getByText(/DSB Pro — Admin/)).toBeVisible();
   await expect(page.getByText(/role owner/i)).toBeVisible();
 });
@@ -36,7 +34,10 @@ test('owner creates a real invite and a new user accepts it through the deep lin
   const inviteLink = await page.getByTestId('invite-link').textContent();
   expect(inviteLink).toMatch(/\/join\/[^/]+$/);
 
-  const invitePage = await browser.newPage();
+  // A separate browser context is required so the invitee has no owner's
+  // Supabase localStorage/session state.
+  const inviteContext = await browser.newContext();
+  const invitePage = await inviteContext.newPage();
   await invitePage.goto(inviteLink!);
   await expect(invitePage.getByText(/Sign up or log in to accept this invite/)).toBeVisible();
   await invitePage.getByLabel('Email').fill(uniqueEmail());
@@ -45,7 +46,7 @@ test('owner creates a real invite and a new user accepts it through the deep lin
 
   await expect(invitePage.getByText(/DSB Pro — Admin/)).toBeVisible();
   await expect(invitePage.getByText(/role cashier/i)).toBeVisible();
-  await invitePage.close();
+  await inviteContext.close();
 });
 
 test('invalid invite remains a user-facing error after signed-out signup', async ({ page }) => {
