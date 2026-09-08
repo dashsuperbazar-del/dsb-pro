@@ -8,7 +8,6 @@ import {
   errorMessage,
   type Device,
 } from '@dsb-pro/adapters';
-import { hasPerm } from '@dsb-pro/core';
 import { useSession } from '../lib/useSession';
 
 export function DevicesScreen() {
@@ -21,13 +20,13 @@ export function DevicesScreen() {
     return <p>Sign in to view devices.</p>;
   }
 
-  const canManageOthers = hasPerm(session.membership.role, 'MANAGE_DEVICES');
+  const isOwner = session.membership.role === 'owner';
 
   return (
     <main>
       <h1>Devices</h1>
       <MyDevices userId={session.session.user.id} />
-      {canManageOthers && <AllDevices selfUserId={session.session.user.id} />}
+      {isOwner && <AllDevices selfUserId={session.session.user.id} />}
     </main>
   );
 }
