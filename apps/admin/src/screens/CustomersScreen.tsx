@@ -15,7 +15,7 @@ export function CustomersScreen(){
   const [customers,setCustomers]=useState<Customer[]>([]); const [balances,setBalances]=useState<Record<string,number>>({});
   const [selected,setSelected]=useState(''); const [ledger,setLedger]=useState<CustomerLedgerRow[]>([]); const [openSales,setOpenSales]=useState<CustomerOutstandingInvoice[]>([]);
   const [allocations,setAllocations]=useState<AllocationDraft[]>([]); const [tenantId,setTenantId]=useState(''); const [shopId,setShopId]=useState(''); const [businessDate,setBusinessDate]=useState('');
-  const [amount,setAmount]=useState(''); const [mode,setMode]=useState<'cash'|'upi'|'card'|'bank'|'other'>('cash'); const [reference,setReference]=useState(''); const [error,setError]=useState(''); const [message,setMessage]=useState(''); const [busy,setBusy]=useState(false);
+  const [amount,setAmount]=useState(''); const [mode,setMode]=useState<'cash'|'upi'|'card'|'bank'|'other'>('cash'); const [reference,setReference]=useState(''); const [paymentClientId,setPaymentClientId]=useState(()=>crypto.randomUUID()); const [error,setError]=useState(''); const [message,setMessage]=useState(''); const [busy,setBusy]=useState(false);
 
   async function refreshBase(){
     const membership=await getCurrentMembership(); if(!membership) throw new Error('No tenant membership.');
@@ -36,13 +36,13 @@ export function CustomersScreen(){
     await refreshBase(); setSelected(c.id); form.reset(); setMessage(`Customer ${c.name} created.`);
   }catch(e){setError(String(e));}}
 
-  async function receive(ev:Event){ev.preventDefault();if(!selected)return;if(!shopId||!businessDate){setError('Shop data is still loading.');return;}setBusy(true);setError('');try{
+  async function receive(ev:Event){ev.preventDefault();if(busy||!selected)return;if(!shopId||!businessDate){setError('Shop data is still loading.');return;}setBusy(true);setError('');try{
     const paymentPaise=toPaise(amount); if(paymentPaise<=0) throw new Error('Payment must be greater than zero.'); if(allocated>paymentPaise) throw new Error('Selected allocations exceed the payment amount.');
     for(const draft of allocations.filter(a=>a.checked)){
       const invoice=openSales.find(s=>s.sale_invoice_id===draft.saleId); if(invoice&&toPaise(draft.amount)>invoice.outstanding_paise) throw new Error(`Allocation for ${draft.docNo} exceeds its outstanding amount.`);
     }
-    await recordCustomerPayment({shopId,customerId:selected,businessDate,amountPaise:paymentPaise,mode,reference:reference||undefined,clientId:crypto.randomUUID(),allocations:allocations.filter(a=>a.checked&&toPaise(a.amount)>0).map(a=>({saleInvoiceId:a.saleId,amountPaise:toPaise(a.amount)}))});
-    setAmount('');setReference('');setMessage('Payment recorded. Any unallocated remainder is retained as customer advance.');await refreshBase();await refreshCustomer(selected);
+    await recordCustomerPayment({shopId,customerId:selected,businessDate,amountPaise:paymentPaise,mode,reference:reference||undefined,clientId:paymentClientId,allocations:allocations.filter(a=>a.checked&&toPaise(a.amount)>0).map(a=>({saleInvoiceId:a.saleId,amountPaise:toPaise(a.amount)}))});
+    setPaymentClientId(crypto.randomUUID());setAmount('');setReference('');setMessage('Payment recorded. Any unallocated remainder is retained as customer advance.');await refreshBase();await refreshCustomer(selected);
   }catch(e){setError(String(e));}finally{setBusy(false);}}
 
   async function voidLedgerPayment(row:CustomerLedgerRow){if(row.entry_type!=='PAYMENT')return;if(!confirm('Void this payment? The ledger entry will remain in history as a voided financial record.'))return;setBusy(true);setError('');try{
