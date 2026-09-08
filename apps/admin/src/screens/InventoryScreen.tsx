@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import {
-  createItem, createParty, getCurrentMembership, getDefaultShopId, getShopBusinessDate, listCurrentPrices,
+  addItemBarcode, createItem, createParty, getCurrentMembership, getDefaultShopId, getShopBusinessDate, listCurrentPrices,
   listItems, listParties, listStock, postPurchase, replaceItemImage, setItemPrice,
   type Item, type ItemPrice, type Party, type StockRow,
 } from '@dsb-pro/adapters';
@@ -25,6 +25,9 @@ export function InventoryScreen() {
   async function addItem(ev:Event){ ev.preventDefault(); setError(''); const f=new FormData(ev.currentTarget as HTMLFormElement);
     try { const item=await createItem({tenantId,name:String(f.get('name')),sku:String(f.get('sku')||'')||undefined,unit1:String(f.get('unit1')),unit2:String(f.get('unit2')||'')||undefined,conv1:f.get('conv1')?Number(f.get('conv1')):undefined,clientId:crypto.randomUUID()}); setMessage(`Created ${item.name}.`); (ev.currentTarget as HTMLFormElement).reset(); await refresh(); } catch(e){setError(String(e));}
   }
+  async function addBarcode(ev:Event){ ev.preventDefault(); if(!selectedItem)return; const f=new FormData(ev.currentTarget as HTMLFormElement);
+    try { await addItemBarcode({tenantId,itemId:selectedItem.id,barcode:String(f.get('barcode')),unitLevel:Number(f.get('unitLevel')) as 1|2|3,clientId:crypto.randomUUID()}); setMessage('Barcode linked to item.'); (ev.currentTarget as HTMLFormElement).reset(); } catch(e){setError(String(e));}
+  }
   async function addParty(ev:Event){ ev.preventDefault(); setError(''); const f=new FormData(ev.currentTarget as HTMLFormElement);
     try { const party=await createParty({tenantId,name:String(f.get('name')),phone:String(f.get('phone')||'')||undefined,gstin:String(f.get('gstin')||'')||undefined,clientId:crypto.randomUUID()}); setMessage(`Created supplier ${party.name}.`); (ev.currentTarget as HTMLFormElement).reset(); await refresh(); } catch(e){setError(String(e));}
   }
@@ -42,6 +45,7 @@ export function InventoryScreen() {
     <section><h2>Item master</h2><form onSubmit={addItem}><input name="name" placeholder="Item name" required/> <input name="sku" placeholder="SKU"/> <input name="unit1" placeholder="Base unit" required/> <input name="unit2" placeholder="Pack unit"/> <input name="conv1" type="number" min="0" step="any" placeholder="Base per pack"/> <button>Create item</button></form>
       <label>Peek item <select value={selected} onChange={e=>setSelected((e.currentTarget as HTMLSelectElement).value)}><option value="">Choose…</option>{items.map(i=><option value={i.id}>{i.name}</option>)}</select></label>
       {selectedItem&&<div aria-label="item peek"><strong>{selectedItem.name}</strong> · Stock {selectedStock} {selectedItem.unit1}<br/>Current prices: {prices.length?prices.map(p=>`${p.kind} ₹${(p.price_paise/100).toFixed(2)}`).join(' · '):'none'}<br/><input type="file" accept="image/*" onChange={changeImage}/></div>}
+      {selectedItem&&<form onSubmit={addBarcode}><input name="barcode" placeholder="Barcode" required/> <select name="unitLevel"><option value="1">{selectedItem.unit1}</option>{selectedItem.unit2&&<option value="2">{selectedItem.unit2}</option>}{selectedItem.unit3&&<option value="3">{selectedItem.unit3}</option>}</select> <button>Link barcode</button></form>}
       {selectedItem&&<form onSubmit={changePrice}><select name="kind"><option value="retail">Retail</option><option value="wholesale">Wholesale</option><option value="mrp">MRP</option><option value="cost_last">Last cost</option></select> <select name="unitLevel"><option value="1">Base unit</option>{selectedItem.unit2&&<option value="2">{selectedItem.unit2}</option>}{selectedItem.unit3&&<option value="3">{selectedItem.unit3}</option>}</select> <input name="price" type="number" min="0" step="0.01" placeholder="₹ price" required/> <button>Set price</button></form>}
     </section>
     <section><h2>Suppliers</h2><form onSubmit={addParty}><input name="name" placeholder="Supplier name" required/> <input name="phone" placeholder="Phone"/> <input name="gstin" placeholder="GSTIN"/> <button>Create supplier</button></form></section>
