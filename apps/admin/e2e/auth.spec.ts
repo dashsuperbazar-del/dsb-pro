@@ -43,6 +43,16 @@ test('shows a user-facing error for wrong credentials', async ({ page }) => {
   await expect(page.getByRole('alert')).toContainText(/invalid/i);
 });
 
+test('password reset requires an email and then gives privacy-safe feedback', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Forgot password?' }).click();
+  await expect(page.getByRole('alert')).toContainText(/email address/i);
+
+  await page.getByLabel('Email').fill(uniqueEmail());
+  await page.getByRole('button', { name: 'Forgot password?' }).click();
+  await expect(page.getByRole('status')).toContainText(/if that account exists/i);
+});
+
 test('signup rejects a weak password before calling the server', async ({ page }) => {
   await page.goto('/signup');
   await page.getByLabel('Email').fill(uniqueEmail());
