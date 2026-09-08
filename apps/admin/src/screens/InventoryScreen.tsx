@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import {
-  createItem, createParty, getCurrentMembership, getDefaultShopId, listCurrentPrices,
+  createItem, createParty, getCurrentMembership, getDefaultShopId, getShopBusinessDate, listCurrentPrices,
   listItems, listParties, listStock, postPurchase, replaceItemImage, setItemPrice,
   type Item, type ItemPrice, type Party, type StockRow,
 } from '@dsb-pro/adapters';
@@ -11,12 +11,12 @@ const paise = (rupees:string) => Math.round(Number(rupees || '0') * 100);
 
 export function InventoryScreen() {
   const [items,setItems]=useState<Item[]>([]); const [parties,setParties]=useState<Party[]>([]); const [stock,setStock]=useState<StockRow[]>([]);
-  const [shopId,setShopId]=useState(''); const [tenantId,setTenantId]=useState(''); const [selected,setSelected]=useState(''); const [prices,setPrices]=useState<ItemPrice[]>([]);
+  const [shopId,setShopId]=useState(''); const [tenantId,setTenantId]=useState(''); const [businessDate,setBusinessDate]=useState(''); const [selected,setSelected]=useState(''); const [prices,setPrices]=useState<ItemPrice[]>([]);
   const [message,setMessage]=useState(''); const [error,setError]=useState('');
   async function refresh(){
     const membership=await getCurrentMembership(); if(!membership) throw new Error('No tenant membership.');
     const shop=await getDefaultShopId(); setTenantId(membership.tenantId); setShopId(shop);
-    const [i,p,s]=await Promise.all([listItems(),listParties(),listStock(shop)]); setItems(i); setParties(p); setStock(s);
+    const [i,p,s,d]=await Promise.all([listItems(),listParties(),listStock(shop),getShopBusinessDate(shop)]); setItems(i); setParties(p); setStock(s); setBusinessDate(d);
   }
   useEffect(()=>{ void refresh().catch(e=>setError(String(e))); },[]);
   useEffect(()=>{ if(!selected){setPrices([]);return;} void listCurrentPrices(selected).then(setPrices).catch(e=>setError(String(e))); },[selected]);
@@ -45,6 +45,6 @@ export function InventoryScreen() {
       {selectedItem&&<form onSubmit={changePrice}><select name="kind"><option value="retail">Retail</option><option value="wholesale">Wholesale</option><option value="mrp">MRP</option><option value="cost_last">Last cost</option></select> <select name="unitLevel"><option value="1">Base unit</option>{selectedItem.unit2&&<option value="2">{selectedItem.unit2}</option>}{selectedItem.unit3&&<option value="3">{selectedItem.unit3}</option>}</select> <input name="price" type="number" min="0" step="0.01" placeholder="₹ price" required/> <button>Set price</button></form>}
     </section>
     <section><h2>Suppliers</h2><form onSubmit={addParty}><input name="name" placeholder="Supplier name" required/> <input name="phone" placeholder="Phone"/> <input name="gstin" placeholder="GSTIN"/> <button>Create supplier</button></form></section>
-    <section><h2>Post purchase</h2><form onSubmit={addPurchase}><input name="billNo" placeholder="Bill no."/> <input name="date" type="date" value={new Date().toISOString().slice(0,10)} required/> <select name="partyId"><option value="">No supplier</option>{parties.map(p=><option value={p.id}>{p.name}</option>)}</select> <select name="itemId" required><option value="">Item…</option>{items.map(i=><option value={i.id}>{i.name}</option>)}</select> <select name="unitLevel"><option value="1">Base unit</option><option value="2">Unit 2</option><option value="3">Unit 3</option></select> <input name="qty" type="number" min="0.000001" step="any" placeholder="Qty" required/> <input name="price" type="number" min="0" step="0.01" placeholder="Unit cost ₹" required/> <input name="discount" type="number" min="0" step="0.01" placeholder="Discount ₹"/> <input name="extra" type="number" min="0" step="0.01" placeholder="Extra ₹"/> <button>Post purchase</button></form></section>
+    <section><h2>Post purchase</h2><form onSubmit={addPurchase}><input name="billNo" placeholder="Bill no."/> <input name="date" type="date" value={businessDate} onInput={e=>setBusinessDate((e.currentTarget as HTMLInputElement).value)} required/> <select name="partyId"><option value="">No supplier</option>{parties.map(p=><option value={p.id}>{p.name}</option>)}</select> <select name="itemId" required><option value="">Item…</option>{items.map(i=><option value={i.id}>{i.name}</option>)}</select> <select name="unitLevel"><option value="1">Base unit</option><option value="2">Unit 2</option><option value="3">Unit 3</option></select> <input name="qty" type="number" min="0.000001" step="any" placeholder="Qty" required/> <input name="price" type="number" min="0" step="0.01" placeholder="Unit cost ₹" required/> <input name="discount" type="number" min="0" step="0.01" placeholder="Discount ₹"/> <input name="extra" type="number" min="0" step="0.01" placeholder="Extra ₹"/> <button>Post purchase</button></form></section>
   </main>;
 }
