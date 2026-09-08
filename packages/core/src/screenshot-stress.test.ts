@@ -3,79 +3,69 @@ import { priceForUnitPaise } from './pricing';
 import { calculateInvoiceTotals } from './totals';
 import { SCREENSHOT_ITEMS } from './screenshot-items.fixture';
 
-type FixtureKey = keyof typeof SCREENSHOT_ITEMS;
-type Case = {
-  id: string; item: FixtureKey; mode: 'retail' | 'wholesale'; tier: '1' | '2' | '3';
-  qty: number; discountBps: number; extraPaise: number;
-  expectedUnitPricePaise: number; expectedGrandTotalPaise: number;
-};
+type K = keyof typeof SCREENSHOT_ITEMS;
+type M = 'retail' | 'wholesale';
+type T = '1' | '2' | '3';
+type C = [string, K, M, T, number, number, number, number, number];
 
-/**
- * 50 deterministic synthetic invoices built only from real item-master values
- * supplied by the user via DSB screenshots on 2026-09-08.
- *
- * These are stress/golden cases, NOT historical invoice parity evidence.
- * Expected prices/totals are frozen constants so the production functions do
- * not generate their own expected answers.
- */
-const CASES: Case[] = [
-  { id: 'SYN-01', item: 'pp3x3', mode: 'retail', tier: '1', qty: 1, discountBps: 0, extraPaise: 0, expectedUnitPricePaise: 24000, expectedGrandTotalPaise: 24000 },
-  { id: 'SYN-02', item: 'pp3x3', mode: 'retail', tier: '2', qty: 0.5, discountBps: 1250, extraPaise: 750, expectedUnitPricePaise: 24, expectedGrandTotalPaise: 760 },
-  { id: 'SYN-03', item: 'pp5x6', mode: 'retail', tier: '1', qty: 7, discountBps: 333, extraPaise: 1, expectedUnitPricePaise: 24000, expectedGrandTotalPaise: 162407 },
-  { id: 'SYN-04', item: 'pp5x6', mode: 'retail', tier: '2', qty: 2, discountBps: 0, extraPaise: 2500, expectedUnitPricePaise: 24, expectedGrandTotalPaise: 2548 },
-  { id: 'SYN-05', item: 'butterBake', mode: 'retail', tier: '1', qty: 1.25, discountBps: 1250, extraPaise: 199, expectedUnitPricePaise: 40000, expectedGrandTotalPaise: 43949 },
-  { id: 'SYN-06', item: 'butterBake', mode: 'retail', tier: '2', qty: 0.1, discountBps: 333, extraPaise: 50, expectedUnitPricePaise: 1000, expectedGrandTotalPaise: 147 },
-  { id: 'SYN-07', item: 'marie', mode: 'retail', tier: '1', qty: 3, discountBps: 0, extraPaise: 0, expectedUnitPricePaise: 72000, expectedGrandTotalPaise: 216000 },
-  { id: 'SYN-08', item: 'marie', mode: 'retail', tier: '2', qty: 4, discountBps: 1250, extraPaise: 750, expectedUnitPricePaise: 6000, expectedGrandTotalPaise: 21750 },
-  { id: 'SYN-09', item: 'marie', mode: 'retail', tier: '3', qty: 1, discountBps: 333, extraPaise: 1, expectedUnitPricePaise: 500, expectedGrandTotalPaise: 484 },
-  { id: 'SYN-10', item: 'honey', mode: 'retail', tier: '1', qty: 0.5, discountBps: 0, extraPaise: 2500, expectedUnitPricePaise: 1000, expectedGrandTotalPaise: 3000 },
-  { id: 'SYN-11', item: 'atta', mode: 'retail', tier: '1', qty: 7, discountBps: 1250, extraPaise: 199, expectedUnitPricePaise: 25000, expectedGrandTotalPaise: 153324 },
-  { id: 'SYN-12', item: 'pp3x3', mode: 'retail', tier: '1', qty: 2, discountBps: 333, extraPaise: 50, expectedUnitPricePaise: 24000, expectedGrandTotalPaise: 46452 },
-  { id: 'SYN-13', item: 'pp3x3', mode: 'retail', tier: '2', qty: 1.25, discountBps: 0, extraPaise: 0, expectedUnitPricePaise: 24, expectedGrandTotalPaise: 30 },
-  { id: 'SYN-14', item: 'pp5x6', mode: 'retail', tier: '1', qty: 0.1, discountBps: 1250, extraPaise: 750, expectedUnitPricePaise: 24000, expectedGrandTotalPaise: 2850 },
-  { id: 'SYN-15', item: 'pp5x6', mode: 'retail', tier: '2', qty: 3, discountBps: 333, extraPaise: 1, expectedUnitPricePaise: 24, expectedGrandTotalPaise: 71 },
-  { id: 'SYN-16', item: 'butterBake', mode: 'retail', tier: '1', qty: 4, discountBps: 0, extraPaise: 2500, expectedUnitPricePaise: 40000, expectedGrandTotalPaise: 162500 },
-  { id: 'SYN-17', item: 'butterBake', mode: 'retail', tier: '2', qty: 1, discountBps: 1250, extraPaise: 199, expectedUnitPricePaise: 1000, expectedGrandTotalPaise: 1074 },
-  { id: 'SYN-18', item: 'marie', mode: 'retail', tier: '1', qty: 0.5, discountBps: 333, extraPaise: 50, expectedUnitPricePaise: 72000, expectedGrandTotalPaise: 34851 },
-  { id: 'SYN-19', item: 'marie', mode: 'retail', tier: '2', qty: 7, discountBps: 0, extraPaise: 0, expectedUnitPricePaise: 6000, expectedGrandTotalPaise: 42000 },
-  { id: 'SYN-20', item: 'marie', mode: 'retail', tier: '3', qty: 2, discountBps: 1250, extraPaise: 750, expectedUnitPricePaise: 500, expectedGrandTotalPaise: 1625 },
-  { id: 'SYN-21', item: 'honey', mode: 'retail', tier: '1', qty: 1.25, discountBps: 333, extraPaise: 1, expectedUnitPricePaise: 1000, expectedGrandTotalPaise: 1209 },
-  { id: 'SYN-22', item: 'atta', mode: 'retail', tier: '1', qty: 0.1, discountBps: 0, extraPaise: 2500, expectedUnitPricePaise: 25000, expectedGrandTotalPaise: 5000 },
-  { id: 'SYN-23', item: 'pp3x3', mode: 'retail', tier: '1', qty: 3, discountBps: 1250, extraPaise: 199, expectedUnitPricePaise: 24000, expectedGrandTotalPaise: 63199 },
-  { id: 'SYN-24', item: 'pp3x3', mode: 'retail', tier: '2', qty: 4, discountBps: 333, extraPaise: 50, expectedUnitPricePaise: 24, expectedGrandTotalPaise: 143 },
-  { id: 'SYN-25', item: 'pp5x6', mode: 'retail', tier: '1', qty: 1, discountBps: 0, extraPaise: 0, expectedUnitPricePaise: 24000, expectedGrandTotalPaise: 24000 },
-  { id: 'SYN-26', item: 'pp3x3', mode: 'wholesale', tier: '1', qty: 2, discountBps: 2500, extraPaise: 50, expectedUnitPricePaise: 24000, expectedGrandTotalPaise: 36050 },
-  { id: 'SYN-27', item: 'pp3x3', mode: 'wholesale', tier: '2', qty: 1.25, discountBps: 1000, extraPaise: 0, expectedUnitPricePaise: 24, expectedGrandTotalPaise: 27 },
-  { id: 'SYN-28', item: 'pp5x6', mode: 'wholesale', tier: '1', qty: 0.1, discountBps: 500, extraPaise: 750, expectedUnitPricePaise: 22000, expectedGrandTotalPaise: 2840 },
-  { id: 'SYN-29', item: 'pp5x6', mode: 'wholesale', tier: '2', qty: 3, discountBps: 2500, extraPaise: 1, expectedUnitPricePaise: 22, expectedGrandTotalPaise: 51 },
-  { id: 'SYN-30', item: 'butterBake', mode: 'wholesale', tier: '1', qty: 4, discountBps: 1000, extraPaise: 2500, expectedUnitPricePaise: 36000, expectedGrandTotalPaise: 132100 },
-  { id: 'SYN-31', item: 'butterBake', mode: 'wholesale', tier: '2', qty: 1, discountBps: 500, extraPaise: 199, expectedUnitPricePaise: 900, expectedGrandTotalPaise: 1054 },
-  { id: 'SYN-32', item: 'marie', mode: 'wholesale', tier: '1', qty: 0.5, discountBps: 2500, extraPaise: 50, expectedUnitPricePaise: 64800, expectedGrandTotalPaise: 24350 },
-  { id: 'SYN-33', item: 'marie', mode: 'wholesale', tier: '2', qty: 7, discountBps: 1000, extraPaise: 0, expectedUnitPricePaise: 5400, expectedGrandTotalPaise: 34020 },
-  { id: 'SYN-34', item: 'marie', mode: 'wholesale', tier: '3', qty: 2, discountBps: 500, extraPaise: 750, expectedUnitPricePaise: 450, expectedGrandTotalPaise: 1605 },
-  { id: 'SYN-35', item: 'honey', mode: 'wholesale', tier: '1', qty: 1.25, discountBps: 2500, extraPaise: 1, expectedUnitPricePaise: 900, expectedGrandTotalPaise: 845 },
-  { id: 'SYN-36', item: 'atta', mode: 'wholesale', tier: '1', qty: 0.1, discountBps: 1000, extraPaise: 2500, expectedUnitPricePaise: 24000, expectedGrandTotalPaise: 4660 },
-  { id: 'SYN-37', item: 'pp3x3', mode: 'wholesale', tier: '1', qty: 3, discountBps: 500, extraPaise: 199, expectedUnitPricePaise: 24000, expectedGrandTotalPaise: 68599 },
-  { id: 'SYN-38', item: 'pp3x3', mode: 'wholesale', tier: '2', qty: 4, discountBps: 2500, extraPaise: 50, expectedUnitPricePaise: 24, expectedGrandTotalPaise: 122 },
-  { id: 'SYN-39', item: 'pp5x6', mode: 'wholesale', tier: '1', qty: 1, discountBps: 1000, extraPaise: 0, expectedUnitPricePaise: 22000, expectedGrandTotalPaise: 19800 },
-  { id: 'SYN-40', item: 'pp5x6', mode: 'wholesale', tier: '2', qty: 0.5, discountBps: 500, extraPaise: 750, expectedUnitPricePaise: 22, expectedGrandTotalPaise: 760 },
-  { id: 'SYN-41', item: 'butterBake', mode: 'wholesale', tier: '1', qty: 7, discountBps: 2500, extraPaise: 1, expectedUnitPricePaise: 36000, expectedGrandTotalPaise: 189001 },
-  { id: 'SYN-42', item: 'butterBake', mode: 'wholesale', tier: '2', qty: 2, discountBps: 1000, extraPaise: 2500, expectedUnitPricePaise: 900, expectedGrandTotalPaise: 4120 },
-  { id: 'SYN-43', item: 'marie', mode: 'wholesale', tier: '1', qty: 1.25, discountBps: 500, extraPaise: 199, expectedUnitPricePaise: 64800, expectedGrandTotalPaise: 77149 },
-  { id: 'SYN-44', item: 'marie', mode: 'wholesale', tier: '2', qty: 0.1, discountBps: 2500, extraPaise: 50, expectedUnitPricePaise: 5400, expectedGrandTotalPaise: 455 },
-  { id: 'SYN-45', item: 'marie', mode: 'wholesale', tier: '3', qty: 3, discountBps: 1000, extraPaise: 0, expectedUnitPricePaise: 450, expectedGrandTotalPaise: 1215 },
-  { id: 'SYN-46', item: 'honey', mode: 'wholesale', tier: '1', qty: 4, discountBps: 500, extraPaise: 750, expectedUnitPricePaise: 900, expectedGrandTotalPaise: 4170 },
-  { id: 'SYN-47', item: 'atta', mode: 'wholesale', tier: '1', qty: 1, discountBps: 2500, extraPaise: 1, expectedUnitPricePaise: 24000, expectedGrandTotalPaise: 18001 },
-  { id: 'SYN-48', item: 'pp3x3', mode: 'wholesale', tier: '1', qty: 0.5, discountBps: 1000, extraPaise: 2500, expectedUnitPricePaise: 24000, expectedGrandTotalPaise: 13300 },
-  { id: 'SYN-49', item: 'pp3x3', mode: 'wholesale', tier: '2', qty: 7, discountBps: 500, extraPaise: 199, expectedUnitPricePaise: 24, expectedGrandTotalPaise: 359 },
-  { id: 'SYN-50', item: 'pp5x6', mode: 'wholesale', tier: '1', qty: 2, discountBps: 2500, extraPaise: 50, expectedUnitPricePaise: 22000, expectedGrandTotalPaise: 33050 },
+const CASES: C[] = [
+  ['SYN-01','pp3x3','retail','1',1,0,0,24000,24000],
+  ['SYN-02','pp3x3','retail','2',0.5,1250,750,24,760],
+  ['SYN-03','pp5x6','retail','1',7,333,1,24000,162407],
+  ['SYN-04','pp5x6','retail','2',2,0,2500,24,2548],
+  ['SYN-05','butterBake','retail','1',1.25,1250,199,40000,43949],
+  ['SYN-06','butterBake','retail','2',0.1,333,50,1000,147],
+  ['SYN-07','marie','retail','1',3,0,0,72000,216000],
+  ['SYN-08','marie','retail','2',4,1250,750,6000,21750],
+  ['SYN-09','marie','retail','3',1,333,1,500,484],
+  ['SYN-10','honey','retail','1',0.5,0,2500,1000,3000],
+  ['SYN-11','atta','retail','1',7,1250,199,25000,153324],
+  ['SYN-12','pp3x3','retail','1',2,333,50,24000,46452],
+  ['SYN-13','pp3x3','retail','2',1.25,0,0,24,30],
+  ['SYN-14','pp5x6','retail','1',0.1,1250,750,24000,2850],
+  ['SYN-15','pp5x6','retail','2',3,333,1,24,71],
+  ['SYN-16','butterBake','retail','1',4,0,2500,40000,162500],
+  ['SYN-17','butterBake','retail','2',1,1250,199,1000,1074],
+  ['SYN-18','marie','retail','1',0.5,333,50,72000,34851],
+  ['SYN-19','marie','retail','2',7,0,0,6000,42000],
+  ['SYN-20','marie','retail','3',2,1250,750,500,1625],
+  ['SYN-21','honey','retail','1',1.25,333,1,1000,1209],
+  ['SYN-22','atta','retail','1',0.1,0,2500,25000,5000],
+  ['SYN-23','pp3x3','retail','1',3,1250,199,24000,63199],
+  ['SYN-24','pp3x3','retail','2',4,333,50,24,143],
+  ['SYN-25','pp5x6','retail','1',1,0,0,24000,24000],
+  ['SYN-26','pp3x3','wholesale','1',2,2500,50,24000,36050],
+  ['SYN-27','pp3x3','wholesale','2',1.25,1000,0,24,27],
+  ['SYN-28','pp5x6','wholesale','1',0.1,500,750,22000,2840],
+  ['SYN-29','pp5x6','wholesale','2',3,2500,1,22,50],
+  ['SYN-30','butterBake','wholesale','1',4,1000,2500,36000,132100],
+  ['SYN-31','butterBake','wholesale','2',1,500,199,900,1054],
+  ['SYN-32','marie','wholesale','1',0.5,2500,50,64800,24350],
+  ['SYN-33','marie','wholesale','2',7,1000,0,5400,34020],
+  ['SYN-34','marie','wholesale','3',2,500,750,450,1605],
+  ['SYN-35','honey','wholesale','1',1.25,2500,1,900,845],
+  ['SYN-36','atta','wholesale','1',0.1,1000,2500,24000,4660],
+  ['SYN-37','pp3x3','wholesale','1',3,500,199,24000,68599],
+  ['SYN-38','pp3x3','wholesale','2',4,2500,50,24,122],
+  ['SYN-39','pp5x6','wholesale','1',1,1000,0,22000,19800],
+  ['SYN-40','pp5x6','wholesale','2',0.5,500,750,22,760],
+  ['SYN-41','butterBake','wholesale','1',7,2500,1,36000,189001],
+  ['SYN-42','butterBake','wholesale','2',2,1000,2500,900,4120],
+  ['SYN-43','marie','wholesale','1',1.25,500,199,64800,77149],
+  ['SYN-44','marie','wholesale','2',0.1,2500,50,5400,455],
+  ['SYN-45','marie','wholesale','3',3,1000,0,450,1215],
+  ['SYN-46','honey','wholesale','1',4,500,750,900,4170],
+  ['SYN-47','atta','wholesale','1',1,2500,1,24000,18001],
+  ['SYN-48','pp3x3','wholesale','1',0.5,1000,2500,24000,13300],
+  ['SYN-49','pp3x3','wholesale','2',7,500,199,24,359],
+  ['SYN-50','pp5x6','wholesale','1',2,2500,50,22000,33050],
 ];
 
 describe('50-case screenshot-backed pricing/totals stress suite', () => {
   it('contains exactly 50 cases balanced across retail and wholesale', () => {
     expect(CASES).toHaveLength(50);
-    expect(CASES.filter(c => c.mode === 'retail')).toHaveLength(25);
-    expect(CASES.filter(c => c.mode === 'wholesale')).toHaveLength(25);
+    expect(CASES.filter(c => c[2] === 'retail')).toHaveLength(25);
+    expect(CASES.filter(c => c[2] === 'wholesale')).toHaveLength(25);
   });
 
   it('uses only items with complete visible retail and wholesale sale pricing', () => {
@@ -90,20 +80,14 @@ describe('50-case screenshot-backed pricing/totals stress suite', () => {
     }
   });
 
-  it.each(CASES)('$id $mode $item tier $tier', testCase => {
-    const item = SCREENSHOT_ITEMS[testCase.item];
-    const actualUnitPrice = priceForUnitPaise(item, testCase.mode, testCase.tier);
-    expect(actualUnitPrice).toBe(testCase.expectedUnitPricePaise);
-
-    const totals = calculateInvoiceTotals(
-      [{
-        qty: testCase.qty,
-        unitPricePaise: actualUnitPrice,
-        discountBps: testCase.discountBps,
-        taxRateBps: item.taxRateBps,
-      }],
-      testCase.extraPaise ? [{ name: 'Synthetic stress extra', amountPaise: testCase.extraPaise }] : [],
+  it.each(CASES)('%s %s %s tier %s', (id, key, mode, tier, qty, discountBps, extraPaise, expectedUnitPricePaise, expectedGrandTotalPaise) => {
+    const item = SCREENSHOT_ITEMS[key];
+    const actualUnitPricePaise = priceForUnitPaise(item, mode, tier);
+    expect(actualUnitPricePaise, `${id} unit price`).toBe(expectedUnitPricePaise);
+    const total = calculateInvoiceTotals(
+      [{ qty, unitPricePaise: actualUnitPricePaise, discountBps, taxRateBps: item.taxRateBps }],
+      extraPaise ? [{ name: 'Synthetic stress extra', amountPaise: extraPaise }] : [],
     );
-    expect(totals.grandTotalPaise).toBe(testCase.expectedGrandTotalPaise);
+    expect(total.grandTotalPaise, `${id} grand total`).toBe(expectedGrandTotalPaise);
   });
 });
