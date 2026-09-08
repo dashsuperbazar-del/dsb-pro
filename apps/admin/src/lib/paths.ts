@@ -12,4 +12,5 @@ export const appRoute = {
   team: appPath('/team'),
   devices: appPath('/devices'),
   inventory: appPath('/inventory'),
+  pos: appPath('/pos'),
 };
