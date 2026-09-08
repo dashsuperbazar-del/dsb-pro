@@ -21,6 +21,7 @@ test('owner can open the Phase 4 POS and customer payment surface',async({page})
   await page.getByRole('link',{name:'Sales POS'}).click();
   await expect(page.getByRole('heading',{name:'Sales POS'})).toBeVisible();
   await expect(page.getByText('Cart is empty.')).toBeVisible();
+  await expect(page.getByText(/Ctrl.*Enter.*finalizes the current sale/)).toBeVisible();
   await expect(page.getByRole('heading',{name:'Customer payment / advance'})).toBeVisible();
   await expect(page.getByRole('button',{name:'Finalize sale'})).toBeDisabled();
 });
