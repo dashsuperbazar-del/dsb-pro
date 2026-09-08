@@ -1,21 +1,16 @@
 import { useEffect, useState } from 'preact/hooks';
 import { acceptInvite, classifyError, errorMessage } from '@dsb-pro/adapters';
 import { useSession } from '../lib/useSession';
+import { LoginScreen } from './LoginScreen';
 import { SignupScreen } from './SignupScreen';
 
-// Deep-link target for a shared invite (spec §5's "dsbpro.in/join/<token>").
-// While signed out, shows Signup so a brand-new hire can create an account and
-// land right back here; once signed in, accepts the token exactly once.
+// Deep-link target for a shared invite. While signed out, either signup or
+// login stays on this route so the invite token is never silently discarded.
 export function JoinInviteScreen({ token }: { token?: string }) {
   const session = useSession();
   const [error, setError] = useState<string | null>(null);
   const [attempted, setAttempted] = useState(false);
-
-  useEffect(() => {
-    if (session.status === 'active') {
-      window.location.href = '/';
-    }
-  }, [session.status]);
+  const [mode, setMode] = useState<'signup' | 'login'>('signup');
 
   async function acceptCurrentInvite() {
     if (attempted || !token) return;
@@ -29,34 +24,28 @@ export function JoinInviteScreen({ token }: { token?: string }) {
   }
 
   useEffect(() => {
-    if (session.status !== 'no-tenant') return;
-    void acceptCurrentInvite();
+    if (session.status === 'no-tenant') void acceptCurrentInvite();
+    if (session.status === 'active') window.location.href = '/';
   }, [session.status]);
 
-  if (session.status === 'loading') {
-    return <p>Loading…</p>;
-  }
-
-  if (session.status === 'error') {
-    return (
-      <p role="alert">
-        {session.message}
-      </p>
-    );
-  }
+  if (session.status === 'loading') return <p>Loading…</p>;
+  if (session.status === 'error') return <p role="alert">{session.message}</p>;
 
   if (session.status === 'signed-out') {
-    return (
+    return mode === 'signup' ? (
       <div>
         <p>Sign up or log in to accept this invite.</p>
-        <SignupScreen onSignedUp={() => void acceptCurrentInvite()} />
+        <SignupScreen onSignedUp={() => void acceptCurrentInvite()} onLogIn={() => setMode('login')} />
+      </div>
+    ) : (
+      <div>
+        <p>Log in to accept this invite.</p>
+        <LoginScreen onSignedIn={() => void acceptCurrentInvite()} />
+        <p><button type="button" onClick={() => setMode('signup')}>Create a new account</button></p>
       </div>
     );
   }
 
-  if (error) {
-    return <p role="alert">{error}</p>;
-  }
-
+  if (error) return <p role="alert">{error}</p>;
   return <p>Joining…</p>;
 }
