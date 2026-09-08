@@ -31,9 +31,9 @@ export function CustomersScreen(){
   useEffect(()=>{void refreshCustomer(selected).catch(e=>setError(String(e)));},[selected]);
   const allocated=useMemo(()=>allocations.filter(a=>a.checked).reduce((sum,a)=>sum+toPaise(a.amount),0),[allocations]);
 
-  async function addCustomer(ev:Event){ev.preventDefault();setError('');if(!tenantId){setError('Shop data is still loading.');return;}const f=new FormData(ev.currentTarget as HTMLFormElement);try{
+  async function addCustomer(ev:Event){ev.preventDefault();setError('');if(!tenantId){setError('Shop data is still loading.');return;}const form=ev.currentTarget as HTMLFormElement;const f=new FormData(form);try{
     const c=await createCustomer({tenantId,name:String(f.get('name')),phone:String(f.get('phone')||'')||undefined,address:String(f.get('address')||'')||undefined,clientId:crypto.randomUUID()});
-    await refreshBase(); setSelected(c.id); setMessage(`Customer ${c.name} created.`); (ev.currentTarget as HTMLFormElement).reset();
+    await refreshBase(); setSelected(c.id); form.reset(); setMessage(`Customer ${c.name} created.`);
   }catch(e){setError(String(e));}}
 
   async function receive(ev:Event){ev.preventDefault();if(!selected)return;if(!shopId||!businessDate){setError('Shop data is still loading.');return;}setBusy(true);setError('');try{
