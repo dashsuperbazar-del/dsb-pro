@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(10);
+select plan(11);
 
 insert into auth.users(id) values ('a3100000-0000-0000-0000-000000000001') on conflict do nothing;
 set role authenticated;
