@@ -54,8 +54,6 @@ test('an immediate-session signup inside the join flow calls accept_invite, not 
     await route.fulfill({ status: 200, contentType: 'application/json', body: 'null' });
   });
 
-  // No membership yet — matches the join-invite scenario (brand-new hire,
-  // no tenant of their own).
   await page.route('**/rest/v1/rpc/current_membership', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
   });
@@ -66,10 +64,6 @@ test('an immediate-session signup inside the join flow calls accept_invite, not 
     if (acceptInviteCallCount === 1) {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify('fake-tenant-id') });
     } else {
-      // Realistic backend behaviour for a re-attempt: the token is
-      // single-use, so a second call (e.g. after JoinInviteScreen's own
-      // post-success reload remounts it) is rejected. Bounds this test to
-      // one reload instead of looping.
       await route.fulfill({
         status: 400,
         contentType: 'application/json',
@@ -80,11 +74,10 @@ test('an immediate-session signup inside the join flow calls accept_invite, not 
 
   await page.goto(`/join/${token}`);
   await page.getByLabel('Email').fill('joiner@example.com');
-  await page.getByLabel('Password').fill('shop2026pw');
+  await page.getByLabel('Password', { exact: true }).fill('shop2026pw');
+  await page.getByLabel('Confirm password').fill('shop2026pw');
   await page.getByRole('button', { name: 'Sign up' }).click();
 
-  // The bug this guards against: SignupScreen's own route('/') would have
-  // navigated JoinInviteScreen away before accept_invite ever ran.
   await expect.poll(() => acceptInviteCallCount, { timeout: 10000 }).toBeGreaterThan(0);
   expect(acceptInviteToken).toBe(token);
   expect(new URL(page.url()).pathname).toBe(`/join/${token}`);
