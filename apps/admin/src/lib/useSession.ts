@@ -26,17 +26,26 @@ export function useSession(): SessionState {
   useEffect(() => {
     let cancelled = false;
     let registeredForUserId: string | null = null;
+    let resolutionId = 0;
 
-    function setError(error: unknown, context: string) {
+    function setError(error: unknown, context: string, id: number) {
       const errorClass = classifyError(error);
       const message = errorMessage(errorClass, error);
       console.error(`useSession: ${context}:`, message);
-      if (!cancelled) setState({ status: 'error', message });
+      if (!cancelled && id === resolutionId) setState({ status: 'error', message });
     }
 
     async function resolve(session: Session | null) {
+      // getSession() and the auth-state listener can race. In particular,
+      // signup/sign-in can emit an authenticated session while the initial
+      // getSession() is still resolving its earlier signed-out snapshot. A
+      // monotonically increasing id makes only the newest auth snapshot
+      // authoritative, so a stale signed-out result can never overwrite a
+      // newly authenticated state (or vice versa).
+      const id = ++resolutionId;
+
       if (!session) {
-        if (!cancelled) setState({ status: 'signed-out' });
+        if (!cancelled && id === resolutionId) setState({ status: 'signed-out' });
         return;
       }
 
@@ -51,11 +60,11 @@ export function useSession(): SessionState {
       try {
         membership = await getCurrentMembership();
       } catch (error) {
-        setError(error, 'getCurrentMembership failed');
+        setError(error, 'getCurrentMembership failed', id);
         return;
       }
 
-      if (cancelled) return;
+      if (cancelled || id !== resolutionId) return;
       setState(
         membership
           ? { status: 'active', session, membership }
@@ -65,7 +74,7 @@ export function useSession(): SessionState {
 
     void getSession()
       .then(resolve)
-      .catch((error) => setError(error, 'getSession failed'));
+      .catch((error) => setError(error, 'getSession failed', ++resolutionId));
 
     const unsubscribe = onAuthStateChange((session) => {
       void resolve(session);
