@@ -8,6 +8,7 @@ async function createOwnerShop(page:import('@playwright/test').Page){
   await page.getByLabel('Password',{exact:true}).fill(PASSWORD);
   await page.getByLabel('Confirm password').fill(PASSWORD);
   await page.getByRole('button',{name:'Sign up'}).click();
+  await expect(page.getByRole('heading',{name:'Welcome'})).toBeVisible();
   await page.goto('/');
   await page.getByLabel('Shop name').fill('Customer Ledger Shop');
   await page.getByRole('button',{name:'Create your shop'}).click();
