@@ -13,6 +13,10 @@ export type SaleInvoice = {
 };
 export type CustomerBalance = { customer_id:string; balance_paise:number };
 export type PaymentAllocationInput = { saleInvoiceId:string; amountPaise:number };
+export type CustomerLedgerRow = { customer_id:string; business_date:string; created_at:string; entry_type:'SALE'|'PAYMENT'; ref_id:string; reference:string|null; debit_paise:number; credit_paise:number };
+export type SaleReceiptLine = { item_name_snapshot:string; unit_name_snapshot:string; qty:number; unit_price_paise:number; discount_paise:number; line_total_paise:number };
+export type SaleReceiptPayment = { id:string; amount_paise:number; mode:SalePaymentInput['mode']; reference:string|null; status:'POSTED'|'VOID' };
+export type SaleReceipt = { invoice:SaleInvoice; lines:SaleReceiptLine[]; payments:SaleReceiptPayment[] };
 
 const friendly=(error:unknown)=>errorMessage(classifyError(error),error);
 function must<T>(value:T|null,error:unknown):T { if(error) throw new Error(friendly(error)); if(value===null) throw new Error('Expected data was not returned.'); return value; }
@@ -68,7 +72,25 @@ export async function listCustomerBalances():Promise<CustomerBalance[]> {
   if(error) throw new Error(friendly(error)); return (data??[]) as CustomerBalance[];
 }
 
+export async function listCustomerLedger(customerId:string):Promise<CustomerLedgerRow[]> {
+  const {data,error}=await getSupabaseClient().from('customer_ledger').select('customer_id,business_date,created_at,entry_type,ref_id,reference,debit_paise,credit_paise').eq('customer_id',customerId).order('created_at',{ascending:false});
+  if(error) throw new Error(friendly(error)); return (data??[]) as CustomerLedgerRow[];
+}
+
 export async function listOpenCustomerSales(customerId:string):Promise<SaleInvoice[]> {
   const {data,error}=await getSupabaseClient().from('sale_invoices').select('id,customer_id,doc_no,business_date,status,subtotal_paise,discount_paise,extra_charges_paise,total_paise,notes,created_at').eq('customer_id',customerId).eq('status','FINALIZED').order('business_date',{ascending:true});
   if(error) throw new Error(friendly(error)); return (data??[]) as SaleInvoice[];
+}
+
+export async function getSaleReceipt(saleId:string):Promise<SaleReceipt>{
+  const client=getSupabaseClient();
+  const [invoiceResult,lineResult,paymentResult]=await Promise.all([
+    client.from('sale_invoices').select('id,customer_id,doc_no,business_date,status,subtotal_paise,discount_paise,extra_charges_paise,total_paise,notes,created_at').eq('id',saleId).single(),
+    client.from('sale_invoice_items').select('item_name_snapshot,unit_name_snapshot,qty,unit_price_paise,discount_paise,line_total_paise').eq('sale_invoice_id',saleId).order('line_no'),
+    client.from('payments').select('id,amount_paise,mode,reference,status').eq('source_sale_invoice_id',saleId).order('created_at'),
+  ]);
+  const invoice=must(invoiceResult.data,invoiceResult.error) as SaleInvoice;
+  if(lineResult.error) throw new Error(friendly(lineResult.error));
+  if(paymentResult.error) throw new Error(friendly(paymentResult.error));
+  return {invoice,lines:(lineResult.data??[]) as SaleReceiptLine[],payments:(paymentResult.data??[]) as SaleReceiptPayment[]};
 }
