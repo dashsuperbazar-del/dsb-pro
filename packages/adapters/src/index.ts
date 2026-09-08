@@ -12,3 +12,5 @@ export { listItems, listParties, createItem, createParty, addItemBarcode, findIt
 export type { ItemPrice } from './pricing';
 export { listCurrentPrices, setItemPrice } from './pricing';
 export { replaceItemImage } from './itemImages';
+export type { Customer, SaleLineInput, SalePaymentInput, SaleInvoice, CustomerBalance, PaymentAllocationInput } from './sales';
+export { listCustomers, createCustomer, postSale, voidSale, recordCustomerPayment, voidPayment, listRecentSales, listCustomerBalances, listOpenCustomerSales } from './sales';
