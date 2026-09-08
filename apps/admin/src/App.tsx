@@ -9,16 +9,17 @@ import { JoinInviteScreen } from './screens/JoinInviteScreen';
 import { TeamScreen } from './screens/TeamScreen';
 import { DevicesScreen } from './screens/DevicesScreen';
 import { VerificationBanner } from './components/VerificationBanner';
+import { appRoute } from './lib/paths';
 
 export function App() {
   const session = useSession();
 
   return (
     <Router>
-      <Route path="/signup" component={SignupScreen} />
-      <Route path="/join/:token?" component={JoinInviteScreen} />
-      <Route path="/team" component={TeamScreen} />
-      <Route path="/devices" component={DevicesScreen} />
+      <Route path={appRoute.signup} component={SignupScreen} />
+      <Route path={appRoute.join} component={JoinInviteScreen} />
+      <Route path={appRoute.team} component={TeamScreen} />
+      <Route path={appRoute.devices} component={DevicesScreen} />
       <Route default component={() => <Home session={session} />} />
     </Router>
   );
@@ -54,7 +55,7 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
         <h1>DSB Pro — Admin</h1>
         <p>Signed in as tenant {session.membership.tenantId}, role {session.membership.role}.</p>
         <p>
-          <a href="/team">Team</a> · <a href="/devices">Devices</a> ·{' '}
+          <a href={appRoute.team}>Team</a> · <a href={appRoute.devices}>Devices</a> ·{' '}
           <button onClick={() => void signOut()}>Sign out</button>
         </p>
         <HealthPanel />
