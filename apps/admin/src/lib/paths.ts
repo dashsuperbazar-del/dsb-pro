@@ -11,4 +11,5 @@ export const appRoute = {
   join: appPath('/join/:token?'),
   team: appPath('/team'),
   devices: appPath('/devices'),
+  inventory: appPath('/inventory'),
 };
