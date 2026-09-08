@@ -118,8 +118,48 @@ jobs:
           grep -q '/dsb-pro/assets/' apps/admin/dist/index.html
           grep -q '/dsb-pro/assets/' apps/admin/dist/404.html
 
-  phase4_preview:
+  phase4_db_readiness:
     needs: [build]
+    if: github.ref == 'refs/heads/phase-4-pos-customers-payments' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify live Phase 4 database schema
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          test -n "$SUPABASE_DB_URL" || { echo 'SUPABASE_DB_URL is required for the shop-test readiness check'; exit 1; }
+          MISSING=$(psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -At <<'SQL'
+          with required(name,present) as (
+            values
+              ('items', to_regclass('public.items') is not null),
+              ('item_prices', to_regclass('public.item_prices') is not null),
+              ('purchase_bills', to_regclass('public.purchase_bills') is not null),
+              ('customers', to_regclass('public.customers') is not null),
+              ('sale_invoices', to_regclass('public.sale_invoices') is not null),
+              ('payments', to_regclass('public.payments') is not null),
+              ('payment_allocations', to_regclass('public.payment_allocations') is not null),
+              ('customer_invoice_outstanding', to_regclass('public.customer_invoice_outstanding') is not null),
+              ('stock_current_table', exists(
+                select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
+                where n.nspname='public' and c.relname='stock_current' and c.relkind in ('r','p')
+              )),
+              ('post_purchase', to_regprocedure('public.post_purchase(uuid,uuid,text,date,bigint,bigint,text,jsonb,text)') is not null),
+              ('post_sale', to_regprocedure('public.post_sale(uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text)') is not null),
+              ('record_customer_payment', to_regprocedure('public.record_customer_payment(uuid,uuid,date,bigint,text,text,jsonb,text)') is not null),
+              ('phase4_idempotency_wrapper', to_regprocedure('public.phase4_post_sale_unlocked(uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text)') is not null)
+          )
+          select name from required where not present order by name;
+          SQL
+          )
+          if [ -n "$MISSING" ]; then
+            echo "Live Supabase is not Phase 4 ready. Missing objects:"
+            echo "$MISSING"
+            exit 1
+          fi
+          echo "Live Supabase Phase 4 schema readiness: PASS"
+
+  phase4_preview:
+    needs: [build, phase4_db_readiness]
     if: github.ref == 'refs/heads/phase-4-pos-customers-payments' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
