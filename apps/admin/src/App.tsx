@@ -11,7 +11,9 @@ import { DevicesScreen } from './screens/DevicesScreen';
 import { InventoryScreen } from './screens/InventoryScreen';
 import { PosScreen } from './screens/PosScreen';
 import { CustomersScreen } from './screens/CustomersScreen';
+import { SalesHistoryScreen } from './screens/SalesHistoryScreen';
 import { VerificationBanner } from './components/VerificationBanner';
+import { LanguageToggle } from './components/LanguageToggle';
 import { appRoute } from './lib/paths';
 
 export function App() {
@@ -24,6 +26,7 @@ export function App() {
     <Route path={appRoute.inventory} component={InventoryScreen} />
     <Route path={appRoute.pos} component={PosScreen} />
     <Route path={appRoute.customers} component={CustomersScreen} />
+    <Route path={appRoute.salesHistory} component={SalesHistoryScreen} />
     <Route default component={() => <Home session={session} />} />
   </Router>;
 }
@@ -36,9 +39,9 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
   return <>
     <VerificationBanner session={session.session} />
     <main>
-      <h1>DSB Pro — Admin</h1>
+      <div class="row"><h1>DSB Pro — Admin</h1><LanguageToggle /></div>
       <p>Signed in as tenant {session.membership.tenantId}, role {session.membership.role}.</p>
-      <p><a href={appRoute.pos}>Sales POS</a> · <a href={appRoute.customers}>Customers & ledger</a> · <a href={appRoute.inventory}>Inventory & purchases</a> · <a href={appRoute.team}>Team</a> · <a href={appRoute.devices}>Devices</a> · <button onClick={() => void signOut()}>Sign out</button></p>
+      <p><a href={appRoute.pos}>Sales POS</a> · <a href={appRoute.salesHistory}>Sales history</a> · <a href={appRoute.customers}>Customers & ledger</a> · <a href={appRoute.inventory}>Inventory & purchases</a> · <a href={appRoute.team}>Team</a> · <a href={appRoute.devices}>Devices</a> · <button onClick={() => void signOut()}>Sign out</button></p>
       <HealthPanel />
     </main>
   </>;
