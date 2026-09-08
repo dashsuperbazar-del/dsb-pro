@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(16);
+select plan(21);
 
 insert into auth.users(id) values
  ('a3000000-0000-0000-0000-000000000001'),
