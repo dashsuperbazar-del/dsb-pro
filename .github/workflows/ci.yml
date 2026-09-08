@@ -60,6 +60,8 @@ jobs:
       - run: supabase start
       - run: supabase db reset
       - run: supabase test db
+      - name: Prove invite single-use under concurrent redemption
+        run: node scripts/test-invite-concurrency.mjs
 
   e2e:
     runs-on: ubuntu-latest
