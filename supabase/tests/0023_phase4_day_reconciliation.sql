@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(17);
+select plan(25);
 
 insert into auth.users(id) values
  ('a8000000-0000-0000-0000-000000000001'),
@@ -17,7 +17,7 @@ select lives_ok($$insert into customers(tenant_id,name,client_id) values(current
 select set_config('rec.customer',(select id::text from customers where client_id='rec-customer'),false);
 select lives_ok($$insert into items(tenant_id,name,unit1,tax_rate_bp,client_id) values(current_tenant_id(),'Recon Item','Pcs',0,'rec-item')$$,'create sale item');
 select set_config('rec.item',(select id::text from items where client_id='rec-item'),false);
-select lives_ok(format($q$select set_item_price(%L::uuid,%L::uuid,'retail',1,100,'rec-price')$q$,current_setting('rec.item'),current_setting('rec.shop')),'set retail price');
+select lives_ok(format($q$select set_item_price(%L::uuid,%L::uuid,'retail',1::smallint,100::bigint,'rec-price')$q$,current_setting('rec.item'),current_setting('rec.shop')),'set retail price');
 select lives_ok(format($q$select post_purchase(%L::uuid,null,'REC-SEED','2026-09-08',0,0,'rec-seed',jsonb_build_array(jsonb_build_object('item_id',%L,'unit_level',1,'qty',10,'unit_price_paise',50)),null)$q$,current_setting('rec.shop'),current_setting('rec.item')),'seed ten pieces');
 
 select lives_ok(format($q$select post_sale(%L::uuid,null,'2026-09-08',0,0,'rec-sale-walkin',jsonb_build_array(jsonb_build_object('item_id',%L,'unit_level',1,'qty',2,'price_kind','retail','discount_paise',0)),jsonb_build_array(jsonb_build_object('amount_paise',100,'mode','cash'),jsonb_build_object('amount_paise',100,'mode','upi')),null)$q$,current_setting('rec.shop'),current_setting('rec.item')),'post split-tender walk-in sale');
