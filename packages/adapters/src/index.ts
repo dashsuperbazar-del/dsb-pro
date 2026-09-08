@@ -16,3 +16,6 @@ export type { Customer, SaleLineInput, SalePaymentInput, SaleInvoice, CustomerBa
 export { listCustomers, createCustomer, postSale, voidSale, recordCustomerPayment, voidPayment, listRecentSales, listCustomerBalances, listCustomerLedger, listOpenCustomerSales, getSaleReceipt } from './sales';
 export type { CustomerOutstandingInvoice } from './receivables';
 export { listCustomerOutstandingInvoices } from './receivables';
+
+export type { LegacyDsbImportSummary } from './legacyImport';
+export { importLegacyDsbMaster } from './legacyImport';
