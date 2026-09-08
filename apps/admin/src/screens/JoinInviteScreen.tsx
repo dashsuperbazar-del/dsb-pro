@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { acceptInvite, classifyError, errorMessage } from '@dsb-pro/adapters';
 import { useSession } from '../lib/useSession';
+import { appRoute } from '../lib/paths';
 import { LoginScreen } from './LoginScreen';
 import { SignupScreen } from './SignupScreen';
 
@@ -25,7 +26,7 @@ export function JoinInviteScreen({ token }: { token?: string }) {
 
   useEffect(() => {
     if (session.status === 'no-tenant') void acceptCurrentInvite();
-    if (session.status === 'active') window.location.href = '/';
+    if (session.status === 'active') window.location.href = appRoute.home;
   }, [session.status]);
 
   if (session.status === 'loading') return <p>Loading…</p>;
