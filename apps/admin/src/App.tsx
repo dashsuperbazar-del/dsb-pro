@@ -18,7 +18,10 @@ import { appRoute } from './lib/paths';
 
 export function App() {
   const session = useSession();
-  return <Router>
+  const testMode = import.meta.env.VITE_TEST_MODE === 'phase4-shop-test';
+  return <>
+    {testMode && <div class="shop-test-banner" role="status"><strong>PHASE 4 SHOP TEST</strong> — Use legacy DSB as the official record today. Enter the same transactions here only for comparison.</div>}
+    <Router>
     <Route path={appRoute.signup} component={SignupScreen} />
     <Route path={appRoute.join} component={JoinInviteScreen} />
     <Route path={appRoute.team} component={TeamScreen} />
@@ -28,7 +31,8 @@ export function App() {
     <Route path={appRoute.customers} component={CustomersScreen} />
     <Route path={appRoute.salesHistory} component={SalesHistoryScreen} />
     <Route default component={() => <Home session={session} />} />
-  </Router>;
+    </Router>
+  </>;
 }
 
 function Home({ session }: { session: ReturnType<typeof useSession> }) {
