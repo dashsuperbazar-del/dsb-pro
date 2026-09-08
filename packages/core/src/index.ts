@@ -38,3 +38,12 @@ export type {
   LegacyDsbParityReport,
   LegacyDsbParityResult,
 } from './parity';
+
+export { buildLegacyDsbImportPlan } from './legacyDsbImport';
+export type {
+  LegacyDsbImportPlan,
+  LegacyDsbImportItem,
+  LegacyDsbImportParty,
+  LegacyDsbImportCustomer,
+  LegacyDsbImportPrice,
+} from './legacyDsbImport';
