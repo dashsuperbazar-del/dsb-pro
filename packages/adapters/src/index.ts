@@ -11,3 +11,4 @@ export type { Item, Party, StockRow, PurchaseLine } from './masterData';
 export { listItems, listParties, createItem, createParty, listStock, postPurchase, voidPurchase, archiveMaster, uploadItemImage, purgeItemImage } from './masterData';
 export type { ItemPrice } from './pricing';
 export { listCurrentPrices, setItemPrice } from './pricing';
+export { replaceItemImage } from './itemImages';
