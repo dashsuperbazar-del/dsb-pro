@@ -18,7 +18,7 @@ export function PosScreen(){
   const [balances,setBalances]=useState<Record<string,number>>({}); const [shopId,setShopId]=useState(''); const [tenantId,setTenantId]=useState(''); const [businessDate,setBusinessDate]=useState('');
   const [cart,setCart]=useState<CartLine[]>([]); const [customerId,setCustomerId]=useState(''); const [globalDiscount,setGlobalDiscount]=useState('0'); const [extra,setExtra]=useState('0');
   const [tenders,setTenders]=useState<Tender[]>([{mode:'cash',amount:''}]); const [message,setMessage]=useState(''); const [error,setError]=useState(''); const [busy,setBusy]=useState(false);
-  const [barcode,setBarcode]=useState(''); const [paymentCustomer,setPaymentCustomer]=useState(''); const [paymentAmount,setPaymentAmount]=useState(''); const [paymentMode,setPaymentMode]=useState<Tender['mode']>('cash');
+  const [barcode,setBarcode]=useState(''); const [manualItemId,setManualItemId]=useState(''); const [manualUnitLevel,setManualUnitLevel]=useState<1|2|3>(1); const [paymentCustomer,setPaymentCustomer]=useState(''); const [paymentAmount,setPaymentAmount]=useState(''); const [paymentMode,setPaymentMode]=useState<Tender['mode']>('cash');
 
   async function refresh(){
     const membership=await getCurrentMembership(); if(!membership) throw new Error('No tenant membership.');
@@ -27,6 +27,7 @@ export function PosScreen(){
   }
   useEffect(()=>{ void refresh().catch(e=>setError(String(e))); },[]);
 
+  const manualItem=items.find(i=>i.id===manualItemId);
   const preview=useMemo(()=>cart.reduce((sum,l)=>sum+Math.round(l.qty*l.unitPricePaise)-l.discountPaise,0)-paise(globalDiscount)+paise(extra),[cart,globalDiscount,extra]);
   const tenderTotal=useMemo(()=>tenders.reduce((sum,t)=>sum+paise(t.amount),0),[tenders]);
 
@@ -40,7 +41,7 @@ export function PosScreen(){
   }
 
   async function addManual(ev:Event){ ev.preventDefault(); setError(''); const f=new FormData(ev.currentTarget as HTMLFormElement); const item=items.find(i=>i.id===String(f.get('itemId'))); if(!item)return;
-    try{ await addLine(item,Number(f.get('unitLevel')) as 1|2|3,Number(f.get('qty')),String(f.get('priceKind')) as 'retail'|'wholesale',paise(String(f.get('lineDiscount')||'0'))); }catch(e){setError(String(e));}
+    try{ await addLine(item,manualUnitLevel,Number(f.get('qty')),String(f.get('priceKind')) as 'retail'|'wholesale',paise(String(f.get('lineDiscount')||'0'))); }catch(e){setError(String(e));}
   }
 
   async function scan(ev:Event){ ev.preventDefault(); setError(''); try{
@@ -63,19 +64,21 @@ export function PosScreen(){
     try{ const c=await createCustomer({tenantId,name:String(f.get('name')),phone:String(f.get('phone')||'')||undefined,clientId:crypto.randomUUID()}); setCustomers(v=>[...v,c].sort((a,b)=>a.name.localeCompare(b.name))); setCustomerId(c.id); setMessage(`Customer ${c.name} created.`); (ev.currentTarget as HTMLFormElement).reset(); }catch(e){setError(String(e));}
   }
 
+  function handlePosKeyDown(ev:KeyboardEvent){ if(ev.ctrlKey&&ev.key==='Enter'){ ev.preventDefault(); void finalizeSale(); } }
+
   async function receivePayment(ev:Event){ ev.preventDefault(); if(!paymentCustomer)return; setBusy(true); setError('');
     try{ await recordCustomerPayment({shopId,customerId:paymentCustomer,businessDate,amountPaise:paise(paymentAmount),mode:paymentMode,clientId:crypto.randomUUID()}); setMessage('Customer payment recorded.'); setPaymentAmount(''); await refresh(); }catch(e){setError(String(e));} finally{setBusy(false);}
   }
 
-  return <main class="page wide">
-    <p><a href={appRoute.home}>← Home</a></p><h1>Sales POS</h1><p class="muted">Keyboard-first billing. Prices are re-resolved by the server when the sale is finalized.</p>
+  return <main class="page wide" onKeyDown={handlePosKeyDown}>
+    <p><a href={appRoute.home}>← Home</a></p><h1>Sales POS</h1><p class="muted">Keyboard-first billing. Prices are re-resolved by the server when the sale is finalized.</p><details class="card"><summary><strong>Keyboard map</strong></summary><p><kbd>Enter</kbd> submits the focused scan/item form · <kbd>Tab</kbd> moves through billing fields · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> finalizes the current sale.</p></details>
     {error&&<p role="alert" class="alert">{error}</p>}{message&&<p role="status" class="success">{message}</p>}
 
     <section class="card"><h2>1. Scan or add item</h2>
       <form onSubmit={scan} class="row"><label>Barcode <input autofocus value={barcode} onInput={e=>setBarcode((e.currentTarget as HTMLInputElement).value)} /></label><button>Scan / Add</button></form>
       <form onSubmit={addManual} class="grid-form">
-        <label>Item <select name="itemId" required><option value="">Choose…</option>{items.map(i=><option value={i.id}>{i.name}</option>)}</select></label>
-        <label>Unit <select name="unitLevel"><option value="1">Unit 1</option><option value="2">Unit 2</option><option value="3">Unit 3</option></select></label>
+        <label>Item <select name="itemId" required value={manualItemId} onChange={e=>{const id=(e.currentTarget as HTMLSelectElement).value;setManualItemId(id);const item=items.find(i=>i.id===id);setManualUnitLevel(item?.unit3?3:item?.unit2?2:1);}}><option value="">Choose…</option>{items.map(i=><option value={i.id}>{i.name}</option>)}</select></label>
+        <label>Unit <select name="unitLevel" value={manualUnitLevel} disabled={!manualItem} onChange={e=>setManualUnitLevel(Number((e.currentTarget as HTMLSelectElement).value) as 1|2|3)}><option value="1">{manualItem?.unit1||'Unit 1'}</option>{manualItem?.unit2&&<option value="2">{manualItem.unit2}</option>}{manualItem?.unit3&&<option value="3">{manualItem.unit3}</option>}</select></label>
         <label>Quantity <input name="qty" type="number" min="0.000001" step="any" value="1" required/></label>
         <label>Price <select name="priceKind"><option value="retail">Retail</option><option value="wholesale">Wholesale</option></select></label>
         <label>Line discount ₹ <input name="lineDiscount" type="number" min="0" step="0.01" value="0"/></label><button>Add line</button>
