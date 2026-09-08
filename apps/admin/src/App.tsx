@@ -28,6 +28,14 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
   if (session.status === 'loading') {
     return <p>Loading…</p>;
   }
+  if (session.status === 'error') {
+    return (
+      <main>
+        <p role="alert">Unable to load your session: {session.message}</p>
+        <p>Please refresh and try again.</p>
+      </main>
+    );
+  }
   if (session.status === 'signed-out') {
     return <LoginScreen />;
   }
