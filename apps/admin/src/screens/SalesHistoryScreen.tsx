@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
+import { compareLegacyDsbDayToPro, type LegacyDsbDayComparison } from '@dsb-pro/core';
 import { getDefaultShopId, getSaleReceipt, getShopBusinessDate, getShopDayReconciliation, listRecentSales, voidSale, type SaleInvoice, type SaleReceipt, type ShopDayReconciliation } from '@dsb-pro/adapters';
 import { LanguageToggle } from '../components/LanguageToggle';
 import { appRoute } from '../lib/paths';
@@ -11,6 +12,7 @@ type PrintMode='thermal'|'a4';
 export function SalesHistoryScreen(){
   const [sales,setSales]=useState<SaleInvoice[]>([]); const [receipt,setReceipt]=useState<SaleReceipt|null>(null); const [printMode,setPrintMode]=useState<PrintMode>('a4');
   const [shopId,setShopId]=useState(''); const [reportDate,setReportDate]=useState(''); const [report,setReport]=useState<ShopDayReconciliation|null>(null); const [reportBusy,setReportBusy]=useState(false);
+  const [legacyComparison,setLegacyComparison]=useState<LegacyDsbDayComparison|null>(null); const [legacyCompareFile,setLegacyCompareFile]=useState('');
   const [error,setError]=useState(''); const [message,setMessage]=useState(''); const [busy,setBusy]=useState(false);
   const [,forceLocale]=useState(0);
 
@@ -25,7 +27,18 @@ export function SalesHistoryScreen(){
 
   async function openReceipt(sale:SaleInvoice,mode:PrintMode){setBusy(true);setError('');try{setPrintMode(mode);setReceipt(await getSaleReceipt(sale.id));setTimeout(()=>window.print(),50);}catch(e){setError(String(e));}finally{setBusy(false);}}
   async function doVoid(sale:SaleInvoice){if(!confirm(`Void invoice ${sale.doc_no}? This creates reversing stock movements; history is retained.`))return;setBusy(true);setError('');try{await voidSale(sale.id,crypto.randomUUID());setMessage(`Invoice ${sale.doc_no} voided.`);await refresh();if(receipt?.invoice.id===sale.id)setReceipt(null);}catch(e){setError(String(e));}finally{setBusy(false);}}
-  async function refreshReport(){if(!shopId||!reportDate)return;setError('');try{await loadReport(shopId,reportDate);}catch(e){setError(String(e));}}
+  async function refreshReport(){if(!shopId||!reportDate)return;setError('');setLegacyComparison(null);setLegacyCompareFile('');try{await loadReport(shopId,reportDate);}catch(e){setError(String(e));}}
+  async function compareLegacyBackup(ev:Event){
+    setError(''); setLegacyComparison(null); setLegacyCompareFile('');
+    if(!report){setError('Refresh the DSB Pro day totals before comparing a legacy backup.');return;}
+    const file=(ev.currentTarget as HTMLInputElement).files?.[0]; if(!file)return;
+    if(file.size>5*1024*1024){setError('Legacy DSB backup is too large for this comparison screen.');return;}
+    try{
+      const parsed=JSON.parse(await file.text()) as unknown;
+      const comparison=compareLegacyDsbDayToPro(parsed,reportDate,report);
+      setLegacyComparison(comparison); setLegacyCompareFile(file.name);
+    }catch(e){setError(e instanceof Error?e.message:String(e));}
+  }
 
   const locale=getLocale();
   return <main class="page wide"><div class="row no-print"><a href={appRoute.home}>← {t('home',locale)}</a><LanguageToggle/></div><h1 class="no-print">{t('salesHistory',locale)}</h1>
@@ -51,6 +64,19 @@ export function SalesHistoryScreen(){
         <p><strong>Current customer outstanding:</strong> {money(report.currentCustomerOutstandingPaise)} · <strong>Current customer advance:</strong> {money(report.currentCustomerAdvancePaise)}</p>
         <h3>Items sold on {report.businessDate}</h3>
         {report.soldItems.length?<div class="table-wrap"><table><thead><tr><th>Item</th><th>Sold</th><th>Current stock</th></tr></thead><tbody>{report.soldItems.map(i=><tr><td>{i.name}</td><td>{i.soldQtySmallest} {i.smallestUnit}</td><td>{i.currentStockSmallest} {i.smallestUnit}</td></tr>)}</tbody></table></div>:<p>No finalized sale items for this date.</p>}
+        <hr/>
+        <h3>Compare with old DSB backup</h3>
+        <p class="muted">At shop closing, export a fresh JSON backup from old DSB and choose it here. The file is read in this browser; it is not uploaded to GitHub.</p>
+        <input aria-label="Choose closing DSB backup JSON" type="file" accept=".json,application/json" onChange={compareLegacyBackup}/>
+        {legacyComparison&&<div class="card" aria-label="Legacy DSB comparison result">
+          <p><strong>{legacyCompareFile}</strong><br/>Old DSB exported at {new Date(legacyComparison.legacy.exportedAt).toLocaleString()}.</p>
+          <p role="status" class={legacyComparison.exactMatch?'success':'alert'}><strong>{legacyComparison.exactMatch?'MATCH — Phase 4 day totals reconcile':'MISMATCH — review the rows below'}</strong></p>
+          <div class="table-wrap"><table><thead><tr><th>Check</th><th>Old DSB</th><th>DSB Pro</th><th>Result</th></tr></thead><tbody>
+            {legacyComparison.rows.map(row=><tr><td>{row.label}</td><td>{row.kind==='paise'?money(row.legacy):row.legacy}</td><td>{row.kind==='paise'?money(row.dsbPro):row.dsbPro}</td><td><strong>{row.match?'MATCH':'MISMATCH'}</strong></td></tr>)}
+          </tbody></table></div>
+          {legacyComparison.legacy.returnCreditPaise>0&&<p class="alert">Old DSB contains sale-return credit of {money(legacyComparison.legacy.returnCreditPaise)}. Returns need manual review and cannot receive an automatic PASS.</p>}
+          {legacyComparison.legacy.warnings.length>0&&<details><summary>Comparison warnings ({legacyComparison.legacy.warnings.length})</summary><ul>{legacyComparison.legacy.warnings.map(w=><li>{w}</li>)}</ul></details>}
+        </div>}
       </div>}
     </section>
 
