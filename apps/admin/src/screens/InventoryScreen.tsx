@@ -46,6 +46,7 @@ export function InventoryScreen() {
       const summary=await importLegacyDsbMaster({shopId,plan:legacyPlan,clientId:legacyClientId});
       setLegacyClientId(crypto.randomUUID());
       await refresh();
+      setLegacyPlan(null); setLegacyFileName('');
       setMessage(`Import complete: ${summary.items} items, ${summary.parties} suppliers, ${summary.customers} customers and ${summary.stockRows} stock balances loaded.`);
     }catch(e){setError(e instanceof Error?e.message:String(e));}
     finally{setLegacyBusy(false);}
