@@ -65,4 +65,24 @@ test('real browser money path posts stock then finalizes a paid sale',async({pag
   await expect(reconciliation.locator('tr').filter({hasText:'Sales total'})).toContainText('₹10.00');
   await expect(reconciliation.locator('tr').filter({hasText:'All customer receipts'})).toContainText('₹10.00');
   await expect(reconciliation.locator('table').nth(1).locator('tbody td').first()).toHaveText('₹10.00');
+
+  const businessDate=await page.getByLabel('Reconciliation business date').inputValue();
+  const legacyClosingBackup={
+    version:3,
+    exportedAt:new Date().toISOString(),
+    saleInvoices:[{
+      id:'LEGACY-E2E-1',date:businessDate,customerId:'C-WALKIN',customerName:'Walk-in Customer',
+      paymentType:'cash',items:[],extraCharges:[],subtotal:10,discountTotal:0,gstTotal:0,grandTotal:10,
+    }],
+    salePayments:[],
+  };
+  await page.getByLabel('Choose closing DSB backup JSON').setInputFiles({
+    name:'DSB_closing_test.json',
+    mimeType:'application/json',
+    buffer:Buffer.from(JSON.stringify(legacyClosingBackup)),
+  });
+  const comparison=page.locator('[aria-label="Legacy DSB comparison result"]');
+  await expect(comparison.getByRole('status')).toContainText('MATCH — Phase 4 day totals reconcile');
+  await expect(comparison.locator('tbody tr').filter({hasText:'Sales total'})).toContainText('MATCH');
+  await expect(comparison.locator('tbody tr').filter({hasText:'Cash'})).toContainText('MATCH');
 });
