@@ -19,3 +19,6 @@ export { listCustomerOutstandingInvoices } from './receivables';
 
 export type { LegacyDsbImportSummary } from './legacyImport';
 export { importLegacyDsbMaster } from './legacyImport';
+
+export type { ShopDayReconciliation, DayReconciliationPaymentModes, DayReconciliationSoldItem } from './reconciliation';
+export { getShopDayReconciliation } from './reconciliation';
