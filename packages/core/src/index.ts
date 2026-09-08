@@ -47,3 +47,6 @@ export type {
   LegacyDsbImportCustomer,
   LegacyDsbImportPrice,
 } from './legacyDsbImport';
+
+export { summarizeLegacyDsbDayBackup, compareLegacyDsbDayToPro } from './legacyDsbReconciliation';
+export type { LegacyDsbDayPaymentModes, LegacyDsbDaySummary, DsbProComparableDay, LegacyDsbDayComparisonRow, LegacyDsbDayComparison } from './legacyDsbReconciliation';
