@@ -5,10 +5,9 @@ select plan(7);
 select has_table('public', 'permissions', 'permissions table exists');
 select has_table('public', 'role_permissions', 'role_permissions table exists');
 
-select results_eq(
-  $$ select count(*)::int from permissions $$,
-  $$ values (4) $$,
-  'four permission codes seeded'
+select ok(
+  (select count(*) from permissions where code in ('MANAGE_TENANT_USERS','MANAGE_INVITES','MANAGE_DEVICES','VIEW_AUDIT_LOG')) = 4,
+  'original Phase 1 permission codes remain seeded'
 );
 
 select ok(
