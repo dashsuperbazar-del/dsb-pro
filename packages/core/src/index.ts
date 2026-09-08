@@ -31,3 +31,10 @@ export type {
   LegacyDsbTotals,
   LineTotals,
 } from './totals';
+
+export { compareLegacyDsbInvoice, compareLegacyDsbInvoices } from './parity';
+export type {
+  LegacyDsbInvoiceRecord,
+  LegacyDsbParityReport,
+  LegacyDsbParityResult,
+} from './parity';
