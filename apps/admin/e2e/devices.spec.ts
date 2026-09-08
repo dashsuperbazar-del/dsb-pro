@@ -4,6 +4,14 @@ function uniqueEmail() {
   return `test-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`;
 }
 
+const TEST_PASSWORD = 'shop2026pw';
+
+async function fillSignup(page: Page, email: string) {
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Password', { exact: true }).fill(TEST_PASSWORD);
+  await page.getByLabel('Confirm password').fill(TEST_PASSWORD);
+}
+
 type DeviceRow = {
   id: string;
   user_id: string;
@@ -49,10 +57,6 @@ function setupPageMocks(
 
   p.route('**/rest/v1/rpc/register_device', async (route: Route) => {
     const body = route.request().postDataJSON();
-    // Mirrors register_device()'s real "on conflict (tenant_id, user_id,
-    // device_id) do update" semantics — a second call for the same browser
-    // (e.g. after NoTenantScreen's window.location.reload()) must reuse the
-    // same row, not create a duplicate.
     const existing = state.devices.find((d: DeviceRow) => d.user_id === userId && d.device_id === body.p_device_id);
     if (existing) {
       existing.last_seen = new Date().toISOString();
@@ -113,15 +117,10 @@ test('an owner sees their own device, auto-labeled, and can rename it', async ({
   setupPageMocks(page, { email, userId: 'owner-devices-1', tenantId: 'tenant-devices-1', shopId: 'shop-devices-1', state });
 
   await page.goto('/signup');
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill('shop2026pw');
+  await fillSignup(page, email);
   await page.getByRole('button', { name: 'Sign up' }).click();
   await page.getByLabel('Shop name').fill('Devices Test Shop');
   await page.getByRole('button', { name: 'Create your shop' }).click();
-  // NoTenantScreen's onSubmit does window.location.reload() after
-  // createTenant() resolves; wait for that reload to land on the signed-in
-  // app (matching Tasks 9-11's specs) before navigating on, otherwise the
-  // reload can race the next page.goto and abort it.
   await page.getByText(/DSB Pro — Admin/i).waitFor({ timeout: 5000 });
 
   await page.goto('/devices');
@@ -139,13 +138,10 @@ test('revoking someone else\'s device is honest about not enforcing anything yet
   setupPageMocks(page, { email, userId: 'owner-devices-2', tenantId: 'tenant-devices-2', shopId: 'shop-devices-2', state });
 
   await page.goto('/signup');
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill('shop2026pw');
+  await fillSignup(page, email);
   await page.getByRole('button', { name: 'Sign up' }).click();
   await page.getByLabel('Shop name').fill('Owner Devices Shop');
   await page.getByRole('button', { name: 'Create your shop' }).click();
-  // See the comment in the previous test — wait for the post-reload app to
-  // land before navigating on, to avoid a reload/goto navigation race.
   await page.getByText(/DSB Pro — Admin/i).waitFor({ timeout: 5000 });
 
   await page.goto('/devices');
