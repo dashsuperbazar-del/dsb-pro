@@ -18,7 +18,7 @@ export function PosScreen(){
   const [balances,setBalances]=useState<Record<string,number>>({}); const [shopId,setShopId]=useState(''); const [tenantId,setTenantId]=useState(''); const [businessDate,setBusinessDate]=useState('');
   const [cart,setCart]=useState<CartLine[]>([]); const [customerId,setCustomerId]=useState(''); const [globalDiscount,setGlobalDiscount]=useState('0'); const [extra,setExtra]=useState('0');
   const [tenders,setTenders]=useState<Tender[]>([{mode:'cash',amount:''}]); const [message,setMessage]=useState(''); const [error,setError]=useState(''); const [busy,setBusy]=useState(false);
-  const [barcode,setBarcode]=useState(''); const [manualItemId,setManualItemId]=useState(''); const [manualUnitLevel,setManualUnitLevel]=useState<1|2|3>(1); const [paymentCustomer,setPaymentCustomer]=useState(''); const [paymentAmount,setPaymentAmount]=useState(''); const [paymentMode,setPaymentMode]=useState<Tender['mode']>('cash');
+  const [barcode,setBarcode]=useState(''); const [manualItemId,setManualItemId]=useState(''); const [manualUnitLevel,setManualUnitLevel]=useState<1|2|3>(1); const [saleClientId,setSaleClientId]=useState(()=>crypto.randomUUID()); const [paymentClientId,setPaymentClientId]=useState(()=>crypto.randomUUID()); const [paymentCustomer,setPaymentCustomer]=useState(''); const [paymentAmount,setPaymentAmount]=useState(''); const [paymentMode,setPaymentMode]=useState<Tender['mode']>('cash');
 
   async function refresh(){
     const membership=await getCurrentMembership(); if(!membership) throw new Error('No tenant membership.');
@@ -50,13 +50,13 @@ export function PosScreen(){
   }catch(e){setError(String(e));} }
 
   async function finalizeSale(){
-    if(!cart.length){setError('Add at least one item.');return;} setBusy(true); setError('');
+    if(busy)return; if(!cart.length){setError('Add at least one item.');return;} setBusy(true); setError('');
     try{
-      const saleId=await postSale({shopId,customerId:customerId||undefined,businessDate,discountPaise:paise(globalDiscount),extraChargesPaise:paise(extra),clientId:crypto.randomUUID(),
+      const saleId=await postSale({shopId,customerId:customerId||undefined,businessDate,discountPaise:paise(globalDiscount),extraChargesPaise:paise(extra),clientId:saleClientId,
         lines:cart.map(l=>({itemId:l.item.id,unitLevel:l.unitLevel,qty:l.qty,priceKind:l.priceKind,discountPaise:l.discountPaise})),
         payments:tenders.filter(t=>paise(t.amount)>0).map(t=>({amountPaise:paise(t.amount),mode:t.mode})),
       });
-      setMessage(`Sale finalized: ${saleId}`); setCart([]); setGlobalDiscount('0'); setExtra('0'); setTenders([{mode:'cash',amount:''}]); await refresh();
+      setMessage(`Sale finalized: ${saleId}`); setSaleClientId(crypto.randomUUID()); setCart([]); setGlobalDiscount('0'); setExtra('0'); setTenders([{mode:'cash',amount:''}]); await refresh();
     }catch(e){setError(String(e));} finally{setBusy(false);}
   }
 
@@ -66,8 +66,8 @@ export function PosScreen(){
 
   function handlePosKeyDown(ev:KeyboardEvent){ if(ev.ctrlKey&&ev.key==='Enter'){ ev.preventDefault(); void finalizeSale(); } }
 
-  async function receivePayment(ev:Event){ ev.preventDefault(); if(!paymentCustomer)return; setBusy(true); setError('');
-    try{ await recordCustomerPayment({shopId,customerId:paymentCustomer,businessDate,amountPaise:paise(paymentAmount),mode:paymentMode,clientId:crypto.randomUUID()}); setMessage('Customer payment recorded.'); setPaymentAmount(''); await refresh(); }catch(e){setError(String(e));} finally{setBusy(false);}
+  async function receivePayment(ev:Event){ ev.preventDefault(); if(busy||!paymentCustomer)return; setBusy(true); setError('');
+    try{ await recordCustomerPayment({shopId,customerId:paymentCustomer,businessDate,amountPaise:paise(paymentAmount),mode:paymentMode,clientId:paymentClientId}); setPaymentClientId(crypto.randomUUID()); setMessage('Customer payment recorded.'); setPaymentAmount(''); await refresh(); }catch(e){setError(String(e));} finally{setBusy(false);}
   }
 
   return <main class="page wide" onKeyDown={handlePosKeyDown}>
