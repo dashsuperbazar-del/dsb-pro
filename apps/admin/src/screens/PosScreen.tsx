@@ -71,7 +71,7 @@ export function PosScreen(){
   }
 
   return <main class="page wide" onKeyDown={handlePosKeyDown}>
-    <p><a href={appRoute.home}>← Home</a></p><h1>Sales POS</h1><p class="muted">Keyboard-first billing. Prices are re-resolved by the server when the sale is finalized.</p><details class="card"><summary><strong>Keyboard map</strong></summary><p><kbd>Enter</kbd> submits the focused scan/item form · <kbd>Tab</kbd> moves through billing fields · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> finalizes the current sale.</p></details>
+    <p><a href={appRoute.home}>← Home</a></p><h1>Sales POS</h1><p class="muted">Keyboard-first billing. Prices are re-resolved by the server when the sale is finalized.</p><details class="card" open><summary><strong>Keyboard map</strong></summary><p><kbd>Enter</kbd> submits the focused scan/item form · <kbd>Tab</kbd> moves through billing fields · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> finalizes the current sale.</p></details>
     {error&&<p role="alert" class="alert">{error}</p>}{message&&<p role="status" class="success">{message}</p>}
 
     <section class="card"><h2>1. Scan or add item</h2>
