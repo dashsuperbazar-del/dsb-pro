@@ -148,7 +148,8 @@ jobs:
               ('record_customer_payment', to_regprocedure('public.record_customer_payment(uuid,uuid,date,bigint,text,text,jsonb,text)') is not null),
               ('phase4_idempotency_wrapper', to_regprocedure('public.phase4_post_sale_unlocked(uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text)') is not null),
               ('legacy_import_runs', to_regclass('public.legacy_import_runs') is not null),
-              ('legacy_import_rpc', to_regprocedure('public.import_legacy_dsb_master(uuid,jsonb,text)') is not null)
+              ('legacy_import_rpc', to_regprocedure('public.import_legacy_dsb_master(uuid,jsonb,text)') is not null),
+              ('day_reconciliation_rpc', to_regprocedure('public.get_shop_day_reconciliation(uuid,date)') is not null)
           )
           select name from required where not present order by name;
           SQL
