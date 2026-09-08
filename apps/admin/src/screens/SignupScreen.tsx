@@ -3,6 +3,7 @@ import { route } from 'preact-router';
 import { signUp } from '@dsb-pro/adapters';
 import { classifyError, errorMessage } from '@dsb-pro/adapters';
 import { passwordStrength } from '@dsb-pro/core';
+import { appRoute } from '../lib/paths';
 
 export function SignupScreen({ onSignedUp, onLogIn }: { onSignedUp?: () => void; onLogIn?: () => void } = {}) {
   const [email, setEmail] = useState('');
@@ -25,7 +26,7 @@ export function SignupScreen({ onSignedUp, onLogIn }: { onSignedUp?: () => void;
       const session = await signUp(email, password);
       if (session) {
         if (onSignedUp) onSignedUp();
-        else route('/');
+        else route(appRoute.home);
       } else {
         setConfirmationPending(true);
       }
@@ -60,7 +61,7 @@ export function SignupScreen({ onSignedUp, onLogIn }: { onSignedUp?: () => void;
         <button type="submit" disabled={busy}>Sign up</button>
       </form>
       <p>
-        Already have an account? <a href="/" onClick={logIn}>Log in</a>
+        Already have an account? <a href={appRoute.home} onClick={logIn}>Log in</a>
       </p>
     </main>
   );
