@@ -17,23 +17,21 @@ export function JoinInviteScreen({ token }: { token?: string }) {
     }
   }, [session.status]);
 
-  useEffect(() => {
-    if (session.status !== 'no-tenant' || attempted || !token) return;
-
-    let cancelled = false;
+  async function acceptCurrentInvite() {
+    if (attempted || !token) return;
     setAttempted(true);
-    void acceptInvite(token)
-      .then(() => {
-        if (!cancelled) window.location.reload();
-      })
-      .catch((err) => {
-        if (!cancelled) setError(errorMessage(classifyError(err), err));
-      });
+    try {
+      await acceptInvite(token);
+      window.location.reload();
+    } catch (err) {
+      setError(errorMessage(classifyError(err), err));
+    }
+  }
 
-    return () => {
-      cancelled = true;
-    };
-  }, [session.status, attempted, token]);
+  useEffect(() => {
+    if (session.status !== 'no-tenant') return;
+    void acceptCurrentInvite();
+  }, [session.status]);
 
   if (session.status === 'loading') {
     return <p>Loading…</p>;
@@ -51,7 +49,7 @@ export function JoinInviteScreen({ token }: { token?: string }) {
     return (
       <div>
         <p>Sign up or log in to accept this invite.</p>
-        <SignupScreen onSignedUp={() => {}} />
+        <SignupScreen onSignedUp={() => void acceptCurrentInvite()} />
       </div>
     );
   }
