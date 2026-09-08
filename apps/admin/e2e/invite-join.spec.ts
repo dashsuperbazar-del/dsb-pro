@@ -20,9 +20,7 @@ test('create your shop takes an owner straight into the app', async ({ page }) =
   await expect(page.getByText(/role owner/i)).toBeVisible();
 });
 
-test('visiting a join link while signed out routes through signup first, then joins', async ({ page }) => {
-  // Create an owner account first so this test also proves that a real
-  // authenticated session can be cleanly returned to the signed-out state.
+test('owner creates a real invite and a new user accepts it through the deep link', async ({ page, browser }) => {
   const ownerEmail = uniqueEmail();
   await page.goto('/signup');
   await page.getByLabel('Email').fill(ownerEmail);
@@ -32,15 +30,35 @@ test('visiting a join link while signed out routes through signup first, then jo
   await page.getByRole('button', { name: 'Create your shop' }).click();
   await expect(page.getByText(/DSB Pro — Admin/)).toBeVisible();
 
-  // clearCookies() is not a valid Supabase sign-out: the browser client
-  // persists its session in localStorage and also keeps the session in memory.
-  // Use the application's real sign-out path so /join/:token is genuinely
-  // exercised from the signed-out state.
-  await page.getByRole('button', { name: 'Sign out' }).click();
-  await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible();
+  await page.goto('/team');
+  await expect(page.getByRole('heading', { name: 'Team' })).toBeVisible();
+  await page.getByRole('button', { name: 'Create invite' }).click();
+  const inviteLink = await page.getByTestId('invite-link').textContent();
+  expect(inviteLink).toMatch(/\/join\/[^/]+$/);
 
-  // This spec intentionally uses an invalid token because it does not need a
-  // real invite to verify the deep-link -> signup -> invalid-token error path.
+  const invitePage = await browser.newPage();
+  await invitePage.goto(inviteLink!);
+  await expect(invitePage.getByText(/Sign up or log in to accept this invite/)).toBeVisible();
+  await invitePage.getByLabel('Email').fill(uniqueEmail());
+  await invitePage.getByLabel('Password').fill(TEST_PASSWORD);
+  await invitePage.getByRole('button', { name: 'Sign up' }).click();
+
+  await expect(invitePage.getByText(/DSB Pro — Admin/)).toBeVisible();
+  await expect(invitePage.getByText(/role cashier/i)).toBeVisible();
+  await invitePage.close();
+});
+
+test('invalid invite remains a user-facing error after signed-out signup', async ({ page }) => {
+  const ownerEmail = uniqueEmail();
+  await page.goto('/signup');
+  await page.getByLabel('Email').fill(ownerEmail);
+  await page.getByLabel('Password').fill(TEST_PASSWORD);
+  await page.getByRole('button', { name: 'Sign up' }).click();
+  await page.getByLabel('Shop name').fill('Invite Error Shop');
+  await page.getByRole('button', { name: 'Create your shop' }).click();
+  await expect(page.getByText(/DSB Pro — Admin/)).toBeVisible();
+  await page.getByRole('button', { name: 'Sign out' }).click();
+
   await page.goto('/join/not-a-real-token');
   await page.getByLabel('Email').fill(uniqueEmail());
   await page.getByLabel('Password').fill(TEST_PASSWORD);
