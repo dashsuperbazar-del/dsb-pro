@@ -5,6 +5,8 @@ import {
   listInvites,
   listTenantUsers,
   setUserRole,
+  setUserStatus,
+  removeTenantUser,
   isEmailVerified,
   classifyError,
   errorMessage,
@@ -134,7 +136,6 @@ function PendingInvites() {
 function MembersList() {
   const [members, setMembers] = useState<TenantUser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [caveat, setCaveat] = useState(false);
 
   useEffect(() => {
     listTenantUsers().then(setMembers).catch((err) => setError(errorMessage(classifyError(err), err)));
@@ -145,7 +146,27 @@ function MembersList() {
     try {
       await setUserRole(userId, role);
       setMembers((prev) => (prev ? prev.map((m) => (m.userId === userId ? { ...m, role } : m)) : prev));
-      setCaveat(true);
+    } catch (err) {
+      setError(errorMessage(classifyError(err), err));
+    }
+  }
+
+  async function onStatusChange(member: TenantUser) {
+    const status = member.status === 'active' ? 'disabled' : 'active';
+    setError(null);
+    try {
+      await setUserStatus(member.userId, status);
+      setMembers((prev) => (prev ? prev.map((m) => (m.userId === member.userId ? { ...m, status } : m)) : prev));
+    } catch (err) {
+      setError(errorMessage(classifyError(err), err));
+    }
+  }
+
+  async function onRemove(userId: string) {
+    setError(null);
+    try {
+      await removeTenantUser(userId);
+      setMembers((prev) => (prev ? prev.filter((m) => m.userId !== userId) : prev));
     } catch (err) {
       setError(errorMessage(classifyError(err), err));
     }
@@ -155,17 +176,22 @@ function MembersList() {
     <section aria-label="Team members" data-testid="members-list">
       <h2>Members</h2>
       {error && <p role="alert">{error}</p>}
-      {caveat && <p>A role change takes effect on that person's next sign-in — or up to about an hour if they're already signed in.</p>}
       {members === null ? <p>Loading…</p> : (
         <ul>
           {members.length === 0 && <li>No members yet.</li>}
           {members.map((member) => (
             <li key={member.userId}>
-              {member.userId} — {member.status}
+              {member.displayName ?? member.email ?? member.userId} — {member.status}{' '}
               {member.role !== 'owner' ? (
-                <select value={member.role} onChange={(e) => onRoleChange(member.userId, (e.target as HTMLSelectElement).value as Role)}>
-                  {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                </select>
+                <>
+                  <select aria-label={`Role for ${member.email ?? member.userId}`} value={member.role} onChange={(e) => void onRoleChange(member.userId, (e.target as HTMLSelectElement).value as Role)}>
+                    {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>{' '}
+                  <button type="button" onClick={() => void onStatusChange(member)}>
+                    {member.status === 'active' ? 'Disable' : 'Reactivate'}
+                  </button>{' '}
+                  <button type="button" onClick={() => void onRemove(member.userId)}>Remove</button>
+                </>
               ) : <span> ({member.role})</span>}
             </li>
           ))}
