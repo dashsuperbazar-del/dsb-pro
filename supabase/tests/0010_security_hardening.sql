@@ -43,13 +43,15 @@ select throws_ok(
 reset role;
 
 -- A slug collision must not be swallowed as an idempotent retry and return NULL.
+-- The function deliberately re-raises unrelated unique violations, so assert the
+-- original PostgreSQL unique-violation code rather than inventing a rewritten message.
 set role authenticated;
 select set_config('request.jwt.claims',
   json_build_object('sub', 'f0000000-0000-0000-0000-000000000004', 'role', 'authenticated')::text, true);
 select throws_ok(
   $$ select create_tenant('Collision Co', 'other-co', 'Collision Shop', 'hardening-client-2') $$,
-  null, 'tenant slug already exists',
-  'create_tenant() rejects an unrelated slug collision'
+  '23505', null,
+  'create_tenant() re-raises an unrelated slug unique violation'
 );
 reset role;
 
