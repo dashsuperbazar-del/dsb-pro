@@ -28,6 +28,10 @@ export async function listStock(shopId:string):Promise<StockRow[]> {
  const {data,error}=await getSupabaseClient().from('stock_current').select('tenant_id,shop_id,item_id,qty_base').eq('shop_id',shopId);
  if(error) throw new Error(errorMessage(error)); return (data??[]) as StockRow[];
 }
+export async function getShopBusinessDate(shopId:string):Promise<string> {
+ const {data,error}=await getSupabaseClient().rpc('shop_business_date',{p_shop_id:shopId});
+ return must(data,error) as string;
+}
 export async function postPurchase(input:{shopId:string;partyId?:string;billNo?:string;businessDate:string;discountPaise?:number;extraChargesPaise?:number;clientId:string;lines:PurchaseLine[];billImagePath?:string}):Promise<string> {
  const {data,error}=await getSupabaseClient().rpc('post_purchase',{p_shop_id:input.shopId,p_party_id:input.partyId??null,p_bill_no:input.billNo??null,p_business_date:input.businessDate,p_discount_paise:input.discountPaise??0,p_extra_charges_paise:input.extraChargesPaise??0,p_client_id:input.clientId,p_lines:input.lines.map(l=>({item_id:l.itemId,unit_level:l.unitLevel,qty:l.qty,unit_price_paise:l.unitPricePaise})),p_bill_image_path:input.billImagePath??null});
  return must(data,error) as string;
