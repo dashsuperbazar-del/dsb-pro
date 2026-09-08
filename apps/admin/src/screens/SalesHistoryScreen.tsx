@@ -10,10 +10,10 @@ type PrintMode='thermal'|'a4';
 
 export function SalesHistoryScreen(){
   const [sales,setSales]=useState<SaleInvoice[]>([]); const [receipt,setReceipt]=useState<SaleReceipt|null>(null); const [printMode,setPrintMode]=useState<PrintMode>('a4');
-  const [shopId,setShopId]=useState(''); const [error,setError]=useState(''); const [message,setMessage]=useState(''); const [busy,setBusy]=useState(false);
+  const [error,setError]=useState(''); const [message,setMessage]=useState(''); const [busy,setBusy]=useState(false);
   const [,forceLocale]=useState(0);
 
-  async function refresh(){const shop=await getDefaultShopId();setShopId(shop);setSales(await listRecentSales(shop,100));}
+  async function refresh(){const shop=await getDefaultShopId();setSales(await listRecentSales(shop,100));}
   useEffect(()=>{void refresh().catch(e=>setError(String(e)));const h=()=>forceLocale(v=>v+1);window.addEventListener('dsb-locale-change',h);return()=>window.removeEventListener('dsb-locale-change',h);},[]);
 
   async function openReceipt(sale:SaleInvoice,mode:PrintMode){setBusy(true);setError('');try{setPrintMode(mode);setReceipt(await getSaleReceipt(sale.id));setTimeout(()=>window.print(),50);}catch(e){setError(String(e));}finally{setBusy(false);}}
