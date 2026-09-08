@@ -100,6 +100,15 @@ jobs:
         with:
           name: admin-dist
           path: apps/admin/dist
+      - name: Validate GitHub Pages fallback build and SPA deep-link fallback
+        env:
+          VITE_BASE_PATH: /dsb-pro/
+        run: |
+          pnpm --filter @dsb-pro/admin run build
+          cp apps/admin/dist/index.html apps/admin/dist/404.html
+          test -s apps/admin/dist/404.html
+          grep -q '/dsb-pro/assets/' apps/admin/dist/index.html
+          grep -q '/dsb-pro/assets/' apps/admin/dist/404.html
 
   deploy:
     needs: [build]
@@ -118,6 +127,13 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Validate production deployment config
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          test -n "$VITE_SUPABASE_URL" || { echo 'VITE_SUPABASE_URL secret is required'; exit 1; }
+          test -n "$VITE_SUPABASE_ANON_KEY" || { echo 'VITE_SUPABASE_ANON_KEY secret is required'; exit 1; }
       - name: Build Cloudflare Pages artifact with production config
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
@@ -134,7 +150,9 @@ jobs:
           VITE_BASE_PATH: /dsb-pro/
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-        run: pnpm --filter @dsb-pro/admin run build
+        run: |
+          pnpm --filter @dsb-pro/admin run build
+          cp apps/admin/dist/index.html apps/admin/dist/404.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: apps/admin/dist
