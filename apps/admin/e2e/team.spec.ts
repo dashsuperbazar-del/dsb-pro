@@ -171,8 +171,13 @@ test('owner revokes a pending invite', async ({ page }) => {
 });
 
 test('owner can change role, disable, reactivate, and remove a member', async ({ page }) => {
-  const state = baseState({ ownerLoggedIn: true, joinerLoggedIn: true, tenantCreated: true });
+  // Establish a real browser auth session through the same mocked signup path
+  // used by the other Team E2Es instead of only toggling in-memory flags. The
+  // latter left Supabase localStorage empty, so /team correctly rendered the
+  // signed-out route and the test never exercised member lifecycle controls.
+  const state = baseState({ joinerLoggedIn: true });
   setupMocks(page, state, '3');
+  await createOwnerShop(page, state, 'Member Lifecycle Test');
   await page.goto('/team');
   const members = page.getByTestId('members-list');
   await expect(members).toContainText(state.joinerEmail!);
