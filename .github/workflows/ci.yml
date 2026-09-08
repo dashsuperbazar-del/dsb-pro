@@ -47,6 +47,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -64,6 +66,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -90,6 +94,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -113,20 +119,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
-      - uses: actions/download-artifact@v4
-        with:
-          name: admin-dist
-          path: apps/admin/dist
+      - run: pnpm install --frozen-lockfile
+      - name: Build Cloudflare Pages artifact with production config
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: pnpm --filter @dsb-pro/admin run build
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy apps/admin/dist --project-name=dsb-pro
+      - name: Build GitHub Pages fallback artifact
+        env:
+          VITE_BASE_PATH: /dsb-pro/
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: pnpm --filter @dsb-pro/admin run build
       - uses: actions/upload-pages-artifact@v3
         with:
           path: apps/admin/dist
