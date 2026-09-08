@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { acceptInvite, classifyError, errorMessage } from '@dsb-pro/adapters';
 import { useSession } from '../lib/useSession';
 import { appRoute } from '../lib/paths';
@@ -10,12 +10,15 @@ import { SignupScreen } from './SignupScreen';
 export function JoinInviteScreen({ token }: { token?: string }) {
   const session = useSession();
   const [error, setError] = useState<string | null>(null);
-  const [attempted, setAttempted] = useState(false);
+  const attemptedRef = useRef(false);
   const [mode, setMode] = useState<'signup' | 'login'>('signup');
 
   async function acceptCurrentInvite() {
-    if (attempted || !token) return;
-    setAttempted(true);
+    // Signup/login completion and the session transition to `no-tenant` can
+    // happen in the same render cycle. A ref is intentionally used instead of
+    // state so both paths cannot race into accept_invite before a rerender.
+    if (attemptedRef.current || !token) return;
+    attemptedRef.current = true;
     try {
       await acceptInvite(token);
       window.location.reload();
