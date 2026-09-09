@@ -81,6 +81,18 @@ create trigger sync_idempotency_keys_immutable before update or delete on sync_i
 alter table sync_idempotency_keys enable row level security;
 revoke all on sync_idempotency_keys from anon,authenticated;
 
+-- backup_ro is an out-of-band BYPASSRLS role on the live project. New Phase 5
+-- tables must be explicitly included or the nightly public-schema pg_dump will
+-- begin failing immediately after this migration. CI/local stacks do not
+-- create this role, so keep the grant portable and conditional.
+do $phase5_backup$
+begin
+  if exists(select 1 from pg_roles where rolname='backup_ro') then
+    execute 'grant select on table sync_conflicts, sync_idempotency_keys to backup_ro';
+  end if;
+end
+$phase5_backup$;
+
 create function phase5_assert_schema(p_schema_version integer) returns void
 language plpgsql immutable security definer set search_path=public as $$
 begin
