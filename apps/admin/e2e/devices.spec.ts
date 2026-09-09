@@ -132,7 +132,7 @@ test('an owner sees their own device, auto-labeled, and can rename it', async ({
   await expect(page.getByTestId('my-devices')).toContainText('My laptop');
 });
 
-test('revoking someone else\'s device is honest about not enforcing anything yet', async ({ page }) => {
+test('device screen states that Phase 5 revocation blocks sync on the next request', async ({ page }) => {
   const email = uniqueEmail();
   const state = { loggedIn: false, tenantCreated: false, devices: [] as DeviceRow[] };
   setupPageMocks(page, { email, userId: 'owner-devices-2', tenantId: 'tenant-devices-2', shopId: 'shop-devices-2', state });
@@ -145,5 +145,5 @@ test('revoking someone else\'s device is honest about not enforcing anything yet
   await page.getByText(/DSB Pro — Admin/i).waitFor({ timeout: 5000 });
 
   await page.goto('/devices');
-  await expect(page.getByText(/does not yet block/i)).toBeVisible();
+  await expect(page.getByText(/blocks that browser from pulling or pushing queued Phase 5 sync work/i)).toBeVisible();
 });
