@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import {
-  createCustomer, findItemByBarcode, getCurrentMembership, getDefaultShopId, getShopBusinessDate,
-  listCurrentPrices, listCustomerBalances, listCustomers, listItems, listRecentSales, postSale, recordCustomerPayment,
+  createCustomer, findItemByBarcode, getShopBusinessDate,
+  listCurrentPrices, listCustomerBalances, listCustomers, listItems, listRecentSales, recordCustomerPayment,
   type Customer, type Item, type SaleInvoice,
 } from '@dsb-pro/adapters';
+import type { OfflineSaleRecord } from '@dsb-pro/sync';
 import { appRoute } from '../lib/paths';
+import {
+  finalizeSaleResilient, findOfflineBarcode, getOfflineBusinessDate, getOfflineCustomers, getOfflineItems,
+  getOfflinePrices, getOfflineRuntimeIdentity, listOfflineSales, waitForOfflineRuntime,
+} from '../lib/offlineSync';
 
 type CartLine = { item:Item; unitLevel:1|2|3; qty:number; priceKind:'retail'|'wholesale'; unitPricePaise:number; discountPaise:number };
 type Tender = { mode:'cash'|'upi'|'card'|'bank'|'other'; amount:string };
@@ -15,15 +20,24 @@ function unitName(item:Item,level:1|2|3){ return level===1?item.unit1:level===2?
 
 export function PosScreen(){
   const [items,setItems]=useState<Item[]>([]); const [customers,setCustomers]=useState<Customer[]>([]); const [sales,setSales]=useState<SaleInvoice[]>([]);
+  const [offlineSales,setOfflineSales]=useState<OfflineSaleRecord[]>([]);
   const [balances,setBalances]=useState<Record<string,number>>({}); const [shopId,setShopId]=useState(''); const [tenantId,setTenantId]=useState(''); const [businessDate,setBusinessDate]=useState('');
   const [cart,setCart]=useState<CartLine[]>([]); const [customerId,setCustomerId]=useState(''); const [globalDiscount,setGlobalDiscount]=useState('0'); const [extra,setExtra]=useState('0');
   const [tenders,setTenders]=useState<Tender[]>([{mode:'cash',amount:''}]); const [message,setMessage]=useState(''); const [error,setError]=useState(''); const [busy,setBusy]=useState(false);
   const [barcode,setBarcode]=useState(''); const [manualItemId,setManualItemId]=useState(''); const [manualUnitLevel,setManualUnitLevel]=useState<1|2|3>(1); const [saleClientId,setSaleClientId]=useState(()=>crypto.randomUUID()); const [paymentClientId,setPaymentClientId]=useState(()=>crypto.randomUUID()); const [paymentCustomer,setPaymentCustomer]=useState(''); const [paymentAmount,setPaymentAmount]=useState(''); const [paymentMode,setPaymentMode]=useState<Tender['mode']>('cash');
 
   async function refresh(){
-    const membership=await getCurrentMembership(); if(!membership) throw new Error('No tenant membership.');
-    const shop=await getDefaultShopId(); const [i,c,d,s,b]=await Promise.all([listItems(),listCustomers(),getShopBusinessDate(shop),listRecentSales(shop,20),listCustomerBalances()]);
-    setTenantId(membership.tenantId); setShopId(shop); setItems(i); setCustomers(c); setBusinessDate(d); setSales(s); setBalances(Object.fromEntries(b.map(x=>[x.customer_id,x.balance_paise])));
+    await waitForOfflineRuntime();
+    const identity=getOfflineRuntimeIdentity(); if(!identity) throw new Error('Offline shop cache is not ready.');
+    setTenantId(identity.tenantId); setShopId(identity.shopId);
+    try{
+      const [i,c,d,s,b]=await Promise.all([listItems(),listCustomers(),getShopBusinessDate(identity.shopId),listRecentSales(identity.shopId,20),listCustomerBalances()]);
+      setItems(i); setCustomers(c); setBusinessDate(d); setSales(s); setBalances(Object.fromEntries(b.map(x=>[x.customer_id,x.balance_paise])));
+    }catch{
+      const [i,c,d]=await Promise.all([getOfflineItems(),getOfflineCustomers(),getOfflineBusinessDate()]);
+      setItems(i); setCustomers(c); setBusinessDate(d??new Date().toISOString().slice(0,10)); setSales([]); setBalances({});
+    }
+    setOfflineSales(await listOfflineSales());
   }
   useEffect(()=>{ void refresh().catch(e=>setError(String(e))); },[]);
 
@@ -33,7 +47,8 @@ export function PosScreen(){
 
   async function addLine(item:Item,unitLevel:1|2|3,qty:number,priceKind:'retail'|'wholesale',discountPaise=0){
     if(!Number.isFinite(qty)||qty<=0) throw new Error('Quantity must be greater than zero.');
-    const prices=await listCurrentPrices(item.id);
+    let prices;
+    try{ prices=await listCurrentPrices(item.id); }catch{ prices=await getOfflinePrices(item.id); }
     const matching=prices.filter(p=>p.kind===priceKind&&p.unit_level===unitLevel);
     const chosen=matching.find(p=>p.shop_id===shopId)??matching.find(p=>p.shop_id===null);
     if(!chosen) throw new Error(`No active ${priceKind} price for ${item.name} / ${unitName(item,unitLevel)}.`);
@@ -45,18 +60,20 @@ export function PosScreen(){
   }
 
   async function scan(ev:Event){ ev.preventDefault(); setError(''); try{
-    const hit=await findItemByBarcode(barcode); if(!hit) throw new Error('Barcode not found.'); const item=items.find(i=>i.id===hit.item_id); if(!item) throw new Error('Barcode item is unavailable.');
+    let hit; try{ hit=await findItemByBarcode(barcode); }catch{ hit=await findOfflineBarcode(barcode); }
+    if(!hit) throw new Error('Barcode not found.'); const item=items.find(i=>i.id===hit.item_id); if(!item) throw new Error('Barcode item is unavailable.');
     await addLine(item,hit.unit_level,1,'retail'); setBarcode('');
   }catch(e){setError(String(e));} }
 
   async function finalizeSale(){
     if(busy)return; if(!cart.length){setError('Add at least one item.');return;} setBusy(true); setError('');
     try{
-      const saleId=await postSale({shopId,customerId:customerId||undefined,businessDate,discountPaise:paise(globalDiscount),extraChargesPaise:paise(extra),clientId:saleClientId,
+      const result=await finalizeSaleResilient({shopId,customerId:customerId||undefined,businessDate,discountPaise:paise(globalDiscount),extraChargesPaise:paise(extra),clientId:saleClientId,
         lines:cart.map(l=>({itemId:l.item.id,unitLevel:l.unitLevel,qty:l.qty,priceKind:l.priceKind,discountPaise:l.discountPaise})),
         payments:tenders.filter(t=>paise(t.amount)>0).map(t=>({amountPaise:paise(t.amount),mode:t.mode})),
       });
-      setMessage(`Sale finalized: ${saleId}`); setSaleClientId(crypto.randomUUID()); setCart([]); setGlobalDiscount('0'); setExtra('0'); setTenders([{mode:'cash',amount:''}]); await refresh();
+      setMessage(result.kind==='synced'?`Sale finalized: ${result.docNo}`:`Saved locally as ${result.provisionalDocNo}. It will sync automatically when the backend is reachable.`);
+      setSaleClientId(crypto.randomUUID()); setCart([]); setGlobalDiscount('0'); setExtra('0'); setTenders([{mode:'cash',amount:''}]); await refresh();
     }catch(e){setError(String(e));} finally{setBusy(false);}
   }
 
@@ -71,7 +88,7 @@ export function PosScreen(){
   }
 
   return <main class="page wide" onKeyDown={handlePosKeyDown}>
-    <p><a href={appRoute.home}>← Home</a></p><h1>Sales POS</h1><p class="muted">Keyboard-first billing. Prices are re-resolved by the server when the sale is finalized.</p><details class="card" open><summary><strong>Keyboard map</strong></summary><p><kbd>Enter</kbd> submits the focused scan/item form · <kbd>Tab</kbd> moves through billing fields · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> finalizes the current sale.</p></details>
+    <p><a href={appRoute.home}>← Home</a> · <a href={appRoute.sync}>Sync & offline</a></p><h1>Sales POS</h1><p class="muted">Billing is written to the durable local outbox first. The server re-resolves permissions, prices and stock before assigning the official invoice number.</p><details class="card" open><summary><strong>Keyboard map</strong></summary><p><kbd>Enter</kbd> submits the focused scan/item form · <kbd>Tab</kbd> moves through billing fields · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> finalizes the current sale.</p></details>
     {error&&<p role="alert" class="alert">{error}</p>}{message&&<p role="status" class="success">{message}</p>}
 
     <section class="card"><h2>1. Scan or add item</h2>
@@ -98,6 +115,7 @@ export function PosScreen(){
 
     <section class="card"><h2>Customer payment / advance</h2><form onSubmit={receivePayment} class="grid-form"><label>Customer <select value={paymentCustomer} onChange={e=>setPaymentCustomer((e.currentTarget as HTMLSelectElement).value)} required><option value="">Choose…</option>{customers.map(c=><option value={c.id}>{c.name}</option>)}</select></label><label>Amount ₹ <input value={paymentAmount} onInput={e=>setPaymentAmount((e.currentTarget as HTMLInputElement).value)} type="number" min="0.01" step="0.01" required/></label><label>Mode <select value={paymentMode} onChange={e=>setPaymentMode((e.currentTarget as HTMLSelectElement).value as Tender['mode'])}><option value="cash">Cash</option><option value="upi">UPI</option><option value="card">Card</option><option value="bank">Bank</option><option value="other">Other</option></select></label><button disabled={busy}>Record payment</button></form></section>
 
+    {offlineSales.length>0&&<section class="card no-print" aria-label="Local offline sales"><h2>Local provisional sales</h2><div class="table-wrap"><table><thead><tr><th>Provisional</th><th>Status</th><th>Total</th><th>Official</th></tr></thead><tbody>{offlineSales.map(s=><tr><td>{s.provisionalDocNo}</td><td>{s.status}</td><td>{money(s.totalPaise)}</td><td>{s.officialDocNo??'—'}</td></tr>)}</tbody></table></div></section>}
     <section class="card print-area"><div class="row no-print"><h2>Recent invoices</h2><button type="button" onClick={()=>window.print()}>Print list</button></div><table><thead><tr><th>Invoice</th><th>Date</th><th>Status</th><th>Total</th></tr></thead><tbody>{sales.map(s=><tr><td>{s.doc_no}</td><td>{s.business_date}</td><td>{s.status}</td><td>{money(s.total_paise)}</td></tr>)}</tbody></table></section>
   </main>;
 }
