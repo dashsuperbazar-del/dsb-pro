@@ -143,9 +143,18 @@ export async function finalizeSaleResilient(input:{
 }):Promise<ResilientSaleResult>{
   const rt=requireRuntime();
   const policy=(await getCachedPolicy(rt.db))??{allowCashierOfflineFinalization:false};
-  const record=await queueOfflineSale(rt.db,{
-    ...input,lines:input.lines.map(l=>({...l,discountPaise:l.discountPaise??0})),payments:input.payments,
-  },{deviceId:rt.identity.deviceId,role:rt.identity.role,policy});
+  const payload={...input,lines:input.lines.map(l=>({...l,discountPaise:l.discountPaise??0})),payments:input.payments};
+  let record:OfflineSaleRecord;
+  try{
+    record=await queueOfflineSale(rt.db,payload,{deviceId:rt.identity.deviceId,role:rt.identity.role,policy});
+  }catch(error){
+    if(typeof navigator==='undefined'||!navigator.onLine)throw error;
+    // A freshly-created item/price can be inside the server's 1-second cursor
+    // safety window. Wait past that window, pull once, then retry locally.
+    await new Promise(resolve=>window.setTimeout(resolve,1100));
+    await runSyncNow();
+    record=await queueOfflineSale(rt.db,payload,{deviceId:rt.identity.deviceId,role:rt.identity.role,policy});
+  }
   emit();
   if(navigator.onLine)await runSyncNow();
   const final=await rt.db.offlineSales.get(record.clientId);

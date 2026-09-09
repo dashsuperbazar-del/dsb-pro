@@ -1,4 +1,6 @@
-const CACHE = 'dsb-pro-shell-v1';
+/* global self, caches, URL, Request, Response */
+const version = new URL(self.location.href).searchParams.get('v') || 'dev';
+const CACHE = 'dsb-pro-shell-' + version;
 const scopeRoot = new URL('./', self.registration.scope).toString();
 
 self.addEventListener('install', event => {

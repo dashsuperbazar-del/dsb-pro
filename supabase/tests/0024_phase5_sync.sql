@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(24);
+select plan(28);
 
 insert into auth.users(id) values
  ('a9000000-0000-0000-0000-000000000001'),
@@ -22,6 +22,7 @@ select lives_ok($$insert into items(tenant_id,name,unit1,tax_rate_bp,client_id) 
 select set_config('p5.item',(select id::text from items where client_id='p5-item'),false);
 select lives_ok(format($q$select set_item_price(%L::uuid,%L::uuid,'retail',1::smallint,100::bigint,'p5-price')$q$,current_setting('p5.item'),current_setting('p5.shop')),'set offline price');
 select lives_ok(format($q$select post_purchase(%L::uuid,null,'P5-SEED','2026-09-09',0,0,'p5-seed',jsonb_build_array(jsonb_build_object('item_id',%L,'unit_level',1,'qty',5,'unit_price_paise',50)),null)$q$,current_setting('p5.shop'),current_setting('p5.item')),'seed offline stock');
+select pg_sleep(1.1); -- phase5_sync_pull intentionally ignores the newest 1 second to make cursor commits safe.
 
 select lives_ok(format($q$select phase5_sync_pull('owner-phone',%L::uuid,1,'{}'::jsonb)$q$,current_setting('p5.shop')),'registered active device can pull');
 select is((phase5_sync_pull('owner-phone',current_setting('p5.shop')::uuid,1,'{}'::jsonb)->>'schemaVersion')::int,1,'pull negotiates schema version');

@@ -8,7 +8,7 @@ if (dsn) Sentry.init({ dsn });
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    void navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js', { scope: import.meta.env.BASE_URL })
+    void navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js?v=' + encodeURIComponent(import.meta.env.VITE_APP_VERSION ?? 'dev'), { scope: import.meta.env.BASE_URL })
       .catch(error => console.warn('service worker registration failed', error));
   });
 }

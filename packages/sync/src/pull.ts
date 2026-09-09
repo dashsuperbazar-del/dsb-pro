@@ -1,7 +1,7 @@
 import {advanceCursor} from './cursor';
 import {getMeta,setMeta,stockKey,type DsbSyncDb} from './db';
 import type {
-  ServerSyncRow,SyncedBarcode,SyncedCustomer,SyncedItem,SyncedPrice,SyncedStock,
+  ServerSyncRow,SyncedBarcode,SyncedCustomer,SyncedItem,SyncedPrice,
   SyncCursor,SyncHealth,SyncPullPayload,SyncTableName,
 } from './types';
 
@@ -27,7 +27,7 @@ async function applyRows<T extends ServerSyncRow>(table:{get:(id:string)=>Promis
   }
 }
 export async function applySyncPull(db:DsbSyncDb,payload:SyncPullPayload):Promise<void>{
-  await db.transaction('rw',db.items,db.barcodes,db.prices,db.customers,db.stock,db.meta,async()=>{
+  await db.transaction('rw',[db.items,db.barcodes,db.prices,db.customers,db.stock,db.meta],async()=>{
     await applyRows(db.items,payload.items);
     await applyRows(db.barcodes,payload.barcodes);
     await applyRows(db.prices,payload.prices);
