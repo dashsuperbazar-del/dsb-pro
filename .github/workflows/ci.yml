@@ -55,8 +55,10 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: 2.116.0
-      - name: Clear stale Supabase containers
-        run: docker ps -aq --filter 'name=supabase_' | xargs -r docker rm -f
+      - name: Clear stale Supabase containers and ports
+        run: |
+          docker ps -aq --filter 'name=supabase_' | xargs -r docker rm -f
+          sudo fuser -k 54321/tcp 54322/tcp 54323/tcp 54324/tcp 54325/tcp 54326/tcp 54327/tcp 54328/tcp 54329/tcp || true
       - run: supabase start
       - run: supabase db reset
       - run: supabase test db
@@ -78,8 +80,10 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: 2.116.0
-      - name: Clear stale Supabase containers
-        run: docker ps -aq --filter 'name=supabase_' | xargs -r docker rm -f
+      - name: Clear stale Supabase containers and ports
+        run: |
+          docker ps -aq --filter 'name=supabase_' | xargs -r docker rm -f
+          sudo fuser -k 54321/tcp 54322/tcp 54323/tcp 54324/tcp 54325/tcp 54326/tcp 54327/tcp 54328/tcp 54329/tcp || true
       - run: supabase start
       - name: Export local Supabase URL/anon key
         run: |
