@@ -90,7 +90,7 @@ export type SyncIdentity=Readonly<{
 }>;
 
 export type OfflineSaleLineInput=Readonly<{
-  itemId:string; unitLevel:1|2|3; qty:number; priceKind:'retail'|'wholesale'; discountPaise:number;
+  itemId:string; unitLevel:1|2|3; qty:number; priceKind:'retail'|'wholesale'; discountPaise:number; expectedUnitPricePaise?:number;
 }>;
 export type OfflineSalePaymentInput=Readonly<{
   amountPaise:number; mode:'cash'|'upi'|'card'|'bank'|'other'; reference?:string;
