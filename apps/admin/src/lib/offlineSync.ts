@@ -1,5 +1,5 @@
 import {
-  ackSync,classifyError,errorMessage,getDefaultShopId,getOrCreateDeviceId,listServerSyncConflicts,pullSync,pushSyncedSale,
+  ackSync,classifyError,ensureFreshSession,errorMessage,getDefaultShopId,getOrCreateDeviceId,listServerSyncConflicts,pullSync,pushSyncedSale,
   recordServerSyncConflict,resolveServerSyncConflict,setOfflineCashierFinalization,subscribeSyncWakeup,
   type Membership,type SaleLineInput,type SalePaymentInput,
 } from '@dsb-pro/adapters';
@@ -140,6 +140,8 @@ export async function runSyncNow():Promise<void>{
   rt.running=(async()=>{
     state={...state,running:true,lastError:null};emit();
     try{
+      const session=await ensureFreshSession();
+      if(!session)throw new Error('Authentication session is unavailable. Sign in again before syncing queued work.');
       await processOutbox(rt);
       const cursors=await getSyncCursors(rt.db);
       const pulled=await pullSync({deviceId:rt.identity.deviceId,shopId:rt.identity.shopId,cursors});
