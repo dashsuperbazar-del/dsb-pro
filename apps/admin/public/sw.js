@@ -34,9 +34,12 @@ self.addEventListener('fetch', event => {
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
-        .then(response => {
-          if (response.ok) void caches.open(CACHE).then(cache => cache.put(scopeRoot, response.clone()));
-          return response;
+        .then(async response => {
+          if (response.ok) {
+            void caches.open(CACHE).then(cache => cache.put(scopeRoot, response.clone()));
+            return response;
+          }
+          return (await caches.match(scopeRoot)) || response;
         })
         .catch(() => caches.match(scopeRoot).then(hit => hit || Response.error()))
     );
