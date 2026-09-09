@@ -319,7 +319,7 @@ jobs:
         run: |
           set -euo pipefail
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -At <<'SQL'
-          do $
+          do $$
           begin
             if to_regclass('public.sync_conflicts') is null
                or to_regclass('public.sync_idempotency_keys') is null
@@ -344,7 +344,7 @@ jobs:
                or not exists(select 1 from pg_class where oid='public.sync_idempotency_keys'::regclass and relrowsecurity) then
               raise exception 'Phase 5 sync tables are missing RLS';
             end if;
-          end $;
+          end $$;
           select 'Live Phase 5 schema/security verification: PASS';
           SQL
 
