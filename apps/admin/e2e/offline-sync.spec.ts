@@ -52,7 +52,17 @@ test('chaos: airplane mode + app restart + logical one-hour outage preserves and
   await seedOfflineItem(page);
   await page.goto('/pos');
   await expect(page.getByRole('heading',{name:'Sales POS'})).toBeVisible();
-  await page.evaluate(()=>navigator.serviceWorker.ready.then(()=>true));
+  await page.evaluate(async()=>{
+    await navigator.serviceWorker.ready;
+    if(!navigator.serviceWorker.controller){
+      await new Promise<void>((resolve,reject)=>{
+        const timeout=window.setTimeout(()=>reject(new Error('service worker did not claim the current page')),5000);
+        navigator.serviceWorker.addEventListener('controllerchange',()=>{window.clearTimeout(timeout);resolve();},{once:true});
+      });
+    }
+    const keys=await caches.keys();
+    if(!keys.some(key=>key.startsWith('dsb-pro-shell-')))throw new Error('offline app-shell cache was not created');
+  });
 
   // Begin a real bill while online, then lose the backend before finalization.
   await addOnePaidLine(page);
