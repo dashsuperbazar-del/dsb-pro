@@ -229,24 +229,30 @@ declare
 begin
   perform phase5_assert_schema(p_schema_version);
   perform phase5_assert_sync_device(p_device_id);
-  if exists(
-    select 1
-    from jsonb_array_elements(coalesce(p_lines,'[]'::jsonb)) line
-    where not (line ? 'expected_unit_price_paise')
-       or (line->>'expected_unit_price_paise') is null
-       or (line->>'expected_unit_price_paise')::bigint <> phase4_current_price(
-         current_tenant_id(),p_shop_id,(line->>'item_id')::uuid,
-         coalesce(nullif(line->>'price_kind',''),'retail'),
-         coalesce((line->>'unit_level')::int,1)
-       )
-  ) then
-    raise exception 'offline sale price changed; review required';
-  end if;
-  insert into sync_idempotency_keys(tenant_id,operation,op_client_id,payload,client_id)
-  values(current_tenant_id(),'post_sale',p_client_id,v_request,'post_sale:'||p_client_id)
-  on conflict(tenant_id,operation,op_client_id) do nothing;
   select payload into v_existing_payload from sync_idempotency_keys
     where tenant_id=current_tenant_id() and operation='post_sale' and op_client_id=p_client_id;
+
+  if v_existing_payload is null then
+    if exists(
+      select 1
+      from jsonb_array_elements(coalesce(p_lines,'[]'::jsonb)) line
+      where not (line ? 'expected_unit_price_paise')
+         or (line->>'expected_unit_price_paise') is null
+         or (line->>'expected_unit_price_paise')::bigint <> phase4_current_price(
+           current_tenant_id(),p_shop_id,(line->>'item_id')::uuid,
+           coalesce(nullif(line->>'price_kind',''),'retail'),
+           coalesce((line->>'unit_level')::int,1)
+         )
+    ) then
+      raise exception 'offline sale price changed; review required';
+    end if;
+    insert into sync_idempotency_keys(tenant_id,operation,op_client_id,payload,client_id)
+    values(current_tenant_id(),'post_sale',p_client_id,v_request,'post_sale:'||p_client_id)
+    on conflict(tenant_id,operation,op_client_id) do nothing;
+    select payload into v_existing_payload from sync_idempotency_keys
+      where tenant_id=current_tenant_id() and operation='post_sale' and op_client_id=p_client_id;
+  end if;
+
   if v_existing_payload is distinct from v_request then
     raise exception 'client_id payload mismatch';
   end if;
