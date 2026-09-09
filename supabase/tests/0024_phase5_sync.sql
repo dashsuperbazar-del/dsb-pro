@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(36);
+select plan(37);
 
 insert into auth.users(id) values
  ('a9000000-0000-0000-0000-000000000001'),
@@ -44,6 +44,7 @@ select lives_ok(format($q$select phase5_sync_post_sale('owner-phone',1,%L::uuid,
 select is((select count(*) from sale_invoices where client_id='p5-offline-sale'),1::bigint,'retry creates no duplicate invoice');
 select is((select qty_base from stock_current where shop_id=current_setting('p5.shop')::uuid and item_id=current_setting('p5.item')::uuid),3::numeric,'offline sync sale decrements stock once');
 select lives_ok(format($q$select set_item_price(%L::uuid,%L::uuid,'retail',1::smallint,120::bigint,'p5-price-changed')$q$,current_setting('p5.item'),current_setting('p5.shop')),'server price can change after an offline bill was captured');
+select lives_ok(format($q$select phase5_sync_post_sale('owner-phone',1,%L::uuid,null,'2026-09-09',0,0,'p5-offline-sale',jsonb_build_array(jsonb_build_object('item_id',%L,'unit_level',1,'qty',2,'price_kind','retail','discount_paise',0,'expected_unit_price_paise',100)),jsonb_build_array(jsonb_build_object('amount_paise',200,'mode','cash')),null)$q$,current_setting('p5.shop'),current_setting('p5.item')),'exact unknown-outcome retry still resolves after the server price later changes');
 select throws_ok(format($q$select phase5_sync_post_sale('owner-phone',1,%L::uuid,null,'2026-09-09',0,0,'p5-stale-price-sale',jsonb_build_array(jsonb_build_object('item_id',%L,'unit_level',1,'qty',1,'price_kind','retail','discount_paise',0,'expected_unit_price_paise',100)),jsonb_build_array(jsonb_build_object('amount_paise',100,'mode','cash')),null)$q$,current_setting('p5.shop'),current_setting('p5.item')),null,'offline sale price changed; review required','stale offline price is rejected instead of silently changing the customer total');
 
 select lives_ok($$select phase5_sync_ack('owner-phone',1,'{"items":{"updatedAt":123,"id":"abc"}}'::jsonb)$$,'device acknowledges durable cursor');
