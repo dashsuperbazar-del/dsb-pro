@@ -15,19 +15,12 @@ jobs:
     timeout-minutes: 30
     permissions: {}
     steps:
+      - uses: actions/checkout@v4
       - name: Install tools
         run: |
           sudo apt-get update
           sudo apt-get install -y age rclone
-          # psql (for the backup_runs bookkeeping below) ships preinstalled
-          # on ubuntu-latest and tolerates the version gap fine. pg_dump does
-          # not — it refuses to dump from a server newer than itself, and the
-          # preinstalled client is older than the dev project's Postgres 17 —
-          # so the actual dump runs via the official postgres:17 Docker image
-          # instead (see "Dump database" below), guaranteeing a matching
-          # major version without fighting apt package versions.
           docker pull postgres:17
-
       - name: Configure rclone
         run: |
           mkdir -p ~/.config/rclone
@@ -36,7 +29,6 @@ jobs:
           type = b2
           account = ${{ secrets.B2_ACCOUNT_ID }}
           key = ${{ secrets.B2_APPLICATION_KEY }}
-
           [r2]
           type = s3
           provider = Cloudflare
@@ -45,134 +37,64 @@ jobs:
           endpoint = ${{ secrets.R2_ENDPOINT }}
           no_check_bucket = true
           CONF
-
       - name: Verify encryption recipient
         env:
           AGE_PUBLIC_KEY: ${{ vars.AGE_PUBLIC_KEY }}
         run: |
-          # The private key deliberately never reaches CI (physical custody
-          # only), so decryptability is never exercised here — a wrong or
-          # rotated-without-updating recipient would otherwise produce
-          # backups that check out (checksums match, uploads verify) but are
-          # permanently unopenable. Pin the expected public key so that
-          # failure mode is loud instead of silent.
           EXPECTED="age1n4zj5ymapz5xsur6a5v3en6np5ary3pmmmndpaf5a0vhyeazed7qq3jnrq"
-          if [ "$AGE_PUBLIC_KEY" != "$EXPECTED" ]; then
-            echo "AGE_PUBLIC_KEY does not match the expected recipient — refusing to encrypt. Got: $AGE_PUBLIC_KEY" >&2
-            exit 1
-          fi
-
+          test "$AGE_PUBLIC_KEY" = "$EXPECTED" || { echo 'Unexpected AGE recipient'; exit 1; }
       - name: Mark backup run as started
         id: start
-        shell: bash
         run: |
-          RUN_ID=$(psql "${{ secrets.SUPABASE_DB_URL }}" -t -A -c \
-            "insert into backup_runs (started_at, status) values (now(), 'running') returning id;" | head -n 1)
+          RUN_ID=$(psql "${{ secrets.SUPABASE_DB_URL }}" -t -A -c "insert into backup_runs(started_at,status) values(now(),'running') returning id;" | head -n1)
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
-
-      - name: Dump database
+      - name: Dump portable business data
         run: |
-          # Scoped to schema public: backup_ro only has grants there, and
-          # Phase 0 has no real auth/storage data yet to justify widening its
-          # access (Supabase's auth/realtime/storage schemas need a deliberate
-          # decision later, once Phase 1 actually puts something in them —
-          # not an incidental side effect of pg_dump's dump-everything default).
-          # Recorded as manifest.scope below so a widening need is visible in
-          # backup_runs itself, not just in this comment.
-          docker run --rm -v "$PWD:/dump" postgres:17 \
-            pg_dump --format=custom --schema=public "${{ secrets.BACKUP_RO_DATABASE_URL }}" -f /dump/dump.pgcustom
-          sudo chown "$(id -u):$(id -g)" dump.pgcustom
-
-      - name: Encrypt dump
-        run: age -r "${{ vars.AGE_PUBLIC_KEY }}" -o dump.pgcustom.age dump.pgcustom
-
-      - name: Checksum
+          docker run --rm -v "$PWD:/dump" postgres:17 pg_dump --format=custom --schema=public "${{ secrets.BACKUP_RO_DATABASE_URL }}" -f /dump/public.pgcustom
+          sudo chown "$(id -u):$(id -g)" public.pgcustom
+          test "$(stat -c%s public.pgcustom)" -ge 1000
+      - name: Dump Supabase Auth separately
+        run: |
+          docker run --rm -v "$PWD:/dump" postgres:17 pg_dump --format=custom --data-only --schema=auth --table=auth.users "${{ secrets.SUPABASE_DB_URL }}" -f /dump/auth-users.pgcustom
+          sudo chown "$(id -u):$(id -g)" auth-users.pgcustom
+          test "$(stat -c%s auth-users.pgcustom)" -ge 500
+      - name: Encrypt and checksum both layers
         id: checksum
         run: |
-          SHA=$(sha256sum dump.pgcustom.age | cut -d' ' -f1)
-          SIZE=$(stat -c%s dump.pgcustom.age)
-          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
-          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
-
-      - name: Sanity-check dump size
-        run: |
-          # Cheap floor against the silent-empty-dump failure mode: if
-          # BACKUP_RO_DATABASE_URL is ever pointed at the wrong database or
-          # an empty schema, pg_dump still exits 0 with a small-but-valid
-          # archive, and every downstream check (checksums, uploads) would
-          # otherwise pass on a backup that protects nothing.
-          if [ "${{ steps.checksum.outputs.size }}" -lt 1000 ]; then
-            echo "Dump is suspiciously small (${{ steps.checksum.outputs.size }} bytes) — refusing to treat this as a valid backup." >&2
-            exit 1
-          fi
-
-      - name: Build manifest
+          age -r "${{ vars.AGE_PUBLIC_KEY }}" -o public.pgcustom.age public.pgcustom
+          age -r "${{ vars.AGE_PUBLIC_KEY }}" -o auth-users.pgcustom.age auth-users.pgcustom
+          echo "public_sha=$(sha256sum public.pgcustom.age|cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "auth_sha=$(sha256sum auth-users.pgcustom.age|cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Build financial manifest
         id: manifest
-        shell: bash
         run: |
-          # Queried over BACKUP_RO_DATABASE_URL (the same connection that
-          # produced the dump), not SUPABASE_DB_URL — a manifest built from a
-          # different connection can't actually attest to what was dumped if
-          # the two secrets ever point at different databases.
-          # quote_literal() wraps the JSON as a complete, self-escaping SQL
-          # string literal (quotes and all) so the value can be spliced
-          # directly into the UPDATE below regardless of its contents — the
-          # general fix for the shell-splicing bug hit earlier, since the
-          # manifest may carry text values later (not just integer counts).
-          MANIFEST=$(psql "${{ secrets.BACKUP_RO_DATABASE_URL }}" -t -A -c \
-            "select quote_literal(json_build_object('scope', 'public', 'schema_meta', (select count(*) from schema_meta), 'backup_runs', (select count(*) from backup_runs))::text);" | head -n 1)
+          MANIFEST=$(psql "${{ secrets.BACKUP_RO_DATABASE_URL }}" -At -c "select quote_literal(json_build_object(
+            'scope','public','authArtifact','separate',
+            'sale_count',(select count(*) from sale_invoices),'sale_total',(select coalesce(sum(total_paise),0) from sale_invoices where status='FINALIZED'),
+            'payment_count',(select count(*) from payments),'payment_total',(select coalesce(sum(amount_paise),0) from payments where status='POSTED'),
+            'purchase_count',(select count(*) from purchase_bills),'purchase_total',(select coalesce(sum(total_paise),0) from purchase_bills where status='POSTED'),
+            'stock_movement_count',(select count(*) from stock_movements),
+            'expense_count',(select count(*) from expenses),'expense_total',(select coalesce(sum(amount_paise),0) from expenses where status='POSTED')
+          )::text);" | head -n1)
           echo "json=$MANIFEST" >> "$GITHUB_OUTPUT"
-
-      - name: Upload to B2 (primary) and verify
+      - name: Upload both artifacts to B2 and R2 and verify
         run: |
-          NAME="backup-$(date +%F).pgcustom.age"
-          rclone copyto dump.pgcustom.age "b2:APD-BB/$NAME"
-          rclone cat "b2:APD-BB/$NAME" | sha256sum | cut -d' ' -f1 > b2_sha.txt
-          diff <(echo "${{ steps.checksum.outputs.sha256 }}") b2_sha.txt
-
-      - name: Upload to R2 (secondary) and verify
-        run: |
-          NAME="backup-$(date +%F).pgcustom.age"
-          rclone copyto dump.pgcustom.age "r2:apd-dsb/$NAME"
-          rclone cat "r2:apd-dsb/$NAME" | sha256sum | cut -d' ' -f1 > r2_sha.txt
-          diff <(echo "${{ steps.checksum.outputs.sha256 }}") r2_sha.txt
-
-      - name: Mark backup run as succeeded
+          DATE=$(date +%F)
+          for pair in "public.pgcustom.age:backup-$DATE.pgcustom.age:${{ steps.checksum.outputs.public_sha }}" "auth-users.pgcustom.age:auth-$DATE.pgcustom.age:${{ steps.checksum.outputs.auth_sha }}"; do
+            IFS=: read SRC NAME SHA <<< "$pair"
+            rclone copyto "$SRC" "b2:APD-BB/$NAME"
+            test "$(rclone cat "b2:APD-BB/$NAME"|sha256sum|cut -d' ' -f1)" = "$SHA"
+            rclone copyto "$SRC" "r2:apd-dsb/$NAME"
+            test "$(rclone cat "r2:apd-dsb/$NAME"|sha256sum|cut -d' ' -f1)" = "$SHA"
+          done
+      - name: Mark backup succeeded
         if: success()
         env:
-          # manifest.outputs.json is already a complete SQL string literal
-          # (see "Build manifest") — spliced in unquoted below, deliberately.
-          MANIFEST_LITERAL: ${{ steps.manifest.outputs.json }}
-          SHA256: ${{ steps.checksum.outputs.sha256 }}
-          SIZE: ${{ steps.checksum.outputs.size }}
-          APP_VERSION: ${{ github.sha }}
           RUN_ID: ${{ steps.start.outputs.run_id }}
+          MANIFEST_LITERAL: ${{ steps.manifest.outputs.json }}
         run: |
-          # Values come from real bash variables ($VAR), not GitHub Actions'
-          # own template expressions spliced directly into the SQL text: that
-          # kind of substitution happens before bash ever parses this script,
-          # so a value's embedded double quotes would become literal source
-          # text and get consumed as bash quoting syntax. A $VAR expansion
-          # happens after parsing, so embedded quotes in its value are
-          # inserted as plain data instead.
-          psql "${{ secrets.SUPABASE_DB_URL }}" -c "
-            update backup_runs set
-              finished_at = now(),
-              status = 'success',
-              dump_size_bytes = $SIZE,
-              sha256 = '$SHA256',
-              destinations = '[{\"name\":\"b2\",\"verified\":true},{\"name\":\"r2\",\"verified\":true}]'::jsonb,
-              app_version = '$APP_VERSION',
-              schema_version = 1,
-              manifest = ($MANIFEST_LITERAL)::jsonb
-            where id = '$RUN_ID';
-          "
-
-      - name: Mark backup run as failed
+          psql "${{ secrets.SUPABASE_DB_URL }}" -c "update backup_runs set finished_at=now(),status='success',sha256='${{ steps.checksum.outputs.public_sha }}',destinations='[{"name":"b2","verified":true},{"name":"r2","verified":true}]'::jsonb,app_version='${{ github.sha }}',schema_version=2,manifest=($MANIFEST_LITERAL)::jsonb where id='$RUN_ID';"
+      - name: Mark backup failed
         if: failure()
         run: |
-          psql "${{ secrets.SUPABASE_DB_URL }}" -c "
-            update backup_runs set finished_at = now(), status = 'failed',
-              error = 'CI job failed — see Actions run ${{ github.run_id }}'
-            where id = '${{ steps.start.outputs.run_id }}';
-          " || echo "::warning::could not mark backup_runs row as failed (run_id may be empty or DB unreachable)"
+          psql "${{ secrets.SUPABASE_DB_URL }}" -c "update backup_runs set finished_at=now(),status='failed',error='CI job failed — see Actions run ${{ github.run_id }}' where id='${{ steps.start.outputs.run_id }}';" || true

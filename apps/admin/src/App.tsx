@@ -13,6 +13,7 @@ import { PosScreen } from './screens/PosScreen';
 import { CustomersScreen } from './screens/CustomersScreen';
 import { SalesHistoryScreen } from './screens/SalesHistoryScreen';
 import { SyncScreen } from './screens/SyncScreen';
+import { ReportsScreen } from './screens/ReportsScreen';
 import { VerificationBanner } from './components/VerificationBanner';
 import { LanguageToggle } from './components/LanguageToggle';
 import { SyncRuntime } from './components/SyncRuntime';
@@ -34,6 +35,7 @@ export function App() {
       <Route path={appRoute.customers} component={CustomersScreen} />
       <Route path={appRoute.salesHistory} component={SalesHistoryScreen} />
       <Route path={appRoute.sync} component={SyncScreen} />
+      <Route path={appRoute.reports} component={ReportsScreen} />
       <Route default component={() => <Home session={session} />} />
     </Router>
   </>;
@@ -50,7 +52,7 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
       <div class="row"><h1>DSB Pro — Admin</h1><LanguageToggle /></div>
       {session.offline&&<p class="alert" role="status">Backend unavailable — using the last verified local shop snapshot. Sales can be queued safely for sync.</p>}
       <p>Signed in as tenant {session.membership.tenantId}, role {session.membership.role}.</p>
-      <p><a href={appRoute.pos}>Sales POS</a> · <a href={appRoute.salesHistory}>Sales history</a> · <a href={appRoute.customers}>Customers & ledger</a> · <a href={appRoute.inventory}>Inventory & purchases</a> · <a href={appRoute.sync}>Sync & offline</a> · <a href={appRoute.team}>Team</a> · <a href={appRoute.devices}>Devices</a> · <button onClick={() => void signOut()}>Sign out</button></p>
+      <p><a href={appRoute.pos}>Sales POS</a> · <a href={appRoute.salesHistory}>Sales history</a> · <a href={appRoute.customers}>Customers & ledger</a> · <a href={appRoute.inventory}>Inventory & purchases</a> · <a href={appRoute.reports}>Reports & recovery</a> · <a href={appRoute.sync}>Sync & offline</a> · <a href={appRoute.team}>Team</a> · <a href={appRoute.devices}>Devices</a> · <button onClick={() => void signOut()}>Sign out</button></p>
       <HealthPanel />
     </main>
   </>;
