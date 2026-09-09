@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
+import { searchCatalogItems } from '@dsb-pro/core';
 import { route } from 'preact-router';
 import {
   createCustomer, findItemByBarcode, getShopBusinessDate,
@@ -25,7 +26,7 @@ export function PosScreen(){
   const [balances,setBalances]=useState<Record<string,number>>({}); const [shopId,setShopId]=useState(''); const [tenantId,setTenantId]=useState(''); const [businessDate,setBusinessDate]=useState('');
   const [cart,setCart]=useState<CartLine[]>([]); const [customerId,setCustomerId]=useState(''); const [globalDiscount,setGlobalDiscount]=useState('0'); const [extra,setExtra]=useState('0');
   const [tenders,setTenders]=useState<Tender[]>([{mode:'cash',amount:''}]); const [message,setMessage]=useState(''); const [error,setError]=useState(''); const [busy,setBusy]=useState(false);
-  const [barcode,setBarcode]=useState(''); const [manualItemId,setManualItemId]=useState(''); const [manualUnitLevel,setManualUnitLevel]=useState<1|2|3>(1); const [saleClientId,setSaleClientId]=useState(()=>crypto.randomUUID()); const [paymentClientId,setPaymentClientId]=useState(()=>crypto.randomUUID()); const [paymentCustomer,setPaymentCustomer]=useState(''); const [paymentAmount,setPaymentAmount]=useState(''); const [paymentMode,setPaymentMode]=useState<Tender['mode']>('cash');
+  const [barcode,setBarcode]=useState(''); const [itemQuery,setItemQuery]=useState(''); const [manualItemId,setManualItemId]=useState(''); const [manualUnitLevel,setManualUnitLevel]=useState<1|2|3>(1); const [saleClientId,setSaleClientId]=useState(()=>crypto.randomUUID()); const [paymentClientId,setPaymentClientId]=useState(()=>crypto.randomUUID()); const [paymentCustomer,setPaymentCustomer]=useState(''); const [paymentAmount,setPaymentAmount]=useState(''); const [paymentMode,setPaymentMode]=useState<Tender['mode']>('cash');
 
   async function refresh(){
     await waitForOfflineRuntime();
@@ -49,6 +50,7 @@ export function PosScreen(){
   useEffect(()=>{ void refresh().catch(e=>setError(String(e))); },[]);
 
   const manualItem=items.find(i=>i.id===manualItemId);
+  const visibleItems=useMemo(()=>searchCatalogItems(items,itemQuery,50),[items,itemQuery]);
   const preview=useMemo(()=>cart.reduce((sum,l)=>sum+Math.round(l.qty*l.unitPricePaise)-l.discountPaise,0)-paise(globalDiscount)+paise(extra),[cart,globalDiscount,extra]);
   const tenderTotal=useMemo(()=>tenders.reduce((sum,t)=>sum+paise(t.amount),0),[tenders]);
 
@@ -114,7 +116,8 @@ export function PosScreen(){
     <section class="card"><h2>1. Scan or add item</h2>
       <form onSubmit={scan} class="row"><label>Barcode <input autofocus value={barcode} onInput={e=>setBarcode((e.currentTarget as HTMLInputElement).value)} /></label><button>Scan / Add</button></form>
       <form onSubmit={addManual} class="grid-form">
-        <label>Item <select name="itemId" required value={manualItemId} onChange={e=>{const id=(e.currentTarget as HTMLSelectElement).value;setManualItemId(id);const item=items.find(i=>i.id===id);setManualUnitLevel(item?.unit3?3:item?.unit2?2:1);}}><option value="">Choose…</option>{items.map(i=><option value={i.id}>{i.name}</option>)}</select></label>
+        <label>Search item <input value={itemQuery} placeholder="Name or SKU" onInput={e=>{setItemQuery((e.currentTarget as HTMLInputElement).value);setManualItemId('');}} /></label>
+        <label>Item <select name="itemId" required value={manualItemId} onChange={e=>{const id=(e.currentTarget as HTMLSelectElement).value;setManualItemId(id);const item=items.find(i=>i.id===id);setManualUnitLevel(item?.unit3?3:item?.unit2?2:1);}}><option value="">Choose…</option>{visibleItems.map(i=><option value={i.id}>{i.name}{i.sku?` · ${i.sku}`:''}</option>)}</select><small>Showing up to 50 matches from {items.length} items.</small></label>
         <label>Unit <select name="unitLevel" value={manualUnitLevel} disabled={!manualItem} onChange={e=>setManualUnitLevel(Number((e.currentTarget as HTMLSelectElement).value) as 1|2|3)}><option value="1">{manualItem?.unit1||'Unit 1'}</option>{manualItem?.unit2&&<option value="2">{manualItem.unit2}</option>}{manualItem?.unit3&&<option value="3">{manualItem.unit3}</option>}</select></label>
         <label>Quantity <input name="qty" type="number" min="0.000001" step="any" value="1" required/></label>
         <label>Price <select name="priceKind"><option value="retail">Retail</option><option value="wholesale">Wholesale</option></select></label>
