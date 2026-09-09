@@ -232,6 +232,13 @@ export async function forceRetryNow():Promise<void>{
   // backoff would remain in place. Let it settle first, then clear retry
   // backoff and deliberately start a fresh cycle.
   if(rt.running)await rt.running;
+  // A transport can disappear after an operation is marked "sending" but
+  // before its failure/acknowledgement is persisted locally. Normal FIFO
+  // processing deliberately will not overtake a sending entry, so a manual
+  // recovery must first convert any orphaned sending work back to retry.
+  // The server RPC is client-id idempotent, making the retry safe even when
+  // the original request actually reached the server.
+  await recoverInterruptedOutbox(rt.db);
   const retries=await rt.db.outbox.where('state').equals('retry').toArray();
   if(retries.length)await rt.db.outbox.bulkPut(retries.map(r=>({...r,nextAttemptAt:0} as OutboxEntry)));
   await runSyncNow();
