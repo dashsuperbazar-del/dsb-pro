@@ -25,3 +25,6 @@ language sql stable
 as $jwt$
   select coalesce(nullif(current_setting('request.jwt.claims',true),'')::jsonb,'{}'::jsonb)
 $jwt$;
+
+create schema if not exists extensions;
+create extension if not exists btree_gist with schema extensions;
