@@ -212,31 +212,44 @@ $$;
 
 create function get_stock_valuation(p_shop_id uuid)
 returns table(item_id uuid,item_name text,qty_base numeric,cost_paise bigint,value_paise bigint)
-language sql stable security definer set search_path=public as $$
- select i.id,i.name,coalesce(sc.qty_base,0),
-  coalesce((select ip.price_paise from item_prices ip where ip.tenant_id=i.tenant_id and ip.item_id=i.id and ip.kind='cost_last' and ip.deleted_at is null order by ip.effective_from desc limit 1),0)::bigint,
-  round(coalesce(sc.qty_base,0)*coalesce((select ip.price_paise from item_prices ip where ip.tenant_id=i.tenant_id and ip.item_id=i.id and ip.kind='cost_last' and ip.deleted_at is null order by ip.effective_from desc limit 1),0))::bigint
- from items i left join stock_current sc on sc.tenant_id=i.tenant_id and sc.shop_id=p_shop_id and sc.item_id=i.id
+language sql stable security definer set search_path=public as $
+ with latest_cost as (
+  select distinct on (pbi.item_id) pbi.item_id,
+   case when pbi.base_qty>0 then round(pbi.line_total_paise::numeric/pbi.base_qty)::bigint else 0::bigint end cost_per_base_paise
+  from purchase_bill_items pbi
+  join purchase_bills pb on pb.tenant_id=pbi.tenant_id and pb.id=pbi.purchase_bill_id
+  where pbi.tenant_id=current_tenant_id() and pbi.shop_id=p_shop_id and pb.status='POSTED'
+  order by pbi.item_id,pb.business_date desc,pb.created_at desc,pbi.created_at desc
+ )
+ select i.id,i.name,coalesce(sc.qty_base,0),coalesce(lc.cost_per_base_paise,0)::bigint,
+  round(coalesce(sc.qty_base,0)*coalesce(lc.cost_per_base_paise,0))::bigint
+ from items i
+ left join stock_current sc on sc.tenant_id=i.tenant_id and sc.shop_id=p_shop_id and sc.item_id=i.id
+ left join latest_cost lc on lc.item_id=i.id
  where i.tenant_id=current_tenant_id() and i.deleted_at is null order by i.name
-$$;
+$;
 
 create function get_gst_summary(p_shop_id uuid,p_from date,p_to date)
 returns table(tax_rate_bp integer,taxable_sales_paise bigint,gross_sales_paise bigint,taxable_purchases_paise bigint,gross_purchases_paise bigint)
-language sql stable security definer set search_path=public as $$
- with s as (
-  select sii.tax_rate_bp_snapshot rate,sum(sii.line_total_paise)::bigint gross
+language sql stable security definer set search_path=public as $
+ with sale_lines as (
+  select sii.tax_rate_bp_snapshot rate,
+   case when si.subtotal_paise>0 then round(sii.line_total_paise::numeric * greatest(si.subtotal_paise-si.discount_paise,0) / si.subtotal_paise) else 0 end::bigint adjusted
   from sale_invoice_items sii join sale_invoices si on si.tenant_id=sii.tenant_id and si.id=sii.sale_invoice_id
-  where sii.tenant_id=current_tenant_id() and sii.shop_id=p_shop_id and si.status='FINALIZED' and si.business_date between p_from and p_to group by 1
- ), p as (
-  select pbi.tax_rate_bp_snapshot rate,sum(pbi.line_total_paise)::bigint gross
+  where sii.tenant_id=current_tenant_id() and sii.shop_id=p_shop_id and si.status='FINALIZED' and si.business_date between p_from and p_to
+ ), purchase_lines as (
+  select pbi.tax_rate_bp_snapshot rate,
+   case when pb.subtotal_paise>0 then round(pbi.line_total_paise::numeric * greatest(pb.subtotal_paise-pb.discount_paise,0) / pb.subtotal_paise) else 0 end::bigint adjusted
   from purchase_bill_items pbi join purchase_bills pb on pb.tenant_id=pbi.tenant_id and pb.id=pbi.purchase_bill_id
-  where pbi.tenant_id=current_tenant_id() and pbi.shop_id=p_shop_id and pb.status='POSTED' and pb.business_date between p_from and p_to group by 1
- ), rates as (select rate from s union select rate from p)
+  where pbi.tenant_id=current_tenant_id() and pbi.shop_id=p_shop_id and pb.status='POSTED' and pb.business_date between p_from and p_to
+ ), s as (select rate,sum(adjusted)::bigint gross from sale_lines group by rate),
+ p as (select rate,sum(adjusted)::bigint gross from purchase_lines group by rate),
+ rates as (select rate from s union select rate from p)
  select r.rate,
   round(coalesce(s.gross,0)*10000.0/(10000+r.rate))::bigint,coalesce(s.gross,0)::bigint,
   round(coalesce(p.gross,0)*10000.0/(10000+r.rate))::bigint,coalesce(p.gross,0)::bigint
  from rates r left join s using(rate) left join p using(rate) order by r.rate
-$$;
+$;
 
 create function phase6_export_tenant(p_shop_id uuid)
 returns jsonb language plpgsql stable security definer set search_path=public as $$
