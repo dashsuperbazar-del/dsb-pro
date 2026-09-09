@@ -84,15 +84,19 @@ async function processOutbox(rt:Runtime){
     if(!next)return;
     const sending=markOutboxSending(next);
     await rt.db.outbox.put(sending);
+    if(sending.kind!=='financial-rpc'||sending.target!=='post_sale'){
+      const message=`Unsupported outbox target ${sending.target}`;
+      await rejectOfflineSale(rt.db,sending.clientId,message);
+      continue;
+    }
+    const payload=sending.payload as OfflineSalePayload;
+    let result:Awaited<ReturnType<typeof pushSyncedSale>>;
     try{
-      if(sending.kind!=='financial-rpc'||sending.target!=='post_sale')throw new Error(`Unsupported outbox target ${sending.target}`);
-      const payload=sending.payload as OfflineSalePayload;
-      const result=await pushSyncedSale({
+      result=await pushSyncedSale({
         deviceId:rt.identity.deviceId,shopId:payload.shopId,customerId:payload.customerId,businessDate:payload.businessDate,
         discountPaise:payload.discountPaise,extraChargesPaise:payload.extraChargesPaise,clientId:payload.clientId,
-        lines:payload.lines as SaleLineInput[],payments:payload.payments as SalePaymentInput[],notes:payload.notes,
+        lines:payload.lines as Array<SaleLineInput&{expectedUnitPricePaise?:number}>,payments:payload.payments as SalePaymentInput[],notes:payload.notes,
       });
-      await completeOfflineSale(rt.db,sending.clientId,asSale(result));
     }catch(error){
       const kind=classifyError(error);
       if(kind==='offline'||kind==='server'||kind==='auth-expired'){
@@ -106,6 +110,23 @@ async function processOutbox(rt:Runtime){
         deviceId:rt.identity.deviceId,opClientId:sending.clientId,kind:'financial-rejection',target:sending.target,
         reason:message,payload:sending.payload,serverRef:null,clientId:crypto.randomUUID(),
       }).catch(()=>undefined);
+      continue;
+    }
+
+    try{
+      await completeOfflineSale(rt.db,sending.clientId,asSale(result));
+    }catch(error){
+      // The server has already confirmed the financial event. A local
+      // IndexedDB failure is therefore an UNKNOWN acknowledgement outcome,
+      // never a business rejection. Keep the exact outbox operation so the
+      // idempotent server RPC can be retried after local storage recovers.
+      const retry=markOutboxRetry(
+        sending,
+        `Server confirmed sale but local acknowledgement failed: ${reason(error)}`,
+        Date.now()+retryDelayMs(sending.attempts+1),
+      );
+      await rt.db.outbox.put(retry);
+      return;
     }
   }
   throw new Error('Sync outbox safety limit reached.');
