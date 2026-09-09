@@ -54,7 +54,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.116.0
       - name: Clear stale Supabase containers
         run: docker ps -aq --filter 'name=supabase_' | xargs -r docker rm -f
       - run: supabase start
@@ -77,7 +77,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.116.0
       - name: Clear stale Supabase containers
         run: docker ps -aq --filter 'name=supabase_' | xargs -r docker rm -f
       - run: supabase start
