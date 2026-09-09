@@ -394,3 +394,19 @@ Those notes are retained as execution history, but they are no longer the curren
 
 **Next:** once PR #3 merge is explicitly authorized, merge/deploy it; Phase 2 is Core library
 (`DSB_PRO_BUILD_PLAN.md` v1.5 §13).
+
+## Phase 5 — Offline-first sync (in progress)
+
+### Change-set 5.1 — sync invariants foundation
+
+- Started from exact Phase 4 head `da092983906bd6b6e97914821919a3ada837242f` on branch `phase-5-offline-sync`; Phase 4 PR #7 remains unmerged.
+- Added `packages/sync` as a pure TypeScript policy layer before any IndexedDB/Dexie or UI wiring.
+- Locked the silent-corruption rules Phase 5 must preserve:
+  - pull cursors are composite `(updated_at, id)`, so rows sharing one server timestamp cannot be skipped;
+  - mutable master data uses whole-row server-clock LWW only — field-wise union is forbidden;
+  - tombstones are sticky during normal pull, so a seen delete cannot be resurrected by a later live snapshot;
+  - financial events are append-only and idempotent by `client_id`; an exact retry deduplicates, but divergent data under the same `client_id` throws instead of overwriting;
+  - the outbox is strictly ordered and a retry in backoff cannot be overtaken;
+  - provisional document numbers use the required `T-<device>-<n>` identity.
+- No database schema or production runtime path changed in this change-set, so no SQL migration was required. Dexie persistence, server pull/push adapters, device-revocation enforcement, conflict tray, realtime→polling fallback and the chaos suite remain subsequent Phase 5 change-sets.
+- The unresolved owner policy “cashiers may finalize offline vs draft-only offline” is intentionally not guessed here; this foundation supports either policy without changing data semantics.
