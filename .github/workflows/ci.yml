@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, phase-4-pos-customers-payments, phase-5-offline-sync]
+    branches: [main, phase-4-pos-customers-payments, phase-5-offline-sync, phase-6-ledgers-reports-dr]
   pull_request:
 
 jobs:
@@ -434,3 +434,29 @@ jobs:
         with:
           path: apps/admin/dist
       - uses: actions/deploy-pages@v4
+
+
+  phase6_preview:
+    needs: [build]
+    if: github.ref == 'refs/heads/phase-6-ledgers-reports-dr' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build Phase 6 preview
+        env:
+          VITE_APP_VERSION: ${{ github.sha }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://zmtvvdgsbdwhowrzkcwr.supabase.co' }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJIUzI1NiIsInR5cCI6IkpXVCJ9' }}
+        run: pnpm --filter @dsb-pro/admin run build
+      - name: Deploy Phase 6 branch preview to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/admin/dist --project-name=dsb-pro --branch=phase-6-ledgers-reports-dr
