@@ -104,7 +104,12 @@ test('chaos: airplane mode + app restart + logical one-hour outage preserves and
   // two provisional identities, and no financial event is duplicated.
   await context.setOffline(false);
   await page.getByRole('button',{name:'Retry queued work now'}).click();
-  await expect(page.getByTestId('sync-outbox-count')).toHaveText('0',{timeout:15000});
+  try{
+    await expect(page.getByTestId('sync-outbox-count')).toHaveText('0',{timeout:15000});
+  }catch(error){
+    console.log('SYNC HEALTH ON RECOVERY FAILURE:\n'+await page.locator('section[aria-label="Sync health"]').innerText());
+    throw error;
+  }
   await expect(page.getByTestId('sync-queued-sales')).toHaveText('0');
   const rows=page.locator('section[aria-label="Offline sales"] tbody tr');
   await expect(rows).toHaveCount(2);
