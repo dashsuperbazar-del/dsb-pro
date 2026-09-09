@@ -95,7 +95,9 @@ jobs:
           # Playwright does not need. During repository metadata rotations it
           # can return a transient Hash Sum mismatch and prevent the E2E suite
           # from even starting. Playwright downloads its own Chromium build.
-          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+          grep -RIl 'dl.google.com/linux/chrome' /etc/apt/sources.list.d 2>/dev/null | while IFS= read -r source; do
+            sudo rm -f "$source"
+          done
           pnpm --filter @dsb-pro/admin exec playwright install --with-deps chromium
       - run: pnpm --filter @dsb-pro/admin run e2e
 
