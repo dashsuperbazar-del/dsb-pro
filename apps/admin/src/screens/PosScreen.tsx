@@ -30,12 +30,18 @@ export function PosScreen(){
     await waitForOfflineRuntime();
     const identity=getOfflineRuntimeIdentity(); if(!identity) throw new Error('Offline shop cache is not ready.');
     setTenantId(identity.tenantId); setShopId(identity.shopId);
-    try{
-      const [i,c,d,s,b]=await Promise.all([listItems(),listCustomers(),getShopBusinessDate(identity.shopId),listRecentSales(identity.shopId,20),listCustomerBalances()]);
-      setItems(i); setCustomers(c); setBusinessDate(d); setSales(s); setBalances(Object.fromEntries(b.map(x=>[x.customer_id,x.balance_paise])));
-    }catch{
+    const useOffline=typeof navigator!=='undefined'&&!navigator.onLine;
+    if(useOffline){
       const [i,c,d]=await Promise.all([getOfflineItems(),getOfflineCustomers(),getOfflineBusinessDate()]);
       setItems(i); setCustomers(c); setBusinessDate(d??new Date().toISOString().slice(0,10)); setSales([]); setBalances({});
+    }else{
+      try{
+        const [i,c,d,s,b]=await Promise.all([listItems(),listCustomers(),getShopBusinessDate(identity.shopId),listRecentSales(identity.shopId,20),listCustomerBalances()]);
+        setItems(i); setCustomers(c); setBusinessDate(d); setSales(s); setBalances(Object.fromEntries(b.map(x=>[x.customer_id,x.balance_paise])));
+      }catch{
+        const [i,c,d]=await Promise.all([getOfflineItems(),getOfflineCustomers(),getOfflineBusinessDate()]);
+        setItems(i); setCustomers(c); setBusinessDate(d??new Date().toISOString().slice(0,10)); setSales([]); setBalances({});
+      }
     }
     setOfflineSales(await listOfflineSales());
   }
@@ -48,7 +54,11 @@ export function PosScreen(){
   async function addLine(item:Item,unitLevel:1|2|3,qty:number,priceKind:'retail'|'wholesale',discountPaise=0){
     if(!Number.isFinite(qty)||qty<=0) throw new Error('Quantity must be greater than zero.');
     let prices;
-    try{ prices=await listCurrentPrices(item.id); }catch{ prices=await getOfflinePrices(item.id); }
+    if(typeof navigator!=='undefined'&&!navigator.onLine){
+      prices=await getOfflinePrices(item.id);
+    }else{
+      try{ prices=await listCurrentPrices(item.id); }catch{ prices=await getOfflinePrices(item.id); }
+    }
     const matching=prices.filter(p=>p.kind===priceKind&&p.unit_level===unitLevel);
     const chosen=matching.find(p=>p.shop_id===shopId)??matching.find(p=>p.shop_id===null);
     if(!chosen) throw new Error(`No active ${priceKind} price for ${item.name} / ${unitName(item,unitLevel)}.`);
@@ -60,7 +70,12 @@ export function PosScreen(){
   }
 
   async function scan(ev:Event){ ev.preventDefault(); setError(''); try{
-    let hit; try{ hit=await findItemByBarcode(barcode); }catch{ hit=await findOfflineBarcode(barcode); }
+    let hit;
+    if(typeof navigator!=='undefined'&&!navigator.onLine){
+      hit=await findOfflineBarcode(barcode);
+    }else{
+      try{ hit=await findItemByBarcode(barcode); }catch{ hit=await findOfflineBarcode(barcode); }
+    }
     if(!hit) throw new Error('Barcode not found.'); const item=items.find(i=>i.id===hit.item_id); if(!item) throw new Error('Barcode item is unavailable.');
     await addLine(item,hit.unit_level,1,'retail'); setBarcode('');
   }catch(e){setError(String(e));} }
