@@ -116,7 +116,7 @@ export function PosScreen(){
     <section class="card"><h2>1. Scan or add item</h2>
       <form onSubmit={scan} class="row"><label>Barcode <input autofocus value={barcode} onInput={e=>setBarcode((e.currentTarget as HTMLInputElement).value)} /></label><button>Scan / Add</button></form>
       <form onSubmit={addManual} class="grid-form">
-        <label>Search item <input value={itemQuery} placeholder="Name or SKU" onInput={e=>{setItemQuery((e.currentTarget as HTMLInputElement).value);setManualItemId('');}} /></label>
+        <label>Find product <input value={itemQuery} placeholder="Name or SKU" onInput={e=>{setItemQuery((e.currentTarget as HTMLInputElement).value);setManualItemId('');}} /></label>
         <label>Item <select name="itemId" required value={manualItemId} onChange={e=>{const id=(e.currentTarget as HTMLSelectElement).value;setManualItemId(id);const item=items.find(i=>i.id===id);setManualUnitLevel(item?.unit3?3:item?.unit2?2:1);}}><option value="">Choose…</option>{visibleItems.map(i=><option value={i.id}>{i.name}{i.sku?` · ${i.sku}`:''}</option>)}</select><small>Showing up to 50 matches from {items.length} items.</small></label>
         <label>Unit <select name="unitLevel" value={manualUnitLevel} disabled={!manualItem} onChange={e=>setManualUnitLevel(Number((e.currentTarget as HTMLSelectElement).value) as 1|2|3)}><option value="1">{manualItem?.unit1||'Unit 1'}</option>{manualItem?.unit2&&<option value="2">{manualItem.unit2}</option>}{manualItem?.unit3&&<option value="3">{manualItem.unit3}</option>}</select></label>
         <label>Quantity <input name="qty" type="number" min="0.000001" step="any" value="1" required/></label>
