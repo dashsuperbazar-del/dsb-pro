@@ -5,6 +5,7 @@ import {
   signIn,
   signOut,
   getSession,
+  ensureFreshSession,
   isEmailVerified,
   resendVerificationEmail,
   resetPasswordForEmail,
@@ -17,6 +18,7 @@ function makeMockClient(overrides: Record<string, unknown> = {}) {
       signInWithPassword: vi.fn().mockResolvedValue({ error: null }),
       signOut: vi.fn().mockResolvedValue({ error: null }),
       getSession: vi.fn().mockResolvedValue({ data: { session: null }, error: null }),
+      refreshSession: vi.fn().mockResolvedValue({ data: { session: null }, error: null }),
       resend: vi.fn().mockResolvedValue({ error: null }),
       resetPasswordForEmail: vi.fn().mockResolvedValue({ error: null }),
       ...overrides,
@@ -75,6 +77,28 @@ describe('auth adapter', () => {
     });
     __setSupabaseClientForTest(client as never);
     await expect(getSession()).resolves.toBe(fakeSession);
+  });
+
+  it('ensureFreshSession keeps a token that has enough validity left', async () => {
+    const fakeSession = { user: { id: 'u1' }, expires_at: Math.floor(Date.now() / 1000) + 3600 };
+    const client = makeMockClient({
+      getSession: vi.fn().mockResolvedValue({ data: { session: fakeSession }, error: null }),
+    });
+    __setSupabaseClientForTest(client as never);
+    await expect(ensureFreshSession()).resolves.toBe(fakeSession);
+    expect(client.auth.refreshSession).not.toHaveBeenCalled();
+  });
+
+  it('ensureFreshSession refreshes an expired token before authenticated work', async () => {
+    const expired = { user: { id: 'u1' }, expires_at: Math.floor(Date.now() / 1000) - 1 };
+    const fresh = { user: { id: 'u1' }, expires_at: Math.floor(Date.now() / 1000) + 3600 };
+    const client = makeMockClient({
+      getSession: vi.fn().mockResolvedValue({ data: { session: expired }, error: null }),
+      refreshSession: vi.fn().mockResolvedValue({ data: { session: fresh }, error: null }),
+    });
+    __setSupabaseClientForTest(client as never);
+    await expect(ensureFreshSession()).resolves.toBe(fresh);
+    expect(client.auth.refreshSession).toHaveBeenCalledTimes(1);
   });
 
   it('isEmailVerified reads email_confirmed_at off the session user', () => {
