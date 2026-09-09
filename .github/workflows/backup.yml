@@ -55,16 +55,19 @@ jobs:
           test "$(stat -c%s public.pgcustom)" -ge 1000
       - name: Dump Supabase Auth separately
         run: |
-          docker run --rm -v "$PWD:/dump" postgres:17 pg_dump --format=custom --data-only --schema=auth --table=auth.users "${{ secrets.SUPABASE_DB_URL }}" -f /dump/auth-users.pgcustom
-          sudo chown "$(id -u):$(id -g)" auth-users.pgcustom
-          test "$(stat -c%s auth-users.pgcustom)" -ge 500
+          # Supabase Auth sign-in state spans the auth schema (including users,
+          # identities and password hashes). Keep it separate from the portable
+          # public-schema artifact, but protect the full auth data set.
+          docker run --rm -v "$PWD:/dump" postgres:17 pg_dump --format=custom --data-only --schema=auth "${{ secrets.SUPABASE_DB_URL }}" -f /dump/auth.pgcustom
+          sudo chown "$(id -u):$(id -g)" auth.pgcustom
+          test "$(stat -c%s auth.pgcustom)" -ge 500
       - name: Encrypt and checksum both layers
         id: checksum
         run: |
           age -r "${{ vars.AGE_PUBLIC_KEY }}" -o public.pgcustom.age public.pgcustom
-          age -r "${{ vars.AGE_PUBLIC_KEY }}" -o auth-users.pgcustom.age auth-users.pgcustom
+          age -r "${{ vars.AGE_PUBLIC_KEY }}" -o auth.pgcustom.age auth.pgcustom
           echo "public_sha=$(sha256sum public.pgcustom.age|cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-          echo "auth_sha=$(sha256sum auth-users.pgcustom.age|cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "auth_sha=$(sha256sum auth.pgcustom.age|cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       - name: Build financial manifest
         id: manifest
         run: |
@@ -80,7 +83,7 @@ jobs:
       - name: Upload both artifacts to B2 and R2 and verify
         run: |
           DATE=$(date +%F)
-          for pair in "public.pgcustom.age:backup-$DATE.pgcustom.age:${{ steps.checksum.outputs.public_sha }}" "auth-users.pgcustom.age:auth-$DATE.pgcustom.age:${{ steps.checksum.outputs.auth_sha }}"; do
+          for pair in "public.pgcustom.age:backup-$DATE.pgcustom.age:${{ steps.checksum.outputs.public_sha }}" "auth.pgcustom.age:auth-$DATE.pgcustom.age:${{ steps.checksum.outputs.auth_sha }}"; do
             IFS=: read SRC NAME SHA <<< "$pair"
             rclone copyto "$SRC" "b2:APD-BB/$NAME"
             test "$(rclone cat "b2:APD-BB/$NAME"|sha256sum|cut -d' ' -f1)" = "$SHA"
