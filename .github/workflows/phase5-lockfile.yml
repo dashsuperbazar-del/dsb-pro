@@ -1,0 +1,38 @@
+name: Phase 5 lockfile refresh
+
+on:
+  push:
+    branches: [phase-5-offline-sync]
+    paths:
+      - 'packages/sync/package.json'
+      - 'apps/admin/package.json'
+      - '.github/workflows/phase5-lockfile.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase-5-offline-sync
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --no-frozen-lockfile
+      - name: Commit lockfile if changed
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- pnpm-lock.yaml; then
+            echo "Lockfile already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pnpm-lock.yaml
+          git commit -m "chore: lock Phase 5 dependencies"
+          git push origin HEAD:phase-5-offline-sync

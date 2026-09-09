@@ -394,3 +394,99 @@ Those notes are retained as execution history, but they are no longer the curren
 
 **Next:** once PR #3 merge is explicitly authorized, merge/deploy it; Phase 2 is Core library
 (`DSB_PRO_BUILD_PLAN.md` v1.5 §13).
+
+## Phase 5 — Offline-first sync (in progress)
+
+### Change-set 5.1 — sync invariants foundation
+
+- Started from exact Phase 4 head `da092983906bd6b6e97914821919a3ada837242f` on branch `phase-5-offline-sync`; Phase 4 PR #7 remains unmerged.
+- Added `packages/sync` as a pure TypeScript policy layer before any IndexedDB/Dexie or UI wiring.
+- Locked the silent-corruption rules Phase 5 must preserve:
+  - pull cursors are composite `(updated_at, id)`, so rows sharing one server timestamp cannot be skipped;
+  - mutable master data uses whole-row server-clock LWW only — field-wise union is forbidden;
+  - tombstones are sticky during normal pull, so a seen delete cannot be resurrected by a later live snapshot;
+  - financial events are append-only and idempotent by `client_id`; an exact retry deduplicates, but divergent data under the same `client_id` throws instead of overwriting;
+  - the outbox is strictly ordered and a retry in backoff cannot be overtaken;
+  - provisional document numbers use the required `T-<device>-<n>` identity.
+- No database schema or production runtime path changed in this change-set, so no SQL migration was required. Dexie persistence, server pull/push adapters, device-revocation enforcement, conflict tray, realtime→polling fallback and the chaos suite remain subsequent Phase 5 change-sets.
+- The unresolved owner policy “cashiers may finalize offline vs draft-only offline” is intentionally not guessed here; this foundation supports either policy without changing data semantics.
+
+
+### Phase 5 implementation status — 2026-09-09
+
+This section supersedes the narrow change-set 5.1 description above. That entry is retained as
+history; the Phase 5 branch now contains the full offline-sync implementation and is waiting
+only on its locked exact-head gates.
+
+Implemented:
+
+- **Durable local store:** `packages/sync` now uses Dexie/IndexedDB for mirrored items,
+  barcodes, prices, customers, stock, metadata/cursors, local reservations, queued sales,
+  outbox operations and conflicts. Interrupted `sending` rows are recovered to retry state
+  after restart rather than silently discarded.
+- **Pull/cursor contract:** server pull uses a composite `(updated_at,id)` cursor so rows
+  sharing one server timestamp cannot be skipped. Master-data merge is whole-row/server-clock
+  only; field-wise union is forbidden. Tombstones remain sticky during normal pull so a stale
+  snapshot cannot resurrect a known deletion.
+- **Offline sales:** POS writes the sale to the durable local outbox before it can be treated
+  as queued. It snapshots item/unit/price data, reserves cached stock locally and assigns a
+  provisional `T-<device>-<n>` number. Walk-in payment completeness and cached-stock checks
+  run locally; the server still revalidates authority, stock and price before official
+  posting.
+- **Exactly-once financial semantics:** Phase 5 carries `client_id` through the outbox and
+  server RPC. Exact unknown-outcome retries converge. Divergent retries under the same
+  `client_id` are rejected by a persisted request fingerprint instead of overwriting the
+  first financial event. The Phase 5 fingerprint creation is transaction-serialized so two
+  simultaneous exact retries cannot race each other.
+- **Price-drift protection:** an offline sale carries its expected unit-price snapshot to the
+  server. A new first-time push is rejected for review if the authoritative current price no
+  longer matches; an exact retry of an already-accepted request still converges even if the
+  price changes later.
+- **Unknown-outcome safety:** transport/server/response-shape failures keep the financial
+  outbox row retryable. If the server commits a sale but the subsequent local IndexedDB
+  acknowledgement fails, the row is retained for an idempotent retry rather than being
+  misclassified as a business rejection.
+- **Device enforcement:** sync pull/push requires a registered active device. Revoked devices
+  are rejected on the next sync request, and the same revoked browser identity cannot silently
+  re-register itself. The application surfaces revoked-device access as an explicit gate.
+- **Cashier policy:** owner/manager offline billing is supported. Cashier offline finalization
+  defaults to disabled and is owner-configurable. A restricted cashier may still finalize an
+  online sale only after a healthy server sync check; network presence alone is not treated as
+  proof of server availability.
+- **Conflict handling:** rejected financial mutations remain in a local review tray and can
+  also be recorded in a server-side shop-wide conflict table. Owners/managers can see and mark
+  server conflicts reviewed without mutating the underlying financial event.
+- **Sync transport:** realtime database notifications are used as wake-ups, with a 30-second
+  polling fallback and manual retry/sync controls. The Sync & Offline screen exposes outbox,
+  queued-sale and conflict counts, last clean sync and device/server clock drift.
+- **Offline app shell:** a versioned service worker precaches the built SPA shell/assets and
+  caches successfully visited SPA routes. Offline navigation first uses the exact cached route
+  and then the cached root shell, allowing the app to restart without the network after at
+  least one successful online load.
+- **Receipts:** queued offline sales can print an explicitly provisional receipt. It is
+  labeled pending sync and is not represented as an official invoice until the server returns
+  an official document number.
+- **Database migration:** `0029_phase5_sync.sql` adds device cursors/schema version/last-sync,
+  sync conflicts, request fingerprints and the device-aware Phase 5 pull/ack/post-sale RPCs.
+  Direct authenticated writes to sync-ledger tables are not granted; application mutation
+  goes through the fixed-search-path RPCs. The live `backup_ro` role is conditionally granted
+  SELECT on the new Phase 5 tables so the existing nightly public-schema dump remains complete.
+- **Guarded live upgrade:** the Phase 5 push workflow refuses a partial/unexpected live schema,
+  creates an encrypted Postgres-17 pre-migration dump, verifies checksums in both B2 and R2,
+  applies migration 0029 atomically, verifies RLS/grants/RPC privileges and backup-role access,
+  then deploys a Cloudflare Pages branch preview.
+
+Locked Phase 5 evidence:
+
+- pgTAP covers the Phase 5 schema/RLS/RPC/device/policy/idempotency/price-drift behaviors on a
+  fresh local Supabase reset.
+- The two-device concurrency script races stock from separate registered device identities,
+  proves no oversell, exact retry convergence, divergent retry rejection and unique official
+  document numbers.
+- Playwright includes the required chaos path: start online, queue after network loss, print
+  provisional receipt, restart the app offline, keep queued work through the logical one-hour
+  outage, reconnect, drain the ordered outbox and prove final invoice count/totals/stock.
+
+**Gate remains open until one exact Phase 5 head has all CI jobs green and the guarded live
+migration + preview jobs also pass on that same push. Do not merge PR #9 or start Phase 6
+before that evidence exists.**

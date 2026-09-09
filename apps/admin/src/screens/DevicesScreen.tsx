@@ -157,8 +157,7 @@ function AllDevices({ selfUserId }: { selfUserId: string }) {
     <section aria-label="All devices">
       <h2>All devices</h2>
       <p>
-        Revoking someone else's device removes it from this list. It does not yet block that device from
-        continuing to use the app — that protection is planned for a later update.
+        Revoking someone else's device blocks that browser from pulling or pushing queued Phase 5 sync work on its next sync request.
       </p>
       {error && <p role="alert">{error}</p>}
       {devices === null ? (

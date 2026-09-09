@@ -44,6 +44,9 @@ importers:
       '@dsb-pro/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@dsb-pro/sync':
+        specifier: workspace:*
+        version: link:../../packages/sync
       '@sentry/browser':
         specifier: ^10.73.0
         version: 10.73.0
@@ -95,6 +98,12 @@ importers:
   packages/core: {}
 
   packages/db: {}
+
+  packages/sync:
+    dependencies:
+      dexie:
+        specifier: 4.4.5
+        version: 4.4.5
 
 packages:
 
@@ -1156,6 +1165,9 @@ packages:
   detect-libc@2.1.2:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
     engines: {node: '>=8'}
+
+  dexie@4.4.5:
+    resolution: {integrity: sha512-wWCHdihT3dmlUSuNhn5mMZDWSpG0suxjAni7YjjiZdzabZcKmy3uNZGZ7AeYYXBoLbpSXX35fikPLkPC44Osiw==}
 
   dom-serializer@2.0.0:
     resolution: {integrity: sha512-wIkAryiqt/nV5EQKqQpo3SToSOV9J0DnbJqwK7Wv/Trc92zIAYZ4FlMu+JPFW1DfGFt81ZTCGgDEabffXeLyJg==}
@@ -2933,6 +2945,8 @@ snapshots:
   delayed-stream@1.0.0: {}
 
   detect-libc@2.1.2: {}
+
+  dexie@4.4.5: {}
 
   dom-serializer@2.0.0:
     dependencies:

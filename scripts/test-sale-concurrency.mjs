@@ -16,25 +16,27 @@ async function asAuthenticated(client, userId) {
   await client.query("select set_config('request.jwt.claims', $1, true)", [jwt(userId)]);
 }
 
-async function postSale({ shopId, itemId, clientId, qty }) {
+async function postSale({ deviceId, shopId, itemId, clientId, qty }) {
   const client = new Client({ connectionString });
   await client.connect();
   try {
     await client.query('begin');
     await asAuthenticated(client, ownerId);
     const result = await client.query(
-      `select post_sale(
-        $1::uuid,
+      `select phase5_sync_post_sale(
+        $1,
+        1,
+        $2::uuid,
         null,
         current_date,
         0,
         0,
-        $2,
-        jsonb_build_array(jsonb_build_object('item_id',$3::text,'unit_level',1,'qty',$4::numeric,'price_kind','retail')),
-        jsonb_build_array(jsonb_build_object('amount_paise',($4::numeric*100)::bigint,'mode','cash')),
+        $3,
+        jsonb_build_array(jsonb_build_object('item_id',$4::text,'unit_level',1,'qty',$5::numeric,'price_kind','retail','discount_paise',0,'expected_unit_price_paise',100)),
+        jsonb_build_array(jsonb_build_object('amount_paise',($5::numeric*100)::bigint,'mode','cash')),
         null
-      ) as sale_id`,
-      [shopId, clientId, itemId, qty],
+      )->>'saleId' as sale_id`,
+      [deviceId, shopId, clientId, itemId, qty],
     );
     await client.query('commit');
     return { ok: true, saleId: result.rows[0].sale_id };
@@ -59,6 +61,8 @@ try {
            (select id from shops where tenant_id=current_tenant_id() and is_default limit 1) as shop_id
   `);
   const { tenant_id: tenantId, shop_id: shopId } = ids.rows[0];
+  await admin.query("select register_device('sync-device-a','phase5-concurrency')");
+  await admin.query("select register_device('sync-device-b','phase5-concurrency')");
   const item = await admin.query(
     `insert into items(tenant_id,name,sku,unit1,tax_rate_bp,client_id)
      values($1,'Concurrency Item',$2,'piece',0,$3)
@@ -78,9 +82,10 @@ try {
   );
   await admin.query('commit');
 
+  const raceIds = [`race-a-${randomUUID()}`, `race-b-${randomUUID()}`];
   const race = await Promise.all([
-    postSale({ shopId, itemId, clientId: `race-a-${randomUUID()}`, qty: 4 }),
-    postSale({ shopId, itemId, clientId: `race-b-${randomUUID()}`, qty: 4 }),
+    postSale({ deviceId: 'sync-device-a', shopId, itemId, clientId: raceIds[0], qty: 4 }),
+    postSale({ deviceId: 'sync-device-b', shopId, itemId, clientId: raceIds[1], qty: 4 }),
   ]);
   const raceSuccesses = race.filter((r) => r.ok);
   const raceFailures = race.filter((r) => !r.ok);
@@ -101,14 +106,19 @@ try {
 
   const duplicateClientId = `duplicate-${randomUUID()}`;
   const duplicate = await Promise.all([
-    postSale({ shopId, itemId, clientId: duplicateClientId, qty: 1 }),
-    postSale({ shopId, itemId, clientId: duplicateClientId, qty: 1 }),
+    postSale({ deviceId: 'sync-device-a', shopId, itemId, clientId: duplicateClientId, qty: 1 }),
+    postSale({ deviceId: 'sync-device-b', shopId, itemId, clientId: duplicateClientId, qty: 1 }),
   ]);
   if (!duplicate.every((r) => r.ok)) {
     throw new Error(`simultaneous duplicate client_id should converge on one sale: ${JSON.stringify(duplicate)}`);
   }
   if (duplicate[0].saleId !== duplicate[1].saleId) {
     throw new Error(`duplicate client_id returned different sale ids: ${JSON.stringify(duplicate)}`);
+  }
+
+  const divergent = await postSale({ deviceId: 'sync-device-a', shopId, itemId, clientId: duplicateClientId, qty: 2 });
+  if (divergent.ok || !/client_id payload mismatch/i.test(divergent.message)) {
+    throw new Error(`divergent retry was not rejected by request fingerprint: ${JSON.stringify(divergent)}`);
   }
 
   const proof = await admin.query(
@@ -123,7 +133,16 @@ try {
     throw new Error(`duplicate idempotency proof failed: ${JSON.stringify(row)}`);
   }
 
-  console.log('sale concurrency: 4+4 against stock 5 produced exactly one sale; duplicate client_id converged without double stock');
+  const numbering = await admin.query(
+    `select count(*)::int as total, count(distinct doc_no)::int as distinct_docs
+       from sale_invoices where tenant_id=$1 and client_id = any($2::text[])`,
+    [tenantId, [raceIds[0], raceIds[1], duplicateClientId]],
+  );
+  if (numbering.rows[0].total !== numbering.rows[0].distinct_docs) {
+    throw new Error(`official invoice numbers are not unique: ${JSON.stringify(numbering.rows[0])}`);
+  }
+
+  console.log('phase5 sale concurrency: two registered devices raced 4+4 against stock 5; exactly one succeeded; exact duplicate client_id converged; divergent retry was rejected; official doc numbers stayed unique');
 } finally {
   await admin.end();
 }

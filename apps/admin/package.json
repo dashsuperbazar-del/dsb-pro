@@ -14,7 +14,8 @@
     "@dsb-pro/core": "workspace:*",
     "@sentry/browser": "^10.73.0",
     "preact": "^10.29.8",
-    "preact-router": "^4.1.2"
+    "preact-router": "^4.1.2",
+    "@dsb-pro/sync": "workspace:*"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.0",

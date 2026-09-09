@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, phase-4-pos-customers-payments]
+    branches: [main, phase-4-pos-customers-payments, phase-5-offline-sync]
   pull_request:
 
 jobs:
@@ -192,6 +192,200 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy apps/admin/dist --project-name=dsb-pro --branch=phase-4-pos-customers-payments
+
+
+  phase5_db_upgrade:
+    needs: [build]
+    if: github.ref == 'refs/heads/phase-5-offline-sync' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions: {}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Inspect live Phase 5 database starting point
+        id: preflight
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SUPABASE_DB_URL" || { echo 'SUPABASE_DB_URL is required'; exit 1; }
+          BASE_OK=$(psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -At -c "
+            select to_regprocedure('public.get_shop_day_reconciliation(uuid,date)') is not null
+               and to_regprocedure('public.phase4_post_sale_unlocked(uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text)') is not null;")
+          test "$BASE_OK" = "t" || { echo 'Live database is not at the verified Phase 4 base; refusing Phase 5 migration.'; exit 1; }
+
+          PRESENT=$(psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -At <<'SQL'
+          with checks(name,present) as (
+            values
+              ('device_sync_cursors',exists(select 1 from information_schema.columns where table_schema='public' and table_name='devices' and column_name='sync_cursors')),
+              ('sync_conflicts',to_regclass('public.sync_conflicts') is not null),
+              ('sync_idempotency_keys',to_regclass('public.sync_idempotency_keys') is not null),
+              ('sync_pull',to_regprocedure('public.phase5_sync_pull(text,uuid,integer,jsonb)') is not null),
+              ('sync_post_sale',to_regprocedure('public.phase5_sync_post_sale(text,integer,uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text)') is not null)
+          )
+          select count(*) from checks where present;
+          SQL
+          )
+          if [ "$PRESENT" = "5" ]; then
+            echo "needs_upgrade=false" >> "$GITHUB_OUTPUT"
+            echo "Live database already has the complete Phase 5 sync contract."
+          elif [ "$PRESENT" = "0" ]; then
+            echo "needs_upgrade=true" >> "$GITHUB_OUTPUT"
+            echo "Live database is a clean Phase 4 base; Phase 5 migration is required."
+          else
+            echo "Partial Phase 5 schema detected ($PRESENT/5 anchors). Refusing automatic migration."
+            exit 1
+          fi
+
+      - name: Install backup tools
+        if: steps.preflight.outputs.needs_upgrade == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y age rclone
+          docker pull postgres:17
+
+      - name: Configure backup destinations
+        if: steps.preflight.outputs.needs_upgrade == 'true'
+        run: |
+          mkdir -p ~/.config/rclone
+          cat > ~/.config/rclone/rclone.conf <<CONF
+          [b2]
+          type = b2
+          account = ${{ secrets.B2_ACCOUNT_ID }}
+          key = ${{ secrets.B2_APPLICATION_KEY }}
+
+          [r2]
+          type = s3
+          provider = Cloudflare
+          access_key_id = ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret_access_key = ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          endpoint = ${{ secrets.R2_ENDPOINT }}
+          no_check_bucket = true
+          CONF
+
+      - name: Verify backup encryption recipient
+        if: steps.preflight.outputs.needs_upgrade == 'true'
+        env:
+          AGE_PUBLIC_KEY: ${{ vars.AGE_PUBLIC_KEY }}
+        run: |
+          EXPECTED="age1n4zj5ymapz5xsur6a5v3en6np5ary3pmmmndpaf5a0vhyeazed7qq3jnrq"
+          test "$AGE_PUBLIC_KEY" = "$EXPECTED" || { echo 'AGE_PUBLIC_KEY does not match the expected offline key.'; exit 1; }
+
+      - name: Create encrypted pre-Phase-5 backup
+        if: steps.preflight.outputs.needs_upgrade == 'true'
+        id: backup
+        env:
+          BACKUP_RO_DATABASE_URL: ${{ secrets.BACKUP_RO_DATABASE_URL }}
+          AGE_PUBLIC_KEY: ${{ vars.AGE_PUBLIC_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$BACKUP_RO_DATABASE_URL" || { echo 'BACKUP_RO_DATABASE_URL is required'; exit 1; }
+          docker run --rm -v "$PWD:/dump" postgres:17             pg_dump --format=custom --schema=public "$BACKUP_RO_DATABASE_URL" -f /dump/phase5-pre.pgcustom
+          sudo chown "$(id -u):$(id -g)" phase5-pre.pgcustom
+          test "$(stat -c%s phase5-pre.pgcustom)" -ge 1000 || { echo 'Pre-migration dump is suspiciously small.'; exit 1; }
+          age -r "$AGE_PUBLIC_KEY" -o phase5-pre.pgcustom.age phase5-pre.pgcustom
+          SHA=$(sha256sum phase5-pre.pgcustom.age | cut -d' ' -f1)
+          NAME="phase5-pre-offline-sync-${GITHUB_SHA}.pgcustom.age"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Upload and verify backup in both destinations
+        if: steps.preflight.outputs.needs_upgrade == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          NAME="${{ steps.backup.outputs.name }}"
+          SHA="${{ steps.backup.outputs.sha }}"
+          rclone copyto phase5-pre.pgcustom.age "b2:APD-BB/$NAME"
+          test "$(rclone cat "b2:APD-BB/$NAME" | sha256sum | cut -d' ' -f1)" = "$SHA"
+          rclone copyto phase5-pre.pgcustom.age "r2:apd-dsb/$NAME"
+          test "$(rclone cat "r2:apd-dsb/$NAME" | sha256sum | cut -d' ' -f1)" = "$SHA"
+          echo "Encrypted pre-Phase-5 backup verified in B2 and R2: $NAME"
+
+      - name: Apply Phase 5 migration atomically
+        if: steps.preflight.outputs.needs_upgrade == 'true'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 --single-transaction -f supabase/migrations/0029_phase5_sync.sql
+
+      - name: Verify live Phase 5 security contract
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -At <<'SQL'
+          do $$
+          begin
+            if to_regclass('public.sync_conflicts') is null
+               or to_regclass('public.sync_idempotency_keys') is null
+               or to_regprocedure('public.phase5_sync_pull(text,uuid,integer,jsonb)') is null
+               or to_regprocedure('public.phase5_sync_ack(text,integer,jsonb)') is null
+               or to_regprocedure('public.phase5_sync_post_sale(text,integer,uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text)') is null then
+              raise exception 'Phase 5 live schema verification failed';
+            end if;
+            if has_table_privilege('authenticated','public.sync_conflicts','INSERT')
+               or has_table_privilege('authenticated','public.sync_idempotency_keys','INSERT') then
+              raise exception 'Direct authenticated sync-ledger write privilege detected';
+            end if;
+            if has_function_privilege('anon','public.phase5_sync_pull(text,uuid,integer,jsonb)','EXECUTE')
+               or has_function_privilege('anon','public.phase5_sync_post_sale(text,integer,uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text)','EXECUTE') then
+              raise exception 'Anon can execute Phase 5 sync RPC';
+            end if;
+            if not has_function_privilege('authenticated','public.phase5_sync_pull(text,uuid,integer,jsonb)','EXECUTE')
+               or not has_function_privilege('authenticated','public.phase5_sync_post_sale(text,integer,uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text)','EXECUTE') then
+              raise exception 'Authenticated role cannot execute Phase 5 sync RPC';
+            end if;
+            if not exists(select 1 from pg_class where oid='public.sync_conflicts'::regclass and relrowsecurity)
+               or not exists(select 1 from pg_class where oid='public.sync_idempotency_keys'::regclass and relrowsecurity) then
+              raise exception 'Phase 5 sync tables are missing RLS';
+            end if;
+          end $$;
+          select 'Live Phase 5 schema/security verification: PASS';
+          SQL
+
+      - name: Verify nightly backup role still covers Phase 5 tables
+        env:
+          BACKUP_RO_DATABASE_URL: ${{ secrets.BACKUP_RO_DATABASE_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$BACKUP_RO_DATABASE_URL" || { echo 'BACKUP_RO_DATABASE_URL is required'; exit 1; }
+          RESULT=$(psql "$BACKUP_RO_DATABASE_URL" -v ON_ERROR_STOP=1 -At -c "
+            select (select count(*) from sync_conflicts) >= 0
+               and (select count(*) from sync_idempotency_keys) >= 0;")
+          test "$RESULT" = "t" || { echo 'backup_ro cannot read the new Phase 5 tables'; exit 1; }
+          echo "Live Phase 5 backup-role coverage: PASS"
+
+  phase5_preview:
+    needs: [build, phase5_db_upgrade]
+    if: github.ref == 'refs/heads/phase-5-offline-sync' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build Phase 5 offline preview
+        env:
+          VITE_APP_VERSION: ${{ github.sha }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://zmtvvdgsbdwhowrzkcwr.supabase.co' }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InptdHZ2ZGdzYmR3aG93cnprY3dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg1MTY2NjgsImV4cCI6MjEwNDA5MjY2OH0.I6O33AReqJBkKwgtzejlS31Djwmdrp5pVF6Mxj4gnig' }}
+        run: pnpm --filter @dsb-pro/admin run build
+      - name: Deploy Phase 5 branch preview to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/admin/dist --project-name=dsb-pro --branch=phase-5-offline-sync
+
 
   deploy:
     needs: [build]

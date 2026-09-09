@@ -22,3 +22,6 @@ export { importLegacyDsbMaster } from './legacyImport';
 
 export type { ShopDayReconciliation, DayReconciliationPaymentModes, DayReconciliationSoldItem } from './reconciliation';
 export { getShopDayReconciliation } from './reconciliation';
+
+export type { SyncCursorWire, SyncPullWire, SyncSaleResultWire, ServerSyncConflict } from './sync';
+export { SYNC_SCHEMA_VERSION, pullSync, ackSync, pushSyncedSale, setOfflineCashierFinalization, recordServerSyncConflict, listServerSyncConflicts, resolveServerSyncConflict, subscribeSyncWakeup } from './sync';
