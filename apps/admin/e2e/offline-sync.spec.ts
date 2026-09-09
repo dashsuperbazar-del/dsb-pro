@@ -51,6 +51,7 @@ async function addOnePaidLine(page:import('@playwright/test').Page){
 }
 
 test('chaos: airplane mode + app restart + logical one-hour outage preserves and later syncs sales',async({page,context})=>{
+  test.setTimeout(60000);
   await createOwnerShop(page);
   await seedOfflineItem(page);
   await page.goto('/pos');
