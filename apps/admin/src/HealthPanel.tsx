@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { checkInvariants,getLatestBackupHealth,type BackupHealth } from '@dsb-pro/adapters';
 
-type IntegrityHealth={ok:boolean;saleTotalViolations:number;negativeStock:number;allocationViolations:number};
+type IntegrityHealth={ok:boolean;saleTotalViolations:number;purchaseTotalViolations:number;negativeStock:number;allocationViolations:number};
 
 export function HealthPanel(){
   const [backup,setBackup]=useState<BackupHealth|null|undefined>(undefined);
@@ -20,7 +20,7 @@ export function HealthPanel(){
       <p>Destinations: {backup.destinations.length?backup.destinations.map(d=>`${d.name} (${d.verified?'verified':'unverified'})`).join(', '):'none'}</p>
     </>}
     {integrity===undefined?<p>Loading invariant health…</p>:integrity===null?null:
-      <p class={integrityOk?'success':'alert'}><strong>Financial invariants:</strong> {integrityOk?'PASS':'FAIL'} · sale totals {integrity.saleTotalViolations} · negative stock {integrity.negativeStock} · allocation violations {integrity.allocationViolations}</p>}
+      <p class={integrityOk?'success':'alert'}><strong>Financial invariants:</strong> {integrityOk?'PASS':'FAIL'} · sale totals {integrity.saleTotalViolations} · purchase totals {integrity.purchaseTotalViolations} · negative stock {integrity.negativeStock} · allocation violations {integrity.allocationViolations}</p>}
     {!integrityOk&&integrity!==undefined&&<p class="alert"><strong>Stop financial posting and investigate before continuing.</strong></p>}
   </section>;
 }
