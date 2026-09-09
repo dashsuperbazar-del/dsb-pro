@@ -241,6 +241,11 @@ declare
 begin
   perform phase5_assert_schema(p_schema_version);
   perform phase5_assert_sync_device(p_device_id);
+  if p_client_id is null or btrim(p_client_id)='' then raise exception 'client_id required'; end if;
+  -- Serialize the fingerprint record itself. post_sale() also locks this
+  -- client_id, but that happens after this Phase 5 guard; without this lock,
+  -- two simultaneous exact retries can race on sync_idempotency_keys.
+  perform pg_advisory_xact_lock(hashtextextended(current_tenant_id()::text||':phase5:post_sale:'||p_client_id,0));
   select payload into v_existing_payload from sync_idempotency_keys
     where tenant_id=current_tenant_id() and operation='post_sale' and op_client_id=p_client_id;
 
