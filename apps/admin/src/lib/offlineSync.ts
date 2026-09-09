@@ -163,7 +163,8 @@ export async function finalizeSaleResilient(input:{
     // safety window. Wait past that window, pull once, then retry locally.
     await new Promise(resolve=>window.setTimeout(resolve,1100));
     await runSyncNow();
-    record=await queueOfflineSale(rt.db,payload,{deviceId:rt.identity.deviceId,role:rt.identity.role,policy});
+    const retryOnlineInitiated=typeof navigator!=='undefined'&&navigator.onLine&&!state.lastError;
+    record=await queueOfflineSale(rt.db,payload,{deviceId:rt.identity.deviceId,role:rt.identity.role,policy,onlineInitiated:retryOnlineInitiated});
   }
   emit();
   if(navigator.onLine)await runSyncNow();
