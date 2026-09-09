@@ -251,6 +251,9 @@ jobs:
       - name: Install backup tools
         if: steps.preflight.outputs.needs_upgrade == 'true'
         run: |
+          grep -RIl 'dl.google.com/linux/chrome' /etc/apt/sources.list.d 2>/dev/null | while IFS= read -r source; do
+            sudo rm -f "$source"
+          done
           sudo apt-get update
           sudo apt-get install -y age rclone
           docker pull postgres:17
