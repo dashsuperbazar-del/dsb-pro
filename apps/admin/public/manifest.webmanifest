@@ -1,0 +1,10 @@
+{
+  "name": "DSB Pro Admin",
+  "short_name": "DSB Pro",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1e5eff",
+  "description": "Offline-capable shop billing and inventory administration."
+}

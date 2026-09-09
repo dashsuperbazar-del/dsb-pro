@@ -61,3 +61,4 @@ td small { display: block; color: var(--muted); }
   .no-print { display:none !important; }
   .print-area table,.receipt-print table { font-size:11pt; }
 }
+\n.sync-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:var(--space-2); }\n.sync-grid > div { padding:var(--space-2); background:var(--surface-2); border-radius:var(--radius); }\n
