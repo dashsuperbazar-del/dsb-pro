@@ -232,14 +232,19 @@ $valuation$;
 create function get_gst_summary(p_shop_id uuid,p_from date,p_to date)
 returns table(tax_rate_bp integer,taxable_sales_paise bigint,gross_sales_paise bigint,taxable_purchases_paise bigint,gross_purchases_paise bigint)
 language sql stable security definer set search_path=public as $gst$
- with sale_lines as (
-  select sii.tax_rate_bp_snapshot rate,
-   case when si.subtotal_paise>0 then round(sii.line_total_paise::numeric * greatest(si.subtotal_paise-si.discount_paise,0) / si.subtotal_paise) else 0 end::bigint adjusted
+ with sale_base as (
+  select sii.tax_rate_bp_snapshot rate,sii.line_total_paise,si.id invoice_id,
+   greatest(si.subtotal_paise-si.discount_paise,0)::bigint after_all_discounts,
+   sum(sii.line_total_paise) over(partition by si.id)::bigint after_line_discounts
   from sale_invoice_items sii join sale_invoices si on si.tenant_id=sii.tenant_id and si.id=sii.sale_invoice_id
   where sii.tenant_id=current_tenant_id() and sii.shop_id=p_shop_id and si.status='FINALIZED' and si.business_date between p_from and p_to
+ ), sale_lines as (
+  select rate,
+   case when after_line_discounts>0 then round(line_total_paise::numeric*after_all_discounts/after_line_discounts)::bigint else 0::bigint end adjusted
+  from sale_base
  ), purchase_lines as (
   select pbi.tax_rate_bp_snapshot rate,
-   case when pb.subtotal_paise>0 then round(pbi.line_total_paise::numeric * greatest(pb.subtotal_paise-pb.discount_paise,0) / pb.subtotal_paise) else 0 end::bigint adjusted
+   case when pb.subtotal_paise>0 then round(pbi.line_total_paise::numeric*greatest(pb.subtotal_paise-pb.discount_paise,0)/pb.subtotal_paise)::bigint else 0::bigint end adjusted
   from purchase_bill_items pbi join purchase_bills pb on pb.tenant_id=pbi.tenant_id and pb.id=pbi.purchase_bill_id
   where pbi.tenant_id=current_tenant_id() and pbi.shop_id=p_shop_id and pb.status='POSTED' and pb.business_date between p_from and p_to
  ), s as (select rate,sum(adjusted)::bigint gross from sale_lines group by rate),
@@ -276,16 +281,30 @@ begin
 end $$;
 
 create function check_invariants()
-returns jsonb language plpgsql stable security definer set search_path=public as $$
-declare v_tenant uuid:=current_tenant_id(); bad_sales bigint; bad_stock bigint; bad_alloc bigint;
+returns jsonb language plpgsql stable security definer set search_path=public as $
+declare v_tenant uuid:=current_tenant_id(); bad_sales bigint; bad_purchases bigint; bad_stock bigint; bad_alloc bigint;
 begin
- select count(*) into bad_sales from sale_invoices s where s.tenant_id=v_tenant and s.status='FINALIZED'
- and s.total_paise<>(select coalesce(sum(line_total_paise),0) from sale_invoice_items li where li.sale_invoice_id=s.id)-s.discount_paise+s.extra_charges_paise;
+ select count(*) into bad_sales
+ from sale_invoices s
+ where s.tenant_id=v_tenant and s.status='FINALIZED' and (
+   s.subtotal_paise<>(select coalesce(sum(li.line_total_paise+li.discount_paise),0) from sale_invoice_items li where li.sale_invoice_id=s.id)
+   or s.total_paise<>s.subtotal_paise-s.discount_paise+s.extra_charges_paise
+ );
+ select count(*) into bad_purchases
+ from purchase_bills b
+ where b.tenant_id=v_tenant and b.status='POSTED' and (
+   b.subtotal_paise<>(select coalesce(sum(li.line_total_paise),0) from purchase_bill_items li where li.purchase_bill_id=b.id)
+   or b.total_paise<>b.subtotal_paise-b.discount_paise+b.extra_charges_paise
+ );
  select count(*) into bad_stock from stock_current where tenant_id=v_tenant and qty_base<0;
  select count(*) into bad_alloc from payments p where p.tenant_id=v_tenant and
   (select coalesce(sum(amount_paise),0) from payment_allocations a where a.payment_id=p.id and a.status='POSTED')>p.amount_paise;
- return jsonb_build_object('ok',bad_sales=0 and bad_stock=0 and bad_alloc=0,'saleTotalViolations',bad_sales,'negativeStock',bad_stock,'allocationViolations',bad_alloc);
-end $$;
+ return jsonb_build_object(
+  'ok',bad_sales=0 and bad_purchases=0 and bad_stock=0 and bad_alloc=0,
+  'saleTotalViolations',bad_sales,'purchaseTotalViolations',bad_purchases,
+  'negativeStock',bad_stock,'allocationViolations',bad_alloc
+ );
+end $;
 
 revoke all on function post_expense(uuid,date,text,text,bigint,text,text,text) from public;
 revoke all on function void_expense(uuid) from public;
