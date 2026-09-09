@@ -1,67 +1,26 @@
 import { useEffect, useState } from 'preact/hooks';
+import { checkInvariants,getLatestBackupHealth,type BackupHealth } from '@dsb-pro/adapters';
 
-// Talks to PostgREST directly rather than pulling in @supabase/supabase-js:
-// this is one read-only, non-financial call outside the sync system, so
-// staying off the provider SDK keeps Phase 0 aligned with the "providers
-// only behind adapters" rule until Phase 1 actually builds that layer.
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+type IntegrityHealth={ok:boolean;saleTotalViolations:number;negativeStock:number;allocationViolations:number};
 
-type BackupStatus = {
-  status: string;
-  finished_at: string | null;
-  destinations: { name: string; verified: boolean }[];
-  app_version: string | null;
-  schema_version: number | null;
-};
-
-export function HealthPanel() {
-  const [backup, setBackup] = useState<BackupStatus | null | undefined>(undefined);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch(`${SUPABASE_URL}/rest/v1/rpc/get_latest_backup_status`, {
-      method: 'POST',
-      headers: {
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: '{}',
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          throw new Error(`${res.status} ${await res.text()}`);
-        }
-        return res.json() as Promise<BackupStatus[]>;
-      })
-      .then((rows) => setBackup(rows[0] ?? null))
-      .catch((err: Error) => setError(err.message));
-  }, []);
-
-  if (error) {
-    return <p role="alert">Backup status unavailable: {error}</p>;
-  }
-
-  if (backup === undefined) {
-    return <p>Loading backup status…</p>;
-  }
-
-  if (backup === null) {
-    return <p>No backup has run yet.</p>;
-  }
-
-  return (
-    <section aria-label="Backup health">
-      <h2>Backup</h2>
-      <p>Status: {backup.status}</p>
-      <p>Last finished: {backup.finished_at ?? 'never'}</p>
-      <p>
-        Destinations:{' '}
-        {backup.destinations.length
-          ? backup.destinations.map((d) => `${d.name} (${d.verified ? 'verified' : 'unverified'})`).join(', ')
-          : 'none yet'}
-      </p>
-    </section>
-  );
+export function HealthPanel(){
+  const [backup,setBackup]=useState<BackupHealth|null|undefined>(undefined);
+  const [integrity,setIntegrity]=useState<IntegrityHealth|null|undefined>(undefined);
+  const [error,setError]=useState<string|null>(null);
+  useEffect(()=>{void Promise.all([getLatestBackupHealth(),checkInvariants()])
+    .then(([b,i])=>{setBackup(b);setIntegrity(i);})
+    .catch((e:unknown)=>setError(e instanceof Error?e.message:String(e)));},[]);
+  const backupOk=backup?.status==='success'&&backup.destinations.length>=2&&backup.destinations.every(d=>d.verified);
+  const integrityOk=integrity?.ok===true;
+  return <section class="card" aria-label="System health">
+    <h2>System health</h2>
+    {error&&<p role="alert" class="alert">Health check unavailable: {error}</p>}
+    {backup===undefined?<p>Loading backup health…</p>:backup===null?<p class="alert">No verified backup has run yet.</p>:<>
+      <p class={backupOk?'success':'alert'}><strong>Backup:</strong> {backupOk?'PASS':'ATTENTION'} · {backup.status} · {backup.finished_at??'never'}</p>
+      <p>Destinations: {backup.destinations.length?backup.destinations.map(d=>`${d.name} (${d.verified?'verified':'unverified'})`).join(', '):'none'}</p>
+    </>}
+    {integrity===undefined?<p>Loading invariant health…</p>:integrity===null?null:
+      <p class={integrityOk?'success':'alert'}><strong>Financial invariants:</strong> {integrityOk?'PASS':'FAIL'} · sale totals {integrity.saleTotalViolations} · negative stock {integrity.negativeStock} · allocation violations {integrity.allocationViolations}</p>}
+    {!integrityOk&&integrity!==undefined&&<p class="alert"><strong>Stop financial posting and investigate before continuing.</strong></p>}
+  </section>;
 }
