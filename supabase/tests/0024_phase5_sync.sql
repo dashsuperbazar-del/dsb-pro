@@ -65,8 +65,8 @@ select is((select count(*) from sync_conflicts where op_client_id='op-1'),1::big
 reset role;
 set role authenticated;
 select set_config('request.jwt.claims',json_build_object('sub','a9000000-0000-0000-0000-000000000001','role','authenticated')::text,true);
-select lives_ok($select revoke_device((select id from devices where device_id='owner-phone'))$,'owner revokes current sync device');
-select throws_ok($select register_device('owner-phone','p5-retry')$,null,'device revoked','revoked browser identity cannot silently re-register');
+select lives_ok($sql$select revoke_device((select id from devices where device_id='owner-phone'))$sql$,'owner revokes current sync device');
+select throws_ok($sql$select register_device('owner-phone','p5-retry')$sql$,null,'device revoked','revoked browser identity cannot silently re-register');
 select throws_ok(format($q$select phase5_sync_pull('owner-phone',%L::uuid,1,'{}'::jsonb)$q$,current_setting('p5.shop')),null,'device revoked','revoked device cannot sync');
 
 select * from finish();
