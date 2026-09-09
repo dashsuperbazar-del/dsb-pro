@@ -1,6 +1,6 @@
 import {
-  ackSync,classifyError,errorMessage,getDefaultShopId,getOrCreateDeviceId,pullSync,pushSyncedSale,
-  recordServerSyncConflict,setOfflineCashierFinalization,subscribeSyncWakeup,
+  ackSync,classifyError,errorMessage,getDefaultShopId,getOrCreateDeviceId,listServerSyncConflicts,pullSync,pushSyncedSale,
+  recordServerSyncConflict,resolveServerSyncConflict,setOfflineCashierFinalization,subscribeSyncWakeup,
   type Membership,type SaleLineInput,type SalePaymentInput,
 } from '@dsb-pro/adapters';
 import {
@@ -212,10 +212,11 @@ export async function listOfflineSales():Promise<OfflineSaleRecord[]>{
 }
 export async function getSyncDashboard(){
   const rt=requireRuntime();
-  const [health,conflicts,sales]=await Promise.all([
+  const [health,conflicts,sales,serverConflicts]=await Promise.all([
     getSyncHealth(rt.db),rt.db.conflicts.orderBy('createdAt').reverse().toArray(),listOfflineSales(),
+    listServerSyncConflicts().catch(()=>[]),
   ]);
-  return {health,conflicts,sales,state:getOfflineRuntimeState(),identity:rt.identity,policy:(await getCachedPolicy(rt.db))??{allowCashierOfflineFinalization:false}};
+  return {health,conflicts,sales,serverConflicts,state:getOfflineRuntimeState(),identity:rt.identity,policy:(await getCachedPolicy(rt.db))??{allowCashierOfflineFinalization:false}};
 }
 export async function forceRetryNow():Promise<void>{
   const rt=requireRuntime();
@@ -230,4 +231,10 @@ export async function resolveConflictLocally(conflict:LocalSyncConflict):Promise
 export async function updateCashierOfflinePolicy(allow:boolean):Promise<void>{
   await setOfflineCashierFinalization(allow);
   await runSyncNow();
+}
+
+export async function resolveConflictOnServer(id:string):Promise<void>{
+  const rt=requireRuntime();
+  await resolveServerSyncConflict({deviceId:rt.identity.deviceId,id});
+  emit();
 }
