@@ -212,7 +212,7 @@ $$;
 
 create function get_stock_valuation(p_shop_id uuid)
 returns table(item_id uuid,item_name text,qty_base numeric,cost_paise bigint,value_paise bigint)
-language sql stable security definer set search_path=public as $
+language sql stable security definer set search_path=public as $valuation$
  with latest_cost as (
   select distinct on (pbi.item_id) pbi.item_id,
    case when pbi.base_qty>0 then round(pbi.line_total_paise::numeric/pbi.base_qty)::bigint else 0::bigint end cost_per_base_paise
@@ -227,11 +227,11 @@ language sql stable security definer set search_path=public as $
  left join stock_current sc on sc.tenant_id=i.tenant_id and sc.shop_id=p_shop_id and sc.item_id=i.id
  left join latest_cost lc on lc.item_id=i.id
  where i.tenant_id=current_tenant_id() and i.deleted_at is null order by i.name
-$;
+$valuation$;
 
 create function get_gst_summary(p_shop_id uuid,p_from date,p_to date)
 returns table(tax_rate_bp integer,taxable_sales_paise bigint,gross_sales_paise bigint,taxable_purchases_paise bigint,gross_purchases_paise bigint)
-language sql stable security definer set search_path=public as $
+language sql stable security definer set search_path=public as $gst$
  with sale_lines as (
   select sii.tax_rate_bp_snapshot rate,
    case when si.subtotal_paise>0 then round(sii.line_total_paise::numeric * greatest(si.subtotal_paise-si.discount_paise,0) / si.subtotal_paise) else 0 end::bigint adjusted
@@ -249,7 +249,7 @@ language sql stable security definer set search_path=public as $
   round(coalesce(s.gross,0)*10000.0/(10000+r.rate))::bigint,coalesce(s.gross,0)::bigint,
   round(coalesce(p.gross,0)*10000.0/(10000+r.rate))::bigint,coalesce(p.gross,0)::bigint
  from rates r left join s using(rate) left join p using(rate) order by r.rate
-$;
+$gst$;
 
 create function phase6_export_tenant(p_shop_id uuid)
 returns jsonb language plpgsql stable security definer set search_path=public as $$
