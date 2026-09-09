@@ -8,6 +8,30 @@ alter table devices
   add column schema_version integer not null default 1 check(schema_version>0),
   add column last_sync_at timestamptz;
 
+create or replace function register_device(p_device_id text,p_app_version text)
+returns uuid language plpgsql security definer set search_path=public as $
+declare
+  v_tenant uuid:=current_tenant_id();
+  v_existing devices%rowtype;
+  v_id uuid;
+begin
+  if v_tenant is null then raise exception 'user has no tenant'; end if;
+  if p_device_id is null or btrim(p_device_id)='' then raise exception 'device id required'; end if;
+  select * into v_existing from devices
+    where tenant_id=v_tenant and user_id=auth.uid() and device_id=p_device_id
+    for update;
+  if found then
+    if v_existing.revoked_at is not null then raise exception 'device revoked'; end if;
+    update devices set last_seen=now(),app_version=p_app_version where id=v_existing.id returning id into v_id;
+    return v_id;
+  end if;
+  insert into devices(tenant_id,user_id,device_id,app_version,last_seen)
+    values(v_tenant,auth.uid(),p_device_id,p_app_version,now()) returning id into v_id;
+  return v_id;
+end $;
+revoke all on function register_device(text,text) from public,anon;
+grant execute on function register_device(text,text) to authenticated;
+
 create table sync_conflicts(
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenants(id),
