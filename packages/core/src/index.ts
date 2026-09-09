@@ -50,3 +50,6 @@ export type {
 
 export { summarizeLegacyDsbDayBackup, compareLegacyDsbDayToPro } from './legacyDsbReconciliation';
 export type { LegacyDsbDayPaymentModes, LegacyDsbDaySummary, DsbProComparableDay, LegacyDsbDayComparisonRow, LegacyDsbDayComparison } from './legacyDsbReconciliation';
+
+export { searchCatalogItems } from './catalogSearch';
+export type { CatalogSearchItem } from './catalogSearch';
