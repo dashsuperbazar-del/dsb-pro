@@ -194,7 +194,7 @@ create function phase5_sync_post_sale(
   p_shop_id uuid,p_customer_id uuid,p_business_date date,p_discount_paise bigint,p_extra_charges_paise bigint,
   p_client_id text,p_lines jsonb,p_payments jsonb default '[]'::jsonb,p_notes text default null
 ) returns jsonb
-language plpgsql security definer set search_path=public as $
+language plpgsql security definer set search_path=public as $$
 declare
   v_sale uuid; v_doc text; v_stock jsonb; v_existing_payload jsonb;
   v_request jsonb:=jsonb_build_object(
