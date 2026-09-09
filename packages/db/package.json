@@ -1,7 +1,0 @@
-{
-  "name": "@dsb-pro/db",
-  "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "main": "src/types.ts"
-}
