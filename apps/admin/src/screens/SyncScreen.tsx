@@ -1,7 +1,7 @@
 import {useEffect,useState} from 'preact/hooks';
 import type {LocalSyncConflict} from '@dsb-pro/sync';
 import {appRoute} from '../lib/paths';
-import {forceRetryNow,getSyncDashboard,resolveConflictLocally,runSyncNow,updateCashierOfflinePolicy,waitForOfflineRuntime} from '../lib/offlineSync';
+import {forceRetryNow,getSyncDashboard,resolveConflictLocally,resolveConflictOnServer,runSyncNow,updateCashierOfflinePolicy,waitForOfflineRuntime} from '../lib/offlineSync';
 
 type Dashboard=Awaited<ReturnType<typeof getSyncDashboard>>;
 const when=(value:number|null)=>value?new Date(value).toLocaleString():'Never';
@@ -53,8 +53,11 @@ export function SyncScreen(){
       <section class="card" aria-label="Offline sales"><h2>Provisional / synced offline sales</h2>
         {dashboard.sales.length?<div class="table-wrap"><table><thead><tr><th>Number</th><th>Date</th><th>Total</th><th>Status</th><th>Official</th></tr></thead><tbody>{dashboard.sales.map(s=><tr><td>{s.provisionalDocNo}</td><td>{s.businessDate}</td><td>{'₹'+(s.totalPaise/100).toFixed(2)}</td><td>{s.status}</td><td>{s.officialDocNo??'—'}</td></tr>)}</tbody></table></div>:<p>No offline sales on this device.</p>}
       </section>
-      <section class="card" aria-label="Sync conflicts"><h2>Needs review</h2>
-        {dashboard.conflicts.filter(c=>c.status==='OPEN').length?<ul>{dashboard.conflicts.filter(c=>c.status==='OPEN').map(c=><li><strong>{c.kind}</strong> · {c.target}{c.clientId?' · '+c.clientId:''}<br/>{c.reason} <button disabled={busy} onClick={()=>void resolve(c)}>Mark reviewed</button></li>)}</ul>:<p>No open conflicts.</p>}
+      <section class="card" aria-label="Sync conflicts"><h2>Needs review on this device</h2>
+        {dashboard.conflicts.filter(c=>c.status==='OPEN').length?<ul>{dashboard.conflicts.filter(c=>c.status==='OPEN').map(c=><li><strong>{c.kind}</strong> · {c.target}{c.clientId?' · '+c.clientId:''}<br/>{c.reason} <button disabled={busy} onClick={()=>void resolve(c)}>Mark reviewed locally</button></li>)}</ul>:<p>No open local conflicts.</p>}
+      </section>
+      <section class="card" aria-label="Server sync conflicts"><h2>Shop-wide sync conflicts</h2>
+        {dashboard.serverConflicts.filter(c=>c.status==='OPEN').length?<ul>{dashboard.serverConflicts.filter(c=>c.status==='OPEN').map(c=><li><strong>{c.kind}</strong> · {c.target}{c.op_client_id?' · '+c.op_client_id:''}<br/>{c.reason} <button disabled={busy} onClick={()=>void act(()=>resolveConflictOnServer(c.id))}>Mark reviewed for shop</button></li>)}</ul>:<p>No open server conflicts visible to this account.</p>}
       </section>
     </>}
   </main>;
