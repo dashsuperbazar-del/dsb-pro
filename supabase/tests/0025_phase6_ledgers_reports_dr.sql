@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(25);
+select plan(26);
 
 insert into auth.users(id) values ('a6000000-0000-0000-0000-000000000001') on conflict do nothing;
 select ok(to_regclass('public.expenses') is not null,'expenses exists');
@@ -17,8 +17,12 @@ select lives_ok(format($q$select post_expense(%L::uuid,'2026-09-09','Rent','Mont
 select is((select count(*) from expenses where client_id='p6-exp'),1::bigint,'expense stored once');
 select lives_ok(format($q$select post_expense(%L::uuid,'2026-09-09','Rent','Monthly rent',10000,'cash',null,'p6-exp')$q$,current_setting('p6.shop')),'expense retry idempotent');
 select is((select count(*) from expenses where client_id='p6-exp'),1::bigint,'no duplicate expense');
-select throws_ok($$update expenses set amount_paise=1 where client_id='p6-exp'$$,null,'expense is immutable; use void_expense','expense amount immutable');
-select lives_ok($$select void_expense((select id from expenses where client_id='p6-exp'))$$,'expense void allowed');
+select throws_ok($update expenses set amount_paise=1 where client_id='p6-exp'$,'42501','permission denied for table expenses','authenticated direct expense update denied');
+reset role;
+select throws_ok($update expenses set amount_paise=1 where client_id='p6-exp'$,null,'expense is immutable; use void_expense','privileged edit still blocked by immutability trigger');
+set role authenticated;
+select set_config('request.jwt.claims',json_build_object('sub','a6000000-0000-0000-0000-000000000001','role','authenticated')::text,true);
+select lives_ok($select void_expense((select id from expenses where client_id='p6-exp'))$,'expense void allowed');
 
 select lives_ok($$insert into items(tenant_id,name,unit1,tax_rate_bp,client_id) values(current_tenant_id(),'Counted','Pcs',0,'p6-item')$$,'create item');
 select set_config('p6.item',(select id::text from items where client_id='p6-item'),false);
