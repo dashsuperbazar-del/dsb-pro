@@ -1,5 +1,7 @@
 -- Phase 6 — ledgers, reports, expenses, stock counts, export/health primitives.
 -- Financial/reporting data is derived from immutable source documents. New financial rows are append-only.
+-- Force all unqualified DDL in this atomic migration into the application schema.
+set local search_path = public, pg_temp;
 
 insert into permissions(code,description) values
  ('VIEW_REPORTS','View ledgers and financial reports'),
