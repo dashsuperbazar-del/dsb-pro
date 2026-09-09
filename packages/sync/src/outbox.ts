@@ -39,3 +39,15 @@ export function provisionalDocNo(deviceId:string,sequence:number):string{
   assertSequence(sequence);
   return `T-${device}-${sequence}`;
 }
+
+export function isDefinitiveFinancialRejectionMessage(message:string):boolean{
+  const normalized=message.toLowerCase();
+  return [
+    'insufficient stock','offline sale price changed','client_id payload mismatch',
+    'not permitted','membership inactive','device revoked','device not registered',
+    'shop not permitted','shop not in tenant','customer not in tenant',
+    'sale requires lines','invalid sale line','payments must be an array',
+    'invalid payment','payments exceed sale total','walk-in sale must be fully paid',
+    'discount exceeds subtotal','negative adjustment','sale price unavailable',
+  ].some(pattern=>normalized.includes(pattern));
+}
