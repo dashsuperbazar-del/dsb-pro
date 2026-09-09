@@ -20,7 +20,7 @@ function unitName(item:Item,level:1|2|3){ return level===1?item.unit1:level===2?
 
 export function PosScreen(){
   const [items,setItems]=useState<Item[]>([]); const [customers,setCustomers]=useState<Customer[]>([]); const [sales,setSales]=useState<SaleInvoice[]>([]);
-  const [offlineSales,setOfflineSales]=useState<OfflineSaleRecord[]>([]);
+  const [offlineSales,setOfflineSales]=useState<OfflineSaleRecord[]>([]); const [localReceipt,setLocalReceipt]=useState<OfflineSaleRecord|null>(null);
   const [balances,setBalances]=useState<Record<string,number>>({}); const [shopId,setShopId]=useState(''); const [tenantId,setTenantId]=useState(''); const [businessDate,setBusinessDate]=useState('');
   const [cart,setCart]=useState<CartLine[]>([]); const [customerId,setCustomerId]=useState(''); const [globalDiscount,setGlobalDiscount]=useState('0'); const [extra,setExtra]=useState('0');
   const [tenders,setTenders]=useState<Tender[]>([{mode:'cash',amount:''}]); const [message,setMessage]=useState(''); const [error,setError]=useState(''); const [busy,setBusy]=useState(false);
@@ -82,6 +82,10 @@ export function PosScreen(){
   }
 
   function handlePosKeyDown(ev:KeyboardEvent){ if(ev.ctrlKey&&ev.key==='Enter'){ ev.preventDefault(); void finalizeSale(); } }
+  function printLocalReceipt(sale:OfflineSaleRecord){
+    setLocalReceipt(sale);
+    window.setTimeout(()=>window.print(),0);
+  }
 
   async function receivePayment(ev:Event){ ev.preventDefault(); if(busy||!paymentCustomer)return; setBusy(true); setError('');
     try{ await recordCustomerPayment({shopId,customerId:paymentCustomer,businessDate,amountPaise:paise(paymentAmount),mode:paymentMode,clientId:paymentClientId}); setPaymentClientId(crypto.randomUUID()); setMessage('Customer payment recorded.'); setPaymentAmount(''); await refresh(); }catch(e){setError(String(e));} finally{setBusy(false);}
@@ -115,7 +119,14 @@ export function PosScreen(){
 
     <section class="card"><h2>Customer payment / advance</h2><form onSubmit={receivePayment} class="grid-form"><label>Customer <select value={paymentCustomer} onChange={e=>setPaymentCustomer((e.currentTarget as HTMLSelectElement).value)} required><option value="">Choose…</option>{customers.map(c=><option value={c.id}>{c.name}</option>)}</select></label><label>Amount ₹ <input value={paymentAmount} onInput={e=>setPaymentAmount((e.currentTarget as HTMLInputElement).value)} type="number" min="0.01" step="0.01" required/></label><label>Mode <select value={paymentMode} onChange={e=>setPaymentMode((e.currentTarget as HTMLSelectElement).value as Tender['mode'])}><option value="cash">Cash</option><option value="upi">UPI</option><option value="card">Card</option><option value="bank">Bank</option><option value="other">Other</option></select></label><button disabled={busy}>Record payment</button></form></section>
 
-    {offlineSales.length>0&&<section class="card no-print" aria-label="Local offline sales"><h2>Local provisional sales</h2><div class="table-wrap"><table><thead><tr><th>Provisional</th><th>Status</th><th>Total</th><th>Official</th></tr></thead><tbody>{offlineSales.map(s=><tr><td>{s.provisionalDocNo}</td><td>{s.status}</td><td>{money(s.totalPaise)}</td><td>{s.officialDocNo??'—'}</td></tr>)}</tbody></table></div></section>}
+    {offlineSales.length>0&&<section class="card no-print" aria-label="Local offline sales"><h2>Local provisional sales</h2><div class="table-wrap"><table><thead><tr><th>Provisional</th><th>Status</th><th>Total</th><th>Official</th><th>Receipt</th></tr></thead><tbody>{offlineSales.map(s=><tr><td>{s.provisionalDocNo}</td><td>{s.status}</td><td>{money(s.totalPaise)}</td><td>{s.officialDocNo??'—'}</td><td><button type="button" onClick={()=>printLocalReceipt(s)}>Print provisional</button></td></tr>)}</tbody></table></div></section>}
+    {localReceipt&&<article class="receipt-print receipt-thermal" aria-label="provisional offline receipt">
+      <header><h1>DSB Store</h1><p><strong>{localReceipt.status==='QUEUED'?'PROVISIONAL — PENDING SYNC':'PROVISIONAL RECORD — SYNCED'}</strong><br/>Number {localReceipt.provisionalDocNo}{localReceipt.officialDocNo?<><br/>Official {localReceipt.officialDocNo}</>:null}<br/>Date {localReceipt.businessDate}</p></header>
+      <table><thead><tr><th>Item</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody>{localReceipt.lines.map(l=><tr><td>{l.itemName}<small>{l.unitName}</small></td><td>{l.qty}</td><td>{money(l.unitPricePaise)}</td><td>{money(l.lineTotalPaise)}</td></tr>)}</tbody></table>
+      <dl class="receipt-totals"><div><dt>Subtotal</dt><dd>{money(localReceipt.subtotalPaise)}</dd></div>{localReceipt.discountPaise>0&&<div><dt>Discount</dt><dd>−{money(localReceipt.discountPaise)}</dd></div>}{localReceipt.extraChargesPaise>0&&<div><dt>Extra charges</dt><dd>{money(localReceipt.extraChargesPaise)}</dd></div>}<div><dt>Total</dt><dd><strong>{money(localReceipt.totalPaise)}</strong></dd></div></dl>
+      <h2>Payments</h2>{localReceipt.payments.length?<ul>{localReceipt.payments.map(p=><li>{p.mode.toUpperCase()} {money(p.amountPaise)}{p.reference?' · '+p.reference:''}</li>)}</ul>:<p>Credit / unpaid</p>}
+      {localReceipt.status==='QUEUED'&&<footer><p><strong>Provisional receipt — not an official invoice until this sale syncs successfully.</strong></p></footer>}
+    </article>}
     <section class="card print-area"><div class="row no-print"><h2>Recent invoices</h2><button type="button" onClick={()=>window.print()}>Print list</button></div><table><thead><tr><th>Invoice</th><th>Date</th><th>Status</th><th>Total</th></tr></thead><tbody>{sales.map(s=><tr><td>{s.doc_no}</td><td>{s.business_date}</td><td>{s.status}</td><td>{money(s.total_paise)}</td></tr>)}</tbody></table></section>
   </main>;
 }
