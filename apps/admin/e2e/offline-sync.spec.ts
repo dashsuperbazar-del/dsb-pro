@@ -60,6 +60,8 @@ test('chaos: airplane mode + app restart + logical one-hour outage preserves and
   await page.getByRole('button',{name:'Finalize sale'}).click();
   await expect(page.getByRole('status')).toContainText('Saved locally as T-');
   await expect(page.locator('section[aria-label="Local offline sales"]')).toContainText('QUEUED');
+  await page.getByRole('button',{name:'Print provisional'}).first().click();
+  await expect(page.locator('[aria-label="provisional offline receipt"]')).toContainText('PROVISIONAL — PENDING SYNC');
 
   // Kill/reload the SPA while still offline. The service worker must boot the
   // app shell and IndexedDB must retain both the outbox and cached shop data.
