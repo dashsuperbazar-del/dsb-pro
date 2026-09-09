@@ -212,9 +212,15 @@ export async function listOfflineSales():Promise<OfflineSaleRecord[]>{
 }
 export async function getSyncDashboard(){
   const rt=requireRuntime();
+  // Never make the local sync dashboard wait on a network call while the
+  // browser is offline. Shop-wide conflicts are additive server context;
+  // local outbox/health/conflict state must remain instantly inspectable.
+  const serverConflictPromise=(typeof navigator!=='undefined'&&!navigator.onLine)
+    ? Promise.resolve([])
+    : listServerSyncConflicts().catch(()=>[]);
   const [health,conflicts,sales,serverConflicts]=await Promise.all([
     getSyncHealth(rt.db),rt.db.conflicts.orderBy('createdAt').reverse().toArray(),listOfflineSales(),
-    listServerSyncConflicts().catch(()=>[]),
+    serverConflictPromise,
   ]);
   return {health,conflicts,sales,serverConflicts,state:getOfflineRuntimeState(),identity:rt.identity,policy:(await getCachedPolicy(rt.db))??{allowCashierOfflineFinalization:false}};
 }
