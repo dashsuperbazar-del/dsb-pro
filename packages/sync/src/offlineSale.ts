@@ -57,10 +57,10 @@ async function rebuildReservations(db:DsbSyncDb):Promise<void>{
 export async function queueOfflineSale(
   db:DsbSyncDb,
   input:OfflineSalePayload,
-  context:{deviceId:string;role:OfflineRole;policy:SyncPolicy},
+  context:{deviceId:string;role:OfflineRole;policy:SyncPolicy;onlineInitiated:boolean},
 ):Promise<OfflineSaleRecord>{
   if(context.role==='accountant')throw new Error('Your role cannot finalize sales.');
-  if(context.role==='cashier'&&!context.policy.allowCashierOfflineFinalization){
+  if(context.role==='cashier'&&!context.policy.allowCashierOfflineFinalization&&!context.onlineInitiated){
     throw new Error('Offline finalization is disabled for cashiers. Keep this sale as a draft until online.');
   }
   if(!input.lines.length)throw new Error('Sale requires at least one line.');
