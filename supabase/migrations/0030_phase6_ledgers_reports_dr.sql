@@ -281,7 +281,7 @@ begin
 end $$;
 
 create function check_invariants()
-returns jsonb language plpgsql stable security definer set search_path=public as $
+returns jsonb language plpgsql stable security definer set search_path=public as $invariants$
 declare v_tenant uuid:=current_tenant_id(); bad_sales bigint; bad_purchases bigint; bad_stock bigint; bad_alloc bigint;
 begin
  select count(*) into bad_sales
@@ -304,7 +304,7 @@ begin
   'saleTotalViolations',bad_sales,'purchaseTotalViolations',bad_purchases,
   'negativeStock',bad_stock,'allocationViolations',bad_alloc
  );
-end $;
+end $invariants$;
 
 revoke all on function post_expense(uuid,date,text,text,bigint,text,text,text) from public;
 revoke all on function void_expense(uuid) from public;
