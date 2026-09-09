@@ -28,6 +28,17 @@ function asSale(value:Awaited<ReturnType<typeof pushSyncedSale>>):SyncedSaleResu
   return value as unknown as SyncedSaleResult;
 }
 function reason(error:unknown){return errorMessage(classifyError(error),error)||String(error);}
+function isDefinitiveFinancialRejection(error:unknown):boolean{
+  const message=(error instanceof Error?error.message:String(error)).toLowerCase();
+  return [
+    'insufficient stock','offline sale price changed','client_id payload mismatch',
+    'not permitted','membership inactive','device revoked','device not registered',
+    'shop not permitted','shop not in tenant','customer not in tenant',
+    'sale requires lines','invalid sale line','payments must be an array',
+    'invalid payment','payments exceed sale total','walk-in sale must be fully paid',
+    'discount exceeds subtotal','negative adjustment','sale price unavailable',
+  ].some(pattern=>message.includes(pattern));
+}
 function requireRuntime():Runtime{
   if(!runtime)throw new Error('Offline cache is still starting. Wait a moment and try again.');
   return runtime;
@@ -98,13 +109,15 @@ async function processOutbox(rt:Runtime){
         lines:payload.lines as Array<SaleLineInput&{expectedUnitPricePaise?:number}>,payments:payload.payments as SalePaymentInput[],notes:payload.notes,
       });
     }catch(error){
-      const kind=classifyError(error);
-      if(kind==='offline'||kind==='server'||kind==='auth-expired'){
-        const retry=markOutboxRetry(sending,reason(error),Date.now()+retryDelayMs(sending.attempts+1));
+      const message=reason(error);
+      if(!isDefinitiveFinancialRejection(error)){
+        // Any unknown transport/server/response-shape outcome stays retryable.
+        // Financial work is removed from the outbox only for an explicit,
+        // recognized business rejection from the authoritative server.
+        const retry=markOutboxRetry(sending,message,Date.now()+retryDelayMs(sending.attempts+1));
         await rt.db.outbox.put(retry);
         return;
       }
-      const message=reason(error);
       await rejectOfflineSale(rt.db,sending.clientId,message);
       void recordServerSyncConflict({
         deviceId:rt.identity.deviceId,opClientId:sending.clientId,kind:'financial-rejection',target:sending.target,
