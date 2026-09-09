@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
+import { route } from 'preact-router';
 import {
   createCustomer, findItemByBarcode, getShopBusinessDate,
   listCurrentPrices, listCustomerBalances, listCustomers, listItems, listRecentSales, recordCustomerPayment,
@@ -107,7 +108,7 @@ export function PosScreen(){
   }
 
   return <main class="page wide" onKeyDown={handlePosKeyDown}>
-    <p><a href={appRoute.home}>← Home</a> · <a href={appRoute.sync}>Sync & offline</a></p><h1>Sales POS</h1><p class="muted">Billing is written to the durable local outbox first. The server re-resolves permissions, prices and stock before assigning the official invoice number.</p><details class="card" open><summary><strong>Keyboard map</strong></summary><p><kbd>Enter</kbd> submits the focused scan/item form · <kbd>Tab</kbd> moves through billing fields · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> finalizes the current sale.</p></details>
+    <p><a href={appRoute.home}>← Home</a> · <a href={appRoute.sync} onClick={e=>{e.preventDefault();route(appRoute.sync);}}>Sync & offline</a></p><h1>Sales POS</h1><p class="muted">Billing is written to the durable local outbox first. The server re-resolves permissions, prices and stock before assigning the official invoice number.</p><details class="card" open><summary><strong>Keyboard map</strong></summary><p><kbd>Enter</kbd> submits the focused scan/item form · <kbd>Tab</kbd> moves through billing fields · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> finalizes the current sale.</p></details>
     {error&&<p role="alert" class="alert">{error}</p>}{message&&<p role="status" class="success">{message}</p>}
 
     <section class="card"><h2>1. Scan or add item</h2>
