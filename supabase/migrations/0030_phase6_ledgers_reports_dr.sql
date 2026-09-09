@@ -267,7 +267,7 @@ returns jsonb language plpgsql stable security definer set search_path=public as
 declare v_tenant uuid:=current_tenant_id(); bad_sales bigint; bad_stock bigint; bad_alloc bigint;
 begin
  select count(*) into bad_sales from sale_invoices s where s.tenant_id=v_tenant and s.status='FINALIZED'
- and s.total_paise<>(select coalesce(sum(line_total_paise),0) from sale_invoice_items li where li.sale_invoice_id=s.id)+s.extra_charges_paise;
+ and s.total_paise<>(select coalesce(sum(line_total_paise),0) from sale_invoice_items li where li.sale_invoice_id=s.id)-s.discount_paise+s.extra_charges_paise;
  select count(*) into bad_stock from stock_current where tenant_id=v_tenant and qty_base<0;
  select count(*) into bad_alloc from payments p where p.tenant_id=v_tenant and
   (select coalesce(sum(amount_paise),0) from payment_allocations a where a.payment_id=p.id and a.status='POSTED')>p.amount_paise;
