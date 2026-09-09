@@ -348,6 +348,19 @@ jobs:
           select 'Live Phase 5 schema/security verification: PASS';
           SQL
 
+      - name: Verify nightly backup role still covers Phase 5 tables
+        env:
+          BACKUP_RO_DATABASE_URL: ${{ secrets.BACKUP_RO_DATABASE_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$BACKUP_RO_DATABASE_URL" || { echo 'BACKUP_RO_DATABASE_URL is required'; exit 1; }
+          RESULT=$(psql "$BACKUP_RO_DATABASE_URL" -v ON_ERROR_STOP=1 -At -c "
+            select (select count(*) from sync_conflicts) >= 0
+               and (select count(*) from sync_idempotency_keys) >= 0;")
+          test "$RESULT" = "t" || { echo 'backup_ro cannot read the new Phase 5 tables'; exit 1; }
+          echo "Live Phase 5 backup-role coverage: PASS"
+
   phase5_preview:
     needs: [build, phase5_db_upgrade]
     if: github.ref == 'refs/heads/phase-5-offline-sync' && github.event_name == 'push'
