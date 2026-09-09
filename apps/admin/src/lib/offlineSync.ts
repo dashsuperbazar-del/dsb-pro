@@ -231,19 +231,26 @@ export async function forceRetryNow():Promise<void>{
   // A browser "online" event can start a sync cycle immediately before the
   // user presses Retry. Joining that in-flight cycle is not a forced retry:
   // if the network transition races and that cycle fails, its newly-written
-  // backoff would remain in place. Let it settle first, then clear retry
-  // backoff and deliberately start a fresh cycle.
+  // backoff would remain in place. Let it settle first, then deliberately
+  // retry a small bounded number of times while the browser remains online.
   if(rt.running)await rt.running;
-  // A transport can disappear after an operation is marked "sending" but
-  // before its failure/acknowledgement is persisted locally. Normal FIFO
-  // processing deliberately will not overtake a sending entry, so a manual
-  // recovery must first convert any orphaned sending work back to retry.
-  // The server RPC is client-id idempotent, making the retry safe even when
-  // the original request actually reached the server.
-  await recoverInterruptedOutbox(rt.db);
-  const retries=await rt.db.outbox.where('state').equals('retry').toArray();
-  if(retries.length)await rt.db.outbox.bulkPut(retries.map(r=>({...r,nextAttemptAt:0} as OutboxEntry)));
-  await runSyncNow();
+
+  for(let attempt=0;attempt<3;attempt++){
+    // A transport can disappear after an operation is marked "sending" but
+    // before its failure/acknowledgement is persisted locally. Normal FIFO
+    // processing deliberately will not overtake a sending entry, so manual
+    // recovery first converts any orphaned sending work back to retry.
+    // The server RPC is client-id idempotent, making each retry safe even
+    // when an earlier ambiguous request actually reached the server.
+    await recoverInterruptedOutbox(rt.db);
+    const retries=await rt.db.outbox.where('state').equals('retry').toArray();
+    if(retries.length)await rt.db.outbox.bulkPut(retries.map(r=>({...r,nextAttemptAt:0} as OutboxEntry)));
+
+    await runSyncNow();
+    if((await rt.db.outbox.count())===0)return;
+    if(typeof navigator!=='undefined'&&!navigator.onLine)return;
+    if(attempt<2)await new Promise(resolve=>window.setTimeout(resolve,400));
+  }
 }
 export async function resolveConflictLocally(conflict:LocalSyncConflict):Promise<void>{
   if(conflict.id===undefined)return;
