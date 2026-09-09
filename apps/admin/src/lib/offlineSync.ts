@@ -5,7 +5,7 @@ import {
 } from '@dsb-pro/adapters';
 import {
   applySyncPull,completeOfflineSale,getCachedBusinessDate,getCachedCustomers,getCachedItems,getCachedPolicy,getCachedPrices,
-  getSyncCursors,getSyncHealth,markOutboxRetry,markOutboxSending,nextOutboxEntry,openSyncDb,queueOfflineSale,
+  getSyncCursors,getSyncHealth,isDefinitiveFinancialRejectionMessage,markOutboxRetry,markOutboxSending,nextOutboxEntry,openSyncDb,queueOfflineSale,
   recoverInterruptedOutbox,rejectOfflineSale,retryDelayMs,resolveLocalConflict,
   type DsbSyncDb,type LocalSyncConflict,type OfflineSalePayload,type OfflineSaleRecord,type OutboxEntry,
   type SyncedBarcode,type SyncedCustomer,type SyncedItem,type SyncedPrice,type SyncIdentity,type SyncPullPayload,type SyncedSaleResult,
@@ -28,17 +28,6 @@ function asSale(value:Awaited<ReturnType<typeof pushSyncedSale>>):SyncedSaleResu
   return value as unknown as SyncedSaleResult;
 }
 function reason(error:unknown){return errorMessage(classifyError(error),error)||String(error);}
-function isDefinitiveFinancialRejection(error:unknown):boolean{
-  const message=(error instanceof Error?error.message:String(error)).toLowerCase();
-  return [
-    'insufficient stock','offline sale price changed','client_id payload mismatch',
-    'not permitted','membership inactive','device revoked','device not registered',
-    'shop not permitted','shop not in tenant','customer not in tenant',
-    'sale requires lines','invalid sale line','payments must be an array',
-    'invalid payment','payments exceed sale total','walk-in sale must be fully paid',
-    'discount exceeds subtotal','negative adjustment','sale price unavailable',
-  ].some(pattern=>message.includes(pattern));
-}
 function requireRuntime():Runtime{
   if(!runtime)throw new Error('Offline cache is still starting. Wait a moment and try again.');
   return runtime;
@@ -110,7 +99,7 @@ async function processOutbox(rt:Runtime){
       });
     }catch(error){
       const message=reason(error);
-      if(!isDefinitiveFinancialRejection(error)){
+      if(!isDefinitiveFinancialRejectionMessage(error instanceof Error?error.message:String(error))){
         // Any unknown transport/server/response-shape outcome stays retryable.
         // Financial work is removed from the outbox only for an explicit,
         // recognized business rejection from the authoritative server.
