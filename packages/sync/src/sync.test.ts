@@ -10,15 +10,15 @@ describe('sync cursor',()=>{
     const a={updatedAt:100,id:'a'};
     const b={updatedAt:100,id:'b'};
     expect(compareCursor(a,b)).toBeLessThan(0);
-    expect(isRowAfterCursor({id:'b',updated_at:100,deleted_at:null},a)).toBe(true);
-    expect(isRowAfterCursor({id:'a',updated_at:100,deleted_at:null},a)).toBe(false);
+    expect(isRowAfterCursor({id:'b',updated_at:100},a)).toBe(true);
+    expect(isRowAfterCursor({id:'a',updated_at:100},a)).toBe(false);
   });
 
   it('advances only to the greatest composite cursor',()=>{
     expect(advanceCursor({updatedAt:100,id:'b'},[
-      {id:'z',updated_at:99,deleted_at:null},
-      {id:'c',updated_at:100,deleted_at:null},
-      {id:'a',updated_at:101,deleted_at:null},
+      {id:'z',updated_at:99},
+      {id:'c',updated_at:100},
+      {id:'a',updated_at:101},
     ])).toEqual({updatedAt:101,id:'a'});
   });
 });
