@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(23);
+select plan(25);
 
 insert into auth.users(id) values ('a6000000-0000-0000-0000-000000000001') on conflict do nothing;
 select ok(to_regclass('public.expenses') is not null,'expenses exists');
@@ -29,7 +29,9 @@ select is((select qty_base from stock_current where shop_id=current_setting('p6.
 
 select lives_ok(format($q$select * from get_day_book(%L::uuid,'2026-09-09','2026-09-09')$q$,current_setting('p6.shop')),'day book reads');
 select lives_ok(format($q$select * from get_stock_valuation(%L::uuid)$q$,current_setting('p6.shop')),'stock valuation reads');
+select is((select value_paise from get_stock_valuation(current_setting('p6.shop')::uuid) where item_id=current_setting('p6.item')::uuid),400::bigint,'valuation uses latest immutable purchase cost per base unit');
 select lives_ok(format($q$select * from get_gst_summary(%L::uuid,'2026-09-01','2026-09-30')$q$,current_setting('p6.shop')),'GST summary reads');
+select is((select gross_purchases_paise from get_gst_summary(current_setting('p6.shop')::uuid,'2026-09-01','2026-09-30') where tax_rate_bp=0),500::bigint,'GST purchase gross comes from posted line snapshots');
 select lives_ok(format($q$select phase6_export_tenant(%L::uuid)$q$,current_setting('p6.shop')),'full export reads');
 select ok((phase6_export_tenant(current_setting('p6.shop')::uuid)->>'schemaVersion')::int=2,'export schema versioned');
 select ok((check_invariants()->>'ok')::boolean,'invariants clean');
