@@ -26,5 +26,5 @@ export { getShopDayReconciliation } from './reconciliation';
 export type { SyncCursorWire, SyncPullWire, SyncSaleResultWire, ServerSyncConflict } from './sync';
 export { SYNC_SCHEMA_VERSION, pullSync, ackSync, pushSyncedSale, setOfflineCashierFinalization, recordServerSyncConflict, listServerSyncConflicts, resolveServerSyncConflict, subscribeSyncWakeup } from './sync';
 
-export type { DayBookRow, StockValueRow, GstRow } from './reports';
-export { getDayBook, getStockValuation, getGstSummary, postExpense, exportTenant, checkInvariants } from './reports';
+export type { DayBookRow, StockValueRow, GstRow, PartyLedgerRow } from './reports';
+export { getDayBook, getStockValuation, getGstSummary, postExpense, exportTenant, checkInvariants, getPartyLedger, createStockCount, postStockCount } from './reports';
