@@ -1,7 +1,7 @@
 import {describe,expect,it} from 'vitest';
 import {
   advanceCursor,compareCursor,isRowAfterCursor,markOutboxRetry,markOutboxSending,
-  mergeMasterRow,nextOutboxEntry,provisionalDocNo,reconcileAppendOnlyEvent,retryDelayMs,
+  isDefinitiveFinancialRejectionMessage,mergeMasterRow,nextOutboxEntry,provisionalDocNo,reconcileAppendOnlyEvent,retryDelayMs,
   type MasterSyncRow,type OutboxEntry,
 } from './index';
 
@@ -88,5 +88,19 @@ describe('offline provisional numbering',()=>{
   it('is deterministic and device-separated',()=>{
     expect(provisionalDocNo('device_A',7)).toBe('T-device_A-7');
     expect(provisionalDocNo('device_B',7)).toBe('T-device_B-7');
+  });
+});
+
+describe('financial rejection classification',()=>{
+  it('removes an outbox event only for explicit authoritative business rejections',()=>{
+    expect(isDefinitiveFinancialRejectionMessage('insufficient stock')).toBe(true);
+    expect(isDefinitiveFinancialRejectionMessage('device revoked')).toBe(true);
+    expect(isDefinitiveFinancialRejectionMessage('offline sale price changed; review required')).toBe(true);
+  });
+
+  it('keeps unknown, network and malformed-response outcomes retryable',()=>{
+    expect(isDefinitiveFinancialRejectionMessage('Failed to fetch')).toBe(false);
+    expect(isDefinitiveFinancialRejectionMessage('Server returned an invalid synced-sale result.')).toBe(false);
+    expect(isDefinitiveFinancialRejectionMessage('unexpected database exception')).toBe(false);
   });
 });
