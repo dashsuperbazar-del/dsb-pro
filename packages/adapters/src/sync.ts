@@ -53,13 +53,13 @@ export async function ackSync(input:{deviceId:string;cursors:Record<string,SyncC
 }
 export async function pushSyncedSale(input:{
   deviceId:string;shopId:string;customerId?:string;businessDate:string;discountPaise:number;extraChargesPaise:number;
-  clientId:string;lines:SaleLineInput[];payments:SalePaymentInput[];notes?:string;
+  clientId:string;lines:Array<SaleLineInput&{expectedUnitPricePaise?:number}>;payments:SalePaymentInput[];notes?:string;
 }):Promise<SyncSaleResultWire>{
   const {data,error}=await getSupabaseClient().rpc('phase5_sync_post_sale',{
     p_device_id:input.deviceId,p_schema_version:SYNC_SCHEMA_VERSION,p_shop_id:input.shopId,p_customer_id:input.customerId??null,
     p_business_date:input.businessDate,p_discount_paise:input.discountPaise,p_extra_charges_paise:input.extraChargesPaise,
     p_client_id:input.clientId,
-    p_lines:input.lines.map(l=>({item_id:l.itemId,unit_level:l.unitLevel,qty:l.qty,price_kind:l.priceKind,discount_paise:l.discountPaise??0})),
+    p_lines:input.lines.map(l=>({item_id:l.itemId,unit_level:l.unitLevel,qty:l.qty,price_kind:l.priceKind,discount_paise:l.discountPaise??0,expected_unit_price_paise:l.expectedUnitPricePaise??null})),
     p_payments:input.payments.map(p=>({amount_paise:p.amountPaise,mode:p.mode,reference:p.reference??null})),p_notes:input.notes??null,
   });
   if(error)throw new Error(friendly(error));
