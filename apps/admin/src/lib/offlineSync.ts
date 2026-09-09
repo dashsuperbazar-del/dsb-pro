@@ -226,8 +226,14 @@ export async function getSyncDashboard(){
 }
 export async function forceRetryNow():Promise<void>{
   const rt=requireRuntime();
+  // A browser "online" event can start a sync cycle immediately before the
+  // user presses Retry. Joining that in-flight cycle is not a forced retry:
+  // if the network transition races and that cycle fails, its newly-written
+  // backoff would remain in place. Let it settle first, then clear retry
+  // backoff and deliberately start a fresh cycle.
+  if(rt.running)await rt.running;
   const retries=await rt.db.outbox.where('state').equals('retry').toArray();
-  await rt.db.outbox.bulkPut(retries.map(r=>({...r,nextAttemptAt:0} as OutboxEntry)));
+  if(retries.length)await rt.db.outbox.bulkPut(retries.map(r=>({...r,nextAttemptAt:0} as OutboxEntry)));
   await runSyncNow();
 }
 export async function resolveConflictLocally(conflict:LocalSyncConflict):Promise<void>{
