@@ -394,3 +394,47 @@ Those notes are retained as execution history, but they are no longer the curren
 
 **Next:** once PR #3 merge is explicitly authorized, merge/deploy it; Phase 2 is Core library
 (`DSB_PRO_BUILD_PLAN.md` v1.5 §13).
+
+## Phase 2 final gate — 2026-09-08
+
+- PR #4 (`Phase 2: core library parity`) merged to `main` on 2026-09-08.
+- Core money/unit logic is centralized in `packages/core`: unit conversions, price-tier
+  semantics, discounts, extra charges and deterministic invoice totals use integer paise.
+- Legacy DSB reconciliation remains isolated from canonical DSB Pro totals.
+- The original Phase 2 acceptance gate requiring at least 50 real historical DSB invoices
+  could not be executed because that historical invoice dataset does not exist. The owner
+  explicitly authorized the documented evidence substitution in
+  `docs/PHASE2_GATE_DECISION.md`: golden/core tests plus 50 deterministic synthetic cases
+  close Phase 2 for now, while the original 50-real-invoice zero-paise reconciliation remains
+  deferred until after Phase 7.
+- This is a timing/evidence waiver only. A later mismatch in the deferred real-invoice run is
+  still a blocking financial-reconciliation defect; the criterion was not deleted or weakened.
+
+## Phase 3 final gate — 2026-09-08
+
+- PR #5 (`Phase 3: master data and purchases`) merged to `main` on 2026-09-08.
+- Master data, supplier/purchase flows, unit-aware stock posting, price history and inventory
+  UI were added through server-authoritative RPCs and the adapter boundary.
+- `stock_movements` remains the stock ledger; `stock_current` is a projection rather than
+  an independently mutable source of truth.
+- Financial/detail rows are protected by immutability rules and tenant/RLS boundaries; client
+  roles do not receive a direct DELETE path.
+- PR #6 (`Phase 3 hotfix: correct unit-tier stock semantics`) merged the same day. It fixed
+  unit-tier stock conversion so quantity is projected in the item's base/smallest configured
+  unit consistently instead of mixing display-tier quantities with ledger quantities.
+- The hotfix is part of the Phase 3 accepted state and must be treated as part of the Phase 3
+  baseline by every later phase.
+
+## Phase 4 / Phase 5 status — 2026-09-09
+
+- Phase 4 PR #7 (`Phase 4: POS, customers and payments`) is still a draft and intentionally
+  unmerged. Its exact accepted technical head is
+  `da092983906bd6b6e97914821919a3ada837242f`; push CI #249 and PR CI #250 both passed.
+- The real legacy opening import succeeded against the user's actual DSB backup: 276 items,
+  38 suppliers, 1 non-walk-in customer and 265 positive stock balances. Old DSB was not used
+  as the shop's operational invoicing system, so a same-day old-DSB invoice-parity gate is
+  not a meaningful available evidence source.
+- Phase 5 PR #9 is stacked on Phase 4 and remains a draft. Do not merge either PR or advance
+  to Phase 6 merely because individual implementation pieces are present: Phase 5 closes only
+  when the locked offline chaos/concurrency gates and the guarded live migration/preview gate
+  are green on one exact head.
