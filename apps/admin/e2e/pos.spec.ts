@@ -49,6 +49,7 @@ test('real browser money path posts stock then finalizes a paid sale',async({pag
   await expect(page.getByRole('status')).toContainText('Purchase posted and stock updated');
 
   await page.goto('/pos');
+  await page.getByLabel('Find product').fill('POS E2E Item');
   await page.getByLabel('Item').selectOption({label:'POS E2E Item'});
   await page.getByLabel('Quantity').fill('1');
   await page.getByRole('button',{name:'Add line'}).click();
