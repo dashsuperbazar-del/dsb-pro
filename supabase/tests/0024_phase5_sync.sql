@@ -38,7 +38,10 @@ select is((phase5_sync_pull('owner-phone',current_setting('p5.shop')::uuid,1,'{}
 
 select lives_ok(format($q$select phase5_sync_post_sale('owner-phone',1,%L::uuid,null,'2026-09-09',0,0,'p5-offline-sale',jsonb_build_array(jsonb_build_object('item_id',%L,'unit_level',1,'qty',2,'price_kind','retail','discount_paise',0,'expected_unit_price_paise',100)),jsonb_build_array(jsonb_build_object('amount_paise',200,'mode','cash')),null)$q$,current_setting('p5.shop'),current_setting('p5.item')),'offline outbox sale posts through device-aware RPC');
 select is((select count(*) from sale_invoices where client_id='p5-offline-sale'),1::bigint,'offline sale persists once');
+reset role;
 select is((select count(*) from sync_idempotency_keys where operation='post_sale' and op_client_id='p5-offline-sale'),1::bigint,'sync request fingerprint persists once');
+set role authenticated;
+select set_config('request.jwt.claims',json_build_object('sub','a9000000-0000-0000-0000-000000000001','role','authenticated')::text,true);
 select throws_ok(format($q$select phase5_sync_post_sale('owner-phone',1,%L::uuid,null,'2026-09-09',0,0,'p5-offline-sale',jsonb_build_array(jsonb_build_object('item_id',%L,'unit_level',1,'qty',3,'price_kind','retail','discount_paise',0,'expected_unit_price_paise',100)),jsonb_build_array(jsonb_build_object('amount_paise',300,'mode','cash')),null)$q$,current_setting('p5.shop'),current_setting('p5.item')),null,'client_id payload mismatch','divergent retry under the same client_id is rejected');
 select lives_ok(format($q$select phase5_sync_post_sale('owner-phone',1,%L::uuid,null,'2026-09-09',0,0,'p5-offline-sale',jsonb_build_array(jsonb_build_object('item_id',%L,'unit_level',1,'qty',2,'price_kind','retail','discount_paise',0,'expected_unit_price_paise',100)),jsonb_build_array(jsonb_build_object('amount_paise',200,'mode','cash')),null)$q$,current_setting('p5.shop'),current_setting('p5.item')),'unknown-outcome retry is idempotent');
 select is((select count(*) from sale_invoices where client_id='p5-offline-sale'),1::bigint,'retry creates no duplicate invoice');
