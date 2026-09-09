@@ -32,7 +32,7 @@ async function postSale({ deviceId, shopId, itemId, clientId, qty }) {
         0,
         0,
         $3,
-        jsonb_build_array(jsonb_build_object('item_id',$4::text,'unit_level',1,'qty',$5::numeric,'price_kind','retail','discount_paise',0)),
+        jsonb_build_array(jsonb_build_object('item_id',$4::text,'unit_level',1,'qty',$5::numeric,'price_kind','retail','discount_paise',0,'expected_unit_price_paise',100)),
         jsonb_build_array(jsonb_build_object('amount_paise',($5::numeric*100)::bigint,'mode','cash')),
         null
       )->>'saleId' as sale_id`,
