@@ -143,10 +143,20 @@ export async function finalizeSaleResilient(input:{
 }):Promise<ResilientSaleResult>{
   const rt=requireRuntime();
   const policy=(await getCachedPolicy(rt.db))??{allowCashierOfflineFinalization:false};
+  if(rt.identity.role==='cashier'&&!policy.allowCashierOfflineFinalization){
+    if(typeof navigator==='undefined'||!navigator.onLine){
+      throw new Error('Offline finalization is disabled for cashiers. Keep this sale as a draft until online.');
+    }
+    await runSyncNow();
+    if(state.lastError){
+      throw new Error('Cashier finalization needs a live server connection. Your cart is preserved; retry when sync is healthy.');
+    }
+  }
+  const onlineInitiated=typeof navigator!=='undefined'&&navigator.onLine&&!state.lastError;
   const payload={...input,lines:input.lines.map(l=>({...l,discountPaise:l.discountPaise??0})),payments:input.payments};
   let record:OfflineSaleRecord;
   try{
-    record=await queueOfflineSale(rt.db,payload,{deviceId:rt.identity.deviceId,role:rt.identity.role,policy});
+    record=await queueOfflineSale(rt.db,payload,{deviceId:rt.identity.deviceId,role:rt.identity.role,policy,onlineInitiated});
   }catch(error){
     if(typeof navigator==='undefined'||!navigator.onLine)throw error;
     // A freshly-created item/price can be inside the server's 1-second cursor
