@@ -179,7 +179,7 @@ end $$;
 create function get_party_ledger(p_party_id uuid,p_from date default null,p_to date default null)
 returns table(business_date date,entry_type text,document text,debit_paise bigint,credit_paise bigint,running_balance_paise bigint)
 language sql stable security definer set search_path=public as $$
- with x as (
+ with x(business_date,entry_type,document,debit_paise,credit_paise,created_at) as (
   select pb.business_date,'PURCHASE'::text,coalesce(pb.bill_no,pb.id::text),pb.total_paise::bigint,0::bigint,pb.created_at
   from purchase_bills pb where pb.tenant_id=current_tenant_id() and pb.party_id=p_party_id and pb.status='POSTED'
     and (p_from is null or pb.business_date>=p_from) and (p_to is null or pb.business_date<=p_to)
