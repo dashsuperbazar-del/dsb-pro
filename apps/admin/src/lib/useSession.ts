@@ -36,7 +36,17 @@ export function useSession(): SessionState {
 
       if(registeredForUserId!==session.user.id){
         registeredForUserId=session.user.id;
-        await registerCurrentDevice().catch(()=>undefined);
+        try{
+          await registerCurrentDevice();
+        }catch(error){
+          const message=error instanceof Error?error.message:String(error);
+          if(/device revoked/i.test(message)){
+            if(!cancelled&&id===resolutionId)setState({status:'error',message:'This device has been revoked. Use an active device or ask the shop owner to review device access.'});
+            return;
+          }
+          // Network failure must not destroy offline access. Membership below
+          // will fall back to the last verified cache if the backend is down.
+        }
       }
 
       try{
