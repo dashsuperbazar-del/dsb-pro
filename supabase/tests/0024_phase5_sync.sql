@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(28);
+select plan(33);
 
 insert into auth.users(id) values
  ('a9000000-0000-0000-0000-000000000001'),
@@ -11,6 +11,9 @@ select ok(to_regclass('public.sync_conflicts') is not null,'sync_conflicts table
 select ok((select relrowsecurity from pg_class where oid='public.sync_conflicts'::regclass),'sync_conflicts has RLS');
 select ok(not has_table_privilege('authenticated','public.sync_conflicts','INSERT'),'authenticated cannot directly insert conflicts');
 select ok(not has_function_privilege('anon','public.phase5_sync_pull(text,uuid,integer,jsonb)','EXECUTE'),'anon cannot call sync pull');
+select ok(to_regclass('public.sync_idempotency_keys') is not null,'sync idempotency key table exists');
+select ok((select relrowsecurity from pg_class where oid='public.sync_idempotency_keys'::regclass),'sync idempotency keys have RLS');
+select ok(not has_table_privilege('authenticated','public.sync_idempotency_keys','INSERT'),'authenticated cannot directly write sync idempotency keys');
 
 set role authenticated;
 select set_config('request.jwt.claims',json_build_object('sub','a9000000-0000-0000-0000-000000000001','role','authenticated')::text,true);
@@ -35,6 +38,8 @@ select is((phase5_sync_pull('owner-phone',current_setting('p5.shop')::uuid,1,'{}
 
 select lives_ok(format($q$select phase5_sync_post_sale('owner-phone',1,%L::uuid,null,'2026-09-09',0,0,'p5-offline-sale',jsonb_build_array(jsonb_build_object('item_id',%L,'unit_level',1,'qty',2,'price_kind','retail','discount_paise',0)),jsonb_build_array(jsonb_build_object('amount_paise',200,'mode','cash')),null)$q$,current_setting('p5.shop'),current_setting('p5.item')),'offline outbox sale posts through device-aware RPC');
 select is((select count(*) from sale_invoices where client_id='p5-offline-sale'),1::bigint,'offline sale persists once');
+select is((select count(*) from sync_idempotency_keys where operation='post_sale' and op_client_id='p5-offline-sale'),1::bigint,'sync request fingerprint persists once');
+select throws_ok(format($q$select phase5_sync_post_sale('owner-phone',1,%L::uuid,null,'2026-09-09',0,0,'p5-offline-sale',jsonb_build_array(jsonb_build_object('item_id',%L,'unit_level',1,'qty',3,'price_kind','retail','discount_paise',0)),jsonb_build_array(jsonb_build_object('amount_paise',300,'mode','cash')),null)$q$,current_setting('p5.shop'),current_setting('p5.item')),null,'client_id payload mismatch','divergent retry under the same client_id is rejected');
 select lives_ok(format($q$select phase5_sync_post_sale('owner-phone',1,%L::uuid,null,'2026-09-09',0,0,'p5-offline-sale',jsonb_build_array(jsonb_build_object('item_id',%L,'unit_level',1,'qty',2,'price_kind','retail','discount_paise',0)),jsonb_build_array(jsonb_build_object('amount_paise',200,'mode','cash')),null)$q$,current_setting('p5.shop'),current_setting('p5.item')),'unknown-outcome retry is idempotent');
 select is((select count(*) from sale_invoices where client_id='p5-offline-sale'),1::bigint,'retry creates no duplicate invoice');
 select is((select qty_base from stock_current where shop_id=current_setting('p5.shop')::uuid and item_id=current_setting('p5.item')::uuid),3::numeric,'offline sync sale decrements stock once');
