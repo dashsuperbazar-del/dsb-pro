@@ -28,3 +28,6 @@ export { SYNC_SCHEMA_VERSION, pullSync, ackSync, pushSyncedSale, setOfflineCashi
 
 export type { DayBookRow, StockValueRow, GstRow, PartyLedgerRow } from './reports';
 export { getDayBook, getStockValuation, getGstSummary, postExpense, exportTenant, checkInvariants, getPartyLedger, createStockCount, postStockCount } from './reports';
+
+export type { BackupHealth } from './health';
+export { getLatestBackupHealth } from './health';
