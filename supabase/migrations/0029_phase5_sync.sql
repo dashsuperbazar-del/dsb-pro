@@ -9,7 +9,7 @@ alter table devices
   add column last_sync_at timestamptz;
 
 create or replace function register_device(p_device_id text,p_app_version text)
-returns uuid language plpgsql security definer set search_path=public as $
+returns uuid language plpgsql security definer set search_path=public as $$
 declare
   v_tenant uuid:=current_tenant_id();
   v_existing devices%rowtype;
@@ -28,7 +28,7 @@ begin
   insert into devices(tenant_id,user_id,device_id,app_version,last_seen)
     values(v_tenant,auth.uid(),p_device_id,p_app_version,now()) returning id into v_id;
   return v_id;
-end $;
+end $$;
 revoke all on function register_device(text,text) from public,anon;
 grant execute on function register_device(text,text) to authenticated;
 
