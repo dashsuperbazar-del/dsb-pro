@@ -123,7 +123,11 @@ export async function queueOfflineSale(
       subtotalPaise:subtotal,discountPaise:totalDiscount,extraChargesPaise:input.extraChargesPaise,totalPaise:total,
       payments:input.payments,lines:snapshots,status:'QUEUED',createdAt:now,syncedAt:null,rejectionReason:null,
     };
-    const outbox:OutboxEntry<OfflineSalePayload>={sequence:outboxSequence,clientId:input.clientId,kind:'financial-rpc',target:'post_sale',payload:input,createdAt:now,attempts:0,state:'pending',nextAttemptAt:0,lastError:null};
+    const serverPayload:OfflineSalePayload={...input,lines:snapshots.map(line=>({
+      itemId:line.itemId,unitLevel:line.unitLevel,qty:line.qty,priceKind:line.priceKind,
+      discountPaise:line.discountPaise,expectedUnitPricePaise:line.unitPricePaise,
+    }))};
+    const outbox:OutboxEntry<OfflineSalePayload>={sequence:outboxSequence,clientId:input.clientId,kind:'financial-rpc',target:'post_sale',payload:serverPayload,createdAt:now,attempts:0,state:'pending',nextAttemptAt:0,lastError:null};
     await db.offlineSales.put(record);
     await db.outbox.put(outbox);
     for(const [key,qty] of required){
