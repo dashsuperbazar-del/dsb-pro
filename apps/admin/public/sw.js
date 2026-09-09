@@ -2,13 +2,14 @@
 const version = new URL(self.location.href).searchParams.get('v') || 'dev';
 const CACHE = 'dsb-pro-shell-' + version;
 const scopeRoot = new URL('./', self.registration.scope).toString();
+const shellRoutes = ['', 'signup', 'join', 'team', 'devices', 'inventory', 'pos', 'customers', 'sales-history', 'sync'];
 
 async function precacheShell() {
   const cache = await caches.open(CACHE);
   const response = await fetch(new Request(scopeRoot, { cache: 'reload' }));
   if (!response.ok) throw new Error('Unable to fetch app shell');
   const html = await response.clone().text();
-  await cache.put(scopeRoot, response.clone());
+  await Promise.all(shellRoutes.map(route => cache.put(new URL(route, scopeRoot).toString(), response.clone())));
 
   const refs = [...html.matchAll(/(?:src|href)="([^"]+)"/g)]
     .map(match => new URL(match[1], scopeRoot))
@@ -20,11 +21,20 @@ async function precacheShell() {
 
 async function cachedNavigation(request) {
   const cache = await caches.open(CACHE);
-  // Prefer the exact route if it has been visited while online. Fall back to
-  // the cached SPA root so arbitrary deep links can still boot offline.
-  return (await cache.match(request, { ignoreSearch: true }))
-    || (await cache.match(scopeRoot, { ignoreSearch: true }))
-    || Response.error();
+  const exact = await cache.match(request, { ignoreSearch: true });
+  if (exact) return exact;
+
+  // A cached Response keeps the URL it was originally fetched from. Chromium
+  // can treat a root-URL response differently for an offline deep navigation.
+  // Re-materialize the cached SPA shell as a fresh 200 response so arbitrary
+  // unvisited app routes still boot with the requested browser URL.
+  const root = await cache.match(scopeRoot, { ignoreSearch: true });
+  if (!root) return Response.error();
+  return new Response(await root.arrayBuffer(), {
+    status: 200,
+    statusText: 'OK',
+    headers: root.headers,
+  });
 }
 
 self.addEventListener('install', event => {
