@@ -37,6 +37,26 @@ create policy sync_conflicts_read on sync_conflicts for select using(
   tenant_id=current_tenant_id() and (created_by=auth.uid() or "current_role"() in ('owner','manager'))
 );
 
+create table sync_idempotency_keys(
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenants(id),
+  operation text not null,
+  op_client_id text not null,
+  payload jsonb not null,
+  created_by uuid not null default auth.uid(),
+  created_at timestamptz not null default now(),
+  updated_at bigint not null default 0,
+  deleted_at bigint,
+  client_id text not null,
+  unique(tenant_id,operation,op_client_id),
+  unique(tenant_id,client_id)
+);
+create trigger sync_idempotency_keys_set_updated_at before insert or update on sync_idempotency_keys for each row execute function set_updated_at();
+create trigger audit_sync_idempotency_keys after insert on sync_idempotency_keys for each row execute function audit_row_change();
+create trigger sync_idempotency_keys_immutable before update or delete on sync_idempotency_keys for each row execute function phase3_immutable();
+alter table sync_idempotency_keys enable row level security;
+revoke all on sync_idempotency_keys from anon,authenticated;
+
 create function phase5_assert_schema(p_schema_version integer) returns void
 language plpgsql immutable security definer set search_path=public as $$
 begin
@@ -174,11 +194,25 @@ create function phase5_sync_post_sale(
   p_shop_id uuid,p_customer_id uuid,p_business_date date,p_discount_paise bigint,p_extra_charges_paise bigint,
   p_client_id text,p_lines jsonb,p_payments jsonb default '[]'::jsonb,p_notes text default null
 ) returns jsonb
-language plpgsql security definer set search_path=public as $$
-declare v_sale uuid; v_doc text; v_stock jsonb;
+language plpgsql security definer set search_path=public as $
+declare
+  v_sale uuid; v_doc text; v_stock jsonb; v_existing_payload jsonb;
+  v_request jsonb:=jsonb_build_object(
+    'shop_id',p_shop_id,'customer_id',p_customer_id,'business_date',p_business_date,
+    'discount_paise',p_discount_paise,'extra_charges_paise',p_extra_charges_paise,
+    'lines',coalesce(p_lines,'[]'::jsonb),'payments',coalesce(p_payments,'[]'::jsonb),'notes',p_notes
+  );
 begin
   perform phase5_assert_schema(p_schema_version);
   perform phase5_assert_sync_device(p_device_id);
+  insert into sync_idempotency_keys(tenant_id,operation,op_client_id,payload,client_id)
+  values(current_tenant_id(),'post_sale',p_client_id,v_request,'post_sale:'||p_client_id)
+  on conflict(tenant_id,operation,op_client_id) do nothing;
+  select payload into v_existing_payload from sync_idempotency_keys
+    where tenant_id=current_tenant_id() and operation='post_sale' and op_client_id=p_client_id;
+  if v_existing_payload is distinct from v_request then
+    raise exception 'client_id payload mismatch';
+  end if;
   v_sale:=post_sale(p_shop_id,p_customer_id,p_business_date,p_discount_paise,p_extra_charges_paise,p_client_id,p_lines,p_payments,p_notes);
   select doc_no into v_doc from sale_invoices where id=v_sale and tenant_id=current_tenant_id();
   select coalesce(jsonb_agg(to_jsonb(q) order by q.item_id),'[]'::jsonb) into v_stock
