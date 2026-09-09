@@ -41,6 +41,7 @@ async function seedOfflineItem(page:import('@playwright/test').Page){
 }
 
 async function addOnePaidLine(page:import('@playwright/test').Page){
+  await page.getByLabel('Find product').fill('Offline E2E Item');
   await page.getByLabel('Item').selectOption({label:'Offline E2E Item'});
   await page.getByLabel('Quantity').fill('1');
   await page.getByRole('button',{name:'Add line'}).click();
