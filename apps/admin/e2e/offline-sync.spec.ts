@@ -90,7 +90,10 @@ test('chaos: airplane mode + app restart + logical one-hour outage preserves and
   await page.getByRole('button',{name:'Finalize sale'}).click();
   await expect(page.getByRole('status')).toContainText('Saved locally as T-');
 
-  await page.goto('/sync');
+  // Navigate through the running SPA while still offline. This is the real
+  // PWA user path; it must not depend on a new network navigation.
+  await page.getByRole('link',{name:'Sync & offline'}).click();
+  await expect(page.getByRole('heading',{name:'Sync & offline'})).toBeVisible();
   await expect(page.getByTestId('sync-outbox-count')).toHaveText('2');
   await page.getByRole('button',{name:'Sync now'}).click();
   await expect(page.getByTestId('sync-outbox-count')).toHaveText('2');
