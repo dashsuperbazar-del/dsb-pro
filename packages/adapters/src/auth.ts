@@ -36,6 +36,27 @@ export async function getSession(): Promise<Session | null> {
   return data.session;
 }
 
+export async function ensureFreshSession(minValiditySeconds = 60): Promise<Session | null> {
+  if (!Number.isFinite(minValiditySeconds) || minValiditySeconds < 0) {
+    throw new Error('minValiditySeconds must be a non-negative number');
+  }
+  const client = getSupabaseClient();
+  const { data, error } = await client.auth.getSession();
+  if (error) throw error;
+  const session = data.session;
+  if (!session) return null;
+
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const expiresAt = session.expires_at;
+  if (typeof expiresAt !== 'number' || expiresAt > nowSeconds + minValiditySeconds) {
+    return session;
+  }
+
+  const refreshed = await client.auth.refreshSession();
+  if (refreshed.error) throw refreshed.error;
+  return refreshed.data.session;
+}
+
 export function onAuthStateChange(cb: (session: Session | null) => void): () => void {
   const { data } = getSupabaseClient().auth.onAuthStateChange((_event, session) => cb(session));
   return () => data.subscription.unsubscribe();
