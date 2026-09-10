@@ -28,8 +28,42 @@ jobs:
           VITE_APP_VERSION: ${{ github.sha }}
           VITE_ITEM_IMAGE_STORAGE_PROVIDER: r2
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://zmtvvdgsbdwhowrzkcwr.supabase.co' }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJIUzI1NiIsInJlZiI6InptdHZ2ZGdzYmR3aG93cnprY3dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg1MTY2NjgsImV4cCI6MjEwNDA5MjY2OH0.I6O33AReqJBkKwgtzejlS31Djwmdrp5pVF6Mxj4gnig' }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInJlZiI6InptdHZ2ZGdzYmR3aG93cnprY3dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg1MTY2NjgsImV4cCI6MjEwNDA5MjY2OH0.I6O33AReqJBkKwgtzejlS31Djwmdrp5pVF6Mxj4gnig' }}
         run: pnpm --filter @dsb-pro/admin run build
+
+      - name: Ensure preview ITEM_IMAGES R2 binding
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/pages/projects/dsb-pro"
+          curl -fsS "$API" -H "Authorization: Bearer $CF_API_TOKEN" > project.json
+          python - <<'PY'
+          import json
+          data=json.load(open('project.json'))
+          if not data.get('success'):
+              raise SystemExit('Cloudflare project lookup failed')
+          current=((data.get('result') or {}).get('deployment_configs') or {}).get('preview',{}).get('r2_buckets') or {}
+          current=dict(current)
+          current['ITEM_IMAGES']={'name':'apd-dsb'}
+          json.dump({'deployment_configs':{'preview':{'r2_buckets':current}}},open('patch.json','w'))
+          PY
+          curl -fsS -X PATCH "$API" \
+            -H "Authorization: Bearer $CF_API_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data @patch.json > patched.json
+          python - <<'PY'
+          import json
+          data=json.load(open('patched.json'))
+          if not data.get('success'):
+              raise SystemExit('Cloudflare Pages binding update failed: '+json.dumps(data.get('errors')))
+          buckets=((data.get('result') or {}).get('deployment_configs') or {}).get('preview',{}).get('r2_buckets') or {}
+          if (buckets.get('ITEM_IMAGES') or {}).get('name')!='apd-dsb':
+              raise SystemExit('ITEM_IMAGES binding was not persisted')
+          print('Preview ITEM_IMAGES -> apd-dsb binding: configured')
+          PY
 
       - name: Deploy R2-selected branch preview with Pages Functions
         id: deploy_r2
