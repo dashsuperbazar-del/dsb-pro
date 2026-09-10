@@ -20,11 +20,15 @@ function acceptRemote<T extends ServerSyncRow>(local:T|undefined,remote:T):boole
   if(remote.deleted_at!==null&&local.deleted_at===null)return true;
   return true;
 }
-async function applyRows<T extends ServerSyncRow>(table:{get:(id:string)=>Promise<T|undefined>;put:(row:T)=>Promise<unknown>},rows:T[]){
-  for(const row of rows){
-    const local=await table.get(row.id);
-    if(acceptRemote(local,row))await table.put(row);
-  }
+type BulkTable<T>={
+  bulkGet:(ids:string[])=>Promise<(T|undefined)[]>;
+  bulkPut:(rows:T[])=>Promise<unknown>;
+};
+async function applyRows<T extends ServerSyncRow>(table:BulkTable<T>,rows:T[]){
+  if(!rows.length)return;
+  const localRows=await table.bulkGet(rows.map(row=>row.id));
+  const accepted=rows.filter((row,index)=>acceptRemote(localRows[index],row));
+  if(accepted.length)await table.bulkPut(accepted);
 }
 export async function applySyncPull(db:DsbSyncDb,payload:SyncPullPayload):Promise<void>{
   await db.transaction('rw',[db.items,db.barcodes,db.prices,db.customers,db.stock,db.meta],async()=>{
@@ -32,10 +36,11 @@ export async function applySyncPull(db:DsbSyncDb,payload:SyncPullPayload):Promis
     await applyRows(db.barcodes,payload.barcodes);
     await applyRows(db.prices,payload.prices);
     await applyRows(db.customers,payload.customers);
-    for(const raw of payload.stock){
-      const row={...raw,key:stockKey(raw.shop_id,raw.item_id)};
-      const local=await db.stock.get(row.key);
-      if(!local||row.updated_at>=local.updated_at)await db.stock.put(row);
+    if(payload.stock.length){
+      const stockRows=payload.stock.map(raw=>({...raw,key:stockKey(raw.shop_id,raw.item_id)}));
+      const locals=await db.stock.bulkGet(stockRows.map(row=>row.key));
+      const accepted=stockRows.filter((row,index)=>!locals[index]||row.updated_at>=locals[index]!.updated_at);
+      if(accepted.length)await db.stock.bulkPut(accepted);
     }
     const rowSets:Record<SyncTableName,ServerSyncRow[]>={
       items:payload.items,barcodes:payload.barcodes,prices:payload.prices,customers:payload.customers,stock:payload.stock,
