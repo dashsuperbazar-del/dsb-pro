@@ -1,6 +1,6 @@
 import {
   ackSync,classifyError,ensureFreshSession,errorMessage,getDefaultShopId,getOrCreateDeviceId,listServerSyncConflicts,pullSync,pushSyncedSale,
-  recordServerSyncConflict,resolveServerSyncConflict,setOfflineCashierFinalization,subscribeSyncWakeup,
+  recordServerSyncConflict,resolveServerSyncConflict,setOfflineCashierFinalization,subscribeSyncWakeup,syncPullMayHaveMore,
   type Membership,type SaleLineInput,type SalePaymentInput,
 } from '@dsb-pro/adapters';
 import {
@@ -100,9 +100,6 @@ async function processOutbox(rt:Runtime){
     }catch(error){
       const message=reason(error);
       if(!isDefinitiveFinancialRejectionMessage(error instanceof Error?error.message:String(error))){
-        // Any unknown transport/server/response-shape outcome stays retryable.
-        // Financial work is removed from the outbox only for an explicit,
-        // recognized business rejection from the authoritative server.
         const retry=markOutboxRetry(sending,message,Date.now()+retryDelayMs(sending.attempts+1));
         await rt.db.outbox.put(retry);
         return;
@@ -118,10 +115,6 @@ async function processOutbox(rt:Runtime){
     try{
       await completeOfflineSale(rt.db,sending.clientId,asSale(result));
     }catch(error){
-      // The server has already confirmed the financial event. A local
-      // IndexedDB failure is therefore an UNKNOWN acknowledgement outcome,
-      // never a business rejection. Keep the exact outbox operation so the
-      // idempotent server RPC can be retried after local storage recovers.
       const retry=markOutboxRetry(
         sending,
         `Server confirmed sale but local acknowledgement failed: ${reason(error)}`,
@@ -134,6 +127,16 @@ async function processOutbox(rt:Runtime){
   throw new Error('Sync outbox safety limit reached.');
 }
 
+async function pullAllPages(rt:Runtime){
+  for(let page=0;page<100;page++){
+    const cursors=await getSyncCursors(rt.db);
+    const pulled=await pullSync({deviceId:rt.identity.deviceId,shopId:rt.identity.shopId,cursors});
+    await applySyncPull(rt.db,asPull(pulled));
+    if(!syncPullMayHaveMore(pulled))return getSyncCursors(rt.db);
+  }
+  throw new Error('Sync pull safety limit reached before all server pages were drained.');
+}
+
 export async function runSyncNow():Promise<void>{
   const rt=requireRuntime();
   if(rt.running)return rt.running;
@@ -143,10 +146,7 @@ export async function runSyncNow():Promise<void>{
       const session=await ensureFreshSession();
       if(!session)throw new Error('Authentication session is unavailable. Sign in again before syncing queued work.');
       await processOutbox(rt);
-      const cursors=await getSyncCursors(rt.db);
-      const pulled=await pullSync({deviceId:rt.identity.deviceId,shopId:rt.identity.shopId,cursors});
-      await applySyncPull(rt.db,asPull(pulled));
-      const nextCursors=await getSyncCursors(rt.db);
+      const nextCursors=await pullAllPages(rt);
       await ackSync({deviceId:rt.identity.deviceId,cursors:nextCursors});
       state={...state,lastCycleAt:Date.now(),lastError:null};
     }catch(error){
@@ -184,8 +184,6 @@ export async function finalizeSaleResilient(input:{
     record=await queueOfflineSale(rt.db,payload,{deviceId:rt.identity.deviceId,role:rt.identity.role,policy,onlineInitiated});
   }catch(error){
     if(typeof navigator==='undefined'||!navigator.onLine)throw error;
-    // A freshly-created item/price can be inside the server's 1-second cursor
-    // safety window. Wait past that window, pull once, then retry locally.
     await new Promise(resolve=>window.setTimeout(resolve,1100));
     await runSyncNow();
     const retryOnlineInitiated=typeof navigator!=='undefined'&&navigator.onLine&&!state.lastError;
@@ -214,9 +212,6 @@ export async function listOfflineSales():Promise<OfflineSaleRecord[]>{
 }
 export async function getSyncDashboard(){
   const rt=requireRuntime();
-  // Never make the local sync dashboard wait on a network call while the
-  // browser is offline. Shop-wide conflicts are additive server context;
-  // local outbox/health/conflict state must remain instantly inspectable.
   const serverConflictPromise=(typeof navigator!=='undefined'&&!navigator.onLine)
     ? Promise.resolve([])
     : listServerSyncConflicts().catch(()=>[]);
@@ -228,22 +223,11 @@ export async function getSyncDashboard(){
 }
 export async function forceRetryNow():Promise<void>{
   const rt=requireRuntime();
-  // A browser "online" event can start a sync cycle immediately before the
-  // user presses Retry. Joining that in-flight cycle is not a forced retry:
-  // if the network transition races and that cycle fails, its newly-written
-  // backoff would remain in place. Let it settle first, then deliberately
-  // retry a small bounded number of times while the browser remains online.
   if(rt.running)await rt.running;
 
   const retryWaits=[0,500,1000,2000,4000];
   for(let attempt=0;attempt<retryWaits.length;attempt++){
     if(retryWaits[attempt]>0)await new Promise(resolve=>window.setTimeout(resolve,retryWaits[attempt]));
-    // A transport can disappear after an operation is marked "sending" but
-    // before its failure/acknowledgement is persisted locally. Normal FIFO
-    // processing deliberately will not overtake a sending entry, so manual
-    // recovery first converts any orphaned sending work back to retry.
-    // The server RPC is client-id idempotent, making each retry safe even
-    // when an earlier ambiguous request actually reached the server.
     await recoverInterruptedOutbox(rt.db);
     const retries=await rt.db.outbox.where('state').equals('retry').toArray();
     if(retries.length)await rt.db.outbox.bulkPut(retries.map(r=>({...r,nextAttemptAt:0} as OutboxEntry)));
