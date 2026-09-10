@@ -588,8 +588,63 @@ jobs:
           RESULT=$(psql "$BACKUP_RO_DATABASE_URL" -v ON_ERROR_STOP=1 -At -c "select (select count(*) from expenses)>=0 and (select count(*) from stock_counts)>=0 and (select count(*) from stock_count_lines)>=0;")
           test "$RESULT" = "t"
 
+  phase6_portable_restore:
+    needs: [phase6_db_upgrade]
+    if: github.ref == 'refs/heads/phase-6-ledgers-reports-dr' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions: {}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Capture live financial manifest
+        id: source
+        env:
+          BACKUP_RO_DATABASE_URL: ${{ secrets.BACKUP_RO_DATABASE_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$BACKUP_RO_DATABASE_URL" || { echo 'BACKUP_RO_DATABASE_URL is required'; exit 1; }
+          psql "$BACKUP_RO_DATABASE_URL" -v ON_ERROR_STOP=1 -At <<'SQL' > source-manifest.txt
+          select 'sales='||count(*)||',total='||coalesce(sum(total_paise),0) from sale_invoices where status='FINALIZED';
+          select 'payments='||count(*)||',total='||coalesce(sum(amount_paise),0) from payments where status='POSTED';
+          select 'purchases='||count(*)||',total='||coalesce(sum(total_paise),0) from purchase_bills where status='POSTED';
+          select 'stock_movements='||count(*) from stock_movements;
+          select 'expenses='||count(*)||',total='||coalesce(sum(amount_paise),0) from expenses where status='POSTED';
+          SQL
+          cat source-manifest.txt
+      - name: Create fresh portable dump
+        env:
+          BACKUP_RO_DATABASE_URL: ${{ secrets.BACKUP_RO_DATABASE_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull postgres:17
+          docker run --rm -v "$PWD:/dump" postgres:17 pg_dump --format=custom --schema=public "$BACKUP_RO_DATABASE_URL" -f /dump/phase6-portable.pgcustom
+          sudo chown "$(id -u):$(id -g)" phase6-portable.pgcustom
+          test "$(stat -c%s phase6-portable.pgcustom)" -ge 1000
+      - name: Restore into vanilla PostgreSQL 17
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/restore-public-to-docker.sh "$PWD/phase6-portable.pgcustom" dsb-pro-phase6-ci | tee restore-manifest.txt
+          grep -F 'PORTABLE PUBLIC RESTORE: PASS' restore-manifest.txt
+      - name: Verify source/restored financial parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r expected; do
+            test -n "$expected" || continue
+            grep -Fx "$expected" restore-manifest.txt >/dev/null || {
+              echo "Portable restore parity mismatch: $expected"
+              echo 'Restored manifest:'
+              grep -E '^(sales|payments|purchases|stock_movements|expenses)=' restore-manifest.txt || true
+              exit 1
+            }
+          done < source-manifest.txt
+          echo 'Phase 6 vanilla PostgreSQL restore + financial parity: PASS'
+
   phase6_preview:
-    needs: [build, phase6_db_upgrade]
+    needs: [build, phase6_db_upgrade, phase6_portable_restore]
     if: github.ref == 'refs/heads/phase-6-ledgers-reports-dr' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
