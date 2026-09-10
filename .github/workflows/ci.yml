@@ -17,6 +17,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
+      - name: Check Pages Function syntax
+        run: node --check apps/admin/functions/api/item-images.js
 
   typecheck:
     runs-on: ubuntu-latest
