@@ -29,11 +29,17 @@ docker cp "$ROOT/infra/docker-portability-bootstrap.sql" "$NAME:/bootstrap.sql"
 docker cp "$DUMP" "$NAME:/public.pgcustom"
 docker exec "$NAME" psql -U postgres -d "$DB" -v ON_ERROR_STOP=1 -f /bootstrap.sql
 
+# PostgreSQL creates schema public in every fresh database. A pg_dump --schema=public
+# archive also carries a CREATE SCHEMA public TOC entry, so exclude only that one
+# entry rather than accepting an ignored restore error. Everything inside public
+# (tables, functions, data, indexes, constraints and triggers) remains selected.
+docker exec "$NAME" sh -c "pg_restore -l /public.pgcustom | grep -v ' SCHEMA - public ' > /restore.list"
+
 # Custom archives place FK creation in post-data. Load schema and rows first,
 # then synthesize placeholder auth IDs from the public membership/device rows,
 # and only then install FKs/indexes/triggers.
-docker exec "$NAME" pg_restore -U postgres -d "$DB" --section=pre-data --no-owner --no-privileges /public.pgcustom
-docker exec "$NAME" pg_restore -U postgres -d "$DB" --section=data --no-owner --no-privileges /public.pgcustom
+docker exec "$NAME" pg_restore -U postgres -d "$DB" --use-list=/restore.list --section=pre-data --no-owner --no-privileges /public.pgcustom
+docker exec "$NAME" pg_restore -U postgres -d "$DB" --use-list=/restore.list --section=data --no-owner --no-privileges /public.pgcustom
 docker exec "$NAME" psql -U postgres -d "$DB" -v ON_ERROR_STOP=1 <<'SQL'
 insert into auth.users(id)
 select distinct user_id from tenant_users where user_id is not null
@@ -41,7 +47,7 @@ union
 select distinct user_id from devices where user_id is not null
 on conflict do nothing;
 SQL
-docker exec "$NAME" pg_restore -U postgres -d "$DB" --section=post-data --no-owner --no-privileges /public.pgcustom
+docker exec "$NAME" pg_restore -U postgres -d "$DB" --use-list=/restore.list --section=post-data --no-owner --no-privileges /public.pgcustom
 
 docker exec "$NAME" psql -U postgres -d "$DB" -v ON_ERROR_STOP=1 -At <<'SQL'
 select 'tenants='||count(*) from tenants;
