@@ -1,3 +1,4 @@
+/* global fetch, Response, URL, Headers */
 async function currentMembership(env,authorization){
   if(!env.SUPABASE_URL||!env.SUPABASE_ANON_KEY)throw new Error('Storage auth verifier is not configured.');
   const response=await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/current_membership`,{
