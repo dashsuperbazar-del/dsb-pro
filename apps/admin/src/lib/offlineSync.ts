@@ -235,7 +235,9 @@ export async function forceRetryNow():Promise<void>{
   // retry a small bounded number of times while the browser remains online.
   if(rt.running)await rt.running;
 
-  for(let attempt=0;attempt<3;attempt++){
+  const retryWaits=[0,500,1000,2000,4000];
+  for(let attempt=0;attempt<retryWaits.length;attempt++){
+    if(retryWaits[attempt]>0)await new Promise(resolve=>window.setTimeout(resolve,retryWaits[attempt]));
     // A transport can disappear after an operation is marked "sending" but
     // before its failure/acknowledgement is persisted locally. Normal FIFO
     // processing deliberately will not overtake a sending entry, so manual
@@ -249,7 +251,6 @@ export async function forceRetryNow():Promise<void>{
     await runSyncNow();
     if((await rt.db.outbox.count())===0)return;
     if(typeof navigator!=='undefined'&&!navigator.onLine)return;
-    if(attempt<2)await new Promise(resolve=>window.setTimeout(resolve,400));
   }
 }
 export async function resolveConflictLocally(conflict:LocalSyncConflict):Promise<void>{
