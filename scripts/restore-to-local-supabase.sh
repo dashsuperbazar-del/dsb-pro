@@ -29,6 +29,14 @@ pg17_restore(){
 
 pg17_restore "$PUBLIC_DUMP" -l | grep -v ' SCHEMA - public ' > "$WORK/public.list"
 
+# Select Auth rows through the archive TOC rather than pg_restore --table
+# patterns. The latter proved fragile for schema-qualified names in CI and
+# silently selected zero user rows. These are the durable identity records
+# needed to preserve user IDs, password hashes and provider identities.
+pg17_restore "$AUTH_DUMP" -l | grep -E ' TABLE DATA auth (instances|users|identities) ' > "$WORK/auth.list"
+grep -q ' TABLE DATA auth users ' "$WORK/auth.list" || { echo 'Auth archive has no users TABLE DATA entry' >&2; exit 1; }
+grep -q ' TABLE DATA auth identities ' "$WORK/auth.list" || { echo 'Auth archive has no identities TABLE DATA entry' >&2; exit 1; }
+
 # Start from the repository-migrated fresh target, then replace public with the
 # exact backed-up public schema/data. Supabase-owned schemas remain untouched.
 psql "$TARGET_DB_URL" -v ON_ERROR_STOP=1 <<'SQL'
@@ -55,8 +63,16 @@ truncate table auth.identities, auth.users, auth.instances cascade;
 set session_replication_role=origin;
 SQL
 
-pg17_restore "$AUTH_DUMP" --dbname="$TARGET_DB_URL" --data-only --no-owner --no-privileges \
-  --table=auth.instances --table=auth.users --table=auth.identities
+docker run --rm --network host \
+  -v "$(dirname "$AUTH_DUMP"):/archive:ro" -v "$WORK:/work:ro" "$PG_IMAGE" \
+  pg_restore --dbname="$TARGET_DB_URL" --use-list=/work/auth.list --data-only --no-owner --no-privileges "/archive/$(basename "$AUTH_DUMP")"
+
+# Fail before adding public foreign keys if the Auth recovery selected no users.
+# This prevents a misleading later FK error from hiding the actual Auth problem.
+AUTH_USERS=$(psql "$TARGET_DB_URL" -v ON_ERROR_STOP=1 -At -c 'select count(*) from auth.users')
+AUTH_IDENTITIES=$(psql "$TARGET_DB_URL" -v ON_ERROR_STOP=1 -At -c 'select count(*) from auth.identities')
+test "$AUTH_USERS" -gt 0 || { echo 'Auth restore produced zero users' >&2; exit 1; }
+test "$AUTH_IDENTITIES" -gt 0 || { echo 'Auth restore produced zero identities' >&2; exit 1; }
 
 # Public FK/index/trigger creation comes after Auth users exist so membership,
 # device and audit references are validated against recovered real identities.
