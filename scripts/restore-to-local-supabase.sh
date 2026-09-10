@@ -4,18 +4,30 @@ set -euo pipefail
 PUBLIC_DUMP="${1:?public custom-format dump required}"
 AUTH_DUMP="${2:?auth custom-format dump required}"
 TARGET_DB_URL="${3:-postgresql://postgres:postgres@127.0.0.1:54322/postgres}"
+PG_IMAGE="${POSTGRES_IMAGE:-postgres:17}"
 
 for f in "$PUBLIC_DUMP" "$AUTH_DUMP"; do
   test -f "$f" || { echo "Dump not found: $f" >&2; exit 1; }
 done
 
+PUBLIC_DUMP="$(cd "$(dirname "$PUBLIC_DUMP")" && pwd)/$(basename "$PUBLIC_DUMP")"
+AUTH_DUMP="$(cd "$(dirname "$AUTH_DUMP")" && pwd)/$(basename "$AUTH_DUMP")"
 WORK="$(mktemp -d)"
 cleanup(){ rm -rf "$WORK"; }
 trap cleanup EXIT
 
-# A fresh Supabase stack already owns schema public. Restore all DSB Pro public
-# objects while excluding only the archive's CREATE SCHEMA public entry.
-pg_restore -l "$PUBLIC_DUMP" | grep -v ' SCHEMA - public ' > "$WORK/public.list"
+# Custom-format archives created by PostgreSQL 17 require a PostgreSQL 17+
+# pg_restore. GitHub's Ubuntu host client may lag the server/archive version,
+# so every archive operation deliberately uses the same postgres:17 image as
+# the backup workflow. --network host lets that client reach local Supabase on
+# 127.0.0.1:54322 without changing the target connection string.
+pg17_restore(){
+  local dump="$1"; shift
+  docker run --rm --network host -v "$(dirname "$dump"):/archive:ro" "$PG_IMAGE" \
+    pg_restore "$@" "/archive/$(basename "$dump")"
+}
+
+pg17_restore "$PUBLIC_DUMP" -l | grep -v ' SCHEMA - public ' > "$WORK/public.list"
 
 # Start from the repository-migrated fresh target, then replace public with the
 # exact backed-up public schema/data. Supabase-owned schemas remain untouched.
@@ -25,27 +37,32 @@ create schema public;
 grant usage on schema public to postgres, anon, authenticated, service_role;
 SQL
 
-pg_restore --dbname="$TARGET_DB_URL" --use-list="$WORK/public.list" --section=pre-data --no-owner --no-privileges "$PUBLIC_DUMP"
-pg_restore --dbname="$TARGET_DB_URL" --use-list="$WORK/public.list" --section=data --no-owner --no-privileges "$PUBLIC_DUMP"
+# The use-list file is mounted separately because it lives in the temporary
+# work directory rather than beside the archive.
+docker run --rm --network host \
+  -v "$(dirname "$PUBLIC_DUMP"):/archive:ro" -v "$WORK:/work:ro" "$PG_IMAGE" \
+  pg_restore --dbname="$TARGET_DB_URL" --use-list=/work/public.list --section=pre-data --no-owner --no-privileges "/archive/$(basename "$PUBLIC_DUMP")"
+docker run --rm --network host \
+  -v "$(dirname "$PUBLIC_DUMP"):/archive:ro" -v "$WORK:/work:ro" "$PG_IMAGE" \
+  pg_restore --dbname="$TARGET_DB_URL" --use-list=/work/public.list --section=data --no-owner --no-privileges "/archive/$(basename "$PUBLIC_DUMP")"
 
-# Restore the durable authentication identity needed for account recovery from
-# the separately encrypted full Auth artifact. Sessions/refresh tokens are not
-# deliberately resurrected: recovered users must sign in again after a DR event.
-# Password hashes live on auth.users; provider/email identity lives on
-# auth.identities; users may reference auth.instances.
+# Restore durable authentication identity required for account recovery from
+# the separate Auth artifact. Sessions/refresh tokens are intentionally not
+# resurrected; recovered users establish fresh sessions after a DR event.
 psql "$TARGET_DB_URL" -v ON_ERROR_STOP=1 <<'SQL'
 set session_replication_role=replica;
 truncate table auth.identities, auth.users, auth.instances cascade;
 set session_replication_role=origin;
 SQL
 
-pg_restore --dbname="$TARGET_DB_URL" --data-only --no-owner --no-privileges \
-  --table=auth.instances --table=auth.users --table=auth.identities "$AUTH_DUMP"
+pg17_restore "$AUTH_DUMP" --dbname="$TARGET_DB_URL" --data-only --no-owner --no-privileges \
+  --table=auth.instances --table=auth.users --table=auth.identities
 
-# Public FK/index/trigger creation comes after Auth users exist, so membership,
-# device and audit user references are validated by PostgreSQL rather than
-# papered over with placeholder identities.
-pg_restore --dbname="$TARGET_DB_URL" --use-list="$WORK/public.list" --section=post-data --no-owner --no-privileges "$PUBLIC_DUMP"
+# Public FK/index/trigger creation comes after Auth users exist so membership,
+# device and audit references are validated against recovered real identities.
+docker run --rm --network host \
+  -v "$(dirname "$PUBLIC_DUMP"):/archive:ro" -v "$WORK:/work:ro" "$PG_IMAGE" \
+  pg_restore --dbname="$TARGET_DB_URL" --use-list=/work/public.list --section=post-data --no-owner --no-privileges "/archive/$(basename "$PUBLIC_DUMP")"
 
 psql "$TARGET_DB_URL" -v ON_ERROR_STOP=1 -At <<'SQL'
 select 'auth_users='||count(*) from auth.users;
