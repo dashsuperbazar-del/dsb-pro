@@ -7,7 +7,7 @@ on:
 
 concurrency:
   group: phase6-r2-preview-gate
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   r2_preview_binding:
@@ -31,13 +31,14 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJIUzI1NiIsInJlZiI6InptdHZ2ZGdzYmR3aG93cnprY3dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg1MTY2NjgsImV4cCI6MjEwNDA5MjY2OH0.I6O33AReqJBkKwgtzejlS31Djwmdrp5pVF6Mxj4gnig' }}
         run: pnpm --filter @dsb-pro/admin run build
 
-      - name: Deploy R2-selected branch preview
+      - name: Deploy R2-selected branch preview with Pages Functions
         id: deploy_r2
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy apps/admin/dist --project-name=dsb-pro --branch=phase-6-r2-drill
+          workingDirectory: apps/admin
+          command: pages deploy dist --project-name=dsb-pro --branch=phase-6-r2-drill
 
       - name: Prove real preview has ITEM_IMAGES R2 binding
         env:
@@ -51,11 +52,11 @@ jobs:
           for i in $(seq 1 20); do
             STATUS=$(curl -sS -o response.txt -w '%{http_code}' "$URL/api/item-images?path=phase6-binding-probe" || true)
             if [ "$STATUS" = "401" ]; then
-              echo 'R2 preview binding gate: PASS (binding exists; unauthenticated probe rejected as designed).'
+              echo 'R2 preview binding gate: PASS (Pages Function deployed, R2 binding exists, unauthenticated probe rejected as designed).'
               exit 0
             fi
             if [ "$STATUS" = "503" ]; then
-              echo 'R2 preview binding gate: FAIL — ITEM_IMAGES is not bound in the Cloudflare Pages preview environment.'
+              echo 'R2 preview binding gate: FAIL — Pages Function is live but ITEM_IMAGES is not bound in the Cloudflare Pages preview environment.'
               cat response.txt
               exit 1
             fi
