@@ -3,6 +3,7 @@ import { classifyError,errorMessage } from './errors';
 import type { SaleLineInput,SalePaymentInput } from './sales';
 
 export const SYNC_SCHEMA_VERSION=1;
+export const SYNC_PULL_LIMITS={items:5000,barcodes:5000,prices:10000,customers:5000,stock:5000} as const;
 
 export type SyncCursorWire={updatedAt:number;id:string};
 export type SyncPullWire={
@@ -36,6 +37,14 @@ function requireSale(value:unknown):SyncSaleResultWire{
     throw new Error('Server returned an invalid synced-sale result.');
   }
   return value as SyncSaleResultWire;
+}
+
+export function syncPullMayHaveMore(pull:SyncPullWire):boolean{
+  return pull.items.length>=SYNC_PULL_LIMITS.items||
+    pull.barcodes.length>=SYNC_PULL_LIMITS.barcodes||
+    pull.prices.length>=SYNC_PULL_LIMITS.prices||
+    pull.customers.length>=SYNC_PULL_LIMITS.customers||
+    pull.stock.length>=SYNC_PULL_LIMITS.stock;
 }
 
 export async function pullSync(input:{deviceId:string;shopId:string;cursors:Record<string,SyncCursorWire>}):Promise<SyncPullWire>{
