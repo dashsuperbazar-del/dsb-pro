@@ -1,0 +1,100 @@
+name: Phase 6 local Supabase restore proof
+
+on:
+  push:
+    branches: [phase-6-ledgers-reports-dr]
+  workflow_dispatch:
+
+concurrency:
+  group: phase6-local-supabase-restore
+  cancel-in-progress: true
+
+jobs:
+  restore_public_and_auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions: {}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.116.0
+
+      - name: Require live read credentials
+        env:
+          BACKUP_RO_DATABASE_URL: ${{ secrets.BACKUP_RO_DATABASE_URL }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          test -n "$BACKUP_RO_DATABASE_URL" || { echo 'BACKUP_RO_DATABASE_URL is required'; exit 1; }
+          test -n "$SUPABASE_DB_URL" || { echo 'SUPABASE_DB_URL is required'; exit 1; }
+
+      - name: Capture source recovery manifest
+        env:
+          BACKUP_RO_DATABASE_URL: ${{ secrets.BACKUP_RO_DATABASE_URL }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -At -c "select 'auth_users='||count(*) from auth.users; select 'auth_identities='||count(*) from auth.identities;"
+            psql "$BACKUP_RO_DATABASE_URL" -v ON_ERROR_STOP=1 -At <<'SQL'
+          select 'tenant_users='||count(*) from tenant_users;
+          select 'sales='||count(*)||',total='||coalesce(sum(total_paise),0) from sale_invoices where status='FINALIZED';
+          select 'payments='||count(*)||',total='||coalesce(sum(amount_paise),0) from payments where status='POSTED';
+          select 'purchases='||count(*)||',total='||coalesce(sum(total_paise),0) from purchase_bills where status='POSTED';
+          select 'stock_movements='||count(*) from stock_movements;
+          select 'expenses='||count(*)||',total='||coalesce(sum(amount_paise),0) from expenses where status='POSTED';
+          SQL
+          } > source-manifest.txt
+          cat source-manifest.txt
+
+      - name: Create fresh public and Auth dumps
+        env:
+          BACKUP_RO_DATABASE_URL: ${{ secrets.BACKUP_RO_DATABASE_URL }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull postgres:17
+          docker run --rm -v "$PWD:/dump" postgres:17 pg_dump --format=custom --schema=public "$BACKUP_RO_DATABASE_URL" -f /dump/phase6-public.pgcustom
+          docker run --rm -v "$PWD:/dump" postgres:17 pg_dump --format=custom --data-only --schema=auth "$SUPABASE_DB_URL" -f /dump/phase6-auth.pgcustom
+          sudo chown "$(id -u):$(id -g)" phase6-public.pgcustom phase6-auth.pgcustom
+          test "$(stat -c%s phase6-public.pgcustom)" -ge 1000
+          test "$(stat -c%s phase6-auth.pgcustom)" -ge 500
+
+      - name: Start genuinely fresh disposable Supabase target
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker ps -aq --filter 'name=supabase_' | xargs -r docker rm -f
+          sudo fuser -k 54321/tcp 54322/tcp 54323/tcp 54324/tcp 54325/tcp 54326/tcp 54327/tcp 54328/tcp 54329/tcp || true
+          supabase start
+          supabase db reset
+
+      - name: Restore public business data and critical Auth identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          START=$(date +%s)
+          bash scripts/restore-to-local-supabase.sh "$PWD/phase6-public.pgcustom" "$PWD/phase6-auth.pgcustom" \
+            'postgresql://postgres:postgres@127.0.0.1:54322/postgres' | tee restored-manifest.txt
+          END=$(date +%s)
+          echo "restore_seconds=$((END-START))" | tee -a restored-manifest.txt
+          grep -F 'LOCAL SUPABASE PUBLIC + AUTH RESTORE: PASS' restored-manifest.txt
+
+      - name: Verify recovery parity and invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in auth_users auth_identities tenant_users sales payments purchases stock_movements expenses; do
+            expected=$(grep "^${key}=" source-manifest.txt | tail -n1)
+            test -n "$expected" || { echo "Source manifest missing $key"; exit 1; }
+            grep -Fx "$expected" restored-manifest.txt >/dev/null || {
+              echo "Restore parity mismatch for $key"
+              echo "expected: $expected"
+              grep "^${key}=" restored-manifest.txt || true
+              exit 1
+            }
+          done
+          grep -Fx 'missing_membership_users=0' restored-manifest.txt >/dev/null
+          echo 'Phase 6 disposable Supabase public/Auth restore parity: PASS'
