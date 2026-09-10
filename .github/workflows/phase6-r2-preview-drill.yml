@@ -1,0 +1,74 @@
+name: Phase 6 R2 preview gate
+
+on:
+  push:
+    branches: [phase-6-ledgers-reports-dr]
+  workflow_dispatch:
+
+concurrency:
+  group: phase6-r2-preview-gate
+  cancel-in-progress: false
+
+jobs:
+  r2_preview_binding:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions: {}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Require preview configuration
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          test -n "$VITE_SUPABASE_URL" || { echo 'VITE_SUPABASE_URL is required'; exit 1; }
+          test -n "$VITE_SUPABASE_ANON_KEY" || { echo 'VITE_SUPABASE_ANON_KEY is required'; exit 1; }
+
+      - name: Build preview with R2 storage adapter selected
+        env:
+          VITE_APP_VERSION: ${{ github.sha }}
+          VITE_ITEM_IMAGE_STORAGE_PROVIDER: r2
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: pnpm --filter @dsb-pro/admin run build
+
+      - name: Deploy R2-selected branch preview
+        id: deploy_r2
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/admin/dist --project-name=dsb-pro --branch=phase-6-r2-drill
+
+      - name: Prove real preview has ITEM_IMAGES R2 binding
+        env:
+          DEPLOYMENT_URL: ${{ steps.deploy_r2.outputs.deployment-url }}
+          ALIAS_URL: ${{ steps.deploy_r2.outputs.pages-deployment-alias-url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="${ALIAS_URL:-$DEPLOYMENT_URL}"
+          test -n "$URL" || { echo 'Cloudflare preview URL was not returned'; exit 1; }
+          for i in $(seq 1 20); do
+            STATUS=$(curl -sS -o response.txt -w '%{http_code}' "$URL/api/item-images?path=phase6-binding-probe" || true)
+            if [ "$STATUS" = "401" ]; then
+              echo 'R2 preview binding gate: PASS (binding exists; unauthenticated probe rejected as designed).'
+              exit 0
+            fi
+            if [ "$STATUS" = "503" ]; then
+              echo 'R2 preview binding gate: FAIL — ITEM_IMAGES is not bound in the Cloudflare Pages preview environment.'
+              cat response.txt
+              exit 1
+            fi
+            sleep 3
+          done
+          echo "R2 preview binding gate: FAIL — unexpected HTTP $STATUS"
+          cat response.txt
+          exit 1
