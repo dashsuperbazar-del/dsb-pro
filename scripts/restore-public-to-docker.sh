@@ -40,7 +40,7 @@ docker exec "$NAME" sh -c "pg_restore -l /public.pgcustom | grep -v ' SCHEMA - p
 # and only then install FKs/indexes/triggers.
 docker exec "$NAME" pg_restore -U postgres -d "$DB" --use-list=/restore.list --section=pre-data --no-owner --no-privileges /public.pgcustom
 docker exec "$NAME" pg_restore -U postgres -d "$DB" --use-list=/restore.list --section=data --no-owner --no-privileges /public.pgcustom
-docker exec "$NAME" psql -U postgres -d "$DB" -v ON_ERROR_STOP=1 <<'SQL'
+docker exec -i "$NAME" psql -U postgres -d "$DB" -v ON_ERROR_STOP=1 <<'SQL'
 insert into auth.users(id)
 select distinct user_id from tenant_users where user_id is not null
 union
@@ -49,7 +49,7 @@ on conflict do nothing;
 SQL
 docker exec "$NAME" pg_restore -U postgres -d "$DB" --use-list=/restore.list --section=post-data --no-owner --no-privileges /public.pgcustom
 
-docker exec "$NAME" psql -U postgres -d "$DB" -v ON_ERROR_STOP=1 -At <<'SQL'
+docker exec -i "$NAME" psql -U postgres -d "$DB" -v ON_ERROR_STOP=1 -At <<'SQL'
 select 'tenants='||count(*) from tenants;
 select 'shops='||count(*) from shops;
 select 'sales='||count(*)||',total='||coalesce(sum(total_paise),0) from sale_invoices where status='FINALIZED';
