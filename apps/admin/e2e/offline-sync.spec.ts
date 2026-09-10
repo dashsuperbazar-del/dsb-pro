@@ -85,9 +85,38 @@ test('chaos: airplane mode + app restart + logical one-hour outage preserves and
 
   // Simulate that the backend has remained unavailable for one hour. Sync
   // retries may run, but the first queued bill must remain durable.
-  await page.evaluate(()=>{
-    const realNow=Date.now.bind(Date);
-    Date.now=()=>realNow()+60*60*1000;
+  // Age the durable records instead of moving only the browser clock. Moving
+  // the browser one hour ahead while the test Supabase server stays put creates
+  // artificial JWT clock skew and tests clock corruption, not a one-hour
+  // backend outage.
+  await page.evaluate(async()=>{
+    const infos=await indexedDB.databases();
+    const name=infos.map(x=>x.name).find(x=>x?.startsWith('dsb-pro-sync-'));
+    if(!name)throw new Error('sync database was not created');
+    await new Promise<void>((resolve,reject)=>{
+      const request=indexedDB.open(name);
+      request.onerror=()=>reject(request.error);
+      request.onsuccess=()=>{
+        const db=request.result;
+        const tx=db.transaction(['outbox','offlineSales'],'readwrite');
+        const ageStore=(storeName:string)=>{
+          const store=tx.objectStore(storeName);
+          const cursor=store.openCursor();
+          cursor.onerror=()=>reject(cursor.error);
+          cursor.onsuccess=()=>{
+            const current=cursor.result;
+            if(!current)return;
+            current.update({...current.value,createdAt:current.value.createdAt-60*60*1000});
+            current.continue();
+          };
+        };
+        ageStore('outbox');
+        ageStore('offlineSales');
+        tx.oncomplete=()=>{db.close();resolve();};
+        tx.onerror=()=>reject(tx.error);
+        tx.onabort=()=>reject(tx.error??new Error('failed to age offline records'));
+      };
+    });
   });
   await addOnePaidLine(page);
   await page.getByRole('button',{name:'Finalize sale'}).click();

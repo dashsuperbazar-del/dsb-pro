@@ -35,7 +35,7 @@ describe('syncPullMayHaveMore',()=>{
     expect(syncPullMayHaveMore(pull({[key]:limit}))).toBe(true);
   });
 
-  it('continues for the first 5,000-item page of a 10,000-item fresh sync',()=>{
-    expect(syncPullMayHaveMore(pull({items:5000}))).toBe(true);
+  it('continues after a full 10,000-item page so larger catalogs are not truncated',()=>{
+    expect(syncPullMayHaveMore(pull({items:10000}))).toBe(true);
   });
 });

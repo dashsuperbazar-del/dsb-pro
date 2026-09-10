@@ -3,7 +3,7 @@ import { classifyError,errorMessage } from './errors';
 import type { SaleLineInput,SalePaymentInput } from './sales';
 
 export const SYNC_SCHEMA_VERSION=1;
-export const SYNC_PULL_LIMITS={items:5000,barcodes:5000,prices:10000,customers:5000,stock:5000} as const;
+export const SYNC_PULL_LIMITS={items:10000,barcodes:10000,prices:10000,customers:10000,stock:10000} as const;
 
 export type SyncCursorWire={updatedAt:number;id:string};
 export type SyncPullWire={
