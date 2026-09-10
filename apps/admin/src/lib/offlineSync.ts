@@ -138,7 +138,13 @@ async function pullTablePages(rt:Runtime,table:SyncPullTable){
 }
 
 async function pullAllPages(rt:Runtime){
-  await Promise.all((Object.keys(SYNC_PULL_LIMITS) as SyncPullTable[]).map(table=>pullTablePages(rt,table)));
+  // Items are the billing catalog and must become searchable first on a weak
+  // link. Sharing the initial bandwidth with four other large tables left a
+  // 10k catalog only partially usable at the performance deadline. Once items
+  // are complete, drain the dependent/reference caches concurrently.
+  await pullTablePages(rt,'items');
+  const remaining=(Object.keys(SYNC_PULL_LIMITS) as SyncPullTable[]).filter(table=>table!=='items');
+  await Promise.all(remaining.map(table=>pullTablePages(rt,table)));
   return getSyncCursors(rt.db);
 }
 
