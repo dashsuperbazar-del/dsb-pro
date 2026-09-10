@@ -590,6 +590,88 @@ jobs:
           RESULT=$(psql "$BACKUP_RO_DATABASE_URL" -v ON_ERROR_STOP=1 -At -c "select (select count(*) from expenses)>=0 and (select count(*) from stock_counts)>=0 and (select count(*) from stock_count_lines)>=0;")
           test "$RESULT" = "t"
 
+  phase6_backup_proof:
+    needs: [phase6_db_upgrade]
+    if: github.ref == 'refs/heads/phase-6-ledgers-reports-dr' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions: {}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install DR backup tools
+        run: |
+          set -euo pipefail
+          grep -RIl 'dl.google.com/linux/chrome' /etc/apt/sources.list.d 2>/dev/null | while IFS= read -r source; do
+            sudo rm -f "$source"
+          done
+          sudo apt-get update
+          sudo apt-get install -y age rclone
+          docker pull postgres:17
+      - name: Configure verified destinations
+        run: |
+          mkdir -p ~/.config/rclone
+          cat > ~/.config/rclone/rclone.conf <<CONF
+          [b2]
+          type = b2
+          account = ${{ secrets.B2_ACCOUNT_ID }}
+          key = ${{ secrets.B2_APPLICATION_KEY }}
+          [r2]
+          type = s3
+          provider = Cloudflare
+          access_key_id = ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret_access_key = ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          endpoint = ${{ secrets.R2_ENDPOINT }}
+          no_check_bucket = true
+          CONF
+      - name: Verify offline encryption recipient
+        env:
+          AGE_PUBLIC_KEY: ${{ vars.AGE_PUBLIC_KEY }}
+        run: |
+          EXPECTED="age1n4zj5ymapz5xsur6a5v3en6np5ary3pmmmndpaf5a0vhyeazed7qq3jnrq"
+          test "$AGE_PUBLIC_KEY" = "$EXPECTED" || { echo 'AGE_PUBLIC_KEY mismatch'; exit 1; }
+      - name: Dump public business data and Supabase Auth separately
+        env:
+          BACKUP_RO_DATABASE_URL: ${{ secrets.BACKUP_RO_DATABASE_URL }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$BACKUP_RO_DATABASE_URL"
+          test -n "$SUPABASE_DB_URL"
+          docker run --rm -v "$PWD:/dump" postgres:17 pg_dump --format=custom --schema=public "$BACKUP_RO_DATABASE_URL" -f /dump/phase6-public.pgcustom
+          docker run --rm -v "$PWD:/dump" postgres:17 pg_dump --format=custom --data-only --schema=auth "$SUPABASE_DB_URL" -f /dump/phase6-auth.pgcustom
+          sudo chown "$(id -u):$(id -g)" phase6-public.pgcustom phase6-auth.pgcustom
+          test "$(stat -c%s phase6-public.pgcustom)" -ge 1000
+          test "$(stat -c%s phase6-auth.pgcustom)" -ge 500
+      - name: Encrypt and checksum both DR layers
+        id: sums
+        env:
+          AGE_PUBLIC_KEY: ${{ vars.AGE_PUBLIC_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          age -r "$AGE_PUBLIC_KEY" -o phase6-public.pgcustom.age phase6-public.pgcustom
+          age -r "$AGE_PUBLIC_KEY" -o phase6-auth.pgcustom.age phase6-auth.pgcustom
+          echo "public_sha=$(sha256sum phase6-public.pgcustom.age | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "auth_sha=$(sha256sum phase6-auth.pgcustom.age | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Upload and read-back verify B2 and R2 copies
+        shell: bash
+        run: |
+          set -euo pipefail
+          PUBLIC_NAME="phase6-dr-public-${GITHUB_SHA}.pgcustom.age"
+          AUTH_NAME="phase6-dr-auth-${GITHUB_SHA}.pgcustom.age"
+          for remote in b2:APD-BB r2:apd-dsb; do
+            rclone copyto phase6-public.pgcustom.age "$remote/$PUBLIC_NAME"
+            test "$(rclone cat "$remote/$PUBLIC_NAME" | sha256sum | cut -d' ' -f1)" = "${{ steps.sums.outputs.public_sha }}"
+            rclone copyto phase6-auth.pgcustom.age "$remote/$AUTH_NAME"
+            test "$(rclone cat "$remote/$AUTH_NAME" | sha256sum | cut -d' ' -f1)" = "${{ steps.sums.outputs.auth_sha }}"
+          done
+          echo "Phase 6 public/Auth encrypted backup verified in B2 and R2"
+          echo "public_object=$PUBLIC_NAME"
+          echo "auth_object=$AUTH_NAME"
+          echo "public_sha=${{ steps.sums.outputs.public_sha }}"
+          echo "auth_sha=${{ steps.sums.outputs.auth_sha }}"
+
   phase6_portable_restore:
     needs: [phase6_db_upgrade]
     if: github.ref == 'refs/heads/phase-6-ledgers-reports-dr' && github.event_name == 'push'
@@ -646,7 +728,7 @@ jobs:
           echo 'Phase 6 vanilla PostgreSQL restore + financial parity: PASS'
 
   phase6_preview:
-    needs: [build, phase6_db_upgrade, phase6_portable_restore]
+    needs: [build, phase6_db_upgrade, phase6_backup_proof, phase6_portable_restore]
     if: github.ref == 'refs/heads/phase-6-ledgers-reports-dr' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
