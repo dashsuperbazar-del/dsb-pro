@@ -1,5 +1,6 @@
 import { getSupabaseClient } from './client';
 import { classifyError, errorMessage } from './errors';
+import { deleteItemImage, putItemImage } from './itemImageStorage';
 
 export type Item = { id:string; name:string; sku:string|null; unit1:string; unit2:string|null; unit3:string|null; conv1:number|null; conv2:number|null; tax_rate_bp:number; min_stock:number; image_path:string|null };
 export type Party = { id:string; name:string; phone:string|null; gstin:string|null };
@@ -57,9 +58,8 @@ export async function archiveMaster(table:'categories'|'parties'|'items',id:stri
 export async function uploadItemImage(tenantId:string,itemId:string,file:Blob):Promise<string> {
  if(file.size>150*1024) throw new Error('Compressed item image must be 150 KB or smaller.');
  const path=`${tenantId}/items/${itemId}/${Date.now()}.webp`;
- const {error}=await getSupabaseClient().storage.from('item-images').upload(path,file,{contentType:'image/webp',upsert:false});
- if(error) throw new Error(friendly(error)); return path;
+ await putItemImage(path,file); return path;
 }
 export async function purgeItemImage(path:string):Promise<void> {
- const {error}=await getSupabaseClient().storage.from('item-images').remove([path]); if(error) throw new Error(friendly(error));
+ await deleteItemImage(path);
 }
