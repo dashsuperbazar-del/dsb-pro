@@ -1,7 +1,7 @@
 import {
-  ackSync,classifyError,ensureFreshSession,errorMessage,getDefaultShopId,getOrCreateDeviceId,listServerSyncConflicts,pullSync,pushSyncedSale,
-  recordServerSyncConflict,resolveServerSyncConflict,setOfflineCashierFinalization,subscribeSyncWakeup,syncPullMayHaveMore,
-  type Membership,type SaleLineInput,type SalePaymentInput,
+  ackSync,classifyError,ensureFreshSession,errorMessage,getDefaultShopId,getOrCreateDeviceId,listServerSyncConflicts,pullSyncTable,pushSyncedSale,
+  recordServerSyncConflict,resolveServerSyncConflict,setOfflineCashierFinalization,subscribeSyncWakeup,SYNC_PULL_LIMITS,
+  type Membership,type SaleLineInput,type SalePaymentInput,type SyncPullTable,
 } from '@dsb-pro/adapters';
 import {
   applySyncPull,completeOfflineSale,getCachedBusinessDate,getCachedCustomers,getCachedItems,getCachedPolicy,getCachedPrices,
@@ -21,7 +21,7 @@ function emit(){
   state={...state,online:typeof navigator==='undefined'?true:navigator.onLine};
   if(typeof window!=='undefined')window.dispatchEvent(new CustomEvent('dsb-sync-state'));
 }
-function asPull(value:Awaited<ReturnType<typeof pullSync>>):SyncPullPayload{
+function asPull(value:Awaited<ReturnType<typeof pullSyncTable>>):SyncPullPayload{
   return value as unknown as SyncPullPayload;
 }
 function asSale(value:Awaited<ReturnType<typeof pushSyncedSale>>):SyncedSaleResult{
@@ -127,14 +127,19 @@ async function processOutbox(rt:Runtime){
   throw new Error('Sync outbox safety limit reached.');
 }
 
-async function pullAllPages(rt:Runtime){
+async function pullTablePages(rt:Runtime,table:SyncPullTable){
   for(let page=0;page<100;page++){
     const cursors=await getSyncCursors(rt.db);
-    const pulled=await pullSync({deviceId:rt.identity.deviceId,shopId:rt.identity.shopId,cursors});
+    const pulled=await pullSyncTable({table,deviceId:rt.identity.deviceId,shopId:rt.identity.shopId,cursors});
     await applySyncPull(rt.db,asPull(pulled));
-    if(!syncPullMayHaveMore(pulled))return getSyncCursors(rt.db);
+    if(pulled[table].length<SYNC_PULL_LIMITS[table])return;
   }
-  throw new Error('Sync pull safety limit reached before all server pages were drained.');
+  throw new Error(`Sync pull safety limit reached before ${table} pages were drained.`);
+}
+
+async function pullAllPages(rt:Runtime){
+  await Promise.all((Object.keys(SYNC_PULL_LIMITS) as SyncPullTable[]).map(table=>pullTablePages(rt,table)));
+  return getSyncCursors(rt.db);
 }
 
 export async function runSyncNow():Promise<void>{

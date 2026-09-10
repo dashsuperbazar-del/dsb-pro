@@ -4,6 +4,9 @@ import type { SaleLineInput,SalePaymentInput } from './sales';
 
 export const SYNC_SCHEMA_VERSION=1;
 export const SYNC_PULL_LIMITS={items:10000,barcodes:10000,prices:10000,customers:10000,stock:10000} as const;
+export type SyncPullTable=keyof typeof SYNC_PULL_LIMITS;
+const SYNC_PULL_TABLES=Object.keys(SYNC_PULL_LIMITS) as SyncPullTable[];
+const DISABLED_CURSOR:SyncCursorWire={updatedAt:Number.MAX_SAFE_INTEGER,id:'\uffff'};
 
 export type SyncCursorWire={updatedAt:number;id:string};
 export type SyncPullWire={
@@ -45,6 +48,16 @@ export function syncPullMayHaveMore(pull:SyncPullWire):boolean{
     pull.prices.length>=SYNC_PULL_LIMITS.prices||
     pull.customers.length>=SYNC_PULL_LIMITS.customers||
     pull.stock.length>=SYNC_PULL_LIMITS.stock;
+}
+
+export function isolateSyncPullCursors(table:SyncPullTable,cursors:Record<string,SyncCursorWire>):Record<string,SyncCursorWire>{
+  return Object.fromEntries(SYNC_PULL_TABLES.map(key=>[key,key===table?(cursors[key]??{updatedAt:0,id:''}):DISABLED_CURSOR]));
+}
+
+export async function pullSyncTable(input:{
+  table:SyncPullTable;deviceId:string;shopId:string;cursors:Record<string,SyncCursorWire>;
+}):Promise<SyncPullWire>{
+  return pullSync({...input,cursors:isolateSyncPullCursors(input.table,input.cursors)});
 }
 
 export async function pullSync(input:{deviceId:string;shopId:string;cursors:Record<string,SyncCursorWire>}):Promise<SyncPullWire>{

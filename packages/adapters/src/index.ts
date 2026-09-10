@@ -23,8 +23,8 @@ export { importLegacyDsbMaster } from './legacyImport';
 export type { ShopDayReconciliation, DayReconciliationPaymentModes, DayReconciliationSoldItem } from './reconciliation';
 export { getShopDayReconciliation } from './reconciliation';
 
-export type { SyncCursorWire, SyncPullWire, SyncSaleResultWire, ServerSyncConflict } from './sync';
-export { SYNC_SCHEMA_VERSION, SYNC_PULL_LIMITS, syncPullMayHaveMore, pullSync, ackSync, pushSyncedSale, setOfflineCashierFinalization, recordServerSyncConflict, listServerSyncConflicts, resolveServerSyncConflict, subscribeSyncWakeup } from './sync';
+export type { SyncCursorWire, SyncPullWire, SyncPullTable, SyncSaleResultWire, ServerSyncConflict } from './sync';
+export { SYNC_SCHEMA_VERSION, SYNC_PULL_LIMITS, syncPullMayHaveMore, isolateSyncPullCursors, pullSync, pullSyncTable, ackSync, pushSyncedSale, setOfflineCashierFinalization, recordServerSyncConflict, listServerSyncConflicts, resolveServerSyncConflict, subscribeSyncWakeup } from './sync';
 
 export type { DayBookRow, StockValueRow, GstRow, PartyLedgerRow } from './reports';
 export { getDayBook, getStockValuation, getGstSummary, postExpense, exportTenant, checkInvariants, getPartyLedger, createStockCount, postStockCount } from './reports';

@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {SYNC_PULL_LIMITS,syncPullMayHaveMore,type SyncPullWire} from './sync';
+import {SYNC_PULL_LIMITS,isolateSyncPullCursors,syncPullMayHaveMore,type SyncPullWire} from './sync';
 
 function pull(overrides:Partial<Record<'items'|'barcodes'|'prices'|'customers'|'stock',number>>={}):SyncPullWire{
   const rows=(n:number)=>Array.from({length:n},()=>({}));
@@ -37,5 +37,13 @@ describe('syncPullMayHaveMore',()=>{
 
   it('continues after a full 10,000-item page so larger catalogs are not truncated',()=>{
     expect(syncPullMayHaveMore(pull({items:10000}))).toBe(true);
+  });
+
+  it('isolates parallel table pulls without losing the selected cursor',()=>{
+    const cursors={items:{updatedAt:42,id:'item-42'},stock:{updatedAt:7,id:'stock-7'}};
+    const isolated=isolateSyncPullCursors('items',cursors);
+    expect(isolated.items).toEqual(cursors.items);
+    expect(isolated.stock.updatedAt).toBe(Number.MAX_SAFE_INTEGER);
+    expect(isolated.prices.updatedAt).toBe(Number.MAX_SAFE_INTEGER);
   });
 });
