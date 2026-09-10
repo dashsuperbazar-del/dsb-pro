@@ -82,7 +82,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' -v ON_ERROR_STOP=1 \
+          psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' -qAt -v ON_ERROR_STOP=1 \
             -v perf_user='${{ steps.identity.outputs.user_id }}' \
             -v perf_tenant='${{ steps.identity.outputs.tenant_id }}' \
             -v perf_shop='${{ steps.identity.outputs.shop_id }}' \
