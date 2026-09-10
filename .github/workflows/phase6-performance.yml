@@ -1,0 +1,111 @@
+name: Phase 6 production-scale performance
+
+on:
+  push:
+    branches: [phase-6-ledgers-reports-dr]
+  workflow_dispatch:
+
+concurrency:
+  group: phase6-production-scale-performance
+  cancel-in-progress: true
+
+jobs:
+  performance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions: {}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.116.0
+
+      - name: Start fresh local Supabase
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker ps -aq --filter 'name=supabase_' | xargs -r docker rm -f
+          sudo fuser -k 54321/tcp 54322/tcp 54323/tcp 54324/tcp 54325/tcp 54326/tcp 54327/tcp 54328/tcp 54329/tcp || true
+          supabase start
+          supabase db reset
+          API_URL=$(supabase status -o env | grep '^API_URL=' | cut -d= -f2- | tr -d '"')
+          ANON_KEY=$(supabase status -o env | grep '^ANON_KEY=' | cut -d= -f2- | tr -d '"')
+          test -n "$API_URL"
+          test -n "$ANON_KEY"
+          echo "VITE_SUPABASE_URL=$API_URL" >> "$GITHUB_ENV"
+          echo "VITE_SUPABASE_ANON_KEY=$ANON_KEY" >> "$GITHUB_ENV"
+
+      - name: Create real disposable Auth owner and three registered devices
+        id: identity
+        shell: bash
+        env:
+          PERF_EMAIL: phase6-performance@example.com
+          PERF_PASSWORD: Phase6-Performance-2026!
+        run: |
+          set -euo pipefail
+          SIGNUP=$(curl -fsS -X POST "$VITE_SUPABASE_URL/auth/v1/signup" \
+            -H "apikey: $VITE_SUPABASE_ANON_KEY" -H 'Content-Type: application/json' \
+            --data "{\"email\":\"$PERF_EMAIL\",\"password\":\"$PERF_PASSWORD\"}")
+          TOKEN=$(printf '%s' "$SIGNUP" | jq -r '.access_token // empty')
+          USER_ID=$(printf '%s' "$SIGNUP" | jq -r '.user.id // empty')
+          test -n "$TOKEN" || { echo 'Local signup returned no access token'; echo "$SIGNUP"; exit 1; }
+          test -n "$USER_ID" || { echo 'Local signup returned no user id'; exit 1; }
+
+          TENANT=$(curl -fsS -X POST "$VITE_SUPABASE_URL/rest/v1/rpc/create_tenant" \
+            -H "apikey: $VITE_SUPABASE_ANON_KEY" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+            --data '{"p_name":"Phase 6 Performance","p_slug":"phase6-performance","p_shop_name":"Phase 6 Performance Shop","p_client_id":"phase6-performance-create"}' | jq -r '.')
+          test -n "$TENANT" && test "$TENANT" != "null"
+
+          SHOP=$(curl -fsS "$VITE_SUPABASE_URL/rest/v1/shops?select=id&is_default=eq.true" \
+            -H "apikey: $VITE_SUPABASE_ANON_KEY" -H "Authorization: Bearer $TOKEN" | jq -r '.[0].id // empty')
+          test -n "$SHOP"
+
+          for i in 1 2 3; do
+            curl -fsS -X POST "$VITE_SUPABASE_URL/rest/v1/rpc/register_device" \
+              -H "apikey: $VITE_SUPABASE_ANON_KEY" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+              --data "{\"p_device_id\":\"phase6-perf-device-$i\",\"p_app_version\":\"performance-gate\"}" >/dev/null
+          done
+
+          echo "user_id=$USER_ID" >> "$GITHUB_OUTPUT"
+          echo "tenant_id=$TENANT" >> "$GITHUB_OUTPUT"
+          echo "shop_id=$SHOP" >> "$GITHUB_OUTPUT"
+          echo "PHASE6_PERF_EMAIL=$PERF_EMAIL" >> "$GITHUB_ENV"
+          echo "PHASE6_PERF_PASSWORD=$PERF_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Seed exact 10k item / 100k invoice scale fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' -v ON_ERROR_STOP=1 \
+            -v perf_user='${{ steps.identity.outputs.user_id }}' \
+            -v perf_tenant='${{ steps.identity.outputs.tenant_id }}' \
+            -v perf_shop='${{ steps.identity.outputs.shop_id }}' \
+            -f scripts/phase6-performance-fixture.sql | tee performance-fixture.txt
+          grep -Fx 'items=10000' performance-fixture.txt
+          grep -Fx 'barcodes=10000' performance-fixture.txt
+          grep -Fx 'prices=10000' performance-fixture.txt
+          grep -Fx 'stock=10000' performance-fixture.txt
+          grep -Fx 'invoices=100000' performance-fixture.txt
+          DEVICES=$(psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' -At -c "select count(*) from devices where tenant_id='${{ steps.identity.outputs.tenant_id }}' and device_id like 'phase6-perf-device-%'")
+          test "$DEVICES" = '3' || { echo "Expected 3 performance devices, got $DEVICES"; exit 1; }
+
+      - name: Build app against performance target
+        env:
+          VITE_APP_VERSION: performance-gate
+        run: pnpm --filter @dsb-pro/admin run build
+
+      - name: Install Chromium
+        run: |
+          grep -RIl 'dl.google.com/linux/chrome' /etc/apt/sources.list.d 2>/dev/null | while IFS= read -r source; do sudo rm -f "$source"; done
+          pnpm --filter @dsb-pro/admin exec playwright install --with-deps chromium
+
+      - name: Enforce throttled 3G sync and billing-search thresholds
+        env:
+          PHASE6_PERF: '1'
+        run: pnpm --filter @dsb-pro/admin exec playwright test e2e/phase6-performance.spec.ts --workers=1
