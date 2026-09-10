@@ -50,6 +50,7 @@ select 'sales='||count(*)||',total='||coalesce(sum(total_paise),0) from sale_inv
 select 'payments='||count(*)||',total='||coalesce(sum(amount_paise),0) from payments where status='POSTED';
 select 'purchases='||count(*)||',total='||coalesce(sum(total_paise),0) from purchase_bills where status='POSTED';
 select 'stock_movements='||count(*) from stock_movements;
+select 'expenses='||count(*)||',total='||coalesce(sum(amount_paise),0) from expenses where status='POSTED';
 SQL
 
 echo "PORTABLE PUBLIC RESTORE: PASS"
