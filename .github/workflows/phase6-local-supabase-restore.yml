@@ -68,7 +68,10 @@ jobs:
           set -euo pipefail
           docker ps -aq --filter 'name=supabase_' | xargs -r docker rm -f
           sudo fuser -k 54321/tcp 54322/tcp 54323/tcp 54324/tcp 54325/tcp 54326/tcp 54327/tcp 54328/tcp 54329/tcp || true
-          supabase start
+          # Inbucket is only a local email viewer; the DR proof does not send email.
+          # Excluding it avoids an irrelevant host-port collision on 54324 while
+          # keeping Postgres, GoTrue Auth, PostgREST and Kong fully exercised.
+          supabase start -x inbucket
           supabase db reset
 
       - name: Restore public business data and critical Auth identity
