@@ -135,7 +135,14 @@ jobs:
           SQL
           )
           test "$RESET_USER_COUNT" = '1'
-          TOKEN=$(curl --fail-with-body -sS "$API_URL/auth/v1/token?grant_type=password" -H "apikey: $ANON_KEY" -H 'Content-Type: application/json' --data "{\"email\":\"$PROOF_EMAIL\",\"password\":\"$PROOF_PASSWORD\"}" | jq -r '.access_token // empty')
+          AUTH_RESPONSE=$(mktemp)
+          AUTH_STATUS=$(curl -sS -o "$AUTH_RESPONSE" -w '%{http_code}' "$API_URL/auth/v1/token?grant_type=password" -H "apikey: $ANON_KEY" -H 'Content-Type: application/json' --data "{\"email\":\"$PROOF_EMAIL\",\"password\":\"$PROOF_PASSWORD\"}")
+          if [ "$AUTH_STATUS" != '200' ]; then
+            echo "Recovered Auth password login failed with HTTP $AUTH_STATUS"
+            jq -c '{code,error_code,msg,message}' "$AUTH_RESPONSE" 2>/dev/null || echo 'Auth returned a non-JSON error body'
+            exit 1
+          fi
+          TOKEN=$(jq -r '.access_token // empty' "$AUTH_RESPONSE")
           test -n "$TOKEN" || { echo 'Recovered Auth password login did not return a token'; exit 1; }
           TENANTS=$(curl --fail-with-body -sS "$API_URL/rest/v1/tenants?select=id" -H "apikey: $ANON_KEY" -H "Authorization: Bearer $TOKEN")
           test "$(jq 'length' <<<"$TENANTS")" = '1'
