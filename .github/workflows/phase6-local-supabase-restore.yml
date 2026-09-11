@@ -136,9 +136,10 @@ jobs:
           )
           test "$RESET_USER_COUNT" = '1'
           AUTH_RESPONSE=$(mktemp)
-          AUTH_STATUS=$(curl -q -sS -o "$AUTH_RESPONSE" -w '%{http_code}' "$API_URL/auth/v1/token?grant_type=password" -H "apikey: $ANON_KEY" -H 'Content-Type: application/json' --data "{\"email\":\"$PROOF_EMAIL\",\"password\":\"$PROOF_PASSWORD\"}")
+          AUTH_CURL_EXIT=0
+          AUTH_STATUS=$(/usr/bin/curl -q -sS -o "$AUTH_RESPONSE" -w '%{http_code}' "$API_URL/auth/v1/token?grant_type=password" -H "apikey: $ANON_KEY" -H 'Content-Type: application/json' --data "{\"email\":\"$PROOF_EMAIL\",\"password\":\"$PROOF_PASSWORD\"}") || AUTH_CURL_EXIT=$?
           if [ "$AUTH_STATUS" != '200' ]; then
-            echo "Recovered Auth password login failed with HTTP $AUTH_STATUS"
+            echo "Recovered Auth password login failed with HTTP $AUTH_STATUS (curl exit $AUTH_CURL_EXIT)"
             jq -c '{code,error_code,msg,message}' "$AUTH_RESPONSE" 2>/dev/null || echo 'Auth returned a non-JSON error body'
             exit 1
           fi
