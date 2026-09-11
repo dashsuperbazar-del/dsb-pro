@@ -63,8 +63,8 @@ docker run --rm --network host \
 # the separate Auth artifact. Sessions/refresh tokens are intentionally not
 # resurrected; recovered users establish fresh sessions after a DR event.
 psql "$TARGET_DB_URL" -v ON_ERROR_STOP=1 <<'SQL'
-create table auth.recovery_target_instance (like auth.instances including all);
-insert into auth.recovery_target_instance select * from auth.instances;
+create table public._auth_recovery_target_instance (like auth.instances including all);
+insert into public._auth_recovery_target_instance select * from auth.instances;
 set session_replication_role=replica;
 truncate table auth.identities, auth.users, auth.instances cascade;
 set session_replication_role=origin;
@@ -80,17 +80,17 @@ docker run --rm --network host \
 # otherwise valid restored identities with HTTP 403.
 psql "$TARGET_DB_URL" -v ON_ERROR_STOP=1 <<'SQL'
 do $$begin
-  if not exists(select 1 from auth.recovery_target_instance) then
+  if not exists(select 1 from public._auth_recovery_target_instance) then
     raise exception 'Fresh Supabase target has no Auth instance row';
   end if;
 end$$;
 set session_replication_role=replica;
 update auth.users
-set instance_id=(select id from auth.recovery_target_instance order by created_at,id limit 1);
+set instance_id=(select id from public._auth_recovery_target_instance order by created_at,id limit 1);
 delete from auth.instances;
-insert into auth.instances select * from auth.recovery_target_instance;
+insert into auth.instances select * from public._auth_recovery_target_instance;
 set session_replication_role=origin;
-drop table auth.recovery_target_instance;
+drop table public._auth_recovery_target_instance;
 SQL
 
 # Fail before adding public foreign keys if the Auth recovery selected no users.
@@ -150,3 +150,4 @@ test "$MISSING" = "0" || { echo "Restored public memberships reference $MISSING 
 
 echo 'LOCAL SUPABASE PUBLIC + AUTH RESTORE: PASS'
 echo 'Recovered Auth users must establish fresh sessions; refresh/session rows are intentionally not restored.'
+
