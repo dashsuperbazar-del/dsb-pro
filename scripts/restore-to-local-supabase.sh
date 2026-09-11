@@ -37,7 +37,7 @@ pg17_restore "$PUBLIC_DUMP" -l | grep -v -E ' SCHEMA - public | DEFAULT ACL ' > 
 # patterns. The latter proved fragile for schema-qualified names in CI and
 # silently selected zero user rows. These are the durable identity records
 # needed to preserve user IDs, password hashes and provider identities.
-pg17_restore "$AUTH_DUMP" -l | grep -E ' TABLE DATA auth (instances|users|identities) ' > "$WORK/auth.list"
+pg17_restore "$AUTH_DUMP" -l | grep -E ' TABLE DATA auth (users|identities) ' > "$WORK/auth.list"
 grep -q ' TABLE DATA auth users ' "$WORK/auth.list" || { echo 'Auth archive has no users TABLE DATA entry' >&2; exit 1; }
 grep -q ' TABLE DATA auth identities ' "$WORK/auth.list" || { echo 'Auth archive has no identities TABLE DATA entry' >&2; exit 1; }
 
@@ -64,13 +64,22 @@ docker run --rm --network host \
 # resurrected; recovered users establish fresh sessions after a DR event.
 psql "$TARGET_DB_URL" -v ON_ERROR_STOP=1 <<'SQL'
 set session_replication_role=replica;
-truncate table auth.identities, auth.users, auth.instances cascade;
+truncate table auth.identities, auth.users cascade;
 set session_replication_role=origin;
 SQL
 
 docker run --rm --network host \
   -v "$(dirname "$AUTH_DUMP"):/archive:ro" -v "$WORK:/work:ro" "$PG_IMAGE" \
-  pg_restore --dbname="$TARGET_DB_URL" --use-list=/work/auth.list --data-only --no-owner --no-privileges "/archive/$(basename "$AUTH_DUMP")"
+  pg_restore --dbname="$TARGET_DB_URL" --use-list=/work/auth.list --data-only --disable-triggers --no-owner --no-privileges "/archive/$(basename "$AUTH_DUMP")"
+
+# auth.instances describes the running GoTrue deployment, not a user account.
+# Keep the fresh target's instance row and attach recovered users to it; copying
+# the hosted source instance makes the local GoTrue admin and token APIs reject
+# otherwise valid restored identities with HTTP 403.
+psql "$TARGET_DB_URL" -v ON_ERROR_STOP=1 <<'SQL'
+update auth.users
+set instance_id=(select id from auth.instances order by created_at,id limit 1);
+SQL
 
 # Fail before adding public foreign keys if the Auth recovery selected no users.
 # This prevents a misleading later FK error from hiding the actual Auth problem.
