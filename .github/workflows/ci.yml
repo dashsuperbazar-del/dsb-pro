@@ -485,9 +485,12 @@ jobs:
           SQL
           )
           if [ "$PRESENT" = "5" ]; then
-            echo "needs_upgrade=false" >> "$GITHUB_OUTPUT"
+            echo "needs_foundation=false" >> "$GITHUB_OUTPUT"
+            HARDENED=$(psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -At -c "select to_regprocedure('public.phase6_assert_report_access()') is not null;")
+            if [ "$HARDENED" = "t" ]; then echo "needs_upgrade=false" >> "$GITHUB_OUTPUT"; else echo "needs_upgrade=true" >> "$GITHUB_OUTPUT"; fi
           elif [ "$PRESENT" = "0" ]; then
             echo "needs_upgrade=true" >> "$GITHUB_OUTPUT"
+            echo "needs_foundation=true" >> "$GITHUB_OUTPUT"
           else
             echo "Partial Phase 6 schema detected ($PRESENT/5). Refusing automatic migration."
             exit 1
@@ -548,10 +551,24 @@ jobs:
           rclone copyto phase6-pre.pgcustom.age "r2:apd-dsb/$NAME"
           test "$(rclone cat "r2:apd-dsb/$NAME" | sha256sum | cut -d' ' -f1)" = "$SHA"
       - name: Apply Phase 6 migration atomically
-        if: steps.preflight.outputs.needs_upgrade == 'true'
+        if: steps.preflight.outputs.needs_foundation == 'true'
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 --single-transaction -f supabase/migrations/0030_phase6_ledgers_reports_dr.sql
+      - name: Apply Phase 6 sync and integrity hardening atomically
+        if: steps.preflight.outputs.needs_upgrade == 'true'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for migration in \
+            supabase/migrations/0031_phase6_sync_page_size.sql \
+            supabase/migrations/0032_phase6_parallel_sync_pulls.sql \
+            supabase/migrations/0033_phase6_streaming_page_size.sql \
+            supabase/migrations/0034_phase6_integrity_hardening.sql; do
+            psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 --single-transaction -f "$migration"
+          done
       - name: Verify live Phase 6 contract
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
@@ -565,7 +582,8 @@ jobs:
                or to_regclass('public.stock_counts') is null
                or to_regprocedure('public.get_day_book(uuid,date,date)') is null
                or to_regprocedure('public.phase6_export_tenant(uuid)') is null
-               or to_regprocedure('public.check_invariants()') is null then
+               or to_regprocedure('public.check_invariants()') is null
+               or to_regprocedure('public.phase6_assert_report_access()') is null then
               raise exception 'Phase 6 live schema verification failed';
             end if;
             if has_table_privilege('authenticated','public.expenses','INSERT')

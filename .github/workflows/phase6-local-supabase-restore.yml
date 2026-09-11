@@ -97,4 +97,27 @@ jobs:
             }
           done
           grep -Fx 'missing_membership_users=0' restored-manifest.txt >/dev/null
+          grep -Fx 'invariants=pass' restored-manifest.txt >/dev/null
           echo 'Phase 6 disposable Supabase public/Auth restore parity: PASS'
+
+      - name: Prove recovered Auth login and tenant RLS
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB_URL='postgresql://postgres:postgres@127.0.0.1:54322/postgres'
+          PROOF_EMAIL='phase6-recovered-login@local.test'
+          PROOF_PASSWORD='Phase6-Recovered-Login-2026!'
+          read -r USER_ID TENANT_ID <<<"$(psql "$DB_URL" -At -F' ' -c "select tu.user_id,tu.tenant_id from tenant_users tu join auth.users u on u.id=tu.user_id where tu.status='active' and tu.deleted_at is null order by (tu.role='owner') desc,tu.created_at limit 1")"
+          test -n "$USER_ID"
+          test -n "$TENANT_ID"
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -v user_id="$USER_ID" -v email="$PROOF_EMAIL" -v password="$PROOF_PASSWORD" <<'SQL'
+          update auth.users set email=:'email',encrypted_password=extensions.crypt(:'password',extensions.gen_salt('bf')),email_confirmed_at=coalesce(email_confirmed_at,now()),updated_at=now() where id=:'user_id'::uuid;
+          update auth.identities set identity_data=jsonb_set(jsonb_set(identity_data,'{email}',to_jsonb(:'email'::text)),'{email_verified}','true'::jsonb) where user_id=:'user_id'::uuid and provider='email';
+          SQL
+          eval "$(supabase status -o env | grep -E '^(ANON_KEY|API_URL)=')"
+          TOKEN=$(curl --fail-with-body -sS "$API_URL/auth/v1/token?grant_type=password" -H "apikey: $ANON_KEY" -H 'Content-Type: application/json' --data "{\"email\":\"$PROOF_EMAIL\",\"password\":\"$PROOF_PASSWORD\"}" | jq -r '.access_token // empty')
+          test -n "$TOKEN" || { echo 'Recovered Auth password login did not return a token'; exit 1; }
+          TENANTS=$(curl --fail-with-body -sS "$API_URL/rest/v1/tenants?select=id" -H "apikey: $ANON_KEY" -H "Authorization: Bearer $TOKEN")
+          test "$(jq 'length' <<<"$TENANTS")" = '1'
+          test "$(jq -r '.[0].id' <<<"$TENANTS")" = "$TENANT_ID"
+          echo 'RECOVERED AUTH LOGIN + TENANT RLS: PASS'

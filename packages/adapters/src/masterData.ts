@@ -11,9 +11,23 @@ export type ItemBarcode = { id:string; item_id:string; barcode:string; unit_leve
 const friendly=(error:unknown)=>errorMessage(classifyError(error),error);
 function must<T>(value:T|null, error:unknown):T { if (error) throw new Error(friendly(error)); if (value===null) throw new Error('Expected data was not returned.'); return value; }
 
+const READ_PAGE_SIZE=1000;
+export async function collectPaginatedRows<T>(readPage:(from:number,to:number)=>Promise<T[]>,pageSize=READ_PAGE_SIZE):Promise<T[]> {
+ if(!Number.isInteger(pageSize)||pageSize<=0) throw new Error('Page size must be a positive integer.');
+ const rows:T[]=[];
+ for(let from=0;;from+=pageSize){
+  const page=await readPage(from,from+pageSize-1);
+  rows.push(...page);
+  if(page.length<pageSize)return rows;
+ }
+}
+
 export async function listItems():Promise<Item[]> {
- const {data,error}=await getSupabaseClient().from('items').select('id,name,sku,unit1,unit2,unit3,conv1,conv2,tax_rate_bp,min_stock,image_path').order('name');
- if(error) throw new Error(friendly(error)); return (data??[]) as Item[];
+ const client=getSupabaseClient();
+ return collectPaginatedRows<Item>(async(from,to)=>{
+  const {data,error}=await client.from('items').select('id,name,sku,unit1,unit2,unit3,conv1,conv2,tax_rate_bp,min_stock,image_path').order('name').order('id').range(from,to);
+  if(error) throw new Error(friendly(error)); return (data??[]) as Item[];
+ });
 }
 export async function listParties():Promise<Party[]> {
  const {data,error}=await getSupabaseClient().from('parties').select('id,name,phone,gstin').order('name');

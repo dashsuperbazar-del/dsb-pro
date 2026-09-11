@@ -43,6 +43,7 @@ psql "$TARGET_DB_URL" -v ON_ERROR_STOP=1 <<'SQL'
 drop schema public cascade;
 create schema public;
 grant usage on schema public to postgres, anon, authenticated, service_role;
+do $$begin if not exists(select 1 from pg_roles where rolname='backup_ro') then create role backup_ro nologin; end if; end$$;
 SQL
 
 # The use-list file is mounted separately because it lives in the temporary
@@ -78,7 +79,31 @@ test "$AUTH_IDENTITIES" -gt 0 || { echo 'Auth restore produced zero identities' 
 # device and audit references are validated against recovered real identities.
 docker run --rm --network host \
   -v "$(dirname "$PUBLIC_DUMP"):/archive:ro" -v "$WORK:/work:ro" "$PG_IMAGE" \
-  pg_restore --dbname="$TARGET_DB_URL" --use-list=/work/public.list --section=post-data --no-owner --no-privileges "/archive/$(basename "$PUBLIC_DUMP")"
+  pg_restore --dbname="$TARGET_DB_URL" --use-list=/work/public.list --section=post-data --no-owner "/archive/$(basename "$PUBLIC_DUMP")"
+
+# Run the authenticated invariant function once per restored tenant. A direct
+# postgres call without tenant claims previously proved only that the function
+# existed (and printed PASS in both branches), not that restored data was valid.
+psql "$TARGET_DB_URL" -v ON_ERROR_STOP=1 <<'SQL'
+do $verify$
+declare r record; v_result jsonb;
+begin
+ for r in
+   select distinct on (tu.tenant_id) tu.tenant_id,tu.user_id
+   from public.tenant_users tu
+   where tu.status='active' and tu.deleted_at is null
+   order by tu.tenant_id,(tu.role='owner') desc,tu.created_at
+ loop
+   perform set_config('request.jwt.claims',jsonb_build_object(
+     'sub',r.user_id,'role','authenticated','tenant_id',r.tenant_id,'app_role','owner','shop_ids','[]'::jsonb
+   )::text,true);
+   v_result:=public.check_invariants();
+   if not coalesce((v_result->>'ok')::boolean,false) then
+     raise exception 'restored invariant failure for tenant %: %',r.tenant_id,v_result;
+   end if;
+ end loop;
+end $verify$;
+SQL
 
 psql "$TARGET_DB_URL" -v ON_ERROR_STOP=1 -At <<'SQL'
 select 'auth_users='||count(*) from auth.users;
@@ -92,7 +117,7 @@ select 'payments='||count(*)||',total='||coalesce(sum(amount_paise),0) from publ
 select 'purchases='||count(*)||',total='||coalesce(sum(total_paise),0) from public.purchase_bills where status='POSTED';
 select 'stock_movements='||count(*) from public.stock_movements;
 select 'expenses='||count(*)||',total='||coalesce(sum(amount_paise),0) from public.expenses where status='POSTED';
-select case when public.check_invariants()::text is not null then 'invariants=callable' else 'invariants=callable' end;
+select 'invariants=pass';
 SQL
 
 MISSING=$(psql "$TARGET_DB_URL" -v ON_ERROR_STOP=1 -At -c "select count(*) from public.tenant_users tu left join auth.users u on u.id=tu.user_id where tu.user_id is not null and u.id is null")

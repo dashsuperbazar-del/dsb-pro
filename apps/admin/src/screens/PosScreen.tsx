@@ -3,7 +3,7 @@ import { searchCatalogItems } from '@dsb-pro/core';
 import { route } from 'preact-router';
 import {
   createCustomer, findItemByBarcode, getShopBusinessDate,
-  listCurrentPrices, listCustomerBalances, listCustomers, listItems, listRecentSales, recordCustomerPayment,
+  listCurrentPrices, listCustomerBalances, listCustomers, listRecentSales, recordCustomerPayment,
   type Customer, type Item, type SaleInvoice,
 } from '@dsb-pro/adapters';
 import type { OfflineSaleRecord } from '@dsb-pro/sync';
@@ -38,7 +38,10 @@ export function PosScreen(){
       setItems(i); setCustomers(c); setBusinessDate(d??new Date().toISOString().slice(0,10)); setSales([]); setBalances({});
     }else{
       try{
-        const [i,c,d,s,b]=await Promise.all([listItems(),listCustomers(),getShopBusinessDate(identity.shopId),listRecentSales(identity.shopId,20),listCustomerBalances()]);
+        // The sync runtime has already hydrated the complete billing catalog.
+        // Reading it from IndexedDB avoids a second server-capped fetch when
+        // entering POS and keeps search available during a connection drop.
+        const [i,c,d,s,b]=await Promise.all([getOfflineItems(),listCustomers(),getShopBusinessDate(identity.shopId),listRecentSales(identity.shopId,20),listCustomerBalances()]);
         setItems(i); setCustomers(c); setBusinessDate(d); setSales(s); setBalances(Object.fromEntries(b.map(x=>[x.customer_id,x.balance_paise])));
       }catch{
         const [i,c,d]=await Promise.all([getOfflineItems(),getOfflineCustomers(),getOfflineBusinessDate()]);

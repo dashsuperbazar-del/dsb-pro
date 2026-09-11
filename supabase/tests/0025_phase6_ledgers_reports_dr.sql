@@ -41,7 +41,7 @@ select lives_ok(format($q$select post_sale(%L::uuid,null,'2026-09-09',10,0,'p6-s
 select is((select total_paise from sale_invoices where client_id='p6-sale'),170::bigint,'sale total applies each discount exactly once');
 select is((select gross_sales_paise from get_gst_summary(current_setting('p6.shop')::uuid,'2026-09-01','2026-09-30') where tax_rate_bp=0),170::bigint,'GST gross applies line plus header discounts exactly once');
 select lives_ok(format($q$select phase6_export_tenant(%L::uuid)$q$,current_setting('p6.shop')),'full export reads');
-select ok((phase6_export_tenant(current_setting('p6.shop')::uuid)->>'schemaVersion')::int=2,'export schema versioned');
+select ok((phase6_export_tenant(current_setting('p6.shop')::uuid)->>'schemaVersion')::int=3,'export schema versioned');
 select ok((check_invariants()->>'ok')::boolean,'invariants clean');
 
 reset role;

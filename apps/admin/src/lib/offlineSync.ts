@@ -221,6 +221,17 @@ export async function findOfflineBarcode(barcode:string):Promise<SyncedBarcode|n
 export async function listOfflineSales():Promise<OfflineSaleRecord[]>{
   return (await requireRuntime().db.offlineSales.orderBy('createdAt').reverse().toArray()).slice(0,50);
 }
+export async function exportOfflineBillingSnapshot(){
+  const rt=requireRuntime();
+  const [items,barcodes,prices,customers,stock,outbox,metadata,conflicts,reservations,offlineSales]=await Promise.all([
+    rt.db.items.toArray(),rt.db.barcodes.toArray(),rt.db.prices.toArray(),rt.db.customers.toArray(),rt.db.stock.toArray(),
+    rt.db.outbox.toArray(),rt.db.meta.toArray(),rt.db.conflicts.toArray(),rt.db.reservations.toArray(),rt.db.offlineSales.toArray(),
+  ]);
+  return {
+    schemaVersion:1,exportKind:'offline-billing-continuity',exportedAt:new Date().toISOString(),identity:rt.identity,
+    items,barcodes,prices,customers,stock,outbox,metadata,conflicts,reservations,offlineSales,
+  };
+}
 export async function getSyncDashboard(){
   const rt=requireRuntime();
   const serverConflictPromise=(typeof navigator!=='undefined'&&!navigator.onLine)
