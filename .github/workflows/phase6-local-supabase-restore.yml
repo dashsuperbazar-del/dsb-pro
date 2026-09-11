@@ -154,7 +154,19 @@ jobs:
           TOKEN_PAYLOAD=$(cut -d. -f2 <<<"$TOKEN" | tr '_-' '/+' | awk '{l=length($0)%4; if(l==2)$0=$0"=="; else if(l==3)$0=$0"="; print}' | base64 -d)
           test "$(jq -r '.role // empty' <<<"$TOKEN_PAYLOAD")" = 'authenticated'
           test "$(jq -r '.tenant_id // empty' <<<"$TOKEN_PAYLOAD")" = "$TENANT_ID"
-          TENANTS=$(curl --fail-with-body -sS "$API_URL/rest/v1/tenants?select=id" -H "apikey: $ANON_KEY" -H "Authorization: Bearer $TOKEN")
+          TENANT_RESPONSE=$(mktemp)
+          TENANT_CURL_EXIT=0
+          TENANT_STATUS=$(/usr/bin/curl -q -sS -o "$TENANT_RESPONSE" -w '%{http_code}' "$API_URL/rest/v1/tenants?select=id" -H "apikey: $ANON_KEY" -H "Authorization: Bearer $TOKEN") || TENANT_CURL_EXIT=$?
+          if [ "$TENANT_STATUS" != '200' ]; then
+            echo "Recovered tenant RLS read failed with HTTP $TENANT_STATUS (curl exit $TENANT_CURL_EXIT)"
+            jq -c '{code,details,hint,message}' "$TENANT_RESPONSE" 2>/dev/null || echo 'REST returned a non-JSON error body'
+            psql "$DB_URL" -At <<'SQL'
+          select 'authenticated_tenants_select='||has_table_privilege('authenticated','public.tenants','select');
+          select 'authenticated_current_tenant_execute='||has_function_privilege('authenticated','public.current_tenant_id()','execute');
+          SQL
+            exit 1
+          fi
+          TENANTS=$(cat "$TENANT_RESPONSE")
           test "$(jq 'length' <<<"$TENANTS")" = '1'
           test "$(jq -r '.[0].id' <<<"$TENANTS")" = "$TENANT_ID"
           echo 'RECOVERED AUTH LOGIN + TENANT RLS: PASS'
