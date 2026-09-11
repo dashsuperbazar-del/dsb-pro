@@ -68,10 +68,10 @@ jobs:
           set -euo pipefail
           docker ps -aq --filter 'name=supabase_' | xargs -r docker rm -f
           sudo fuser -k 54321/tcp 54322/tcp 54323/tcp 54324/tcp 54325/tcp 54326/tcp 54327/tcp 54328/tcp 54329/tcp || true
-          # Inbucket is only a local email viewer; the DR proof does not send email.
+          # Mailpit is only a local email viewer; the DR proof does not send email.
           # Excluding it avoids an irrelevant host-port collision on 54324 while
           # keeping Postgres, GoTrue Auth, PostgREST and Kong fully exercised.
-          supabase start -x inbucket
+          supabase start -x mailpit
           supabase db reset
 
       - name: Restore public business data and critical Auth identity
@@ -115,13 +115,21 @@ jobs:
           test -n "$TENANT_ID"
           eval "$(supabase status -o env | grep -E '^(ANON_KEY|SERVICE_ROLE_KEY|API_URL)=')"
           # A recovery operator will not know the restored user's original
-          # password. Reset it through GoTrue's supported admin API so Auth
-          # updates all provider metadata and confirmation fields consistently.
-          curl --fail-with-body -sS -X PUT "$API_URL/auth/v1/admin/users/$USER_ID" \
-            -H "apikey: $SERVICE_ROLE_KEY" \
-            -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
-            -H 'Content-Type: application/json' \
-            --data "{\"email\":\"$PROOF_EMAIL\",\"password\":\"$PROOF_PASSWORD\",\"email_confirm\":true}" >/dev/null
+          # password. The operator already has database access to perform the
+          # restore, so reset exactly the selected recovered account in Auth.
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -v user_id="$USER_ID" -v proof_email="$PROOF_EMAIL" -v proof_password="$PROOF_PASSWORD" <<'SQL'
+          update auth.users
+          set email=:'proof_email',
+              encrypted_password=extensions.crypt(:'proof_password',extensions.gen_salt('bf')),
+              email_confirmed_at=coalesce(email_confirmed_at,now()),
+              confirmation_token='',
+              recovery_token='',
+              email_change='',
+              email_change_token_new='',
+              updated_at=now()
+          where id=:'user_id'::uuid;
+          SQL
+          test "$(psql "$DB_URL" -v ON_ERROR_STOP=1 -v user_id="$USER_ID" -At -c "select count(*) from auth.users where id=:'user_id'::uuid and encrypted_password is not null")" = '1'
           TOKEN=$(curl --fail-with-body -sS "$API_URL/auth/v1/token?grant_type=password" -H "apikey: $ANON_KEY" -H 'Content-Type: application/json' --data "{\"email\":\"$PROOF_EMAIL\",\"password\":\"$PROOF_PASSWORD\"}" | jq -r '.access_token // empty')
           test -n "$TOKEN" || { echo 'Recovered Auth password login did not return a token'; exit 1; }
           TENANTS=$(curl --fail-with-body -sS "$API_URL/rest/v1/tenants?select=id" -H "apikey: $ANON_KEY" -H "Authorization: Bearer $TOKEN")
