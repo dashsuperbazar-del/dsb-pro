@@ -4,20 +4,23 @@
 Nightly business-data backups are PostgreSQL custom-format dumps of schema `public`, encrypted with age, uploaded to B2 and R2, then checksum-read back. The backup manifest must include financial row counts/totals. A second encrypted artifact covers Supabase Auth separately; never treat the public dump alone as full-account recovery.
 
 ## Restore — fresh Supabase
-1. Create an empty drill project.
+Start the RTO clock immediately before step 1. Use a disposable hosted project, never the production project.
+
+1. Create an empty drill project and record its reference in `docs/PHASE6_CLOSURE.md`'s drill template.
 2. Apply repository migrations in order.
 3. Decrypt and restore the latest public business-data dump.
 4. Restore the separately encrypted Auth data artifact using the documented Phase 6 auth recovery procedure.
 5. Point a preview build at the drill project.
 6. Run Playwright and `check_invariants()`.
 7. Compare counts and financial totals with the backup manifest.
-8. Record RPO and RTO.
+8. Record RPO as `restore-ready time − newest restored business record time` and RTO as `preview service-ready time − drill start time`. The targets are RPO ≤24h and RTO ≤2h.
+9. Delete the disposable hosted project only after retaining the logs and completed drill record.
 
 ## Restore — local Docker Postgres
-Use Postgres 17. Apply public migrations, restore only the portable public dump, and run SQL invariants. Auth is intentionally not part of this provider-independence target.
+Use Postgres 17. The `phase6_portable_restore` CI job restores the current public dump, checks live financial parity, then adds a synthetic non-zero sale, payment, purchase, expense and stock history, dumps it, restores it again, and requires every fixture record. Auth is intentionally handled by the separate disposable-Supabase recovery gate.
 
 ## Key recovery from paper
-The age private key is never stored in CI. Semi-annual drill requires locating the physical/paper recovery copy, recreating the key file offline, decrypting one B2/R2 backup, verifying SHA-256, and destroying the temporary key file after the drill.
+The age private key is never stored in CI. With a witness, locate one physical/paper recovery copy, recreate the key file on an offline device, fetch a named B2/R2 backup, verify its recorded SHA-256, decrypt it using only the recovered key, inspect the archive, then securely destroy the temporary key file. Record custodian, witness, object name, checksum, result and destruction confirmation in the closure drill record. Never photograph or commit the key.
 
 ## Supabase down
 Keep billing from the installed PWA. Offline invoices remain provisional until sync. Do not clear browser/site data. When backend returns, use Sync & offline to confirm outbox=0 and resolve conflicts.
@@ -64,3 +67,5 @@ Update B2/R2 and database backup secrets, manually dispatch nightly backup, veri
 
 ## Semi-annual drill
 Fresh Supabase restore + local Postgres restore + physical-key recovery + auth restore + invariant suite + preview E2E + RPO/RTO measurement. Any failed element keeps DR health red.
+
+Use the checklist and evidence template in `docs/PHASE6_CLOSURE.md`. A CI pass cannot substitute for the hosted-project, physical-key, or shop-floor evidence.

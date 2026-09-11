@@ -14,7 +14,7 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y age rclone postgresql-client gzip
+          sudo apt-get install -y age rclone postgresql-client gzip jq
       - name: Configure rclone
         run: |
           mkdir -p ~/.config/rclone
@@ -37,23 +37,42 @@ jobs:
         run: |
           set -euo pipefail
           psql "$DB" -At -c "select jsonb_pretty(jsonb_build_object(
+            'schemaVersion',3,
+            'exportKind','portable-business-data-all-tenants',
             'exportedAt',clock_timestamp(),
             'tenants',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from tenants) x),'[]'::jsonb),
             'shops',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from shops) x),'[]'::jsonb),
+            'tenantUsers',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from tenant_users) x),'[]'::jsonb),
+            'devices',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from devices) x),'[]'::jsonb),
+            'invites',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from invites) x),'[]'::jsonb),
+            'permissions',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from permissions) x),'[]'::jsonb),
+            'rolePermissions',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from role_permissions) x),'[]'::jsonb),
+            'categories',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from categories) x),'[]'::jsonb),
             'items',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from items) x),'[]'::jsonb),
+            'itemBarcodes',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from item_barcodes) x),'[]'::jsonb),
+            'itemPrices',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from item_prices) x),'[]'::jsonb),
             'parties',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from parties) x),'[]'::jsonb),
             'customers',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from customers) x),'[]'::jsonb),
-            'purchase_bills',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from purchase_bills) x),'[]'::jsonb),
-            'purchase_bill_items',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from purchase_bill_items) x),'[]'::jsonb),
-            'sale_invoices',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from sale_invoices) x),'[]'::jsonb),
-            'sale_invoice_items',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from sale_invoice_items) x),'[]'::jsonb),
+            'purchases',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from purchase_bills) x),'[]'::jsonb),
+            'purchaseLines',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from purchase_bill_items) x),'[]'::jsonb),
+            'sales',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from sale_invoices) x),'[]'::jsonb),
+            'saleLines',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from sale_invoice_items) x),'[]'::jsonb),
             'payments',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from payments) x),'[]'::jsonb),
-            'payment_allocations',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from payment_allocations) x),'[]'::jsonb),
-            'stock_movements',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from stock_movements) x),'[]'::jsonb),
+            'allocations',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from payment_allocations) x),'[]'::jsonb),
+            'stockMovements',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from stock_movements) x),'[]'::jsonb),
+            'stockCurrent',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from stock_current) x),'[]'::jsonb),
             'expenses',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from expenses) x),'[]'::jsonb),
-            'stock_counts',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from stock_counts) x),'[]'::jsonb),
-            'stock_count_lines',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from stock_count_lines) x),'[]'::jsonb)
+            'stockCounts',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from stock_counts) x),'[]'::jsonb),
+            'stockCountLines',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from stock_count_lines) x),'[]'::jsonb),
+            'documentSequences',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from doc_sequences) x),'[]'::jsonb),
+            'auditLog',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from audit_log) x),'[]'::jsonb),
+            'syncConflicts',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from sync_conflicts) x),'[]'::jsonb),
+            'syncIdempotencyKeys',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from sync_idempotency_keys) x),'[]'::jsonb),
+            'backupRuns',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from backup_runs) x),'[]'::jsonb),
+            'legacyImportRuns',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from legacy_import_runs) x),'[]'::jsonb),
+            'schemaMeta',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from schema_meta) x),'[]'::jsonb)
           ));" > export.json
+          jq -e '.schemaVersion == 3 and .exportKind == "portable-business-data-all-tenants" and (.categories|type) == "array" and (.itemBarcodes|type) == "array" and (.itemPrices|type) == "array" and (.invites|type) == "array" and (.permissions|type) == "array" and (.rolePermissions|type) == "array" and (.schemaMeta|type) == "array"' export.json >/dev/null
           gzip -9 export.json
           age -r "${{ vars.AGE_PUBLIC_KEY }}" -o export.json.gz.age export.json.gz
           sha256sum export.json.gz.age > export.sha256

@@ -53,3 +53,6 @@ export type { LegacyDsbDayPaymentModes, LegacyDsbDaySummary, DsbProComparableDay
 
 export { searchCatalogItems } from './catalogSearch';
 export type { CatalogSearchItem } from './catalogSearch';
+
+export { buildBusinessExportArchive, buildBusinessExportFiles, buildInvoicePdf } from './businessExport';
+export type { ExportFile } from './businessExport';

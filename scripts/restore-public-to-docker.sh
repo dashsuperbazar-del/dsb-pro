@@ -49,6 +49,17 @@ on conflict do nothing;
 SQL
 docker exec "$NAME" pg_restore -U postgres -d "$DB" --use-list=/restore.list --section=post-data --no-owner --no-privileges /public.pgcustom
 
+if [ -n "${POST_RESTORE_SQL:-}" ]; then
+  test -f "$POST_RESTORE_SQL" || { echo "Post-restore SQL not found: $POST_RESTORE_SQL" >&2; exit 1; }
+  docker cp "$POST_RESTORE_SQL" "$NAME:/post-restore.sql"
+  docker exec "$NAME" psql -U postgres -d "$DB" -v ON_ERROR_STOP=1 -f /post-restore.sql
+fi
+
+if [ -n "${ROUNDTRIP_DUMP:-}" ]; then
+  docker exec "$NAME" pg_dump -U postgres -d "$DB" --format=custom --schema=public > "$ROUNDTRIP_DUMP"
+  test "$(stat -c%s "$ROUNDTRIP_DUMP")" -ge 1000
+fi
+
 docker exec -i "$NAME" psql -U postgres -d "$DB" -v ON_ERROR_STOP=1 -At <<'SQL'
 select 'tenants='||count(*) from tenants;
 select 'shops='||count(*) from shops;
@@ -57,6 +68,11 @@ select 'payments='||count(*)||',total='||coalesce(sum(amount_paise),0) from paym
 select 'purchases='||count(*)||',total='||coalesce(sum(total_paise),0) from purchase_bills where status='POSTED';
 select 'stock_movements='||count(*) from stock_movements;
 select 'expenses='||count(*)||',total='||coalesce(sum(amount_paise),0) from expenses where status='POSTED';
+select 'fixture_sales='||count(*) from sale_invoices where id='f6000000-0000-0000-0000-000000000005';
+select 'fixture_payments='||count(*) from payments where id='f6000000-0000-0000-0000-000000000007';
+select 'fixture_purchases='||count(*) from purchase_bills where id='f6000000-0000-0000-0000-000000000003';
+select 'fixture_stock_movements='||count(*) from stock_movements where id in ('f6000000-0000-0000-0000-000000000009','f6000000-0000-0000-0000-00000000000a');
+select 'fixture_expenses='||count(*) from expenses where id='f6000000-0000-0000-0000-000000000008';
 SQL
 
 echo "PORTABLE PUBLIC RESTORE: PASS"

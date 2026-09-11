@@ -71,11 +71,34 @@ jobs:
           age -r "${{ vars.AGE_PUBLIC_KEY }}" -o auth.pgcustom.age auth.pgcustom
           echo "public_sha=$(sha256sum public.pgcustom.age|cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
           echo "auth_sha=$(sha256sum auth.pgcustom.age|cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Assert live tenant invariants
+        run: |
+          psql "${{ secrets.SUPABASE_DB_URL }}" -v ON_ERROR_STOP=1 <<'SQL'
+          do $verify$
+          declare r record; v_result jsonb;
+          begin
+            for r in
+              select distinct on (tu.tenant_id) tu.tenant_id,tu.user_id,tu.role
+              from tenant_users tu
+              where tu.status='active' and tu.deleted_at is null
+              order by tu.tenant_id,(tu.role='owner') desc,tu.created_at
+            loop
+              perform set_config('request.jwt.claims',jsonb_build_object(
+                'sub',r.user_id,'role','authenticated','tenant_id',r.tenant_id,
+                'app_role',r.role,'shop_ids','[]'::jsonb
+              )::text,true);
+              v_result:=check_invariants();
+              if not coalesce((v_result->>'ok')::boolean,false) then
+                raise exception 'nightly invariant failure for tenant %: %',r.tenant_id,v_result;
+              end if;
+            end loop;
+          end $verify$;
+          SQL
       - name: Build financial manifest
         id: manifest
         run: |
           MANIFEST=$(psql "${{ secrets.BACKUP_RO_DATABASE_URL }}" -At -c "select quote_literal(json_build_object(
-            'scope','public','authArtifact','separate',
+            'scope','public','authArtifact','separate','invariants','pass',
             'sale_count',(select count(*) from sale_invoices),'sale_total',(select coalesce(sum(total_paise),0) from sale_invoices where status='FINALIZED'),
             'payment_count',(select count(*) from payments),'payment_total',(select coalesce(sum(amount_paise),0) from payments where status='POSTED'),
             'purchase_count',(select count(*) from purchase_bills),'purchase_total',(select coalesce(sum(total_paise),0) from purchase_bills where status='POSTED'),
@@ -99,7 +122,7 @@ jobs:
           RUN_ID: ${{ steps.start.outputs.run_id }}
           MANIFEST_LITERAL: ${{ steps.manifest.outputs.json }}
         run: |
-          psql "${{ secrets.SUPABASE_DB_URL }}" -c "update backup_runs set finished_at=now(),status='success',sha256='${{ steps.checksum.outputs.public_sha }}',destinations='[{"name":"b2","verified":true},{"name":"r2","verified":true}]'::jsonb,app_version='${{ github.sha }}',schema_version=2,manifest=($MANIFEST_LITERAL)::jsonb where id='$RUN_ID';"
+          psql "${{ secrets.SUPABASE_DB_URL }}" -c "update backup_runs set finished_at=now(),status='success',sha256='${{ steps.checksum.outputs.public_sha }}',destinations='[{"name":"b2","verified":true},{"name":"r2","verified":true}]'::jsonb,app_version='${{ github.sha }}',schema_version=3,manifest=($MANIFEST_LITERAL)::jsonb where id='$RUN_ID';"
       - name: Mark backup failed
         if: failure()
         run: |

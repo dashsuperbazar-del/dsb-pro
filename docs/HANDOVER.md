@@ -490,3 +490,14 @@ Locked Phase 5 evidence:
 **Gate remains open until one exact Phase 5 head has all CI jobs green and the guarded live
 migration + preview jobs also pass on that same push. Do not merge PR #9 or start Phase 6
 before that evidence exists.**
+
+
+## Phase 6 closure status — 2026-09-11
+
+This section supersedes the historical Phase 5 gate wording above for the current Phase 6 branch.
+
+- The pre-closure Phase 6 baseline `4daf48ab9690a9753862bd98709d5ffb44e02984` passed main CI, the unchanged 10,000-item performance gate, disposable Supabase public/Auth recovery, and the R2→Supabase preview switch-back drill.
+- The closure pass adds the full device backup ZIP (JSON + all CSV tables + invoice PDFs), complete scheduled JSON export coverage, nightly tenant-invariant proof, and a non-zero financial restore round-trip.
+- The exact closure head must pass all four workflows before automated closure is accepted.
+- Formal Phase 6 remains **NOT GO** until the fresh hosted-Supabase restore, paper-only encryption-key recovery, measured RPO/RTO, and applicable real-shop verification are recorded using `docs/PHASE6_CLOSURE.md`.
+- Do not merge or begin Phase 7 migration/cut-over until that final GO decision is recorded.

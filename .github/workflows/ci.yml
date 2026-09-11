@@ -486,8 +486,8 @@ jobs:
           )
           if [ "$PRESENT" = "5" ]; then
             echo "needs_foundation=false" >> "$GITHUB_OUTPUT"
-            HARDENED=$(psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -At -c "select to_regprocedure('public.phase6_assert_report_access()') is not null;")
-            if [ "$HARDENED" = "t" ]; then echo "needs_upgrade=false" >> "$GITHUB_OUTPUT"; else echo "needs_upgrade=true" >> "$GITHUB_OUTPUT"; fi
+            COMPLETE=$(psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -At -c "select to_regprocedure('public.phase6_assert_report_access()') is not null and to_regprocedure('public.phase6_export_tenant_v3_base(uuid)') is not null;")
+            if [ "$COMPLETE" = "t" ]; then echo "needs_upgrade=false" >> "$GITHUB_OUTPUT"; else echo "needs_upgrade=true" >> "$GITHUB_OUTPUT"; fi
           elif [ "$PRESENT" = "0" ]; then
             echo "needs_upgrade=true" >> "$GITHUB_OUTPUT"
             echo "needs_foundation=true" >> "$GITHUB_OUTPUT"
@@ -566,7 +566,8 @@ jobs:
             supabase/migrations/0031_phase6_sync_page_size.sql \
             supabase/migrations/0032_phase6_parallel_sync_pulls.sql \
             supabase/migrations/0033_phase6_streaming_page_size.sql \
-            supabase/migrations/0034_phase6_integrity_hardening.sql; do
+            supabase/migrations/0034_phase6_integrity_hardening.sql \
+            supabase/migrations/0035_phase6_complete_export.sql; do
             psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 --single-transaction -f "$migration"
           done
       - name: Verify live Phase 6 contract
@@ -583,7 +584,8 @@ jobs:
                or to_regprocedure('public.get_day_book(uuid,date,date)') is null
                or to_regprocedure('public.phase6_export_tenant(uuid)') is null
                or to_regprocedure('public.check_invariants()') is null
-               or to_regprocedure('public.phase6_assert_report_access()') is null then
+               or to_regprocedure('public.phase6_assert_report_access()') is null
+               or to_regprocedure('public.phase6_export_tenant_v3_base(uuid)') is null then
               raise exception 'Phase 6 live schema verification failed';
             end if;
             if has_table_privilege('authenticated','public.expenses','INSERT')
@@ -744,6 +746,20 @@ jobs:
             }
           done < source-manifest.txt
           echo 'Phase 6 vanilla PostgreSQL restore + financial parity: PASS'
+      - name: Prove non-zero financial history survives a second round-trip
+        shell: bash
+        run: |
+          set -euo pipefail
+          POST_RESTORE_SQL="$PWD/scripts/phase6-financial-restore-fixture.sql" \
+          ROUNDTRIP_DUMP="$PWD/phase6-financial-fixture.pgcustom" \
+            bash scripts/restore-public-to-docker.sh "$PWD/phase6-portable.pgcustom" dsb-pro-phase6-fixture-source >/dev/null
+          bash scripts/restore-public-to-docker.sh "$PWD/phase6-financial-fixture.pgcustom" dsb-pro-phase6-fixture-target | tee fixture-restore-manifest.txt
+          grep -Fx 'fixture_sales=1' fixture-restore-manifest.txt
+          grep -Fx 'fixture_payments=1' fixture-restore-manifest.txt
+          grep -Fx 'fixture_purchases=1' fixture-restore-manifest.txt
+          grep -Fx 'fixture_stock_movements=2' fixture-restore-manifest.txt
+          grep -Fx 'fixture_expenses=1' fixture-restore-manifest.txt
+          echo 'Phase 6 non-zero financial-history round-trip: PASS'
 
   phase6_preview:
     needs: [build, phase6_db_upgrade, phase6_backup_proof, phase6_portable_restore]

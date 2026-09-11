@@ -23,5 +23,9 @@ test('Phase 6 reports and recovery surface loads and invariant check passes',asy
   await expect(page.getByRole('heading',{name:'Physical stock count'})).toBeVisible();
   await page.getByRole('button',{name:'Refresh'}).click();
   await expect(page.getByText('Invariant check: PASS')).toBeVisible();
-  await expect(page.getByRole('button',{name:'Save portable JSON + CSV export'})).toBeVisible();
+  const downloadPromise=page.waitForEvent('download');
+  await page.getByRole('button',{name:'Save full device backup ZIP'}).click();
+  const backup=await downloadPromise;
+  expect(backup.suggestedFilename()).toMatch(/^dsb-pro-full-device-backup-\d{4}-\d{2}-\d{2}\.zip$/);
+  await expect(page.getByRole('status')).toContainText('one PDF per invoice');
 });

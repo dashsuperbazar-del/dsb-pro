@@ -23,7 +23,7 @@ select throws_ok(
  null,'client_id already used with different expense payload','divergent expense retry is rejected'
 );
 select is((select count(*) from expenses where client_id='stable-expense-id'),1::bigint,'expense remains single');
-select ok((phase6_export_tenant(current_setting('p6h.shop')::uuid) ?& array['categories','itemBarcodes','itemPrices','documentSequences','auditLog']),'portable export includes master, price, control and audit records');
+select ok((phase6_export_tenant(current_setting('p6h.shop')::uuid) ?& array['categories','itemBarcodes','itemPrices','documentSequences','auditLog','invites','permissions','rolePermissions','syncIdempotencyKeys','schemaMeta']),'portable export includes master, price, control, idempotency and audit records');
 select is((phase6_export_tenant(current_setting('p6h.shop')::uuid)->>'exportKind'),'portable-business-data','export labels its recovery scope accurately');
 select ok(check_invariants() ?& array['stockProjectionViolations','voidReversalViolations'],'invariants expose projection and reversal checks');
 select ok((check_invariants()->>'ok')::boolean,'strengthened invariants pass on consistent data');
