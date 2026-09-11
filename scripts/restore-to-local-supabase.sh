@@ -32,6 +32,10 @@ pg17_restore(){
 # are not application state. Keep every per-object ACL (needed for login/RLS)
 # while excluding only the schema creation entry and platform default ACLs.
 pg17_restore "$PUBLIC_DUMP" -l | grep -v -E ' SCHEMA - public | DEFAULT ACL ' > "$WORK/public.list"
+# PostgreSQL records object ACLs as SECTION_NONE, so none of the three
+# section-scoped restore passes below will replay them. Restore this isolated
+# list after all objects exist or authenticated REST access loses its grants.
+grep -E ' ACL ' "$WORK/public.list" > "$WORK/public-acl.list"
 
 # Select Auth rows through the archive TOC rather than pg_restore --table
 # patterns. The latter proved fragile for schema-qualified names in CI and
@@ -93,6 +97,9 @@ test "$AUTH_IDENTITIES" -gt 0 || { echo 'Auth restore produced zero identities' 
 docker run --rm --network host \
   -v "$(dirname "$PUBLIC_DUMP"):/archive:ro" -v "$WORK:/work:ro" "$PG_IMAGE" \
   pg_restore --dbname="$TARGET_DB_URL" --use-list=/work/public.list --section=post-data --no-owner "/archive/$(basename "$PUBLIC_DUMP")"
+docker run --rm --network host \
+  -v "$(dirname "$PUBLIC_DUMP"):/archive:ro" -v "$WORK:/work:ro" "$PG_IMAGE" \
+  pg_restore --dbname="$TARGET_DB_URL" --use-list=/work/public-acl.list --no-owner "/archive/$(basename "$PUBLIC_DUMP")"
 
 # Run the authenticated invariant function once per restored tenant. A direct
 # postgres call without tenant claims previously proved only that the function
