@@ -23,5 +23,5 @@ test('Phase 6 reports and recovery surface loads and invariant check passes',asy
   await expect(page.getByRole('heading',{name:'Physical stock count'})).toBeVisible();
   await page.getByRole('button',{name:'Refresh'}).click();
   await expect(page.getByText('Invariant check: PASS')).toBeVisible();
-  await expect(page.getByRole('button',{name:'Save full JSON + CSV backup'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Save portable JSON + CSV export'})).toBeVisible();
 });

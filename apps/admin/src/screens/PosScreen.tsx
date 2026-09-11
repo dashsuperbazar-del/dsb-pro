@@ -3,7 +3,7 @@ import { searchCatalogItems } from '@dsb-pro/core';
 import { route } from 'preact-router';
 import {
   createCustomer, findItemByBarcode, getShopBusinessDate,
-  listCurrentPrices, listCustomerBalances, listCustomers, listRecentSales, recordCustomerPayment,
+  listCurrentPrices, listCustomerBalances, listCustomers, listItems, listRecentSales, recordCustomerPayment,
   type Customer, type Item, type SaleInvoice,
 } from '@dsb-pro/adapters';
 import type { OfflineSaleRecord } from '@dsb-pro/sync';
@@ -22,6 +22,7 @@ function unitName(item:Item,level:1|2|3){ return level===1?item.unit1:level===2?
 
 export function PosScreen(){
   const [items,setItems]=useState<Item[]>([]); const [customers,setCustomers]=useState<Customer[]>([]); const [sales,setSales]=useState<SaleInvoice[]>([]);
+  const [catalogReady,setCatalogReady]=useState(false);
   const [offlineSales,setOfflineSales]=useState<OfflineSaleRecord[]>([]); const [localReceipt,setLocalReceipt]=useState<OfflineSaleRecord|null>(null);
   const [balances,setBalances]=useState<Record<string,number>>({}); const [shopId,setShopId]=useState(''); const [tenantId,setTenantId]=useState(''); const [businessDate,setBusinessDate]=useState('');
   const [cart,setCart]=useState<CartLine[]>([]); const [customerId,setCustomerId]=useState(''); const [globalDiscount,setGlobalDiscount]=useState('0'); const [extra,setExtra]=useState('0');
@@ -35,17 +36,24 @@ export function PosScreen(){
     const useOffline=typeof navigator!=='undefined'&&!navigator.onLine;
     if(useOffline){
       const [i,c,d]=await Promise.all([getOfflineItems(),getOfflineCustomers(),getOfflineBusinessDate()]);
-      setItems(i); setCustomers(c); setBusinessDate(d??new Date().toISOString().slice(0,10)); setSales([]); setBalances({});
+      setItems(i); setCatalogReady(true); setCustomers(c); setBusinessDate(d??new Date().toISOString().slice(0,10)); setSales([]); setBalances({});
     }else{
       try{
-        // The sync runtime has already hydrated the complete billing catalog.
-        // Reading it from IndexedDB avoids a second server-capped fetch when
-        // entering POS and keeps search available during a connection drop.
-        const [i,c,d,s,b]=await Promise.all([getOfflineItems(),listCustomers(),getShopBusinessDate(identity.shopId),listRecentSales(identity.shopId,20),listCustomerBalances()]);
-        setItems(i); setCustomers(c); setBusinessDate(d); setSales(s); setBalances(Object.fromEntries(b.map(x=>[x.customer_id,x.balance_paise])));
+        // Paint the complete synced catalog immediately, then merge a fresh
+        // paginated server read. This keeps 10k-item search fast while making
+        // a just-created/imported item visible before realtime sync catches up.
+        const cachedItems=await getOfflineItems(); setItems(cachedItems); if(cachedItems.length)setCatalogReady(true);
+        // Large catalogs are already complete in the sync cache. Avoid a
+        // redundant multi-page server read on every entry to POS; realtime
+        // sync supplies later changes. Small/new catalogs still refresh here
+        // so an item created moments ago appears immediately.
+        const freshItems=cachedItems.length>=1000?Promise.resolve(cachedItems as Item[]):listItems();
+        const [serverItems,c,d,s,b]=await Promise.all([freshItems,listCustomers(),getShopBusinessDate(identity.shopId),listRecentSales(identity.shopId,20),listCustomerBalances()]);
+        const merged=new Map(cachedItems.map(item=>[item.id,item as Item])); for(const item of serverItems)merged.set(item.id,item);
+        setItems([...merged.values()].sort((a,b)=>a.name.localeCompare(b.name))); setCatalogReady(true); setCustomers(c); setBusinessDate(d); setSales(s); setBalances(Object.fromEntries(b.map(x=>[x.customer_id,x.balance_paise])));
       }catch{
         const [i,c,d]=await Promise.all([getOfflineItems(),getOfflineCustomers(),getOfflineBusinessDate()]);
-        setItems(i); setCustomers(c); setBusinessDate(d??new Date().toISOString().slice(0,10)); setSales([]); setBalances({});
+        setItems(i); setCatalogReady(true); setCustomers(c); setBusinessDate(d??new Date().toISOString().slice(0,10)); setSales([]); setBalances({});
       }
     }
     setOfflineSales(await listOfflineSales());
@@ -107,6 +115,8 @@ export function PosScreen(){
     setLocalReceipt(sale);
     window.setTimeout(()=>window.print(),0);
   }
+
+  if(!catalogReady)return <main class="page wide"><p role="status">Loading billing catalog…</p></main>;
 
   async function receivePayment(ev:Event){ ev.preventDefault(); if(busy||!paymentCustomer)return; setBusy(true); setError('');
     try{ await recordCustomerPayment({shopId,customerId:paymentCustomer,businessDate,amountPaise:paise(paymentAmount),mode:paymentMode,clientId:paymentClientId}); setPaymentClientId(crypto.randomUUID()); setMessage('Customer payment recorded.'); setPaymentAmount(''); await refresh(); }catch(e){setError(String(e));} finally{setBusy(false);}

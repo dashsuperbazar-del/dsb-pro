@@ -27,7 +27,11 @@ pg17_restore(){
     pg_restore "$@" "/archive/$(basename "$dump")"
 }
 
-pg17_restore "$PUBLIC_DUMP" -l | grep -v ' SCHEMA - public ' > "$WORK/public.list"
+# Supabase owns its platform-wide default ACLs. A restored local postgres role
+# cannot ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin, and those defaults
+# are not application state. Keep every per-object ACL (needed for login/RLS)
+# while excluding only the schema creation entry and platform default ACLs.
+pg17_restore "$PUBLIC_DUMP" -l | grep -v -E ' SCHEMA - public | DEFAULT ACL ' > "$WORK/public.list"
 
 # Select Auth rows through the archive TOC rather than pg_restore --table
 # patterns. The latter proved fragile for schema-qualified names in CI and
