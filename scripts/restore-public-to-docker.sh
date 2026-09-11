@@ -19,11 +19,20 @@ docker run -d --name "$NAME" -e POSTGRES_PASSWORD="$PASSWORD" -e POSTGRES_DB="$D
 cleanup(){ docker rm -f "$NAME" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
-for _ in $(seq 1 60); do
-  if docker exec "$NAME" pg_isready -U postgres -d "$DB" >/dev/null 2>&1; then break; fi
+stable_ready=0
+for _ in $(seq 1 90); do
+  # The official image briefly accepts connections through its temporary init
+  # server before restarting into the final server. Require three consecutive
+  # SQL successes so a restore cannot race that restart.
+  if docker exec "$NAME" psql -U postgres -d "$DB" -Atqc 'select 1' >/dev/null 2>&1; then
+    stable_ready=$((stable_ready+1))
+    if [ "$stable_ready" -ge 3 ]; then break; fi
+  else
+    stable_ready=0
+  fi
   sleep 1
 done
-docker exec "$NAME" pg_isready -U postgres -d "$DB" >/dev/null
+test "$stable_ready" -ge 3 || { docker logs "$NAME" >&2; echo 'PostgreSQL did not become stably ready' >&2; exit 1; }
 
 docker cp "$ROOT/infra/docker-portability-bootstrap.sql" "$NAME:/bootstrap.sql"
 docker cp "$DUMP" "$NAME:/public.pgcustom"
