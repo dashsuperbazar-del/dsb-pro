@@ -83,7 +83,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          URL="${ALIAS_URL:-$DEPLOYMENT_URL}"
+          URL="${DEPLOYMENT_URL:-$ALIAS_URL}"
           test -n "$URL" || { echo 'Cloudflare preview URL was not returned'; exit 1; }
           for i in $(seq 1 20); do
             STATUS=$(curl -sS -o response.txt -w '%{http_code}' "$URL/api/item-images?path=phase6-binding-probe" || true)
@@ -126,10 +126,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          URL="${ALIAS_URL:-$DEPLOYMENT_URL}"
+          URL="${DEPLOYMENT_URL:-$ALIAS_URL}"
           test -n "$URL" || { echo 'Cloudflare switch-back preview URL was not returned'; exit 1; }
           curl --retry 20 --retry-all-errors --retry-delay 3 -fsS "$URL/" > switchback.html
-          grep -F '<div id="root"></div>' switchback.html >/dev/null
+          grep -F '<div id="app"></div>' switchback.html >/dev/null
           echo 'Supabase Storage switch-back preview deployment: PASS'
 
       - name: Restore previous preview R2 bindings
