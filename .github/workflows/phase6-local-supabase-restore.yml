@@ -110,11 +110,15 @@ jobs:
           read -r USER_ID TENANT_ID <<<"$(psql "$DB_URL" -At -F' ' -c "select tu.user_id,tu.tenant_id from tenant_users tu join auth.users u on u.id=tu.user_id where tu.status='active' and tu.deleted_at is null order by (tu.role='owner') desc,tu.created_at limit 1")"
           test -n "$USER_ID"
           test -n "$TENANT_ID"
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -v user_id="$USER_ID" -v email="$PROOF_EMAIL" -v password="$PROOF_PASSWORD" <<'SQL'
-          update auth.users set email=:'email',encrypted_password=extensions.crypt(:'password',extensions.gen_salt('bf')),email_confirmed_at=coalesce(email_confirmed_at,now()),updated_at=now() where id=:'user_id'::uuid;
-          update auth.identities set identity_data=jsonb_set(jsonb_set(identity_data,'{email}',to_jsonb(:'email'::text)),'{email_verified}','true'::jsonb) where user_id=:'user_id'::uuid and provider='email';
-          SQL
-          eval "$(supabase status -o env | grep -E '^(ANON_KEY|API_URL)=')"
+          eval "$(supabase status -o env | grep -E '^(ANON_KEY|SERVICE_ROLE_KEY|API_URL)=')"
+          # A recovery operator will not know the restored user's original
+          # password. Reset it through GoTrue's supported admin API so Auth
+          # updates all provider metadata and confirmation fields consistently.
+          curl --fail-with-body -sS -X PUT "$API_URL/auth/v1/admin/users/$USER_ID" \
+            -H "apikey: $SERVICE_ROLE_KEY" \
+            -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
+            -H 'Content-Type: application/json' \
+            --data "{\"email\":\"$PROOF_EMAIL\",\"password\":\"$PROOF_PASSWORD\",\"email_confirm\":true}" >/dev/null
           TOKEN=$(curl --fail-with-body -sS "$API_URL/auth/v1/token?grant_type=password" -H "apikey: $ANON_KEY" -H 'Content-Type: application/json' --data "{\"email\":\"$PROOF_EMAIL\",\"password\":\"$PROOF_PASSWORD\"}" | jq -r '.access_token // empty')
           test -n "$TOKEN" || { echo 'Recovered Auth password login did not return a token'; exit 1; }
           TENANTS=$(curl --fail-with-body -sS "$API_URL/rest/v1/tenants?select=id" -H "apikey: $ANON_KEY" -H "Authorization: Bearer $TOKEN")
