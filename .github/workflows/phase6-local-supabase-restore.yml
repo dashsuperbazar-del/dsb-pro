@@ -129,7 +129,12 @@ jobs:
               updated_at=now()
           where id=:'user_id'::uuid;
           SQL
-          test "$(psql "$DB_URL" -v ON_ERROR_STOP=1 -v user_id="$USER_ID" -At -c "select count(*) from auth.users where id=:'user_id'::uuid and encrypted_password is not null")" = '1'
+          RESET_USER_COUNT=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -v user_id="$USER_ID" -At <<'SQL'
+          select count(*) from auth.users
+          where id=:'user_id'::uuid and encrypted_password is not null;
+          SQL
+          )
+          test "$RESET_USER_COUNT" = '1'
           TOKEN=$(curl --fail-with-body -sS "$API_URL/auth/v1/token?grant_type=password" -H "apikey: $ANON_KEY" -H 'Content-Type: application/json' --data "{\"email\":\"$PROOF_EMAIL\",\"password\":\"$PROOF_PASSWORD\"}" | jq -r '.access_token // empty')
           test -n "$TOKEN" || { echo 'Recovered Auth password login did not return a token'; exit 1; }
           TENANTS=$(curl --fail-with-body -sS "$API_URL/rest/v1/tenants?select=id" -H "apikey: $ANON_KEY" -H "Authorization: Bearer $TOKEN")
