@@ -4,6 +4,11 @@ on:
   push:
     branches: [main, phase-4-pos-customers-payments, phase-5-offline-sync, phase-6-ledgers-reports-dr]
   pull_request:
+  schedule:
+    # Scheduled workflows execute only from the default branch. Keeping the
+    # Phase 6 proofs here makes them survive consolidation onto main.
+    - cron: '0 22 * * 0'
+  workflow_dispatch:
 
 jobs:
   lint:
@@ -456,7 +461,10 @@ jobs:
 
   phase6_db_upgrade:
     needs: [build]
-    if: github.ref == 'refs/heads/phase-6-ledgers-reports-dr' && github.event_name == 'push'
+    if: >-
+      (github.ref == 'refs/heads/phase-6-ledgers-reports-dr' && github.event_name == 'push') ||
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions: {}
@@ -612,7 +620,10 @@ jobs:
 
   phase6_backup_proof:
     needs: [phase6_db_upgrade]
-    if: github.ref == 'refs/heads/phase-6-ledgers-reports-dr' && github.event_name == 'push'
+    if: >-
+      (github.ref == 'refs/heads/phase-6-ledgers-reports-dr' && github.event_name == 'push') ||
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions: {}
@@ -694,7 +705,10 @@ jobs:
 
   phase6_portable_restore:
     needs: [phase6_db_upgrade]
-    if: github.ref == 'refs/heads/phase-6-ledgers-reports-dr' && github.event_name == 'push'
+    if: >-
+      (github.ref == 'refs/heads/phase-6-ledgers-reports-dr' && github.event_name == 'push') ||
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions: {}

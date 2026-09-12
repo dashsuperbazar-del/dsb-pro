@@ -3,6 +3,9 @@ name: Phase 6 local Supabase restore proof
 on:
   push:
     branches: [phase-6-ledgers-reports-dr]
+  schedule:
+    # Runs from main after the phase stack is consolidated.
+    - cron: '0 20 * * 1'
   workflow_dispatch:
 
 concurrency:

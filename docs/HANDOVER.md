@@ -501,3 +501,26 @@ This section supersedes the historical Phase 5 gate wording above for the curren
 - The exact closure head must pass all four workflows before automated closure is accepted.
 - Formal Phase 6 remains **NOT GO** until the fresh hosted-Supabase restore, paper-only encryption-key recovery, measured RPO/RTO, and applicable real-shop verification are recorded using `docs/PHASE6_CLOSURE.md`.
 - Do not merge or begin Phase 7 migration/cut-over until that final GO decision is recorded.
+
+## Phase 6 main-branch CI continuity — 2026-09-12
+
+- Verified the exact Phase 6 head before this change-set as
+  `e77f09e6d7e7c10dd7fad9cda847f50958eb44cc`. Its CI, 10,000-item performance,
+  disposable Supabase public/Auth recovery, and R2 switch-back workflows all passed.
+- Verified the phase stack is linear: `main` is 260 commits behind Phase 6 and has no
+  divergent commits. This fact does not close any human gate or authorize a merge.
+- Corrected a disaster-recovery continuity gap: the live-schema/backup/portable-restore
+  proofs in `ci.yml` can now run on a weekly default-branch schedule or manual dispatch,
+  while retaining the existing Phase 6 branch-push gate.
+- Added weekly default-branch schedules to the production-scale performance, disposable
+  Supabase public/Auth recovery, and R2 switch-back workflows. The already scheduled
+  enhanced PostgreSQL/Auth backup and human-readable JSON export will also become active
+  only after their workflow files reach the default branch.
+- The currently scheduled workflow on `main` is still the older public-schema-only backup.
+  Its successful upload/checksum does not prove the uploaded encrypted artifact decrypts or
+  restores, and it does not include the separate Auth artifact. Do not describe that nightly
+  run as the complete Phase 6 backup until the enhanced workflow reaches `main` and a
+  paper-key restore has passed.
+- No application code, database schema, live database, production deployment, PR state, or
+  branch ref changed in this change-set. Phase 6 remains **NOT GO**, and no merge or Phase 7
+  work is authorized by this CI-only change.
