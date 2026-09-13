@@ -620,3 +620,53 @@ exactly. Pushing workflow files needs a token with `workflow` scope.
 **Next:** consolidate `main` by fast-forward once the stability gate is green, then Phase 6.5.
 Keep the phase branches until `main` CI, both deployments, the first public+Auth nightly backup,
 the first nightly JSON export and one scheduled DR proof have all passed.
+
+## Consolidation — main fast-forwarded to Phase 6, 2026-09-13
+
+`main` moved from `2c043f5` to `5d2f3cf1163bf089f8d886748ebde692e25aa5eb` by fast-forward, 269
+commits, authorized explicitly after two rounds of independent review. The ref was advanced with
+`force:false`, so a non-fast-forward would have been refused rather than silently rewriting `main`.
+
+**This is consolidation, not phase acceptance.** Phases 4, 5 and 6 remain formally NOT GO. Their
+gates need real-shop and recovery evidence, not more code:
+- Phase 3 — one week of real purchases, stock matching a physical count.
+- Phase 4 — one real shop day reconciling to old DSB. Additionally blocked by plan §19: a shop day
+  that cannot take a customer return is not a valid gate, and returns arrive in Phase 6.5.
+- Phase 5 — two physical devices, one offline for an hour mid-day, no duplicate document numbers.
+- Phase 6 — fresh hosted Supabase restore, paper-only key recovery, measured RPO/RTO.
+
+**Pull requests.** #7 auto-closed as merged because its commits became reachable from `main`; a
+comment records that this is commit reachability, not gate acceptance. #9 was closed unmerged with
+the same note (it targeted the Phase 4 branch, so it did not auto-close). #10 was closed unmerged
+by design — its two commits were authored from `main`, sat outside the Phase 6 ancestry, and
+merging it would have destroyed the fast-forward topology; its content reached `main` via `bcf2327`.
+
+**All phase branches are deliberately retained** as rollback and reference points:
+`phase-2-core-library`, `phase-3-master-data-purchases`, `phase-4-pos-customers-payments`,
+`phase-5-offline-sync`, `phase-6-ledgers-reports-dr`, plus the two `fix/*` branches and
+`docs/phase-audit-handover`. Do not delete any of them until the five post-merge checks below have
+all passed.
+
+**`main` is now protected**: force pushes and deletions blocked; `lint`, `typecheck`, `test`,
+`pgtap`, `e2e` and `build` required. `enforce_admins` is deliberately **false** and reviews are not
+required — on a one-person project those would lock the only operator out during an incident.
+
+**Post-merge verification — 2 of 5 recorded:**
+- [x] `main` CI green at `5d2f3cf`, attempt 1, including `deploy`.
+- [x] Both hosting mirrors serving the new build. Note that Phase 0's "identical asset hash"
+      criterion is **obsolete**: since Phase 1 the mirrors build with different Vite base paths, so
+      their bundles legitimately differ. The criterion that applies now is base-path correctness —
+      Cloudflare serves `/assets/index-D3OodvP3.js` (200), GitHub Pages serves
+      `/dsb-pro/assets/index-B3YqrNG6.js` (200) — and the SPA deep-link fallback, verified by
+      fetching `/dsb-pro/join/probe`: GitHub Pages returns HTTP 404 by design while serving the
+      app shell from `404.html` with the same bundle, so the link boots. Cloudflare returns 200.
+- [ ] First nightly backup containing **both** the public dump and the separate Auth artifact
+      (`backup.yml`, 02:00 IST). This is the gap consolidation existed to close: until this run
+      succeeds, no backup contains a single user account.
+- [ ] First nightly JSON export (`phase6-json-export.yml`, 02:30 IST).
+- [ ] First scheduled DR proof (`ci.yml` weekly cron, Sunday 03:30 IST) — confirm
+      `phase6_db_upgrade` is **skipped** and both proofs still run, which is the fix in `4363ab8`.
+
+**Next:** the deferred §8/§12 gates (Cloudflare `_headers`, `pnpm audit`, Lighthouse, 250KB bundle
+ceiling), then Phase 6.5 per plan §19. Do not begin Phase 6.5 until the three checks above are
+recorded.

@@ -210,10 +210,12 @@ Corrections are recorded here rather than silently absorbed.
   `"files": []` and only project references, so plain `tsc --noEmit` checks nothing. The new
   command was verified to actually bite by planting a deliberate type error, confirming a
   non-zero exit and the expected TS2322, then reverting.
-- [ ] **`main`'s nightly backup still contains no Auth data** until the fast-forward lands. This
-  cannot be fixed by a targeted commit on `main`: any commit there destroys the fast-forward
-  topology. It closes on consolidation and on nothing else.
-- [ ] **Do not delete the phase branches at consolidation.** Keep them until `main` CI, the
+- [x] **`main`'s nightly backup contained no Auth data.** Consolidation landed 2026-09-13;
+  `main` is at `5d2f3cf` and now carries the Auth-aware `backup.yml`. **Not yet proven** — the
+  first nightly run must be checked for both the public dump and the separate Auth artifact.
+- [ ] **Do not delete the phase branches.** Consolidation is done and all branches are retained;
+  this stays open until the five post-merge checks in HANDOVER are recorded.
+- [ ] **Original wording, kept for the rule:** do not delete the phase branches at consolidation. Keep them until `main` CI, the
   Cloudflare deployment, the GitHub Pages deployment, the first public+Auth nightly backup, the
   first nightly JSON export and at least one scheduled DR proof have each passed on `main`.
   PRs #7 and #9 should be closed with a note that their human gates remain open, not as if the
