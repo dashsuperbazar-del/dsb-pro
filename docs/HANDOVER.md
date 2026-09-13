@@ -648,8 +648,15 @@ merging it would have destroyed the fast-forward topology; its content reached `
 all passed.
 
 **`main` is now protected**: force pushes and deletions blocked; `lint`, `typecheck`, `test`,
-`pgtap`, `e2e` and `build` required. `enforce_admins` is deliberately **false** and reviews are not
-required — on a one-person project those would lock the only operator out during an incident.
+`pgtap`, `e2e` and `build` required; **`enforce_admins` is true**. Reviews are deliberately not
+required — on a one-person project that would block all work.
+
+`enforce_admins` was initially set to `false`, reasoning that a solo operator must not be locked
+out during an incident. That was wrong, and it is worth recording why. The repository is operated
+through an **admin token**, so with admin enforcement off the protection did not constrain the most
+likely source of an accidental push to `main` — automation holding that token. The lock-out concern
+is already answered without the bypass: an administrator can deliberately change the rule, which is
+a visible, auditable act, instead of having silent bypass available on every push.
 
 **Post-merge verification — 2 of 5 recorded:**
 - [x] `main` CI green at `5d2f3cf`, attempt 1, including `deploy`.
@@ -664,8 +671,20 @@ required — on a one-person project those would lock the only operator out duri
       (`backup.yml`, 02:00 IST). This is the gap consolidation existed to close: until this run
       succeeds, no backup contains a single user account.
 - [ ] First nightly JSON export (`phase6-json-export.yml`, 02:30 IST).
-- [ ] First scheduled DR proof (`ci.yml` weekly cron, Sunday 03:30 IST) — confirm
-      `phase6_db_upgrade` is **skipped** and both proofs still run, which is the fix in `4363ab8`.
+- [ ] First scheduled DR proof (`ci.yml` weekly cron `0 22 * * 0` = Sunday 22:00 UTC =
+      **Monday 03:30 IST**) — confirm `phase6_db_upgrade` is **skipped** and both proofs still run,
+      which is the fix in `4363ab8`.
+
+**How these three must be verified.** Read the job logs and the produced artifacts. A workflow that
+started, or even reported success, is not evidence on its own: the backup check means confirming
+both the public dump *and* the separate encrypted Auth artifact exist with verified checksums in
+both destinations and a `backup_runs` row; the export check means confirming the JSON object was
+written; the DR check means confirming `phase6_db_upgrade` shows *skipped* while both proofs show
+*success*. Record the run IDs.
+
+For reference, all schedules in UTC and IST: nightly backup `30 20 * * *` = 02:00 IST; nightly JSON
+export `0 21 * * *` = 02:30 IST; weekly DR proof `0 22 * * 0` = Monday 03:30 IST; money-path
+stability `0 19 * * 4` = Friday 00:30 IST.
 
 **Next:** the deferred §8/§12 gates (Cloudflare `_headers`, `pnpm audit`, Lighthouse, 250KB bundle
 ceiling), then Phase 6.5 per plan §19. Do not begin Phase 6.5 until the three checks above are
