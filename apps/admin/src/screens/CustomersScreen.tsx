@@ -53,7 +53,7 @@ export function CustomersScreen(){
   return <main class="page wide"><p><a href={appRoute.home}>← Home</a></p><h1>Customers & ledger</h1>
     {error&&<p role="alert" class="alert">{error}</p>}{message&&<p role="status" class="success">{message}</p>}
     <section class="card"><h2>Customer master</h2><form onSubmit={addCustomer} class="grid-form"><label>Name<input name="name" required/></label><label>Phone<input name="phone"/></label><label>Address<input name="address"/></label><button disabled={!tenantId}>Create customer</button></form>
-      <label>Customer<select value={selected} onChange={e=>setSelected((e.currentTarget as HTMLSelectElement).value)}><option value="">Choose…</option>{customers.map(c=><option value={c.id}>{c.name}</option>)}</select></label>
+      <label>Customer<select value={selected} onChange={e=>setSelected((e.currentTarget as HTMLSelectElement).value)}><option value="">Choose…</option>{customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
       {customer&&<p><strong>{customer.name}</strong> · Balance {money(balances[customer.id]??0)} <small>(positive = customer owes; negative = advance)</small></p>}
     </section>
 
