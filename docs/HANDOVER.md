@@ -568,3 +568,55 @@ This section supersedes the historical Phase 5 gate wording above for the curren
 - No application code, database schema, live database, production deployment, PR state, or
   branch ref changed in this change-set. Phase 6 remains **NOT GO**, and no merge or Phase 7
   work is authorized by this CI-only change.
+
+## Pre-consolidation hardening — 2026-09-13
+
+Work done on `phase-6-ledgers-reports-dr` to make the fast-forward of `main` safe. `main` is
+untouched and still at `2c043f5`. No application money path, SQL migration or financial RPC was
+changed by any commit in this section.
+
+- **Phase 2 / Phase 3 / Phase 3-hotfix handover history restored** (`bcf2327`). PR #10 carried
+  this content but branched from `main`, so its two commits sit outside this branch's ancestry;
+  merging that PR would make the lines diverge and destroy the fast-forward. The content was
+  cherry-picked here instead and **PR #10 is to be closed unmerged**. Sections are placed
+  chronologically ahead of the Phase 5 and Phase 6 entries; nothing already present was removed.
+- **Money-path e2e defect** (`0ae30fe`). `pos.spec.ts` ("posts stock then finalizes a paid sale")
+  failed on two of three runs, including on a docs-only commit — which rules out any code change
+  as the trigger. All nine mapped `<option>` lists in the admin screens rendered without a `key`,
+  inside controlled `<select>` elements on screens that re-render frequently. Keys were added.
+  **This is a plausible explanation, not a proven one**: keys stop a controlled select reverting
+  mid-interaction, but the failure is equally consistent with the newly created item never
+  reaching the list. Three consecutive green runs since do not settle it — the spec passed one run
+  in three before.
+- **Failures are now diagnosable** (`96f4fe0`). Playwright retains a trace and screenshot on
+  failure and CI uploads them. `retries` stays explicitly `0`, with a comment: converting an
+  intermittent money-path defect into a green run by re-running it is not acceptable here.
+- **The weekly DR cron no longer migrates the live database** (`4363ab8`). The 2026-09-12 change
+  correctly added weekly schedules so the Phase 6 proofs survive consolidation, but
+  `phase6_backup_proof` and `phase6_portable_restore` both declared `needs: [phase6_db_upgrade]`,
+  so the schedule also fired a live-schema migration applier against the production financial
+  database every Sunday, unattended. `phase6_db_upgrade` no longer runs on `schedule`; it still
+  runs on a branch push and on manual dispatch.
+- **DR proofs now require a successful build** (`3608cfe`). A failed `build` leaves the upgrade
+  job *skipped* rather than failed, and the first version of the condition accepted a skipped
+  upgrade — so the proofs could run off the back of a red pipeline.
+- **A live-DB-free stability gate** (`3608cfe`, made reachable by `7a67cf6`).
+  `.github/workflows/e2e-stability.yml` repeats the money path (default 10x) against a throwaway
+  local Supabase and fails on any single failure. It uses no live-database secrets: re-dispatching
+  the main CI workflow to gather samples would also fire `phase6_db_upgrade` against production.
+  GitHub honours `workflow_dispatch`/`schedule` only from the default branch, so a path-scoped
+  push trigger keeps it usable before consolidation.
+- **Governing documents corrected before consolidation, not after.** `CLAUDE.md` said "Current
+  phase: 1" while three phases were merged and three more were green. The build plan is now v1.6:
+  v1.5 plus a new §19 that schedules returns into a new Phase 6.5, waives FIFO cost layers for v1
+  in writing, assigns `stock_reservations` to Phase 8, records four accepted layout deviations,
+  and states that §8's header requirements are unachievable on the GitHub Pages mirror.
+
+**Known constraint for anyone working from this machine:** `git push` cannot complete here — the
+pack path is killed at 3.5 GB RAM. Every commit above was created through the GitHub Git Data API,
+refusing to update the ref unless the resulting tree SHA matched the locally reviewed commit
+exactly. Pushing workflow files needs a token with `workflow` scope.
+
+**Next:** consolidate `main` by fast-forward once the stability gate is green, then Phase 6.5.
+Keep the phase branches until `main` CI, both deployments, the first public+Auth nightly backup,
+the first nightly JSON export and one scheduled DR proof have all passed.

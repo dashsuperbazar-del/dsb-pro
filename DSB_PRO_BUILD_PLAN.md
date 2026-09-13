@@ -1,4 +1,8 @@
-# DSB PRO — MASTER BUILD PLAN (v1.5 — LOCKED, 2026-09-04)
+# DSB PRO — MASTER BUILD PLAN (v1.6 — LOCKED, 2026-09-13)
+
+> **v1.6 is v1.5 plus §19 only.** No rule, gate or phase in §1–§18 was weakened, deleted or
+> reworded. §19 fixes a scheduling defect: three items were made law in §2/§7.3 and then never
+> assigned to any phase in §13, which is why they were never built. Read §19 with §13.
 
 Successor to DSB (single-file PWA). Goal, in this order:
   A. A free-tier, break-proof, data-safe POS + inventory app for Apd's own shop (Phases 0–7).
@@ -416,3 +420,78 @@ voids/discounts; data-retention policy matrix; feature flags UI).
 3. Cashiers may finalize offline (provisional numbers) or draft-only offline?
 4. Backup private key custody: **two independent physical copies** (printed QR in shop safe + sealed copy with one trusted person). Key-recovery is a formal drill in Phase 6 (decrypt a dump using only the paper copy). Losing the key = backups unreadable.
 5. Domain now (`dsbpro.in`-style, ~₹1000/yr) or free subdomain until Phase 8?
+
+---
+
+## 19. AMENDMENTS SINCE v1.5 (2026-09-13)
+
+v1.5 was authored as a locked specification and executed as one. During the 2026-09-12/13
+audit, three items were found that §2 or §7.3 states as law but that **no phase in §13 ever
+lists as work**. Searching §13 for "return", "batch" or "reservation" matches nothing. They
+were therefore never built. This is a defect in the plan's scheduling, not in its execution,
+and §17's architecture freeze is unaffected — nothing here changes the design, only when each
+piece is built.
+
+### 19.1 Returns — scheduled into a new Phase 6.5
+
+§2 ("Returns are documents, not reversals") and §7.3 (`sale_returns`/`sale_return_items`,
+`purchase_returns`/`purchase_return_items`, with `disposition`) are unimplemented. Voiding an
+invoice is **not** a substitute: a void reverses a document, while a return is its own document
+with its own stock movements, its own ledger entries and a disposition
+(`RETURN_TO_SELLABLE|DAMAGED|EXPIRED|SUPPLIER_RETURN`) that determines whether stock comes back.
+
+A grocery counter takes returns daily, so **a shop day run without returns is not a valid
+Phase 4 gate**. Returns must exist before the §12 human gate ("Apd runs it one real shop day
+alongside DSB") is attempted for real.
+
+**Phase 6.5 — Shop-floor completion (before any real-shop gate)**
+Returns (both directions, full four-table shape, RPCs `post_return()`/`void_return()`, pgTAP
+invariants); multi-line purchase entry (the `post_purchase()` RPC already accepts a line array,
+the screen sends one line); a Settings screen (shop profile/GSTIN, invoice prefix, printer
+width, cashier offline-finalize policy, negative-stock override, timezone/fiscal year — all
+database-only today); POS cart editing and hold/resume; the missing reports (low stock/reorder
+using the unused `min_stock` column, item-wise sales, purchase register, customer aging); and
+the §10 shell work (bottom navigation, error taxonomy, empty/loading states, i18n coverage,
+dark mode).
+*Gate:* one full dry run — enter a real multi-line supplier bill, bill twenty mixed items, take
+one return, settle one credit customer — without touching the database directly.
+
+### 19.2 FIFO cost layers — waived for v1, deliberately and in writing
+
+§7.3 specifies `purchase_batches`/`batch_consumptions` for FIFO COGS, written only by
+`post_sale()`. These are not built; stock valuation runs on `cost_last`, which §7.3 already
+permits as the fallback.
+
+**Decision: waived for v1.** Building them means adding a new write path inside `post_sale()`,
+the most safety-critical RPC in the system, immediately before the real-shop gates. The risk of
+touching it outweighs per-batch margin reporting for a single shop.
+
+**The cost of this waiver, stated plainly:** §7.3 says cost layers are never recomputed
+retroactively. Every day traded without batches is a day whose true FIFO COGS can never be
+reconstructed. If per-item margin reporting is wanted later, it begins from that day forward and
+the earlier history keeps approximate costs. This is accepted, not overlooked.
+
+### 19.3 `stock_reservations` — assigned to Phase 8
+
+§7.3 lists `stock_reservations` alongside `orders`/`order_items`, which §13 already places in
+Phase 8. Reservations exist to hold stock for online orders; nothing in Phases 0–7 reserves
+anything. Its absence was a scheduling gap in the same class as the two above, not a missing
+Phase 0–7 feature. It is now explicitly Phase 8 work.
+
+### 19.4 Deviations accepted rather than carried as debt
+
+Recorded so later readers do not mistake them for oversights:
+`packages/ui` and `packages/print` were never created — shared components and the thermal/A4
+print templates live inside `apps/admin` and work; `supabase/functions/` was never created —
+the nightly JSON export runs as a GitHub Actions workflow instead of an Edge Function;
+`config/env.<shop>.json` is Phase 8 work and arrives with the first friend deployment.
+None of these have a user-visible cost.
+
+### 19.5 One §8 requirement is not achievable as written
+
+§8 requires CSP, HSTS, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` and
+`frame-ancestors 'none'` on the hosting layer. **GitHub Pages cannot serve repository-controlled
+HTTP response headers at all.** Cloudflare Pages (the primary, per §5) takes the full set via
+`_headers`; the GitHub Pages mirror can carry at most a `<meta http-equiv>` CSP, with HSTS and
+frame-ancestors unavailable. The mirror is therefore a reduced-protection emergency fallback,
+and the RUNBOOK must say so rather than implying parity.

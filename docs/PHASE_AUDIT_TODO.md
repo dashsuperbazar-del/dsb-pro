@@ -174,3 +174,51 @@ Corrections are recorded here rather than silently absorbed.
 - [ ] **`pos.spec.ts` failed once on a detached-DOM timeout and passed on an unchanged rerun.**
   Treat as a suspected race on the billing screen rather than accepted flake; it is the one
   screen where an intermittent failure is most likely to be real.
+
+## VERIFY pass — 2026-09-13 (pre-consolidation hardening)
+
+### 🟢 Resolved
+
+- [x] **CLAUDE.md phase marker.** Was "Current phase: 1" while three phases were merged and three
+  more were CI-green. Now states the real position, that `main` moves by fast-forward only, and
+  that every gate from Phase 3 onward is formally NOT GO.
+- [x] **Plan scheduling defect.** Build plan is now v1.6 = v1.5 + §19. Returns are scheduled into
+  a new Phase 6.5; FIFO cost layers are waived for v1 in writing with the cost of the waiver
+  stated; `stock_reservations` is assigned to Phase 8. §1–§18 are untouched.
+- [x] **Weekly cron would have migrated the live database.** Fixed in `4363ab8`.
+- [x] **DR proofs could run off a red pipeline.** A failed `build` leaves `phase6_db_upgrade`
+  *skipped*, not failed, and the first condition accepted a skipped upgrade. Both proofs now
+  require `needs.build.result == 'success'`. Caught by independent review of my own fix.
+- [x] **§8 header parity is impossible as written.** Recorded in plan §19.5: GitHub Pages cannot
+  serve repository-controlled response headers. Cloudflare takes the full set; the mirror is a
+  reduced-protection fallback and the RUNBOOK must say so.
+
+### 🟡 Open — carried forward
+
+- [ ] **The money-path fix is provisional.** `pos.spec.ts` failed two of three runs before the
+  mapped-option keys, and has passed three of three since. Neither sample proves anything: keys
+  explain a controlled select reverting mid-interaction, but the original failure is equally
+  consistent with the newly created item never reaching the list. The 10x stability gate
+  (`.github/workflows/e2e-stability.yml`) is the evidence; if it fails, the uploaded Playwright
+  trace is the thing to read, and the real suspect is the refresh/re-render path in
+  `InventoryScreen.refresh()`.
+- [ ] **`apps/admin` is never typechecked on a red run.** It has no `typecheck` script, so
+  `pnpm typecheck` (`-r --if-present`) skips it; it is only typechecked inside `build`, which
+  `needs: [lint, typecheck, test, pgtap, e2e]`. On any run where e2e fails, the admin app's types
+  are never checked at all. Add a `typecheck` script to the admin package.
+- [ ] **`main`'s nightly backup still contains no Auth data** until the fast-forward lands. This
+  cannot be fixed by a targeted commit on `main`: any commit there destroys the fast-forward
+  topology. It closes on consolidation and on nothing else.
+- [ ] **Do not delete the phase branches at consolidation.** Keep them until `main` CI, the
+  Cloudflare deployment, the GitHub Pages deployment, the first public+Auth nightly backup, the
+  first nightly JSON export and at least one scheduled DR proof have each passed on `main`.
+  PRs #7 and #9 should be closed with a note that their human gates remain open, not as if the
+  phases were accepted.
+
+### Deferred, unchanged
+
+- [ ] Phase 2's 50 real invoices to the paisa, deferred to after Phase 7.
+- [ ] Phase 4 "NOT GO — one real parallel shop day", now additionally blocked on Phase 6.5:
+  a shop day that cannot take a return is not a valid gate.
+- [ ] Phase 6 "NOT GO" pending fresh hosted-Supabase restore, paper-key recovery and measured
+  RPO/RTO.
