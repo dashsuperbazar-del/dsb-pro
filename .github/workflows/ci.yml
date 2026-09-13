@@ -471,9 +471,13 @@ jobs:
 
   phase6_db_upgrade:
     needs: [build]
+    # Deliberately NOT on `schedule`. This job applies schema migrations to the
+    # live financial database. A weekly unattended migration is a standing risk
+    # with no matching benefit: the point of the scheduled run is to prove that
+    # backups and restores still work, not to migrate anything. Manual dispatch
+    # stays available for a deliberate, attended upgrade.
     if: >-
       (github.ref == 'refs/heads/phase-6-ledgers-reports-dr' && github.event_name == 'push') ||
-      github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -630,10 +634,15 @@ jobs:
 
   phase6_backup_proof:
     needs: [phase6_db_upgrade]
+    # `!cancelled()` lets this run when phase6_db_upgrade is skipped, which is
+    # the normal case for the weekly scheduled proof. The dependency edge is
+    # kept so that on a branch push the upgrade still runs first, and a failed
+    # upgrade still stops the proof from reporting against a half-migrated DB.
     if: >-
-      (github.ref == 'refs/heads/phase-6-ledgers-reports-dr' && github.event_name == 'push') ||
+      !cancelled() && needs.phase6_db_upgrade.result != 'failure' &&
+      ((github.ref == 'refs/heads/phase-6-ledgers-reports-dr' && github.event_name == 'push') ||
       github.event_name == 'schedule' ||
-      github.event_name == 'workflow_dispatch'
+      github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions: {}
@@ -715,10 +724,13 @@ jobs:
 
   phase6_portable_restore:
     needs: [phase6_db_upgrade]
+    # Same reasoning as phase6_backup_proof above: the weekly restore proof must
+    # not depend on a live migration having just run.
     if: >-
-      (github.ref == 'refs/heads/phase-6-ledgers-reports-dr' && github.event_name == 'push') ||
+      !cancelled() && needs.phase6_db_upgrade.result != 'failure' &&
+      ((github.ref == 'refs/heads/phase-6-ledgers-reports-dr' && github.event_name == 'push') ||
       github.event_name == 'schedule' ||
-      github.event_name == 'workflow_dispatch'
+      github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions: {}
