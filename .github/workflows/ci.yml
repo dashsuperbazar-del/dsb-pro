@@ -111,6 +111,16 @@ jobs:
           done
           pnpm --filter @dsb-pro/admin exec playwright install --with-deps chromium
       - run: pnpm --filter @dsb-pro/admin run e2e
+      - name: Upload Playwright trace and report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            apps/admin/test-results/
+            apps/admin/playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore
 
   build:
     needs: [lint, typecheck, test, pgtap, e2e]
