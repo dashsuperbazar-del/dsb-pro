@@ -202,10 +202,14 @@ Corrections are recorded here rather than silently absorbed.
   (`.github/workflows/e2e-stability.yml`) is the evidence; if it fails, the uploaded Playwright
   trace is the thing to read, and the real suspect is the refresh/re-render path in
   `InventoryScreen.refresh()`.
-- [ ] **`apps/admin` is never typechecked on a red run.** It has no `typecheck` script, so
-  `pnpm typecheck` (`-r --if-present`) skips it; it is only typechecked inside `build`, which
-  `needs: [lint, typecheck, test, pgtap, e2e]`. On any run where e2e fails, the admin app's types
-  are never checked at all. Add a `typecheck` script to the admin package.
+- [x] **`apps/admin` is never typechecked on a red run.** Resolved: the admin package now has
+  `"typecheck": "tsc -b --noEmit"`, which the root `pnpm typecheck` (`-r --if-present`) picks up
+  automatically, so admin types are checked in the `typecheck` job rather than only inside
+  `build` behind a green e2e. **Correction to the previous pass:** the `tsc --noEmit` used there
+  to claim the keys change was "type-clean" was a no-op — `apps/admin/tsconfig.json` has
+  `"files": []` and only project references, so plain `tsc --noEmit` checks nothing. The new
+  command was verified to actually bite by planting a deliberate type error, confirming a
+  non-zero exit and the expected TS2322, then reverting.
 - [ ] **`main`'s nightly backup still contains no Auth data** until the fast-forward lands. This
   cannot be fixed by a targeted commit on `main`: any commit there destroys the fast-forward
   topology. It closes on consolidation and on nothing else.

@@ -466,10 +466,13 @@ permits as the fallback.
 the most safety-critical RPC in the system, immediately before the real-shop gates. The risk of
 touching it outweighs per-batch margin reporting for a single shop.
 
-**The cost of this waiver, stated plainly:** §7.3 says cost layers are never recomputed
-retroactively. Every day traded without batches is a day whose true FIFO COGS can never be
-reconstructed. If per-item margin reporting is wanted later, it begins from that day forward and
-the earlier history keeps approximate costs. This is accepted, not overlooked.
+**The cost of this waiver, stated plainly:** §7.3's rule is that cost layers are never recomputed
+retroactively, so the system will not backfill them. Historical FIFO COGS is therefore **not
+guaranteed to be reconstructible**. Where complete purchase and sale history survives it may be
+possible to derive layers after the fact, but exact recovery is not assured — opening inventory,
+backdated entries and missing batch provenance are the usual obstacles. Margin reporting for the
+period before batches exist stays approximate unless sufficient source history is available. This
+is accepted, not overlooked.
 
 ### 19.3 `stock_reservations` — assigned to Phase 8
 
