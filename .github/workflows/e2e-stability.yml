@@ -24,6 +24,19 @@ on:
   schedule:
     # Thursday, away from the Sunday CI cron and the nightly backup window.
     - cron: '0 19 * * 4'
+  # GitHub only honours `workflow_dispatch` and `schedule` from the default
+  # branch, so until consolidation lands this gate would be unreachable — and
+  # it is needed *before* consolidation, to justify it. A path-scoped push
+  # trigger keeps it usable now and costs nothing afterwards: it fires only
+  # when the billing screens, the money-path spec, or this file change, not on
+  # documentation commits.
+  push:
+    branches: [phase-6-ledgers-reports-dr]
+    paths:
+      - 'apps/admin/e2e/pos.spec.ts'
+      - 'apps/admin/src/screens/**'
+      - 'apps/admin/src/lib/offlineSync.ts'
+      - '.github/workflows/e2e-stability.yml'
 
 jobs:
   money_path_repeat:
