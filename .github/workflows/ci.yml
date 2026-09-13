@@ -633,13 +633,17 @@ jobs:
           test "$RESULT" = "t"
 
   phase6_backup_proof:
-    needs: [phase6_db_upgrade]
+    needs: [build, phase6_db_upgrade]
     # `!cancelled()` lets this run when phase6_db_upgrade is skipped, which is
     # the normal case for the weekly scheduled proof. The dependency edge is
     # kept so that on a branch push the upgrade still runs first, and a failed
     # upgrade still stops the proof from reporting against a half-migrated DB.
+    # `build` is required explicitly: a failed build leaves the upgrade job
+    # *skipped* rather than failed, which would otherwise let this proof run
+    # off the back of a red pipeline.
     if: >-
-      !cancelled() && needs.phase6_db_upgrade.result != 'failure' &&
+      !cancelled() && needs.build.result == 'success' &&
+      needs.phase6_db_upgrade.result != 'failure' &&
       ((github.ref == 'refs/heads/phase-6-ledgers-reports-dr' && github.event_name == 'push') ||
       github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch')
@@ -723,11 +727,13 @@ jobs:
           echo "auth_sha=${{ steps.sums.outputs.auth_sha }}"
 
   phase6_portable_restore:
-    needs: [phase6_db_upgrade]
+    needs: [build, phase6_db_upgrade]
     # Same reasoning as phase6_backup_proof above: the weekly restore proof must
-    # not depend on a live migration having just run.
+    # not depend on a live migration having just run, but must not run off the
+    # back of a red pipeline either.
     if: >-
-      !cancelled() && needs.phase6_db_upgrade.result != 'failure' &&
+      !cancelled() && needs.build.result == 'success' &&
+      needs.phase6_db_upgrade.result != 'failure' &&
       ((github.ref == 'refs/heads/phase-6-ledgers-reports-dr' && github.event_name == 'push') ||
       github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch')
