@@ -131,9 +131,10 @@ if (manifest) {
   if (icons.length > 0) {
     check(has192, 'no icon is 192x192 or larger — browsers require one to offer installation');
     check(largestAny >= 512, 'no "any"-purpose icon is 512x512 or larger');
-    if (!hasMaskable) {
-      notes.push('no maskable icon declared — the home-screen icon will be letterboxed on Android');
-    }
+    // A hard failure, not a note. The previous version only warned here, which
+    // meant this file claimed to guarantee a maskable icon while quietly
+    // passing without one — the gate did not enforce what it advertised.
+    check(hasMaskable, 'no maskable icon declared — the home-screen icon will be letterboxed on Android');
   }
 }
 
