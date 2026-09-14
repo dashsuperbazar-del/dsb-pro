@@ -148,11 +148,17 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Build with the production Supabase origin so the CSP is realistic
+      - name: Build exactly as production ships, so the gates measure reality
         env:
+          # BOTH variables matter. With the anon key absent, Vite replaces it
+          # with undefined and eliminates most of the Supabase client: the
+          # bundle measured 71 KB gzipped instead of the 126 KB that actually
+          # ships. The ceiling was being enforced against an artifact that
+          # could not run the app.
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://zmtvvdgsbdwhowrzkcwr.supabase.co' }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InptdHZ2ZGdzYmR3aG93cnprY3dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg1MTY2NjgsImV4cCI6MjEwNDA5MjY2OH0.I6O33AReqJBkKwgtzejlS31Djwmdrp5pVF6Mxj4gnig' }}
         run: pnpm --filter @dsb-pro/admin run build
-      - name: Enforce the admin bundle ceiling (plan §12)
+      - name: Enforce the admin bundle ceiling on the Cloudflare artifact (plan §12)
         run: node scripts/check-bundle-size.mjs
       - name: Enforce installability (plan §12, as amended by §19.6)
         run: node scripts/check-installable.mjs
@@ -182,12 +188,20 @@ jobs:
       - name: Validate GitHub Pages fallback build and SPA deep-link fallback
         env:
           VITE_BASE_PATH: /dsb-pro/
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://zmtvvdgsbdwhowrzkcwr.supabase.co' }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InptdHZ2ZGdzYmR3aG93cnprY3dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg1MTY2NjgsImV4cCI6MjEwNDA5MjY2OH0.I6O33AReqJBkKwgtzejlS31Djwmdrp5pVF6Mxj4gnig' }}
         run: |
           pnpm --filter @dsb-pro/admin run build
           cp apps/admin/dist/index.html apps/admin/dist/404.html
           test -s apps/admin/dist/404.html
           grep -q '/dsb-pro/assets/' apps/admin/dist/index.html
           grep -q '/dsb-pro/assets/' apps/admin/dist/404.html
+      - name: Enforce the ceiling and installability on the Pages artifact too
+        # Both mirrors are real deployments, so both are measured. They are
+        # separate builds with different base paths, not copies of each other.
+        run: |
+          node scripts/check-bundle-size.mjs
+          node scripts/check-installable.mjs
 
   phase4_db_readiness:
     needs: [build]

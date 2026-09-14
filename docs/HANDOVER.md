@@ -741,5 +741,8 @@ succeeds on attempt 2 — both artifacts, both runs. rclone 1.60 attempts an S3 
 implement. It self-heals and read-back checksums pass, so it is cosmetic, but it sits on top of the
 secondary backup destination and should not be read past indefinitely.
 
-**Phase 6.5 may begin** once the gates below are green; the earlier "do not begin Phase 6.5"
-instruction referred to the post-merge evidence, which is now recorded.
+**Phase 6.5 does not begin until the scheduled backup closes.** An earlier draft of this entry
+said it "may begin once the gates are green", which contradicted the line above recording the
+scheduled backup as unproven, and contradicted the standing pass-before-proceed rule. The rule
+holds: a check that is recorded is not the same as a check that has passed. Returns start after a
+scheduled `Nightly backup` run completes with both artifacts and a `backup_runs` row.

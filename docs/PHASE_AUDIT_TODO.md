@@ -271,3 +271,36 @@ Corrections are recorded here rather than silently absorbed.
 - [ ] **Phase 6 human drills remain open**: the encrypted artifacts have been verified by read-back
   checksum inside the job, never downloaded and decrypted with the paper key. That is the Phase 6
   gate and it is still not done.
+
+## VERIFY pass — 2026-09-14 (gate accuracy)
+
+Independent review found two gates that did not enforce what they advertised, plus two reporting
+errors. All four are corrected here.
+
+### 🟢 Resolved
+
+- [x] **The bundle ceiling was measuring a build that cannot run.** CI built with
+  `VITE_SUPABASE_URL` but without `VITE_SUPABASE_ANON_KEY`. Vite replaces the absent key with
+  `undefined` and eliminates most of the Supabase client, so the gate measured **71 KB gzipped
+  against the 126 KB that actually ships** — 28% of budget reported against 49% real. Both mirror
+  builds now supply both variables, and the ceiling plus installability run against **each**
+  artifact, since the two mirrors are separate builds with different base paths rather than copies.
+  Confirmed by reproducing production exactly: the configured build emits `index-D3OodvP3.js`,
+  the same asset serving live on Cloudflare.
+- [x] **The maskable icon requirement was a warning, not a gate.** `check-installable.mjs` claimed
+  to guarantee a maskable icon ≥512 while only pushing a note when one was absent — the file
+  advertised an enforcement it did not perform. It is now a hard failure, verified by removing the
+  maskable entry and confirming a non-zero exit.
+- [x] **"Eight required checks" was wrong.** Branch protection requires **seven** contexts:
+  `lint`, `typecheck`, `test`, `pgtap`, `e2e`, `build`, `audit`. `deploy` runs on `main` and
+  succeeds but is deliberately **not** a required context — requiring it would make every
+  protected operation depend on two external hosting providers being reachable.
+- [x] **HANDOVER contradicted itself**, saying Phase 6.5 "may begin" in the same entry that
+  recorded the scheduled backup as unproven. The pass-before-proceed rule holds.
+
+### 🟡 Open — unchanged
+
+- [ ] The scheduled backup path has still never completed cleanly. Manual dispatch 34794582477 is
+  the only complete public+Auth backup. **Phase 6.5 waits on this.**
+- [ ] R2 `NotImplemented (501)` on the first attempt of every upload.
+- [ ] Phase 6 human drills: no artifact has been downloaded and decrypted with the paper key.
