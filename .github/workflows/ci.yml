@@ -122,8 +122,10 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
-  build:
-    needs: [lint, typecheck, test, pgtap, e2e]
+  audit:
+    # Plan §8: dependency audit in CI. Blocking at `high`, not merely reported —
+    # a warning nobody must act on is not a gate. If a genuine advisory cannot
+    # be fixed, record a dated exception in the plan rather than lowering this.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -133,7 +135,46 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @dsb-pro/admin run build
+      - run: pnpm audit --audit-level high
+
+  build:
+    needs: [lint, typecheck, test, pgtap, e2e, audit]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build with the production Supabase origin so the CSP is realistic
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://zmtvvdgsbdwhowrzkcwr.supabase.co' }}
+        run: pnpm --filter @dsb-pro/admin run build
+      - name: Enforce the admin bundle ceiling (plan §12)
+        run: node scripts/check-bundle-size.mjs
+      - name: Enforce installability (plan §12, as amended by §19.6)
+        run: node scripts/check-installable.mjs
+      - name: Assert the security headers artifact (plan §8)
+        run: |
+          set -euo pipefail
+          HEADERS=apps/admin/dist/_headers
+          test -s "$HEADERS" || { echo "_headers was not generated"; exit 1; }
+          for directive in \
+            "Content-Security-Policy" "Strict-Transport-Security" \
+            "X-Content-Type-Options" "Referrer-Policy" "Permissions-Policy" \
+            "frame-ancestors 'none'" "object-src 'none'" "script-src 'self'"; do
+            grep -qF "$directive" "$HEADERS" || { echo "missing from _headers: $directive"; exit 1; }
+          done
+          # A CSP that silently loses its backend origin would let the app load
+          # and then fail every request, which is worse than having no policy.
+          grep -qE "connect-src [^;]*https://[a-z0-9]+\.supabase\.co" "$HEADERS" \
+            || { echo "_headers CSP does not allow the Supabase origin"; exit 1; }
+          grep -qE "connect-src [^;]*wss://[a-z0-9]+\.supabase\.co" "$HEADERS" \
+            || { echo "_headers CSP does not allow the Supabase realtime socket"; exit 1; }
+          echo "security headers present and complete:"
+          cat "$HEADERS"
       - uses: actions/upload-artifact@v4
         with:
           name: admin-dist
