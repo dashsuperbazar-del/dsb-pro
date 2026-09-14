@@ -498,3 +498,30 @@ HTTP response headers at all.** Cloudflare Pages (the primary, per §5) takes th
 `_headers`; the GitHub Pages mirror can carry at most a `<meta http-equiv>` CSP, with HSTS and
 frame-ancestors unavailable. The mirror is therefore a reduced-protection emergency fallback,
 and the RUNBOOK must say so rather than implying parity.
+
+### 19.6 §12's "Lighthouse PWA ≥ 90" is not achievable as written
+
+§12 lists `Lighthouse PWA ≥ 90` as a gate. **Lighthouse removed the PWA category in v12**; the
+current release is 13.x, so there is no PWA score to threshold against. The requirement cannot be
+implemented literally.
+
+Its *intent* was that the app is genuinely installable and works offline. Those are now covered
+separately, and better:
+
+- **Offline** is proven by the Phase 5 chaos suite — queue a sale with the network down, restart
+  the app offline, survive a logical one-hour outage, reconnect and drain the outbox — which is a
+  far stronger test than any Lighthouse audit performed.
+- **Installability** is enforced by `scripts/check-installable.mjs`, run in CI: the manifest must
+  have a name, short name, start URL, an installable `display` mode and at least one icon that
+  actually exists in the build; a service worker must be emitted; and `index.html` must link both
+  the manifest and a favicon. It is deterministic and needs no browser, so unlike a scored audit
+  it cannot flake on a shared runner.
+
+**This gate immediately found a real defect.** The manifest had shipped with **no `icons` array at
+all** since Phase 0, so no browser would ever have offered to install the app, and `index.html`
+declared no favicon. Both are fixed. The icon is currently an SVG; a proper maskable PNG set at
+192px and 512px is worthwhile follow-up, and is not required for installability.
+
+Also noted while adding these gates: `apps/admin/public/icons.svg` is an unused social-media
+sprite sheet left over from a template. It is referenced by nothing and ships in the deployed
+artifact. Removing it is safe housekeeping, deliberately left out of the gate change-set.
