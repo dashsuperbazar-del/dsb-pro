@@ -658,7 +658,7 @@ likely source of an accidental push to `main` — automation holding that token.
 is already answered without the bypass: an administrator can deliberately change the rule, which is
 a visible, auditable act, instead of having silent bypass available on every push.
 
-**Post-merge verification — 2 of 5 recorded:**
+**Post-merge verification — superseded by the 2026-09-14 entry below. Original list:**
 - [x] `main` CI green at `5d2f3cf`, attempt 1, including `deploy`.
 - [x] Both hosting mirrors serving the new build. Note that Phase 0's "identical asset hash"
       criterion is **obsolete**: since Phase 1 the mirrors build with different Vite base paths, so
@@ -689,3 +689,57 @@ stability `0 19 * * 4` = Friday 00:30 IST.
 **Next:** the deferred §8/§12 gates (Cloudflare `_headers`, `pnpm audit`, Lighthouse, 250KB bundle
 ceiling), then Phase 6.5 per plan §19. Do not begin Phase 6.5 until the three checks above are
 recorded.
+
+## Post-merge evidence and the first scheduled night — 2026-09-14
+
+All three scheduled workflows fired overnight. **Two passed; the backup failed and was fixed.**
+Recorded here with run IDs because the previous entry's "2 of 5" is now stale and because the
+failure matters: it proves the scheduled path was not clean on its first real execution.
+
+| Check | Run | Result |
+|---|---|---|
+| `main` CI at `5d2f3cf` / `f718343` | — | pass, attempt 1, including `deploy` |
+| Both hosting mirrors | — | pass (see the base-path note above) |
+| Scheduled DR proof | [34791246319](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/34791246319) | **pass** |
+| Nightly JSON export | [34788509202](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/34788509202) | **pass** |
+| Nightly backup (scheduled) | [34787124875](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/34787124875) | **FAIL** |
+| Nightly backup (after fix, dispatched) | [34794582477](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/34794582477) | **pass** |
+
+**The DR fix proved itself.** On the first scheduled run, `phase6_db_upgrade` was **skipped** while
+`phase6_backup_proof` and `phase6_portable_restore` both **passed** — exactly the behaviour
+`4363ab8` and `3608cfe` were written for. No unattended migration touched the live database.
+
+**The backup failure, and why it is worth remembering.** Both dumps were produced, encrypted,
+uploaded to B2 and R2, and every checksum verified — and then the job died on the final
+bookkeeping `UPDATE`:
+
+```
+ERROR:  invalid input syntax for type json
+LINE 1: ...destinations='[{name:b2,verified:true},...
+DETAIL: Token "name" is invalid.
+```
+
+The destinations array was written as a JSON literal inside a double-quoted `psql -c "..."`
+string, so bash consumed the inner double quotes. That is the worst shape a backup failure can
+take: **the artifacts were genuinely fine in both destinations, but there was no provable record**,
+and the health card reads red while the data is safe. It is also the same class of defect Phase 0
+already recorded — values spliced into a `run:` script before bash parses them — so the lesson had
+been written down and then not applied. Fixed in `31e2bff` by building the array server-side with
+`json_build_array` and passing every value as a psql variable through a quoted heredoc.
+It was invisible until consolidation because scheduled workflows only run from the default branch,
+so that file had never once executed.
+
+**Status, stated precisely rather than rounded.** Four of the five checks are fully proven. The
+fifth — a complete public+Auth nightly backup **on the scheduled path** — is proven only by a manual
+dispatch; the scheduled path has never yet completed cleanly end to end. The next scheduled run
+(`30 20 * * *`, which history shows actually fires around 22:30–22:55 UTC, i.e. roughly 04:00 IST,
+about two hours after the nominal cron) is the one that closes it. Check that run before treating
+this as settled.
+
+**Known noise, not yet fixed:** every R2 upload logs `NotImplemented (501)` on attempt 1 and
+succeeds on attempt 2 — both artifacts, both runs. rclone 1.60 attempts an S3 operation R2 does not
+implement. It self-heals and read-back checksums pass, so it is cosmetic, but it sits on top of the
+secondary backup destination and should not be read past indefinitely.
+
+**Phase 6.5 may begin** once the gates below are green; the earlier "do not begin Phase 6.5"
+instruction referred to the post-merge evidence, which is now recorded.

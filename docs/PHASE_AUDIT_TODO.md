@@ -228,3 +228,46 @@ Corrections are recorded here rather than silently absorbed.
   a shop day that cannot take a return is not a valid gate.
 - [ ] Phase 6 "NOT GO" pending fresh hosted-Supabase restore, paper-key recovery and measured
   RPO/RTO.
+
+## VERIFY pass — 2026-09-14 (gates and post-merge evidence)
+
+### 🟢 Resolved
+
+- [x] **§8 security headers.** Generated at build time, verified live on Cloudflare Pages by
+  direct `curl`: CSP, HSTS, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`,
+  COOP, `X-Frame-Options`. CSP carries both the HTTPS and `wss:` Supabase origins and uses no
+  `unsafe-inline`. GitHub Pages remains a reduced-protection mirror (plan §19.5).
+- [x] **§8 dependency audit.** `pnpm audit --audit-level high` in CI and in the required status
+  checks. The one advisory (`sharp <0.35.4` via `wrangler > miniflare`) was fixed by updating
+  wrangler rather than by lowering the threshold.
+- [x] **§12 bundle ceiling.** 250 KiB gzip enforced; currently 71 KB (28%).
+- [x] **§12 Lighthouse PWA.** Not implementable — category removed in Lighthouse v12. Recorded in
+  plan §19.6 and replaced with a deterministic installability gate.
+- [x] **Installability defect.** The manifest had shipped with **no icons at all** since Phase 0,
+  so the app was never installable. Real 192, 512 and maskable-512 PNGs are now generated from the
+  existing mark by `scripts/gen-icons.mjs` and declared in the manifest; `index.html` links a
+  favicon.
+- [x] **Installability gate was too weak.** The first version only required an icon entry pointing
+  at a non-empty file, so a 16×16 placeholder — or a `.png` that was secretly an SVG — would have
+  passed. It now reads real image headers and compares them with the manifest's claims: byte-level
+  format vs declared MIME type, declared `sizes` vs true pixel dimensions, squareness, a ≥192
+  icon, a ≥512 `any` icon, and a ≥512 maskable. Verified by planting a 16×16 PNG declared as
+  192×192 and confirming the gate fails.
+- [x] **Unused asset.** `apps/admin/public/icons.svg` was a Bluesky social sprite sheet from a
+  template, referenced by nothing and shipping in the deployed artifact. Removed.
+- [x] **Stale handover.** The overnight run IDs, the backup failure and its fix are now recorded.
+
+### 🟡 Open
+
+- [ ] **The scheduled backup path has still never completed cleanly.** Run 34787124875 failed;
+  the fix is proven only by the manual dispatch 34794582477. The next scheduled run closes this —
+  do not treat post-merge evidence as 5 of 5 until it does.
+- [ ] **R2 `NotImplemented (501)` on first attempt, every upload.** Self-heals on retry and
+  read-back checksums pass, so cosmetic, but it sits on the secondary backup destination.
+  Likely an rclone 1.60 S3 operation Cloudflare R2 does not implement.
+- [ ] **Icons are raster-only from one SVG source.** Adequate and verified, but the mark itself was
+  never designed as an app icon; a purpose-drawn maskable icon with a proper safe zone would be
+  better than a scaled favicon.
+- [ ] **Phase 6 human drills remain open**: the encrypted artifacts have been verified by read-back
+  checksum inside the job, never downloaded and decrypted with the paper key. That is the Phase 6
+  gate and it is still not done.
