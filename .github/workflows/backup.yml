@@ -121,8 +121,43 @@ jobs:
         env:
           RUN_ID: ${{ steps.start.outputs.run_id }}
           MANIFEST_LITERAL: ${{ steps.manifest.outputs.json }}
+          PUBLIC_SHA: ${{ steps.checksum.outputs.public_sha }}
+          AUTH_SHA: ${{ steps.checksum.outputs.auth_sha }}
+          APP_VERSION: ${{ github.sha }}
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
-          psql "${{ secrets.SUPABASE_DB_URL }}" -c "update backup_runs set finished_at=now(),status='success',sha256='${{ steps.checksum.outputs.public_sha }}',destinations='[{"name":"b2","verified":true},{"name":"r2","verified":true}]'::jsonb,app_version='${{ github.sha }}',schema_version=3,manifest=($MANIFEST_LITERAL)::jsonb where id='$RUN_ID';"
+          set -euo pipefail
+          # The previous version wrote the destinations array as a JSON literal
+          # inside a double-quoted `psql -c "..."` string. Bash consumed the
+          # inner double quotes, so Postgres received [{name:b2,...}] and
+          # rejected it — run 34787124875 failed here *after* both artifacts
+          # were already uploaded and checksum-verified, leaving good backups
+          # with no provable record. The array is now built server-side and
+          # every value is passed as a psql variable, so no shell quoting is
+          # involved. It also records a per-artifact row, which the old
+          # two-element array could not express now that Auth is dumped
+          # separately.
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -v run_id="$RUN_ID" \
+            -v public_sha="$PUBLIC_SHA" \
+            -v auth_sha="$AUTH_SHA" \
+            -v app_version="$APP_VERSION" \
+            -v manifest="$MANIFEST_LITERAL" <<'SQL'
+          update backup_runs
+             set finished_at    = now(),
+                 status         = 'success',
+                 sha256         = :'public_sha',
+                 destinations   = json_build_array(
+                     json_build_object('name','b2','artifact','public','verified',true,'sha256',:'public_sha'),
+                     json_build_object('name','r2','artifact','public','verified',true,'sha256',:'public_sha'),
+                     json_build_object('name','b2','artifact','auth','verified',true,'sha256',:'auth_sha'),
+                     json_build_object('name','r2','artifact','auth','verified',true,'sha256',:'auth_sha')
+                   )::jsonb,
+                 app_version    = :'app_version',
+                 schema_version = 3,
+                 manifest       = (:manifest)::jsonb
+           where id = :'run_id';
+          SQL
       - name: Mark backup failed
         if: failure()
         run: |
