@@ -17,4 +17,5 @@ export const appRoute = {
   salesHistory: appPath('/sales-history'),
   sync: appPath('/sync'),
   reports: appPath('/reports'),
+  returns: appPath('/returns'),
 };

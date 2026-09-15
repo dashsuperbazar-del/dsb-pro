@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, phase-4-pos-customers-payments, phase-5-offline-sync, phase-6-ledgers-reports-dr]
+    branches: [main, phase-4-pos-customers-payments, phase-5-offline-sync, phase-6-ledgers-reports-dr, phase-6-5-returns]
   pull_request:
   schedule:
     # Scheduled workflows execute only from the default branch. Keeping the

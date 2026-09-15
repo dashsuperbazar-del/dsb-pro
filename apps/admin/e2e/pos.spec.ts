@@ -26,7 +26,8 @@ test('owner can open the Phase 4 POS and customer payment surface',async({page})
   await expect(page.getByRole('button',{name:'Finalize sale'})).toBeDisabled();
 });
 
-test('real browser money path posts stock then finalizes a paid sale',async({page})=>{
+test('real browser money path posts stock then finalizes a paid sale',async({page,context})=>{
+  test.setTimeout(60000);
   await createOwnerShop(page);
   await page.getByRole('link',{name:'Inventory & purchases'}).click();
   await page.getByPlaceholder('Item name').fill('POS E2E Item');
@@ -87,4 +88,82 @@ test('real browser money path posts stock then finalizes a paid sale',async({pag
   await expect(comparison.getByRole('status')).toContainText('MATCH — Phase 4 day totals reconcile');
   await expect(comparison.locator('tbody tr').filter({hasText:'Sales total'})).toContainText('MATCH');
   await expect(comparison.locator('tbody tr').filter({hasText:'Cash'})).toContainText('MATCH');
+
+  await page.goto('/returns');
+  await expect(page.getByRole('heading',{name:'Returns',exact:true})).toBeVisible();
+  await expect(page.getByLabel('Source document').locator('option')).toHaveCount(2);
+  await page.getByLabel('Source document').selectOption({index:1});
+  await context.setOffline(true);
+  await page.getByLabel('Return quantity for POS E2E Item').fill('1');
+  await page.getByRole('button',{name:'Post return'}).click();
+  await expect(page.getByRole('status')).toContainText('Refund pending confirmation');
+  await expect(page.getByRole('status')).toContainText('do not hand over cash');
+  // The provisional document and stock overlay survive a full app restart.
+  await page.reload();
+  const queue=page.locator('section').filter({has:page.getByRole('heading',{name:'This till’s return queue'})});
+  await expect(queue).toContainText('Refund pending confirmation — no cash payout');
+  const projection=await page.evaluate(async()=>{
+    const name=(await indexedDB.databases()).find(db=>db.name?.startsWith('dsb-pro-sync-'))!.name!;
+    return new Promise<{stock:number;reservation:number;refund:number|null;outbox:number}>((resolve,reject)=>{
+      const request=indexedDB.open(name);request.onerror=()=>reject(request.error);
+      request.onsuccess=()=>{const db=request.result,tx=db.transaction(['stock','reservations','offlineReturns','outbox'],'readonly');
+        const stock=tx.objectStore('stock').getAll(),reservations=tx.objectStore('reservations').getAll(),returns=tx.objectStore('offlineReturns').getAll(),outbox=tx.objectStore('outbox').count();
+        tx.oncomplete=()=>{resolve({stock:stock.result[0].available,reservation:reservations.result[0].qty,refund:returns.result[0].cashRefundPaise,outbox:outbox.result});db.close();};
+      };
+    });
+  });
+  expect(projection).toEqual({stock:4,reservation:-1,refund:null,outbox:1});
+  // Commit at the server, then deliberately lose its response. The retry must
+  // reuse the durable intent/client ID, not create another outgoing payment.
+  let lostAcknowledgement=false;
+  await page.route('**/rest/v1/rpc/phase65_sync_post_return',async route=>{
+    if(!lostAcknowledgement){const response=await route.fetch();expect(response.ok()).toBe(true);lostAcknowledgement=true;await context.setOffline(true);await route.abort('failed');}
+    else await route.continue();
+  });
+  await context.setOffline(false);
+  await expect.poll(()=>lostAcknowledgement).toBe(true);
+  await expect(queue).toContainText('Refund pending confirmation — no cash payout');
+  await context.setOffline(false);
+  await page.goto('/sync');
+  await page.getByRole('button',{name:'Retry queued work now'}).click();
+  await expect(page.getByTestId('sync-outbox-count')).toHaveText('0',{timeout:15000});
+  await page.goto('/returns');
+  await expect(page.locator('section').filter({has:page.getByRole('heading',{name:'This till’s return queue'})})).toContainText('Confirmed: ₹10.00 cash');
+  const returnRow=page.locator('section').filter({has:page.getByRole('heading',{name:'Recent returns'})}).locator('tbody tr').first();
+  await expect(returnRow).toContainText('₹10.00');
+  await expect(returnRow).toContainText('₹10.00 cash');
+
+  await page.goto('/sales-history');
+  const afterReturn=page.locator('section[aria-label="Day reconciliation"]');
+  await expect(afterReturn.locator('tr').filter({hasText:'Sale returns'})).toContainText('₹10.00');
+  await expect(afterReturn.locator('tr').filter({hasText:'Net sales'})).toContainText('₹0.00');
+  await expect(afterReturn.locator('table').nth(1).locator('tbody td').first()).toHaveText('₹0.00');
+
+  // Model a stale replica: another till has already returned the whole line,
+  // but this till still believes it is available. Server rejection must retain
+  // the document as a conflict and undo only its provisional stock projection.
+  await context.setOffline(true);
+  await page.evaluate(async()=>{
+    const name=(await indexedDB.databases()).find(db=>db.name?.startsWith('dsb-pro-sync-'))!.name!;
+    await new Promise<void>((resolve,reject)=>{
+      const request=indexedDB.open(name);request.onerror=()=>reject(request.error);
+      request.onsuccess=()=>{const db=request.result,tx=db.transaction('returnSources','readwrite'),cursor=tx.objectStore('returnSources').openCursor();
+        cursor.onsuccess=()=>{const row=cursor.result;if(!row)return;if(row.value.return_type==='SALE')row.update({...row.value,lines:row.value.lines.map((line:Record<string,unknown>)=>({...line,returned_qty:0}))});row.continue();};
+        tx.oncomplete=()=>{db.close();resolve();};tx.onabort=()=>reject(tx.error);
+      };
+    });
+  });
+  await page.goto('/returns');
+  await expect(page.getByLabel('Source document').locator('option')).toHaveCount(2);
+  await page.getByLabel('Source document').selectOption({index:1});
+  await page.getByLabel('Return quantity for POS E2E Item').fill('1');
+  await page.getByRole('button',{name:'Post return'}).click();
+  await expect(page.getByRole('status')).toContainText('Refund pending confirmation');
+  await context.setOffline(false);
+  await expect(page.locator('section').filter({has:page.getByRole('heading',{name:'This till’s return queue'})})).toContainText('Rejected: sale return quantity exceeds sold quantity');
+  await page.goto('/sync');
+  await expect(page.getByTestId('sync-outbox-count')).toHaveText('0');
+  await page.goto('/inventory');
+  await page.getByLabel('Peek item').selectOption({label:'POS E2E Item'});
+  await expect(page.locator('[aria-label="item peek"]')).toContainText('Stock 5 piece');
 });

@@ -746,3 +746,123 @@ said it "may begin once the gates are green", which contradicted the line above 
 scheduled backup as unproven, and contradicted the standing pass-before-proceed rule. The rule
 holds: a check that is recorded is not the same as a check that has passed. Returns start after a
 scheduled `Nightly backup` run completes with both artifacts and a `backup_runs` row.
+
+## Phase 6.5 returns build — 2026-09-15
+
+**The prerequisite closed before work began.** Scheduled backup run
+[34908283606](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/34908283606) ran on
+`2566c21` and completed the public dump, separate Auth dump, encryption, B2 and R2 uploads,
+read-back checksums, and the `backup_runs` update. Post-consolidation evidence is therefore 5/5.
+The R2 first-attempt `501` retry and the human paper-key recovery drill remain open.
+
+Draft PR [#17](https://github.com/dashsuperbazar-del/dsb-pro/pull/17) implements returns on
+`phase-6-5-returns`. It is deliberately **not merged** and does not close Phases 4, 5 or 6.
+
+**Database and money model.** Migration `0036_phase65_returns.sql` adds the four immutable return
+tables and `payments.direction` (`in`/`out`, positive magnitudes only). Sale refunds are outgoing
+cash only up to receipts actually allocated/directly posted against that invoice; any remaining
+return value credits the customer balance. Refund `client_id` is derived from the return
+`client_id`, and one refund per return is enforced in the database. Voiding reverses both refund
+and stock effects. Purchase returns credit the supplier ledger and remove stock unless the chosen
+disposition is `RETURN_TO_SELLABLE`. Source sales and purchases cannot be voided while a posted
+return exists.
+
+**Consumers updated.** Customer balances/outstanding, party ledger, day book, GST summary, shop-day
+reconciliation, legacy DSB comparison, tenant export and `check_invariants()` all understand return
+documents and signed payment direction. A day with refunds exceeding receipts is represented as a
+negative cash total, not rejected. The admin app has a return screen for sale/purchase source
+selection, quantities, all four dispositions, posting, recent history and voiding; sale receipts
+show refunds explicitly.
+
+**Verification at exact remote head `96a6d88d5d20d38ec05c985fd46b1ee99f76e1fc`.** CI run
+[34912286251](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/34912286251) passed on its
+first attempt at that head: lint, real project-reference typecheck, 178 unit tests, audit, clean
+database reset, all 28 pgTAP files / 402 assertions (60 new returns assertions), existing browser
+tests, and both production-representative build gates. Earlier draft runs correctly failed: one
+ambiguous SQL column, then a stale export-version assertion and a misleading purchase-void error;
+all three were fixed rather than rerun unchanged.
+
+**Open before merge/acceptance.** PR #17 still needs code review. Its browser money path now posts
+a paid sale return through the UI and proves the cash refund and net day totals; real counter
+behavior (receipt presentation, physical stock dispositions and cash handoff) remains part of the
+Phase 4 shop-day evidence. Offline returns are not enabled: the UI
+requires the server, so exactly-once replay is proven at the RPC/database layer but not yet through
+the Phase 5 outbox.
+
+## Phase 6.5 provisional offline returns — 2026-09-15
+
+This supersedes the previous entry's online-only limitation. The user confirmed the refund policy:
+cash up to receipts actually received against the invoice; remainder against balance. Offline UX
+is accept-now/refund-pending: accept goods, note provisional credit, tell the customer cash is due
+only after reconnect and server confirmation. No offline cash amount or confirmed balance split
+is computed or displayed.
+
+Migration 0037 adds device/schema/tenant/shop/permission guarded source replication (latest 100
+posted source documents per type, no payments/allocations) and a sync wrapper around the same
+atomic post_return/refund/idempotency path. Dexie version 2 preserves all existing stores and adds
+return sources and durable return records. A persisted-first post_return outbox intent contains
+only source/quantity/disposition, not financial decisions. Pending returns use a separate stock
+overlay shared with offline sales; rejection removes the overlay and retains a conflict, never
+deletes financial history. Unknown-outcome/backing-off operations block stock pulls until resolved
+so a committed movement cannot be counted twice beneath its pending overlay. Restart recovers
+sending entries with the original client ID. Confirmed returns can be voided online only; pending
+returns cannot be cancelled while their server outcome is unknown. The continuity export includes
+both new local stores (version 2).
+
+Also corrected the unmerged 0036 allocation guard: cash refunded against an invoice does not consume
+the retained goods' future payment capacity; posted purchase returns reduce payable document value.
+New pgTAP coverage exercises a payment made after the offline snapshot, replay on another device,
+one deterministic refund, stale quantity rejection, guarded replication and settlement after refund.
+The browser money path now covers offline queue/reload, reversible stock overlay, deliberately lost
+server acknowledgement, exactly-once reconnect/net cash totals and stale-replica rejection.
+An isolated real-browser Dexie transaction test additionally covers mixed sale/return projections,
+payload mismatch, duplicate acknowledgement, interrupted-send recovery, purchase dispositions,
+forbidden roles and rollback. The server acknowledgement includes POSTED/VOID status: a replay
+after a different device voids the return cannot authorize cash or resurrect a voided document.
+Reconnect immediately retries durable work; an already-offline cycle does not attempt sends.
+Database payment-void guards prohibit independently voiding a live refund and prohibit receipt
+voids that would leave active cash refunds exceeding receipts. These serialize on the source
+invoice lock used by post_return. void_return first marks its parent VOID, then reverses payment,
+within the same atomic transaction; failure rolls everything back.
+
+Local lint, real admin typecheck and all 191 unit tests pass (including malformed-confirmation
+and wrong-shop source tests). Both configured mirror builds pass installability and the bundle
+ceiling at approximately 127 KiB gzip / 250 KiB (51%). SQL/browser evidence must be read from
+the new exact-head CI run before calling this change verified. No merge or phase acceptance is
+authorized by this build; PR #17 remains draft and main is untouched. Human shop and paper-key
+recovery gates remain open.
+
+At candidate c3c4eea, CI run 34951712692 passed all 29 pgTAP files / 431 assertions and both live
+concurrency scripts against its throwaway database, but e2e failed the existing legacy-import
+picker test (22 passed, 1 failed, 1 intentional skip). Read its uploaded trace: the initial
+pre-import refresh captured empty items/suppliers, then its delayed business-date request
+finished after the complete post-import refresh and overwrote the populated screen with empty
+arrays. This was a real stale-response race, not a select-key explanation. Inventory refresh now
+uses a generation token to ignore superseded responses. The importer browser test deliberately
+holds the initial date response until after import completes, making this regression deterministic.
+The sync adapter also whitelists replicated reference fields, supplies the local source key and
+rejects a sale confirmation whose cash/balance split does not equal its return value. Latest-head
+CI must pass after these corrections; the failed candidate is not represented as fully green.
+
+### Verification handoff — provisional returns
+
+Exact code head 88d828a87ed85d7824973291c5be576e0e0987d7 passed CI run
+[34952366402](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/34952366402), attempt 1:
+lint, real admin typecheck, all 191 unit tests, audit, all 29 pgTAP files / 431 assertions, both
+invite/sale concurrency scripts, 23 browser tests passed and 1 intentional heavy-performance skip.
+Both configured mirror artifacts passed installability and the 250 KiB bundle ceiling at 128 KiB
+gzip (51%). The browser suite includes the controlled late pre-import response regression and
+the provisional-return/restart/lost-acknowledgement/stale-rejection path; no unchanged CI rerun
+was used to turn a failure green.
+
+Verified GitHub PR #17 is open, draft and unmerged, head matching the tested code. main remains
+2566c21afa841574d4195b4198ace80ebfc2b109. Live DB upgrade, preview, deployment and DR jobs were
+SKIPPED on this branch, not passed. The handover-only commit after this code head also needs its
+normal required CI checks; use GitHub for the latest exact-head status.
+
+Ready for Claude's SQL/sync review, not merge or phase acceptance. Outstanding operational limits:
+only recent synced source documents can be returned offline; confirmed-return voids need online
+confirmation; pending unknown-outcome returns cannot be cancelled. Automated idempotency proves
+one refund ledger row, not physical cash handoff. Real counter/stock reconciliation and paper-key
+hosted recovery/RPO/RTO drills remain human gates. R2's first-attempt 501 behavior is unchanged.
+After review and explicit consolidation authorization, multi-line purchases is the next build item.
