@@ -216,7 +216,7 @@ create policy purchase_return_items_read on purchase_return_items for select usi
 create function phase65_sale_line_cap(p_line_id uuid) returns bigint
 language sql stable security definer set search_path=public as $$
  with target as (
-  select li.*,s.subtotal_paise,s.discount_paise
+  select li.*,s.subtotal_paise,s.discount_paise as header_discount_paise
   from sale_invoice_items li join sale_invoices s on s.tenant_id=li.tenant_id and s.id=li.sale_invoice_id
   where li.id=p_line_id
  ), totals as (
@@ -225,11 +225,11 @@ language sql stable security definer set search_path=public as $$
   from target t
  )
  select case when line_sum=0 then 0
-   when line_no=last_line then greatest(subtotal_paise-discount_paise,0)-coalesce((
-     select sum(floor(x.line_total_paise::numeric*greatest(totals.subtotal_paise-totals.discount_paise,0)/totals.line_sum)::bigint)
+   when line_no=last_line then greatest(subtotal_paise-header_discount_paise,0)-coalesce((
+     select sum(floor(x.line_total_paise::numeric*greatest(totals.subtotal_paise-totals.header_discount_paise,0)/totals.line_sum)::bigint)
      from sale_invoice_items x where x.sale_invoice_id=totals.sale_invoice_id and x.line_no<>totals.last_line
    ),0)
-   else floor(line_total_paise::numeric*greatest(subtotal_paise-discount_paise,0)/line_sum)::bigint end
+   else floor(line_total_paise::numeric*greatest(subtotal_paise-header_discount_paise,0)/line_sum)::bigint end
  from totals
 $$;
 revoke all on function phase65_sale_line_cap(uuid) from public,anon,authenticated;
