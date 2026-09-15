@@ -26,8 +26,11 @@ export function ReturnsScreen(){
   useEffect(()=>{void (async()=>{try{const shop=await getDefaultShopId();setShopId(shop);setBusinessDate(await getShopBusinessDate(shop));await Promise.all([refreshSources('SALE',shop),refreshRecent(shop)]);}catch(e){setError(String(e));}})();},[]);
 
   async function changeType(next:ReturnType){setType(next);setError('');setMessage('');if(shopId)await refreshSources(next,shopId);}
-  async function changeSource(next:string){setSourceId(next);setError('');setMessage('');if(!next){setLines([]);setDraft([]);return;}try{
+  async function loadLines(next:string){
     const rows=await listReturnableLines(type,next);setLines(rows);setDraft(rows.map(row=>({sourceLineId:row.id,qty:'',disposition:type==='SALE'?'RETURN_TO_SELLABLE':'SUPPLIER_RETURN'})));
+  }
+  async function changeSource(next:string){setSourceId(next);setError('');setMessage('');if(!next){setLines([]);setDraft([]);return;}try{
+    await loadLines(next);
   }catch(e){setError(String(e));}}
   function patchLine(id:string,change:Partial<DraftLine>){setDraft(rows=>rows.map(row=>row.sourceLineId===id?{...row,...change}:row));}
 
@@ -37,7 +40,7 @@ export function ReturnsScreen(){
     for(const row of selected){const source=lines.find(line=>line.id===row.sourceLineId);if(!source||row.qty>source.remaining_qty)throw new Error(`Return quantity exceeds the remaining quantity for ${source?.item_name_snapshot??'a line'}.`);}
     await postReturn({type,sourceId,businessDate,clientId,lines:selected,notes:notes.trim()||undefined});
     setClientId(crypto.randomUUID());setNotes('');setMessage(type==='SALE'?'Sale return posted. Cash refund and customer balance were calculated by the server.':'Purchase return posted. Supplier ledger and stock were updated by the server.');
-    await Promise.all([changeSource(sourceId),refreshRecent(shopId)]);
+    await Promise.all([loadLines(sourceId),refreshRecent(shopId)]);
   }catch(e){setError(String(e));}finally{setBusy(false);}}
 
   async function undo(row:PostedReturn){if(!confirm(`Void return ${row.doc_no}? Its money and stock effects will be reversed without deleting history.`))return;setBusy(true);setError('');try{
