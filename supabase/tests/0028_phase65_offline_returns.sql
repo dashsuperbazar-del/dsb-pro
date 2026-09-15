@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(22);
+select plan(25);
 insert into auth.users(id) values('b6510000-0000-0000-0000-000000000001'),('b6510000-0000-0000-0000-000000000002') on conflict do nothing;
 select ok(not has_function_privilege('anon','phase65_sync_return_sources(text,uuid,integer)','execute'),'anonymous cannot replicate return documents');
 select ok(not has_function_privilege('anon','phase65_sync_post_return(text,integer,text,uuid,date,text,jsonb,text)','execute'),'anonymous cannot confirm refunds');
@@ -23,7 +23,7 @@ select set_config('or.line',(select id::text from sale_invoice_items where sale_
 select set_config('or.snapshot',phase65_sync_return_sources('or-till',current_setting('or.shop')::uuid,1)::text,false);
 select is(jsonb_array_length(current_setting('or.snapshot')::jsonb->'sources'),2,'owner receives sale and purchase snapshots');
 select ok(current_setting('or.snapshot')::jsonb->'sources'->0 ? 'lines','source snapshots carry immutable line identities');
-select ok(not (current_setting('or.snapshot')::jsonb ?| array['payments','payment_allocations']),'replica carries no payment allocation ledger');
+select ok(not exists(select 1 from jsonb_array_elements(current_setting('or.snapshot')::jsonb->'sources') s where s ?| array['payments','payment_allocations','cash_refund_paise','balance_credit_paise']),'source replica carries no payment/refund decision ledger');
 select is((current_setting('or.snapshot')::jsonb->'sources'->0->'lines'->0->>'returned_qty')::numeric,0::numeric,'offline snapshot initially shows no returned quantity');
 -- While one till is disconnected, a different till records another receipt.
 select record_customer_payment(current_setting('or.shop')::uuid,current_setting('or.customer')::uuid,'2026-09-15',50,'upi','other till',jsonb_build_array(jsonb_build_object('sale_invoice_id',current_setting('or.sale'),'amount_paise',50)),'or-later-payment');
@@ -42,6 +42,12 @@ select is((select count(*) from customer_invoice_outstanding where sale_invoice_
 select lives_ok($$select void_return('SALE',(current_setting('or.confirmation')::jsonb->>'returnId')::uuid,'or-void')$$,'confirmed return can be voided online');
 select is((select status from payments where client_id='or-return:refund'),'VOID','void reverses exactly-once refund payment');
 select ok((check_invariants()->>'ok')::boolean,'offline confirmation respects all financial and stock invariants');
+reset role;
+update devices set revoked_at=now() where tenant_id=current_setting('or.tenant')::uuid and device_id='or-till';
+set role authenticated;
+select throws_ok($$select phase65_sync_return_sources('or-till',current_setting('or.shop')::uuid,1)$$,null,'device revoked','revoked till cannot refresh cached return documents');
+select throws_ok($$select phase65_sync_post_return('or-till',1,'SALE',current_setting('or.sale')::uuid,'2026-09-15','or-revoked-return',jsonb_build_array(jsonb_build_object('sale_invoice_item_id',current_setting('or.line'),'qty',1,'disposition','RETURN_TO_SELLABLE')),null)$$,null,'device revoked','revoked till cannot confirm a pending refund');
+select is((select count(*) from sale_returns where client_id='or-revoked-return'),0::bigint,'revoked confirmation performs no financial writes');
 reset role;
 insert into tenant_users(tenant_id,user_id,role,shop_ids,status,client_id) values(current_setting('or.tenant')::uuid,'b6510000-0000-0000-0000-000000000002','cashier',array[current_setting('or.shop')::uuid],'active','or-cashier');
 set role authenticated;

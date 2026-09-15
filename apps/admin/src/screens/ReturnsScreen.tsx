@@ -24,7 +24,7 @@ export function ReturnsScreen(){
   const [clientId,setClientId]=useState(()=>crypto.randomUUID());
   const [localReturns,setLocalReturns]=useState<OfflineReturnRecord[]>([]);
 
-  async function refreshRecent(shop:string){setLocalReturns(await listOfflineReturns());if(navigator.onLine)try{setRecent(await listRecentReturns(shop));}catch{/* Local queue remains available during a degraded connection. */}}
+  async function refreshRecent(shop:string){setLocalReturns(await listOfflineReturns());if(navigator.onLine)try{const rows=await listRecentReturns(shop);setRecent(rows);await Promise.all(rows.filter(row=>row.status==='VOID').map(row=>recordLocalReturnVoid(row.id)));}catch{/* Local queue remains available during a degraded connection. */}}
   async function refreshSources(nextType:ReturnType){setSources(await getOfflineReturnSources(nextType));setSourceId('');setLines([]);setDraft([]);}
   useEffect(()=>{void (async()=>{try{
     await waitForOfflineRuntime();const shop=getOfflineRuntimeIdentity()!.shopId;setShopId(shop);
@@ -48,6 +48,7 @@ export function ReturnsScreen(){
     if(!selected.length)throw new Error('Enter a return quantity for at least one line.');
     for(const row of selected){const source=lines.find(line=>line.id===row.sourceLineId);if(!source||row.qty>source.remaining_qty)throw new Error(`Return quantity exceeds the remaining quantity for ${source?.item_name_snapshot??'a line'}.`);}
     const result=await postReturnResilient({type,sourceId,shopId,businessDate,clientId,lines:selected,notes:notes.trim()||undefined});
+    if(result.status==='REJECTED'){setClientId(crypto.randomUUID());await Promise.all([loadLines(sourceId),refreshRecent(shopId)]);throw new Error(`${result.rejectionReason}. Provisional stock effect reversed; review the refreshed quantities.`);}
     setClientId(crypto.randomUUID());setNotes('');setMessage(result.status==='QUEUED'?
       `Return ${result.provisionalDocNo} recorded provisionally. Refund pending confirmation — do not hand over cash. Stock disposition is provisional; server rejection reverses it.`:
       type==='SALE'?'Sale return posted. Cash refund and customer balance were calculated by the server.':'Purchase return posted. Supplier ledger and stock were updated by the server.');
@@ -65,9 +66,9 @@ export function ReturnsScreen(){
     {error&&<p role="alert" class="alert">{error}</p>}{message&&<p role="status" class="success">{message}</p>}
     <section class="card"><h2>Post a return</h2><form onSubmit={submit}>
       <div class="grid-form">
-        <label>Return type <select value={type} onChange={e=>void changeType((e.currentTarget as HTMLSelectElement).value as ReturnType)}><option value="SALE">Customer sale return</option><option value="PURCHASE">Supplier purchase return</option></select></label>
-        <label>Business date <input type="date" required value={businessDate} onInput={e=>setBusinessDate((e.currentTarget as HTMLInputElement).value)}/></label>
-        <label>Source document <select required value={sourceId} onChange={e=>void changeSource((e.currentTarget as HTMLSelectElement).value)}><option value="">Choose…</option>{sources.map(source=><option key={source.id} value={source.id}>{source.doc_no} · {source.business_date} · {money(source.total_paise)}{source.customer_name?` · ${source.customer_name}`:source.party_name?` · ${source.party_name}`:''}</option>)}</select></label>
+        <label>Return type <select disabled={busy} value={type} onChange={e=>void changeType((e.currentTarget as HTMLSelectElement).value as ReturnType)}><option value="SALE">Customer sale return</option><option value="PURCHASE">Supplier purchase return</option></select></label>
+        <label>Business date <input type="date" required disabled={busy} value={businessDate} onInput={e=>setBusinessDate((e.currentTarget as HTMLInputElement).value)}/></label>
+        <label>Source document <select required disabled={busy} value={sourceId} onChange={e=>void changeSource((e.currentTarget as HTMLSelectElement).value)}><option value="">Choose…</option>{sources.map(source=><option key={source.id} value={source.id}>{source.doc_no} · {source.business_date} · {money(source.total_paise)}{source.customer_name?` · ${source.customer_name}`:source.party_name?` · ${source.party_name}`:''}</option>)}</select></label>
       </div>
       {lines.length>0&&<div class="table-wrap"><table><thead><tr><th>Item</th><th>Sold/bought</th><th>Already returned</th><th>Return qty</th><th>Disposition</th></tr></thead><tbody>{lines.map(line=>{const row=draft.find(x=>x.sourceLineId===line.id);return <tr key={line.id}><td>{line.item_name_snapshot}</td><td>{line.qty} {line.unit_name_snapshot}</td><td>{line.returned_qty}</td><td><input aria-label={`Return quantity for ${line.item_name_snapshot}`} type="number" min="0" max={line.remaining_qty} step="0.000001" disabled={line.remaining_qty<=0||busy} value={row?.qty??''} onInput={e=>patchLine(line.id,{qty:(e.currentTarget as HTMLInputElement).value})}/></td><td><select aria-label={`Disposition for ${line.item_name_snapshot}`} disabled={line.remaining_qty<=0||busy} value={row?.disposition} onChange={e=>patchLine(line.id,{disposition:(e.currentTarget as HTMLSelectElement).value as ReturnDisposition})}>{dispositions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></td></tr>})}</tbody></table></div>}
       <label>Notes <textarea value={notes} onInput={e=>setNotes((e.currentTarget as HTMLTextAreaElement).value)}/></label>

@@ -816,7 +816,9 @@ one deterministic refund, stale quantity rejection, guarded replication and sett
 The browser money path now covers offline queue/reload, reversible stock overlay, deliberately lost
 server acknowledgement, exactly-once reconnect/net cash totals and stale-replica rejection.
 
-Local lint, real admin typecheck and all 181 unit tests pass. SQL/browser evidence must be read from
+Local lint, real admin typecheck and all 190 unit tests pass (including malformed-confirmation
+and wrong-shop source tests). Both configured mirror builds pass installability and the bundle
+ceiling at approximately 127 KiB gzip / 250 KiB (51%). SQL/browser evidence must be read from
 the new exact-head CI run before calling this change verified. No merge or phase acceptance is
 authorized by this build; PR #17 remains draft and main is untouched. Human shop and paper-key
 recovery gates remain open.

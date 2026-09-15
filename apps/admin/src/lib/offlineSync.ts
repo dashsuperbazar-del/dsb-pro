@@ -237,7 +237,7 @@ export async function getOfflineReturnLines(type:OfflineReturnType,sourceId:stri
 export async function listOfflineReturns():Promise<OfflineReturnRecord[]>{return (await requireRuntime().db.offlineReturns.orderBy('createdAt').reverse().toArray()).slice(0,100);}
 export async function recordLocalReturnVoid(returnId:string):Promise<void>{
   const db=requireRuntime().db;
-  await db.offlineReturns.filter(row=>row.officialReturnId===returnId).modify({status:'VOID'});emit();
+  const changed=await db.offlineReturns.filter(row=>row.officialReturnId===returnId&&row.status!=='VOID').modify({status:'VOID'});if(changed)emit();
 }
 export async function postReturnResilient(input:OfflineReturnPayload):Promise<OfflineReturnRecord>{
   const rt=requireRuntime();
@@ -246,7 +246,6 @@ export async function postReturnResilient(input:OfflineReturnPayload):Promise<Of
   emit();
   if(navigator.onLine)await runSyncNow();
   const final=(await rt.db.offlineReturns.get(record.clientId))??record;
-  if(final.status==='REJECTED')throw new Error(final.rejectionReason??'Return rejected by server; provisional stock effect reversed.');
   return final;
 }
 export function getOfflineRuntimeIdentity():SyncIdentity|null{return runtime?.identity??null;}
