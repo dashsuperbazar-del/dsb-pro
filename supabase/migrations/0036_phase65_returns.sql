@@ -517,6 +517,8 @@ begin
  if new.doc_type='SALE' then
    select s.customer_id,s.total_paise-coalesce((select sum(sr.total_paise) from sale_returns sr
      where sr.tenant_id=s.tenant_id and sr.sale_invoice_id=s.id and sr.status='POSTED'),0)
+     +coalesce((select sum(p.amount_paise) from payments p join sale_returns sr on sr.id=p.source_sale_return_id and sr.tenant_id=p.tenant_id
+       where sr.tenant_id=s.tenant_id and sr.sale_invoice_id=s.id and sr.status='POSTED' and p.status='POSTED' and p.direction='out'),0)
      into v_customer,v_doc_total from sale_invoices s
      where s.id=new.sale_invoice_id and s.tenant_id=new.tenant_id and s.status='FINALIZED' for update;
    if not found then raise exception 'sale unavailable'; end if;
@@ -524,8 +526,9 @@ begin
    select coalesce(sum(amount_paise),0) into v_allocated from payment_allocations
      where tenant_id=new.tenant_id and sale_invoice_id=new.sale_invoice_id and status='POSTED';
  else
-   select party_id,total_paise into v_party,v_doc_total from purchase_bills
-     where id=new.purchase_bill_id and tenant_id=new.tenant_id and status='POSTED' for update;
+   select b.party_id,b.total_paise-coalesce((select sum(r.total_paise) from purchase_returns r
+     where r.tenant_id=b.tenant_id and r.purchase_bill_id=b.id and r.status='POSTED'),0) into v_party,v_doc_total from purchase_bills b
+     where b.id=new.purchase_bill_id and b.tenant_id=new.tenant_id and b.status='POSTED' for update;
    if not found then raise exception 'purchase unavailable'; end if;
    if v_payment.kind<>'party' or v_party is distinct from v_payment.party_id then raise exception 'payment and purchase party mismatch'; end if;
    select coalesce(sum(amount_paise),0) into v_allocated from payment_allocations

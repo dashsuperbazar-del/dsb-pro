@@ -1,7 +1,8 @@
 import {provisionalDocNo} from './outbox';
+import {rebuildReservations} from './projections';
 import {getMeta,setMeta,stockKey,type DsbSyncDb} from './db';
 import type {
-  LocalReservation,LocalSyncConflict,OfflineRole,OfflineSaleLineSnapshot,OfflineSalePayload,
+  LocalSyncConflict,OfflineRole,OfflineSaleLineSnapshot,OfflineSalePayload,
   OfflineSaleRecord,OutboxEntry,SyncedPrice,SyncedSaleResult,SyncPolicy,
 } from './types';
 
@@ -40,19 +41,6 @@ async function nextSequence(db:DsbSyncDb,key:string):Promise<number>{
   await setMeta(db,key,next);
   return next;
 }
-async function rebuildReservations(db:DsbSyncDb):Promise<void>{
-  const queued=await db.offlineSales.where('status').equals('QUEUED').toArray();
-  const byKey=new Map<string,LocalReservation>();
-  for(const sale of queued){
-    for(const line of sale.lines){
-      const key=stockKey(sale.shopId,line.itemId);
-      const prev=byKey.get(key);
-      byKey.set(key,{key,shop_id:sale.shopId,item_id:line.itemId,qty:(prev?.qty??0)+line.baseQty});
-    }
-  }
-  await db.reservations.clear();
-  if(byKey.size)await db.reservations.bulkPut([...byKey.values()]);
-}
 
 export async function queueOfflineSale(
   db:DsbSyncDb,
@@ -68,7 +56,7 @@ export async function queueOfflineSale(
   nonNegativeMoney(input.extraChargesPaise,'extra charges');
   for(const p of input.payments)nonNegativeMoney(p.amountPaise,'payment');
 
-  return db.transaction('rw',[db.items,db.prices,db.customers,db.stock,db.outbox,db.meta,db.reservations,db.offlineSales],async()=>{
+  return db.transaction('rw',[db.items,db.prices,db.customers,db.stock,db.outbox,db.meta,db.reservations,db.offlineSales,db.offlineReturns],async()=>{
     if(await db.outbox.where('clientId').equals(input.clientId).count()){
       const existing=await db.offlineSales.get(input.clientId);
       if(existing)return existing;
@@ -139,7 +127,7 @@ export async function queueOfflineSale(
 }
 
 export async function completeOfflineSale(db:DsbSyncDb,clientId:string,result:SyncedSaleResult):Promise<void>{
-  await db.transaction('rw',[db.offlineSales,db.outbox,db.stock,db.reservations],async()=>{
+  await db.transaction('rw',[db.offlineSales,db.offlineReturns,db.outbox,db.stock,db.reservations],async()=>{
     const sale=await db.offlineSales.get(clientId);
     if(!sale)throw new Error('Offline sale record is missing.');
     for(const raw of result.stock)await db.stock.put({...raw,key:stockKey(raw.shop_id,raw.item_id)});
@@ -150,7 +138,7 @@ export async function completeOfflineSale(db:DsbSyncDb,clientId:string,result:Sy
 }
 
 export async function rejectOfflineSale(db:DsbSyncDb,clientId:string,reason:string,serverRef:unknown=null):Promise<void>{
-  await db.transaction('rw',[db.offlineSales,db.outbox,db.conflicts,db.reservations],async()=>{
+  await db.transaction('rw',[db.offlineSales,db.offlineReturns,db.outbox,db.conflicts,db.reservations],async()=>{
     const sale=await db.offlineSales.get(clientId);
     if(sale)await db.offlineSales.put({...sale,status:'REJECTED',rejectionReason:reason});
     const outbox=await db.outbox.where('clientId').equals(clientId).first();

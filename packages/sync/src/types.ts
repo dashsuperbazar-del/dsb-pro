@@ -130,3 +130,11 @@ export type SyncHealth=Readonly<{
 export type SyncedSaleResult=Readonly<{
   saleId:string; docNo:string; stock:SyncedStock[];
 }>;
+
+export type OfflineReturnType='SALE'|'PURCHASE';
+export type OfflineReturnDisposition='RETURN_TO_SELLABLE'|'DAMAGED'|'EXPIRED'|'SUPPLIER_RETURN';
+export type CachedReturnLine={id:string;item_id:string;item_name_snapshot:string;unit_name_snapshot:string;qty:number;base_qty:number;returned_qty:number};
+export type CachedReturnSource={key:string;return_type:OfflineReturnType;id:string;shop_id:string;doc_no:string;business_date:string;total_paise:number;party_name:string|null;customer_name:string|null;posted_return_client_ids:string[];lines:CachedReturnLine[]};
+export type OfflineReturnPayload={type:OfflineReturnType;sourceId:string;shopId:string;businessDate:string;clientId:string;lines:{sourceLineId:string;qty:number;disposition:OfflineReturnDisposition}[];notes?:string};
+export type OfflineReturnRecord={clientId:string;provisionalDocNo:string;payload:OfflineReturnPayload;fingerprint:string;shopId:string;status:'QUEUED'|'SYNCED'|'REJECTED'|'VOID';createdAt:number;officialReturnId:string|null;officialDocNo:string|null;cashRefundPaise:number|null;balanceCreditPaise:number|null;totalPaise:number|null;rejectionReason:string|null;lines:{sourceLineId:string;itemId:string;qty:number;stockDelta:number}[]};
+export type SyncedReturnResult={returnId:string;docNo:string;totalPaise:number;cashRefundPaise:number;balanceCreditPaise:number;stock:SyncedStock[]};

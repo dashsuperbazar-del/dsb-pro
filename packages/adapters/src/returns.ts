@@ -92,3 +92,29 @@ export async function voidReturn(type:ReturnType,returnId:string,clientId:string
   const {data,error}=await getSupabaseClient().rpc('void_return',{p_return_type:type,p_return_id:returnId,p_client_id:clientId});
   if(error)fail(error); return data as string;
 }
+
+type CachedReturnSource={key:string;return_type:ReturnType;id:string;shop_id:string;doc_no:string;business_date:string;total_paise:number;party_name:string|null;customer_name:string|null;posted_return_client_ids:string[];lines:Omit<ReturnableLine,'remaining_qty'>[]};
+type OfflineReturnPayload={type:ReturnType;sourceId:string;shopId:string;businessDate:string;clientId:string;lines:ReturnLineInput[];notes?:string};
+type ReturnStockRow={id:string;key:string;updated_at:number;deleted_at:number|null;tenant_id:string;shop_id:string;item_id:string;on_hand:number;reserved:number;available:number;qty_base:number};
+type SyncedReturnResult={returnId:string;docNo:string;totalPaise:number;cashRefundPaise:number;balanceCreditPaise:number;stock:ReturnStockRow[]};
+export async function pullReturnSources(input:{deviceId:string;shopId:string}):Promise<CachedReturnSource[]>{
+  const {data,error}=await getSupabaseClient().rpc('phase65_sync_return_sources',{p_device_id:input.deviceId,p_shop_id:input.shopId,p_schema_version:1});
+  if(error)throw new Error(error.message);
+  const result=data as {sources:CachedReturnSource[]};
+  if(!result||!Array.isArray(result.sources))throw new Error('Invalid return source sync response.');
+  if(result.sources.some(source=>source.shop_id!==input.shopId||!['SALE','PURCHASE'].includes(source.return_type)||typeof source.id!=='string'||!Array.isArray(source.posted_return_client_ids)||!Array.isArray(source.lines)||source.lines.some(line=>!line.id||!line.item_id||![line.qty,line.base_qty,line.returned_qty].every(Number.isFinite)||line.qty<=0||line.base_qty<=0||line.returned_qty<0)))throw new Error('Invalid return source rows; keeping previous cache.');
+  return result.sources;
+}
+export async function pushSyncedReturn(input:OfflineReturnPayload&{deviceId:string}):Promise<SyncedReturnResult>{
+  const {data,error}=await getSupabaseClient().rpc('phase65_sync_post_return',{
+    p_device_id:input.deviceId,p_schema_version:1,p_return_type:input.type,p_source_id:input.sourceId,
+    p_business_date:input.businessDate,p_client_id:input.clientId,p_notes:input.notes??null,
+    p_lines:input.lines.map(line=>({[input.type==='SALE'?'sale_invoice_item_id':'purchase_bill_item_id']:line.sourceLineId,qty:line.qty,disposition:line.disposition})),
+  });
+  if(error)throw new Error(error.message);
+  const result=data as SyncedReturnResult;
+  if(!result||!result.returnId||!result.docNo||!Array.isArray(result.stock)||
+    ![result.totalPaise,result.cashRefundPaise,result.balanceCreditPaise].every(n=>Number.isSafeInteger(n)&&n>=0)||
+    result.stock.some(row=>row.shop_id!==input.shopId||!row.item_id||![row.updated_at,row.available,row.on_hand,row.reserved,row.qty_base].every(Number.isFinite)))throw new Error('Malformed return confirmation; retrying the same intent safely.');
+  return result;
+}

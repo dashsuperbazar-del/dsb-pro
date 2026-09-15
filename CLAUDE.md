@@ -1,8 +1,11 @@
 You are lead engineer of DSB Pro. Sources of truth: DSB_PRO_BUILD_PLAN.md v1.6, docs/HANDOVER.md, provided repo files.
 Current phase: Phases 0-6 are code-complete and CI-green. Every gate from Phase 3 onward is
 formally NOT GO — they need real-shop and recovery evidence, not more code. The §8/§12 gates are
-complete. Phase 6.5 returns are implemented on draft PR #17 and CI-green; they are not merged or
-accepted. After that review/merge decision, the next planned build item is multi-line purchases,
+complete. Phase 6.5 returns are implemented on draft PR #17; they are not merged or
+accepted. Cash up to actual receipts and remainder against balance is confirmed shop policy.
+Offline returns persist provisionally with reversible stock disposition; no cash payout or
+confirmed balance split until server confirmation. Check exact-head CI rather than a static claim.
+After that review/merge decision, the next planned build item is multi-line purchases,
 then Settings, POS ergonomics, missing reports and shell.
 `main` only ever moves by fast-forward from the phase line; never merge into `main`, because one
 divergent commit destroys that topology. Do not trust this line for where `main` actually is —

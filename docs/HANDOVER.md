@@ -788,3 +788,35 @@ behavior (receipt presentation, physical stock dispositions and cash handoff) re
 Phase 4 shop-day evidence. Offline returns are not enabled: the UI
 requires the server, so exactly-once replay is proven at the RPC/database layer but not yet through
 the Phase 5 outbox.
+
+## Phase 6.5 provisional offline returns — 2026-09-15
+
+This supersedes the previous entry's online-only limitation. The user confirmed the refund policy:
+cash up to receipts actually received against the invoice; remainder against balance. Offline UX
+is accept-now/refund-pending: accept goods, note provisional credit, tell the customer cash is due
+only after reconnect and server confirmation. No offline cash amount or confirmed balance split
+is computed or displayed.
+
+Migration 0037 adds device/schema/tenant/shop/permission guarded source replication (latest 100
+posted source documents per type, no payments/allocations) and a sync wrapper around the same
+atomic post_return/refund/idempotency path. Dexie version 2 preserves all existing stores and adds
+return sources and durable return records. A persisted-first post_return outbox intent contains
+only source/quantity/disposition, not financial decisions. Pending returns use a separate stock
+overlay shared with offline sales; rejection removes the overlay and retains a conflict, never
+deletes financial history. Unknown-outcome/backing-off operations block stock pulls until resolved
+so a committed movement cannot be counted twice beneath its pending overlay. Restart recovers
+sending entries with the original client ID. Confirmed returns can be voided online only; pending
+returns cannot be cancelled while their server outcome is unknown. The continuity export includes
+both new local stores (version 2).
+
+Also corrected the unmerged 0036 allocation guard: cash refunded against an invoice does not consume
+the retained goods' future payment capacity; posted purchase returns reduce payable document value.
+New pgTAP coverage exercises a payment made after the offline snapshot, replay on another device,
+one deterministic refund, stale quantity rejection, guarded replication and settlement after refund.
+The browser money path now covers offline queue/reload, reversible stock overlay, deliberately lost
+server acknowledgement, exactly-once reconnect/net cash totals and stale-replica rejection.
+
+Local lint, real admin typecheck and all 181 unit tests pass. SQL/browser evidence must be read from
+the new exact-head CI run before calling this change verified. No merge or phase acceptance is
+authorized by this build; PR #17 remains draft and main is untouched. Human shop and paper-key
+recovery gates remain open.

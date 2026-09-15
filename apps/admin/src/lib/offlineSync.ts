@@ -1,13 +1,15 @@
 import {
   ackSync,classifyError,ensureFreshSession,errorMessage,getDefaultShopId,getOrCreateDeviceId,listServerSyncConflicts,pullSyncTable,pushSyncedSale,
   recordServerSyncConflict,resolveServerSyncConflict,setOfflineCashierFinalization,subscribeSyncWakeup,SYNC_PULL_LIMITS,
-  type Membership,type SaleLineInput,type SalePaymentInput,type SyncPullTable,
+  pullReturnSources,pushSyncedReturn,type Membership,type SaleLineInput,type SalePaymentInput,type SyncPullTable,
 } from '@dsb-pro/adapters';
 import {
   applySyncPull,completeOfflineSale,getCachedBusinessDate,getCachedCustomers,getCachedItems,getCachedPolicy,getCachedPrices,
   getSyncCursors,getSyncHealth,isDefinitiveFinancialRejectionMessage,markOutboxRetry,markOutboxSending,nextOutboxEntry,openSyncDb,queueOfflineSale,
   recoverInterruptedOutbox,rejectOfflineSale,retryDelayMs,resolveLocalConflict,
   type DsbSyncDb,type LocalSyncConflict,type OfflineSalePayload,type OfflineSaleRecord,type OutboxEntry,
+  cacheReturnSources,returnableCachedLines,queueOfflineReturn,completeOfflineReturn,rejectOfflineReturn,
+  type OfflineReturnPayload,type OfflineReturnRecord,type OfflineReturnType,
   type SyncedBarcode,type SyncedCustomer,type SyncedItem,type SyncedPrice,type SyncIdentity,type SyncPullPayload,type SyncedSaleResult,
 } from '@dsb-pro/sync';
 
@@ -81,9 +83,22 @@ async function processOutbox(rt:Runtime){
   for(let guard=0;guard<100;guard++){
     const rows=await rt.db.outbox.orderBy('sequence').toArray();
     const next=nextOutboxEntry(rows,Date.now());
-    if(!next)return;
+    // An unknown-outcome operation may already have committed at the server.
+    // Do not pull that movement beneath its still-pending local overlay.
+    if(!next)return rows.length===0;
     const sending=markOutboxSending(next);
     await rt.db.outbox.put(sending);
+    if(sending.kind==='financial-rpc'&&sending.target==='post_return'){
+      try{
+        const result=await pushSyncedReturn({...sending.payload as OfflineReturnPayload,deviceId:rt.identity.deviceId});
+        await completeOfflineReturn(rt.db,sending.clientId,result);
+      }catch(error){
+        const message=error instanceof Error?error.message:String(error);
+        if(isDefinitiveFinancialRejectionMessage(message))await rejectOfflineReturn(rt.db,sending.clientId,message);
+        else {await rt.db.outbox.put(markOutboxRetry(sending,message,Date.now()+retryDelayMs(sending.attempts+1)));throw error;}
+      }
+      continue;
+    }
     if(sending.kind!=='financial-rpc'||sending.target!=='post_sale'){
       const message=`Unsupported outbox target ${sending.target}`;
       await rejectOfflineSale(rt.db,sending.clientId,message);
@@ -102,7 +117,7 @@ async function processOutbox(rt:Runtime){
       if(!isDefinitiveFinancialRejectionMessage(error instanceof Error?error.message:String(error))){
         const retry=markOutboxRetry(sending,message,Date.now()+retryDelayMs(sending.attempts+1));
         await rt.db.outbox.put(retry);
-        return;
+        throw error;
       }
       await rejectOfflineSale(rt.db,sending.clientId,message);
       void recordServerSyncConflict({
@@ -121,7 +136,7 @@ async function processOutbox(rt:Runtime){
         Date.now()+retryDelayMs(sending.attempts+1),
       );
       await rt.db.outbox.put(retry);
-      return;
+      throw error;
     }
   }
   throw new Error('Sync outbox safety limit reached.');
@@ -145,6 +160,7 @@ async function pullAllPages(rt:Runtime){
   await pullTablePages(rt,'items');
   const remaining=(Object.keys(SYNC_PULL_LIMITS) as SyncPullTable[]).filter(table=>table!=='items');
   await Promise.all(remaining.map(table=>pullTablePages(rt,table)));
+  await refreshOfflineReturnSources();
   return getSyncCursors(rt.db);
 }
 
@@ -156,7 +172,7 @@ export async function runSyncNow():Promise<void>{
     try{
       const session=await ensureFreshSession();
       if(!session)throw new Error('Authentication session is unavailable. Sign in again before syncing queued work.');
-      await processOutbox(rt);
+      if(!await processOutbox(rt))return;
       const nextCursors=await pullAllPages(rt);
       await ackSync({deviceId:rt.identity.deviceId,cursors:nextCursors});
       state={...state,lastCycleAt:Date.now(),lastError:null};
@@ -209,6 +225,30 @@ export async function finalizeSaleResilient(input:{
 }
 
 export function getOfflineRuntimeState():PublicState{return {...state};}
+export async function refreshOfflineReturnSources():Promise<void>{
+  const rt=requireRuntime();
+  await cacheReturnSources(rt.db,rt.identity.shopId,await pullReturnSources({deviceId:rt.identity.deviceId,shopId:rt.identity.shopId}));
+}
+export async function getOfflineReturnSources(type:OfflineReturnType){
+  const rt=requireRuntime();
+  return (await rt.db.returnSources.where('shop_id').equals(rt.identity.shopId).toArray()).filter(row=>row.return_type===type);
+}
+export async function getOfflineReturnLines(type:OfflineReturnType,sourceId:string){return returnableCachedLines(requireRuntime().db,type,sourceId);}
+export async function listOfflineReturns():Promise<OfflineReturnRecord[]>{return (await requireRuntime().db.offlineReturns.orderBy('createdAt').reverse().toArray()).slice(0,100);}
+export async function recordLocalReturnVoid(returnId:string):Promise<void>{
+  const db=requireRuntime().db;
+  await db.offlineReturns.filter(row=>row.officialReturnId===returnId).modify({status:'VOID'});emit();
+}
+export async function postReturnResilient(input:OfflineReturnPayload):Promise<OfflineReturnRecord>{
+  const rt=requireRuntime();
+  if(input.shopId!==rt.identity.shopId)throw new Error('Return shop does not match this till.');
+  const record=await queueOfflineReturn(rt.db,input,{role:rt.identity.role,deviceId:rt.identity.deviceId});
+  emit();
+  if(navigator.onLine)await runSyncNow();
+  const final=(await rt.db.offlineReturns.get(record.clientId))??record;
+  if(final.status==='REJECTED')throw new Error(final.rejectionReason??'Return rejected by server; provisional stock effect reversed.');
+  return final;
+}
 export function getOfflineRuntimeIdentity():SyncIdentity|null{return runtime?.identity??null;}
 export async function getOfflineItems():Promise<SyncedItem[]>{return getCachedItems(requireRuntime().db);}
 export async function getOfflineCustomers():Promise<SyncedCustomer[]>{return getCachedCustomers(requireRuntime().db);}
@@ -223,13 +263,14 @@ export async function listOfflineSales():Promise<OfflineSaleRecord[]>{
 }
 export async function exportOfflineBillingSnapshot(){
   const rt=requireRuntime();
-  const [items,barcodes,prices,customers,stock,outbox,metadata,conflicts,reservations,offlineSales]=await Promise.all([
+  const [items,barcodes,prices,customers,stock,outbox,metadata,conflicts,reservations,offlineSales,returnSources,offlineReturns]=await Promise.all([
     rt.db.items.toArray(),rt.db.barcodes.toArray(),rt.db.prices.toArray(),rt.db.customers.toArray(),rt.db.stock.toArray(),
     rt.db.outbox.toArray(),rt.db.meta.toArray(),rt.db.conflicts.toArray(),rt.db.reservations.toArray(),rt.db.offlineSales.toArray(),
+    rt.db.returnSources.toArray(),rt.db.offlineReturns.toArray(),
   ]);
   return {
-    schemaVersion:1,exportKind:'offline-billing-continuity',exportedAt:new Date().toISOString(),identity:rt.identity,
-    items,barcodes,prices,customers,stock,outbox,metadata,conflicts,reservations,offlineSales,
+    schemaVersion:2,exportKind:'offline-billing-continuity',exportedAt:new Date().toISOString(),identity:rt.identity,
+    items,barcodes,prices,customers,stock,outbox,metadata,conflicts,reservations,offlineSales,returnSources,offlineReturns,
   };
 }
 export async function getSyncDashboard(){
