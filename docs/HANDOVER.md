@@ -820,6 +820,10 @@ payload mismatch, duplicate acknowledgement, interrupted-send recovery, purchase
 forbidden roles and rollback. The server acknowledgement includes POSTED/VOID status: a replay
 after a different device voids the return cannot authorize cash or resurrect a voided document.
 Reconnect immediately retries durable work; an already-offline cycle does not attempt sends.
+Database payment-void guards prohibit independently voiding a live refund and prohibit receipt
+voids that would leave active cash refunds exceeding receipts. These serialize on the source
+invoice lock used by post_return. void_return first marks its parent VOID, then reverses payment,
+within the same atomic transaction; failure rolls everything back.
 
 Local lint, real admin typecheck and all 190 unit tests pass (including malformed-confirmation
 and wrong-shop source tests). Both configured mirror builds pass installability and the bundle

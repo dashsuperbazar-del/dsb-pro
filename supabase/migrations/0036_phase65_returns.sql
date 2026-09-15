@@ -438,9 +438,9 @@ begin
      insert into stock_movements(tenant_id,shop_id,item_id,source_type,source_id,qty_base,client_id)
        values(v_tenant,v_sr.shop_id,v_move.item_id,'SALE_RETURN_VOID',v_sr.id,-v_move.qty,p_client_id||':stock:'||v_move.item_id::text);
    end loop;
+   update sale_returns set status='VOID',voided_at=clock_timestamp() where id=v_sr.id;
    update payments set status='VOID',voided_at=clock_timestamp()
      where tenant_id=v_tenant and source_sale_return_id=v_sr.id and status='POSTED';
-   update sale_returns set status='VOID',voided_at=clock_timestamp() where id=v_sr.id;
    return v_sr.id;
  elsif v_type='PURCHASE' then
    if not has_perm('POST_PURCHASES') then raise exception 'not permitted'; end if;

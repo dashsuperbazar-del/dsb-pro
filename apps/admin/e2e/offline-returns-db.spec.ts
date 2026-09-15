@@ -6,6 +6,7 @@ declare global {interface Window {DsbSync:typeof import('@dsb-pro/sync')}}
 test('return IndexedDB transactions preserve replay, overlays and rejection rollback',async({page})=>{
   const built=await build({configFile:false,logLevel:'silent',build:{write:false,minify:false,lib:{entry:fileURLToPath(new URL('../../../packages/sync/src/index.ts',import.meta.url)),name:'DsbSync',formats:['iife']}}});
   const output=Array.isArray(built)?built[0]:built;
+  if(!('output' in output))throw new Error('Sync test bundle unexpectedly started a watcher.');
   const chunk=output.output.find(part=>part.type==='chunk');
   if(!chunk||chunk.type!=='chunk')throw new Error('Sync test bundle was not generated.');
   // No auth, server or financial secrets: real browser IndexedDB, isolated DB.

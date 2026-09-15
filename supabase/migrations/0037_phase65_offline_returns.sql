@@ -82,3 +82,36 @@ begin
 end $$;
 revoke all on function phase65_sync_return_sources(text,uuid,integer) from public,anon;
 grant execute on function phase65_sync_return_sources(text,uuid,integer) to authenticated;
+
+-- Payment voids must not detach a live refund or erase the receipt that backs
+-- money already paid out. Lock the same invoices as post_return(), including
+-- allocation rows already marked VOID by void_payment() in this transaction.
+create function phase65_refund_payment_void_guard() returns trigger
+language plpgsql security definer set search_path=public as $$
+declare v_sale uuid; v_received bigint; v_refunded bigint;
+begin
+ if old.status<>'POSTED' or new.status<>'VOID' then return new; end if;
+ if old.source_sale_return_id is not null then
+  if exists(select 1 from sale_returns r where r.tenant_id=old.tenant_id and r.id=old.source_sale_return_id and r.status='POSTED') then
+   raise exception 'void the return instead of its refund payment';
+  end if;
+ elsif old.direction='in' then
+  for v_sale in select s.id from sale_invoices s where s.tenant_id=old.tenant_id and
+   (s.id=old.source_sale_invoice_id or exists(select 1 from payment_allocations a
+    where a.tenant_id=old.tenant_id and a.payment_id=old.id and a.sale_invoice_id=s.id)) order by s.id for update loop
+   select coalesce(sum(a.amount_paise),0) into v_received from payment_allocations a join payments p
+    on p.tenant_id=a.tenant_id and p.id=a.payment_id
+    where a.tenant_id=old.tenant_id and a.sale_invoice_id=v_sale and a.status='POSTED' and p.status='POSTED' and p.direction='in' and p.id<>old.id;
+   v_received:=v_received+coalesce((select sum(p.amount_paise) from payments p
+    where p.tenant_id=old.tenant_id and p.source_sale_invoice_id=v_sale and p.kind='walkin' and p.status='POSTED' and p.direction='in' and p.id<>old.id),0);
+   select coalesce(sum(p.amount_paise),0) into v_refunded from payments p join sale_returns r
+    on r.tenant_id=p.tenant_id and r.id=p.source_sale_return_id
+    where r.tenant_id=old.tenant_id and r.sale_invoice_id=v_sale and r.status='POSTED' and p.status='POSTED' and p.direction='out';
+   if v_refunded>v_received then raise exception 'void posted returns before voiding refunded receipts'; end if;
+  end loop;
+ end if;
+ return new;
+end $$;
+revoke all on function phase65_refund_payment_void_guard() from public,anon,authenticated;
+create trigger phase65_refund_payment_void_guard before update on payments
+ for each row execute function phase65_refund_payment_void_guard();

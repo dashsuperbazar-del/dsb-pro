@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(26);
+select plan(29);
 insert into auth.users(id) values('b6510000-0000-0000-0000-000000000001'),('b6510000-0000-0000-0000-000000000002') on conflict do nothing;
 select ok(not has_function_privilege('anon','phase65_sync_return_sources(text,uuid,integer)','execute'),'anonymous cannot replicate return documents');
 select ok(not has_function_privilege('anon','phase65_sync_post_return(text,integer,text,uuid,date,text,jsonb,text)','execute'),'anonymous cannot confirm refunds');
@@ -39,6 +39,9 @@ select throws_ok($$select phase65_sync_post_return('or-till',1,'SALE',current_se
 select is((select count(*) from sale_returns where client_id='or-over-return'),0::bigint,'rejected provisional return leaves no financial document');
 select throws_ok($$select phase65_sync_return_sources('unknown-device',current_setting('or.shop')::uuid,1)$$,null,'device not registered','unregistered device cannot replicate documents');
 select throws_ok($$select phase65_sync_return_sources('or-till',current_setting('or.shop')::uuid,999)$$,null,'sync schema update required','schema mismatch fails before replication');
+select throws_ok($$select void_payment((select id from payments where client_id='or-return:refund'))$$,null,'void the return instead of its refund payment','refund cannot be voided independently of its return');
+select throws_ok($$select void_payment((select id from payments where client_id='or-later-payment'))$$,null,'void posted returns before voiding refunded receipts','cash refund backing receipt cannot be erased');
+select is((select status from payments where client_id='or-later-payment'),'POSTED','failed receipt void rolls back payment and allocation changes');
 select lives_ok($$select record_customer_payment(current_setting('or.shop')::uuid,current_setting('or.customer')::uuid,'2026-09-15',200,'cash','retained goods',jsonb_build_array(jsonb_build_object('sale_invoice_id',current_setting('or.sale'),'amount_paise',200)),'or-payment-after-refund')$$,'refunded receipts do not block paying the retained goods later');
 select is((select count(*) from customer_invoice_outstanding where sale_invoice_id=current_setting('or.sale')::uuid),0::bigint,'retained invoice can be settled exactly after refund');
 select lives_ok($$select void_return('SALE',(current_setting('or.confirmation')::jsonb->>'returnId')::uuid,'or-void')$$,'confirmed return can be voided online');
