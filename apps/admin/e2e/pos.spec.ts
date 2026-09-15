@@ -87,4 +87,20 @@ test('real browser money path posts stock then finalizes a paid sale',async({pag
   await expect(comparison.getByRole('status')).toContainText('MATCH — Phase 4 day totals reconcile');
   await expect(comparison.locator('tbody tr').filter({hasText:'Sales total'})).toContainText('MATCH');
   await expect(comparison.locator('tbody tr').filter({hasText:'Cash'})).toContainText('MATCH');
+
+  await page.goto('/returns');
+  await expect(page.getByRole('heading',{name:'Returns'})).toBeVisible();
+  await page.getByLabel('Source document').selectOption({index:1});
+  await page.getByLabel('Return quantity for POS E2E Item').fill('1');
+  await page.getByRole('button',{name:'Post return'}).click();
+  await expect(page.getByRole('status')).toContainText('Sale return posted');
+  const returnRow=page.locator('section').filter({has:page.getByRole('heading',{name:'Recent returns'})}).locator('tbody tr').first();
+  await expect(returnRow).toContainText('₹10.00');
+  await expect(returnRow).toContainText('₹10.00 cash');
+
+  await page.goto('/sales-history');
+  const afterReturn=page.locator('section[aria-label="Day reconciliation"]');
+  await expect(afterReturn.locator('tr').filter({hasText:'Sale returns'})).toContainText('₹10.00');
+  await expect(afterReturn.locator('tr').filter({hasText:'Net sales'})).toContainText('₹0.00');
+  await expect(afterReturn.locator('table').nth(1).locator('tbody td').first()).toHaveText('₹0.00');
 });

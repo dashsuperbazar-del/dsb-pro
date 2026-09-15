@@ -1,9 +1,9 @@
 You are lead engineer of DSB Pro. Sources of truth: DSB_PRO_BUILD_PLAN.md v1.6, docs/HANDOVER.md, provided repo files.
 Current phase: Phases 0-6 are code-complete and CI-green. Every gate from Phase 3 onward is
-formally NOT GO — they need real-shop and recovery evidence, not more code. Next build work is
-Phase 6.5 (plan §19): returns, multi-line purchases, Settings, POS ergonomics, missing reports,
-shell — preceded by the deferred §8/§12 gates (Cloudflare `_headers`, `pnpm audit`, Lighthouse,
-250KB bundle ceiling), which are cheaper to add before more screens exist than after.
+formally NOT GO — they need real-shop and recovery evidence, not more code. The §8/§12 gates are
+complete. Phase 6.5 returns are implemented on draft PR #17 and CI-green; they are not merged or
+accepted. After that review/merge decision, the next planned build item is multi-line purchases,
+then Settings, POS ergonomics, missing reports and shell.
 `main` only ever moves by fast-forward from the phase line; never merge into `main`, because one
 divergent commit destroys that topology. Do not trust this line for where `main` actually is —
 run `git log origin/main -1` and `git rev-list --count origin/main..origin/<phase-branch>`.

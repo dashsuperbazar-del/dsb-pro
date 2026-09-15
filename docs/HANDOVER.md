@@ -746,3 +746,45 @@ said it "may begin once the gates are green", which contradicted the line above 
 scheduled backup as unproven, and contradicted the standing pass-before-proceed rule. The rule
 holds: a check that is recorded is not the same as a check that has passed. Returns start after a
 scheduled `Nightly backup` run completes with both artifacts and a `backup_runs` row.
+
+## Phase 6.5 returns build — 2026-09-15
+
+**The prerequisite closed before work began.** Scheduled backup run
+[34908283606](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/34908283606) ran on
+`2566c21` and completed the public dump, separate Auth dump, encryption, B2 and R2 uploads,
+read-back checksums, and the `backup_runs` update. Post-consolidation evidence is therefore 5/5.
+The R2 first-attempt `501` retry and the human paper-key recovery drill remain open.
+
+Draft PR [#17](https://github.com/dashsuperbazar-del/dsb-pro/pull/17) implements returns on
+`phase-6-5-returns`. It is deliberately **not merged** and does not close Phases 4, 5 or 6.
+
+**Database and money model.** Migration `0036_phase65_returns.sql` adds the four immutable return
+tables and `payments.direction` (`in`/`out`, positive magnitudes only). Sale refunds are outgoing
+cash only up to receipts actually allocated/directly posted against that invoice; any remaining
+return value credits the customer balance. Refund `client_id` is derived from the return
+`client_id`, and one refund per return is enforced in the database. Voiding reverses both refund
+and stock effects. Purchase returns credit the supplier ledger and remove stock unless the chosen
+disposition is `RETURN_TO_SELLABLE`. Source sales and purchases cannot be voided while a posted
+return exists.
+
+**Consumers updated.** Customer balances/outstanding, party ledger, day book, GST summary, shop-day
+reconciliation, legacy DSB comparison, tenant export and `check_invariants()` all understand return
+documents and signed payment direction. A day with refunds exceeding receipts is represented as a
+negative cash total, not rejected. The admin app has a return screen for sale/purchase source
+selection, quantities, all four dispositions, posting, recent history and voiding; sale receipts
+show refunds explicitly.
+
+**Verification at exact remote head `96a6d88d5d20d38ec05c985fd46b1ee99f76e1fc`.** CI run
+[34912286251](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/34912286251) passed on its
+first attempt at that head: lint, real project-reference typecheck, 178 unit tests, audit, clean
+database reset, all 28 pgTAP files / 402 assertions (60 new returns assertions), existing browser
+tests, and both production-representative build gates. Earlier draft runs correctly failed: one
+ambiguous SQL column, then a stale export-version assertion and a misleading purchase-void error;
+all three were fixed rather than rerun unchanged.
+
+**Open before merge/acceptance.** PR #17 still needs code review. Its browser money path now posts
+a paid sale return through the UI and proves the cash refund and net day totals; real counter
+behavior (receipt presentation, physical stock dispositions and cash handoff) remains part of the
+Phase 4 shop-day evidence. Offline returns are not enabled: the UI
+requires the server, so exactly-once replay is proven at the RPC/database layer but not yet through
+the Phase 5 outbox.
