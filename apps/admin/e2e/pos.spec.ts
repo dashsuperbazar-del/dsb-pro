@@ -89,7 +89,7 @@ test('real browser money path posts stock then finalizes a paid sale',async({pag
   await expect(comparison.locator('tbody tr').filter({hasText:'Cash'})).toContainText('MATCH');
 
   await page.goto('/returns');
-  await expect(page.getByRole('heading',{name:'Returns'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Returns',exact:true})).toBeVisible();
   await page.getByLabel('Source document').selectOption({index:1});
   await page.getByLabel('Return quantity for POS E2E Item').fill('1');
   await page.getByRole('button',{name:'Post return'}).click();
