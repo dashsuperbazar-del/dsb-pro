@@ -476,6 +476,24 @@ end $$;
 create trigger sale_source_return_guard before update on sale_invoices for each row execute function phase65_source_void_guard();
 create trigger purchase_source_return_guard before update on purchase_bills for each row execute function phase65_source_void_guard();
 
+-- Source void RPCs write stock reversals before changing document status. Stop
+-- those reversals at their first write as well, so a purchase with stock already
+-- sent back reports the return conflict instead of a misleading stock error.
+create function phase65_return_source_movement_guard() returns trigger
+language plpgsql security definer set search_path=public as $$
+begin
+ if new.source_type='SALE_VOID' and exists(
+   select 1 from sale_returns where tenant_id=new.tenant_id and sale_invoice_id=new.source_id and status='POSTED'
+ ) then raise exception 'void posted returns before voiding the sale'; end if;
+ if new.source_type='PURCHASE_VOID' and exists(
+   select 1 from purchase_returns where tenant_id=new.tenant_id and purchase_bill_id=new.source_id and status='POSTED'
+ ) then raise exception 'void posted returns before voiding the purchase'; end if;
+ return new;
+end $$;
+create trigger return_source_movement_guard before insert on stock_movements
+ for each row when(new.source_type in ('SALE_VOID','PURCHASE_VOID'))
+ execute function phase65_return_source_movement_guard();
+
 create or replace function phase4_payment_guard() returns trigger language plpgsql as $$
 begin
  if old.status='POSTED' and new.status='VOID'
