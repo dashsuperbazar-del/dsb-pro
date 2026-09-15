@@ -13,8 +13,8 @@ export type PostedReturn={
   cash_refund_paise?:number;balance_credit_paise?:number;created_at:string;return_type:ReturnType;
 };
 export type ReturnLineInput={sourceLineId:string;qty:number;disposition:ReturnDisposition};
-type SaleSourceRow={id:string;doc_no:string;business_date:string;total_paise:number;customers:{name:string}[]};
-type PurchaseSourceRow={id:string;bill_no:string|null;business_date:string;total_paise:number;parties:{name:string}[]};
+type SaleSourceRow={id:string;doc_no:string;business_date:string;total_paise:number;customer:{name:string}[]};
+type PurchaseSourceRow={id:string;bill_no:string|null;business_date:string;total_paise:number;party:{name:string}[]};
 type SourceLineRow={id:string;item_id:string;item_name_snapshot:string;unit_name_snapshot:string;qty:number;base_qty:number};
 type ReturnIdRow={id:string};
 type ReturnedLineRow=Record<string,string|number> & {qty:number};
@@ -27,13 +27,13 @@ function fail(error:unknown):never{throw new Error(friendly(error));}
 export async function listReturnSources(type:ReturnType,shopId:string):Promise<ReturnSource[]>{
   const client=getSupabaseClient();
   if(type==='SALE'){
-    const {data,error}=await client.from('sale_invoices').select('id,doc_no,business_date,total_paise,customers(name)').eq('shop_id',shopId).eq('status','FINALIZED').order('created_at',{ascending:false}).limit(100);
+    const {data,error}=await client.from('sale_invoices').select('id,doc_no,business_date,total_paise,customer:customers!sale_invoices_customer_id_fkey(name)').eq('shop_id',shopId).eq('status','FINALIZED').order('created_at',{ascending:false}).limit(100);
     if(error)fail(error);
-    return ((data??[]) as SaleSourceRow[]).map(row=>({id:row.id,doc_no:row.doc_no,business_date:row.business_date,total_paise:row.total_paise,customer_name:row.customers[0]?.name??null}));
+    return ((data??[]) as SaleSourceRow[]).map(row=>({id:row.id,doc_no:row.doc_no,business_date:row.business_date,total_paise:row.total_paise,customer_name:row.customer[0]?.name??null}));
   }
-  const {data,error}=await client.from('purchase_bills').select('id,bill_no,business_date,total_paise,parties(name)').eq('shop_id',shopId).eq('status','POSTED').order('created_at',{ascending:false}).limit(100);
+  const {data,error}=await client.from('purchase_bills').select('id,bill_no,business_date,total_paise,party:parties!purchase_bills_party_id_fkey(name)').eq('shop_id',shopId).eq('status','POSTED').order('created_at',{ascending:false}).limit(100);
   if(error)fail(error);
-  return ((data??[]) as PurchaseSourceRow[]).map(row=>({id:row.id,doc_no:row.bill_no||row.id,business_date:row.business_date,total_paise:row.total_paise,party_name:row.parties[0]?.name??null}));
+  return ((data??[]) as PurchaseSourceRow[]).map(row=>({id:row.id,doc_no:row.bill_no||row.id,business_date:row.business_date,total_paise:row.total_paise,party_name:row.party[0]?.name??null}));
 }
 
 export async function listReturnableLines(type:ReturnType,sourceId:string):Promise<ReturnableLine[]>{
