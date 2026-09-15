@@ -815,6 +815,11 @@ New pgTAP coverage exercises a payment made after the offline snapshot, replay o
 one deterministic refund, stale quantity rejection, guarded replication and settlement after refund.
 The browser money path now covers offline queue/reload, reversible stock overlay, deliberately lost
 server acknowledgement, exactly-once reconnect/net cash totals and stale-replica rejection.
+An isolated real-browser Dexie transaction test additionally covers mixed sale/return projections,
+payload mismatch, duplicate acknowledgement, interrupted-send recovery, purchase dispositions,
+forbidden roles and rollback. The server acknowledgement includes POSTED/VOID status: a replay
+after a different device voids the return cannot authorize cash or resurrect a voided document.
+Reconnect immediately retries durable work; an already-offline cycle does not attempt sends.
 
 Local lint, real admin typecheck and all 190 unit tests pass (including malformed-confirmation
 and wrong-shop source tests). Both configured mirror builds pass installability and the bundle

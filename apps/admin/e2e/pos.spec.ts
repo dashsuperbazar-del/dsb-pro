@@ -117,12 +117,13 @@ test('real browser money path posts stock then finalizes a paid sale',async({pag
   // reuse the durable intent/client ID, not create another outgoing payment.
   let lostAcknowledgement=false;
   await page.route('**/rest/v1/rpc/phase65_sync_post_return',async route=>{
-    if(!lostAcknowledgement){const response=await route.fetch();expect(response.ok()).toBe(true);lostAcknowledgement=true;await route.abort('failed');}
+    if(!lostAcknowledgement){const response=await route.fetch();expect(response.ok()).toBe(true);lostAcknowledgement=true;await context.setOffline(true);await route.abort('failed');}
     else await route.continue();
   });
   await context.setOffline(false);
   await expect.poll(()=>lostAcknowledgement).toBe(true);
   await expect(queue).toContainText('Refund pending confirmation — no cash payout');
+  await context.setOffline(false);
   await page.goto('/sync');
   await page.getByRole('button',{name:'Retry queued work now'}).click();
   await expect(page.getByTestId('sync-outbox-count')).toHaveText('0',{timeout:15000});

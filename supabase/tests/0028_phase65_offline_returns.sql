@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(25);
+select plan(26);
 insert into auth.users(id) values('b6510000-0000-0000-0000-000000000001'),('b6510000-0000-0000-0000-000000000002') on conflict do nothing;
 select ok(not has_function_privilege('anon','phase65_sync_return_sources(text,uuid,integer)','execute'),'anonymous cannot replicate return documents');
 select ok(not has_function_privilege('anon','phase65_sync_post_return(text,integer,text,uuid,date,text,jsonb,text)','execute'),'anonymous cannot confirm refunds');
@@ -17,6 +17,8 @@ insert into items(tenant_id,name,unit1,client_id) values(current_tenant_id(),'Of
 select set_config('or.item',(select id::text from items where client_id='or-item'),false);
 select set_item_price(current_setting('or.item')::uuid,current_setting('or.shop')::uuid,'retail',1::smallint,100::bigint,'or-price');
 select post_purchase(current_setting('or.shop')::uuid,null,'OR-SEED','2026-09-15',0,0,'or-purchase',jsonb_build_array(jsonb_build_object('item_id',current_setting('or.item'),'unit_level',1,'qty',10,'unit_price_paise',50)),null);
+select set_config('or.purchase',(select id::text from purchase_bills where client_id='or-purchase'),false);
+select set_config('or.purchase_line',(select id::text from purchase_bill_items where purchase_bill_id=current_setting('or.purchase')::uuid),false);
 select post_sale(current_setting('or.shop')::uuid,current_setting('or.customer')::uuid,'2026-09-15',0,0,'or-sale',jsonb_build_array(jsonb_build_object('item_id',current_setting('or.item'),'unit_level',1,'qty',4,'price_kind','retail')),jsonb_build_array(jsonb_build_object('amount_paise',100,'mode','cash')),null);
 select set_config('or.sale',(select id::text from sale_invoices where client_id='or-sale'),false);
 select set_config('or.line',(select id::text from sale_invoice_items where sale_invoice_id=current_setting('or.sale')::uuid),false);
@@ -41,6 +43,7 @@ select lives_ok($$select record_customer_payment(current_setting('or.shop')::uui
 select is((select count(*) from customer_invoice_outstanding where sale_invoice_id=current_setting('or.sale')::uuid),0::bigint,'retained invoice can be settled exactly after refund');
 select lives_ok($$select void_return('SALE',(current_setting('or.confirmation')::jsonb->>'returnId')::uuid,'or-void')$$,'confirmed return can be voided online');
 select is((select status from payments where client_id='or-return:refund'),'VOID','void reverses exactly-once refund payment');
+select is(phase65_sync_post_return('or-till',1,'SALE',current_setting('or.sale')::uuid,'2026-09-15','or-return',jsonb_build_array(jsonb_build_object('sale_invoice_item_id',current_setting('or.line'),'qty',2,'disposition','RETURN_TO_SELLABLE')),null)->>'status','VOID','replay after another-device void never confirms an outgoing payout');
 select ok((check_invariants()->>'ok')::boolean,'offline confirmation respects all financial and stock invariants');
 reset role;
 update devices set revoked_at=now() where tenant_id=current_setting('or.tenant')::uuid and device_id='or-till';
@@ -54,6 +57,6 @@ set role authenticated;
 select set_config('request.jwt.claims','{"sub":"b6510000-0000-0000-0000-000000000002","role":"authenticated"}',true);
 select register_device('or-cashier','test');
 select is(jsonb_array_length(phase65_sync_return_sources('or-cashier',current_setting('or.shop')::uuid,1)->'sources'),1,'cashier receives only sale return sources');
-select throws_ok($$select phase65_sync_post_return('or-cashier',1,'PURCHASE',(select id from purchase_bills where client_id='or-purchase'),'2026-09-15','or-cashier-purchase','[]'::jsonb,null)$$,null,'not permitted','cashier cannot confirm a purchase return');
+select throws_ok($$select phase65_sync_post_return('or-cashier',1,'PURCHASE',current_setting('or.purchase')::uuid,'2026-09-15','or-cashier-purchase',jsonb_build_array(jsonb_build_object('purchase_bill_item_id',current_setting('or.purchase_line'),'qty',1,'disposition','SUPPLIER_RETURN')),null)$$,null,'not permitted','cashier cannot confirm a valid purchase return');
 select * from finish();
 rollback;

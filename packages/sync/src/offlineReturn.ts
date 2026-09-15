@@ -54,12 +54,15 @@ export async function queueOfflineReturn(db:DsbSyncDb,input:OfflineReturnPayload
 export async function completeOfflineReturn(db:DsbSyncDb,clientId:string,result:SyncedReturnResult):Promise<void>{
   await db.transaction('rw',[db.offlineReturns,db.offlineSales,db.returnSources,db.outbox,db.stock,db.reservations],async()=>{
     const row=await db.offlineReturns.get(clientId);if(!row)throw new Error('Offline return record is missing.');
-    if(row.status==='SYNCED')return;
-    if(row.status!=='QUEUED')throw new Error('Cannot acknowledge a rejected return.');
+    if(row.status==='VOID'||(row.status==='SYNCED'&&result.status==='POSTED'))return;
+    if(row.status==='REJECTED')throw new Error('Cannot acknowledge a rejected return.');
     for(const raw of result.stock){const key=stockKey(raw.shop_id,raw.item_id),prev=await db.stock.get(key);if(!prev||raw.updated_at>=prev.updated_at)await db.stock.put({...raw,key});}
     const source=await db.returnSources.get(returnSourceKey(row.payload.type,row.payload.sourceId));
-    if(source&&!source.posted_return_client_ids.includes(clientId))await db.returnSources.put({...source,posted_return_client_ids:[...source.posted_return_client_ids,clientId],lines:source.lines.map(line=>({...line,returned_qty:line.returned_qty+(row.lines.find(x=>x.sourceLineId===line.id)?.qty??0)}))});
-    await db.offlineReturns.put({...row,status:'SYNCED',officialReturnId:result.returnId,officialDocNo:result.docNo,totalPaise:result.totalPaise,cashRefundPaise:result.cashRefundPaise,balanceCreditPaise:result.balanceCreditPaise});
+    if(source){
+      const known=source.posted_return_client_ids.includes(clientId),delta=result.status==='POSTED'?(known?0:1):(known?-1:0);
+      if(delta)await db.returnSources.put({...source,posted_return_client_ids:result.status==='POSTED'?[...source.posted_return_client_ids,clientId]:source.posted_return_client_ids.filter(id=>id!==clientId),lines:source.lines.map(line=>({...line,returned_qty:Math.max(0,line.returned_qty+delta*(row.lines.find(x=>x.sourceLineId===line.id)?.qty??0))}))});
+    }
+    await db.offlineReturns.put({...row,status:result.status==='VOID'?'VOID':'SYNCED',officialReturnId:result.returnId,officialDocNo:result.docNo,totalPaise:result.totalPaise,cashRefundPaise:result.cashRefundPaise,balanceCreditPaise:result.balanceCreditPaise});
     await db.outbox.where('clientId').equals(clientId).delete();await rebuildReservations(db);
   });
 }

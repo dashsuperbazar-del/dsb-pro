@@ -96,7 +96,7 @@ export async function voidReturn(type:ReturnType,returnId:string,clientId:string
 type CachedReturnSource={key:string;return_type:ReturnType;id:string;shop_id:string;doc_no:string;business_date:string;total_paise:number;party_name:string|null;customer_name:string|null;posted_return_client_ids:string[];lines:Omit<ReturnableLine,'remaining_qty'>[]};
 type OfflineReturnPayload={type:ReturnType;sourceId:string;shopId:string;businessDate:string;clientId:string;lines:ReturnLineInput[];notes?:string};
 type ReturnStockRow={id:string;key:string;updated_at:number;deleted_at:number|null;tenant_id:string;shop_id:string;item_id:string;on_hand:number;reserved:number;available:number;qty_base:number};
-type SyncedReturnResult={returnId:string;docNo:string;totalPaise:number;cashRefundPaise:number;balanceCreditPaise:number;stock:ReturnStockRow[]};
+type SyncedReturnResult={returnId:string;docNo:string;status:'POSTED'|'VOID';totalPaise:number;cashRefundPaise:number;balanceCreditPaise:number;stock:ReturnStockRow[]};
 export async function pullReturnSources(input:{deviceId:string;shopId:string}):Promise<CachedReturnSource[]>{
   const {data,error}=await getSupabaseClient().rpc('phase65_sync_return_sources',{p_device_id:input.deviceId,p_shop_id:input.shopId,p_schema_version:1});
   if(error)throw new Error(error.message);
@@ -113,7 +113,7 @@ export async function pushSyncedReturn(input:OfflineReturnPayload&{deviceId:stri
   });
   if(error)throw new Error(error.message);
   const result=data as SyncedReturnResult;
-  if(!result||!result.returnId||!result.docNo||!Array.isArray(result.stock)||
+  if(!result||!result.returnId||!result.docNo||!['POSTED','VOID'].includes(result.status)||!Array.isArray(result.stock)||
     ![result.totalPaise,result.cashRefundPaise,result.balanceCreditPaise].every(n=>Number.isSafeInteger(n)&&n>=0)||
     result.stock.some(row=>row.shop_id!==input.shopId||!row.item_id||![row.updated_at,row.available,row.on_hand,row.reserved,row.qty_base].every(Number.isFinite)))throw new Error('Malformed return confirmation; retrying the same intent safely.');
   return result;

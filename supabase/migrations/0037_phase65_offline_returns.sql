@@ -5,7 +5,7 @@ create function phase65_sync_post_return(
  p_device_id text,p_schema_version integer,p_return_type text,p_source_id uuid,
  p_business_date date,p_client_id text,p_lines jsonb,p_notes text default null
 ) returns jsonb language plpgsql security definer set search_path=public as $$
-declare v_tenant uuid; v_id uuid; v_shop uuid; v_doc text; v_total bigint;
+declare v_tenant uuid; v_id uuid; v_shop uuid; v_doc text; v_total bigint; v_status text;
  v_cash bigint:=0; v_balance bigint:=0; v_stock jsonb;
 begin
  perform phase5_assert_schema(p_schema_version);
@@ -13,10 +13,10 @@ begin
  v_tenant:=current_tenant_id();
  v_id:=post_return(p_return_type,p_source_id,p_business_date,p_client_id,p_lines,p_notes);
  if upper(p_return_type)='SALE' then
-  select shop_id,doc_no,total_paise,cash_refund_paise,balance_credit_paise
-   into v_shop,v_doc,v_total,v_cash,v_balance from sale_returns where tenant_id=v_tenant and id=v_id;
+  select shop_id,doc_no,total_paise,cash_refund_paise,balance_credit_paise,status
+   into v_shop,v_doc,v_total,v_cash,v_balance,v_status from sale_returns where tenant_id=v_tenant and id=v_id;
  else
-  select shop_id,doc_no,total_paise into v_shop,v_doc,v_total
+  select shop_id,doc_no,total_paise,status into v_shop,v_doc,v_total,v_status
    from purchase_returns where tenant_id=v_tenant and id=v_id;
  end if;
  select coalesce(jsonb_agg(to_jsonb(q)),'[]'::jsonb) into v_stock from (
@@ -29,7 +29,7 @@ begin
    union select item_id from purchase_return_items where tenant_id=v_tenant and purchase_return_id=v_id
   )
  ) q;
- return jsonb_build_object('returnId',v_id,'docNo',v_doc,'totalPaise',v_total,
+ return jsonb_build_object('returnId',v_id,'docNo',v_doc,'status',v_status,'totalPaise',v_total,
   'cashRefundPaise',v_cash,'balanceCreditPaise',v_balance,'stock',v_stock);
 end $$;
 revoke all on function phase65_sync_post_return(text,integer,text,uuid,date,text,jsonb,text) from public,anon;

@@ -49,6 +49,7 @@ export function ReturnsScreen(){
     for(const row of selected){const source=lines.find(line=>line.id===row.sourceLineId);if(!source||row.qty>source.remaining_qty)throw new Error(`Return quantity exceeds the remaining quantity for ${source?.item_name_snapshot??'a line'}.`);}
     const result=await postReturnResilient({type,sourceId,shopId,businessDate,clientId,lines:selected,notes:notes.trim()||undefined});
     if(result.status==='REJECTED'){setClientId(crypto.randomUUID());await Promise.all([loadLines(sourceId),refreshRecent(shopId)]);throw new Error(`${result.rejectionReason}. Provisional stock effect reversed; review the refreshed quantities.`);}
+    if(result.status==='VOID'){setClientId(crypto.randomUUID());await Promise.all([loadLines(sourceId),refreshRecent(shopId)]);throw new Error('This return was voided at the server. Do not pay cash; its provisional stock effect was removed.');}
     setClientId(crypto.randomUUID());setNotes('');setMessage(result.status==='QUEUED'?
       `Return ${result.provisionalDocNo} recorded provisionally. Refund pending confirmation — do not hand over cash. Stock disposition is provisional; server rejection reverses it.`:
       type==='SALE'?'Sale return posted. Cash refund and customer balance were calculated by the server.':'Purchase return posted. Supplier ledger and stock were updated by the server.');

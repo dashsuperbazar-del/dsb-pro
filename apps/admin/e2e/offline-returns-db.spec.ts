@@ -26,7 +26,7 @@ test('return IndexedDB transactions preserve replay, overlays and rejection roll
     let mismatch=false;try{await s.queueOfflineReturn(db,{...input,notes:'different'},context);}catch{mismatch=true;}
     await s.queueOfflineSale(db,{shopId:'shop',businessDate:'2026-09-15',discountPaise:0,extraChargesPaise:0,clientId:'sale-1',lines:[{itemId:'item',unitLevel:1,qty:2,priceKind:'retail',discountPaise:0}],payments:[{amountPaise:200,mode:'cash'}]},{...context,policy:{allowCashierOfflineFinalization:true},onlineInitiated:false});
     const mixedProjection=(await db.reservations.get('shop:item'))?.qty;
-    const ack={returnId:'official-return',docNo:'SR-1',totalPaise:200,cashRefundPaise:150,balanceCreditPaise:50,stock:[{...stock,available:6,on_hand:6,qty_base:6,updated_at:2}]};
+    const ack={returnId:'official-return',docNo:'SR-1',status:'POSTED' as const,totalPaise:200,cashRefundPaise:150,balanceCreditPaise:50,stock:[{...stock,available:6,on_hand:6,qty_base:6,updated_at:2}]};
     await s.completeOfflineReturn(db,input.clientId,ack);await s.completeOfflineReturn(db,input.clientId,ack);
     const acknowledged={returned:(await db.returnSources.get(source.key))?.lines[0].returned_qty,reservation:(await db.reservations.get(stock.key))?.qty,refund:(await db.offlineReturns.get(input.clientId))?.cashRefundPaise,outbox:await db.outbox.count()};
     await s.rejectOfflineSale(db,'sale-1','insufficient stock');
@@ -46,7 +46,10 @@ test('return IndexedDB transactions preserve replay, overlays and rejection roll
     let forbidden=false;try{await s.queueOfflineReturn(db,{...purchaseIntent,clientId:'cashier-return'},{...context,role:'cashier'});}catch{forbidden=true;}
     let overReturn=false;try{await s.queueOfflineReturn(db,{...second,clientId:'over-return',lines:[{...second.lines[0],qty:9}]},context);}catch{overReturn=true;}
     const final={outbox:await db.outbox.count(),reservations:await db.reservations.count(),overReturnPersisted:!!await db.offlineReturns.get('over-return')};
-    await db.delete();return {initial,mismatch,mixedProjection,acknowledged,recovered:{state:recovered?.state,clientId:recovered?.clientId,payloadMatches:JSON.stringify(recovered?.payload)===JSON.stringify(second)},rejected,purchaseProjection,forbidden,overReturn,final};
+    await s.completeOfflineReturn(db,input.clientId,{...ack,status:'VOID',stock:[{...stock,updated_at:3}]});
+    await s.completeOfflineReturn(db,input.clientId,ack); // stale POSTED reply cannot resurrect a void
+    const voided={status:(await db.offlineReturns.get(input.clientId))?.status,returned:(await db.returnSources.get(source.key))?.lines[0].returned_qty,stock:(await db.stock.get(stock.key))?.available};
+    await db.delete();return {initial,mismatch,mixedProjection,acknowledged,recovered:{state:recovered?.state,clientId:recovered?.clientId,payloadMatches:JSON.stringify(recovered?.payload)===JSON.stringify(second)},rejected,purchaseProjection,forbidden,overReturn,final,voided};
   });
   expect(result.initial).toEqual({outbox:1,reservation:-2,refund:null,balance:null});
   expect(result.mismatch).toBe(true);expect(result.mixedProjection).toBe(0);
@@ -55,4 +58,5 @@ test('return IndexedDB transactions preserve replay, overlays and rejection roll
   expect(result.rejected).toEqual({status:'REJECTED',outbox:0,stock:6,reservations:0});
   expect(result.purchaseProjection).toBe(2);expect(result.forbidden).toBe(true);expect(result.overReturn).toBe(true);
   expect(result.final).toEqual({outbox:0,reservations:0,overReturnPersisted:false});
+  expect(result.voided).toEqual({status:'VOID',returned:0,stock:4});
 });

@@ -68,7 +68,7 @@ export async function startOfflineSync(input:{userId:string;membership:Membershi
   emit();
   await runSyncNow();
 }
-function onlineHandler(){emit();void runSyncNow();}
+function onlineHandler(){emit();void forceRetryNow();}
 function offlineHandler(){emit();}
 export function stopOfflineSync(){
   if(!runtime)return;
@@ -166,6 +166,7 @@ async function pullAllPages(rt:Runtime){
 
 export async function runSyncNow():Promise<void>{
   const rt=requireRuntime();
+  if(typeof navigator!=='undefined'&&!navigator.onLine){emit();return;}
   if(rt.running)return rt.running;
   rt.running=(async()=>{
     state={...state,running:true,lastError:null};emit();
