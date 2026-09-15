@@ -1,0 +1,94 @@
+import { getSupabaseClient } from './client';
+import { classifyError, errorMessage } from './errors';
+
+export type ReturnType='SALE'|'PURCHASE';
+export type ReturnDisposition='RETURN_TO_SELLABLE'|'DAMAGED'|'EXPIRED'|'SUPPLIER_RETURN';
+export type ReturnSource={id:string;doc_no:string;business_date:string;total_paise:number;party_name?:string|null;customer_name?:string|null};
+export type ReturnableLine={
+  id:string;item_id:string;item_name_snapshot:string;unit_name_snapshot:string;qty:number;base_qty:number;
+  returned_qty:number;remaining_qty:number;
+};
+export type PostedReturn={
+  id:string;doc_no:string;business_date:string;status:'DRAFT'|'POSTED'|'VOID';total_paise:number;
+  cash_refund_paise?:number;balance_credit_paise?:number;created_at:string;return_type:ReturnType;
+};
+export type ReturnLineInput={sourceLineId:string;qty:number;disposition:ReturnDisposition};
+type SaleSourceRow={id:string;doc_no:string;business_date:string;total_paise:number;customers:{name:string}[]};
+type PurchaseSourceRow={id:string;bill_no:string|null;business_date:string;total_paise:number;parties:{name:string}[]};
+type SourceLineRow={id:string;item_id:string;item_name_snapshot:string;unit_name_snapshot:string;qty:number;base_qty:number};
+type ReturnIdRow={id:string};
+type ReturnedLineRow=Record<string,string|number> & {qty:number};
+type SaleReturnRow=Omit<PostedReturn,'return_type'>;
+type PurchaseReturnRow=Omit<PostedReturn,'return_type'|'cash_refund_paise'|'balance_credit_paise'>;
+
+const friendly=(error:unknown)=>errorMessage(classifyError(error),error);
+function fail(error:unknown):never{throw new Error(friendly(error));}
+
+export async function listReturnSources(type:ReturnType,shopId:string):Promise<ReturnSource[]>{
+  const client=getSupabaseClient();
+  if(type==='SALE'){
+    const {data,error}=await client.from('sale_invoices').select('id,doc_no,business_date,total_paise,customers(name)').eq('shop_id',shopId).eq('status','FINALIZED').order('created_at',{ascending:false}).limit(100);
+    if(error)fail(error);
+    return ((data??[]) as SaleSourceRow[]).map(row=>({id:row.id,doc_no:row.doc_no,business_date:row.business_date,total_paise:row.total_paise,customer_name:row.customers[0]?.name??null}));
+  }
+  const {data,error}=await client.from('purchase_bills').select('id,bill_no,business_date,total_paise,parties(name)').eq('shop_id',shopId).eq('status','POSTED').order('created_at',{ascending:false}).limit(100);
+  if(error)fail(error);
+  return ((data??[]) as PurchaseSourceRow[]).map(row=>({id:row.id,doc_no:row.bill_no||row.id,business_date:row.business_date,total_paise:row.total_paise,party_name:row.parties[0]?.name??null}));
+}
+
+export async function listReturnableLines(type:ReturnType,sourceId:string):Promise<ReturnableLine[]>{
+  const client=getSupabaseClient();
+  const sourceTable=type==='SALE'?'sale_invoice_items':'purchase_bill_items';
+  const sourceColumn=type==='SALE'?'sale_invoice_id':'purchase_bill_id';
+  const returnTable=type==='SALE'?'sale_returns':'purchase_returns';
+  const returnLineTable=type==='SALE'?'sale_return_items':'purchase_return_items';
+  const returnIdColumn=type==='SALE'?'sale_return_id':'purchase_return_id';
+  const sourceLineColumn=type==='SALE'?'sale_invoice_item_id':'purchase_bill_item_id';
+  const returnSourceColumn=type==='SALE'?'sale_invoice_id':'purchase_bill_id';
+  const {data:lines,error:lineError}=await client.from(sourceTable).select('id,item_id,item_name_snapshot,unit_name_snapshot,qty,base_qty').eq(sourceColumn,sourceId).order('line_no');
+  if(lineError)fail(lineError);
+  const {data:returns,error:returnError}=await client.from(returnTable).select('id').eq(returnSourceColumn,sourceId).eq('status','POSTED');
+  if(returnError)fail(returnError);
+  const returnIds=((returns??[]) as ReturnIdRow[]).map(row=>row.id);
+  let returned:ReturnedLineRow[]=[];
+  if(returnIds.length){
+    const result=await client.from(returnLineTable).select(`${sourceLineColumn},qty`).in(returnIdColumn,returnIds);
+    if(result.error)fail(result.error); returned=(result.data??[]) as ReturnedLineRow[];
+  }
+  const totals=new Map<string,number>();
+  for(const row of returned){const key=String(row[sourceLineColumn]);totals.set(key,(totals.get(key)??0)+Number(row.qty));}
+  return ((lines??[]) as SourceLineRow[]).map(row=>{
+    const returnedQty=totals.get(row.id)??0;
+    return {id:row.id,item_id:row.item_id,item_name_snapshot:row.item_name_snapshot,unit_name_snapshot:row.unit_name_snapshot,
+      qty:Number(row.qty),base_qty:Number(row.base_qty),returned_qty:returnedQty,remaining_qty:Math.max(0,Number(row.qty)-returnedQty)};
+  });
+}
+
+export async function postReturn(input:{type:ReturnType;sourceId:string;businessDate:string;clientId:string;lines:ReturnLineInput[];notes?:string}):Promise<string>{
+  const {data,error}=await getSupabaseClient().rpc('post_return',{
+    p_return_type:input.type,p_source_id:input.sourceId,p_business_date:input.businessDate,p_client_id:input.clientId,
+    p_lines:input.lines.map(line=>({
+      [input.type==='SALE'?'sale_invoice_item_id':'purchase_bill_item_id']:line.sourceLineId,
+      qty:line.qty,disposition:line.disposition,
+    })),p_notes:input.notes??null,
+  });
+  if(error)fail(error); return data as string;
+}
+
+export async function listRecentReturns(shopId:string):Promise<PostedReturn[]>{
+  const client=getSupabaseClient();
+  const [sales,purchases]=await Promise.all([
+    client.from('sale_returns').select('id,doc_no,business_date,status,total_paise,cash_refund_paise,balance_credit_paise,created_at').eq('shop_id',shopId).order('created_at',{ascending:false}).limit(50),
+    client.from('purchase_returns').select('id,doc_no,business_date,status,total_paise,created_at').eq('shop_id',shopId).order('created_at',{ascending:false}).limit(50),
+  ]);
+  if(sales.error)fail(sales.error); if(purchases.error)fail(purchases.error);
+  return [
+    ...((sales.data??[]) as SaleReturnRow[]).map(row=>({...row,return_type:'SALE' as const})),
+    ...((purchases.data??[]) as PurchaseReturnRow[]).map(row=>({...row,return_type:'PURCHASE' as const})),
+  ].sort((a,b)=>Date.parse(b.created_at)-Date.parse(a.created_at)).slice(0,100) as PostedReturn[];
+}
+
+export async function voidReturn(type:ReturnType,returnId:string,clientId:string):Promise<string>{
+  const {data,error}=await getSupabaseClient().rpc('void_return',{p_return_type:type,p_return_id:returnId,p_client_id:clientId});
+  if(error)fail(error); return data as string;
+}

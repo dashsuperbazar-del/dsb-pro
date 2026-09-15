@@ -18,6 +18,10 @@ export type ShopDayReconciliation = {
   businessDate:string;
   invoiceCount:number;
   salesTotalPaise:number;
+  saleReturnCount:number;
+  saleReturnTotalPaise:number;
+  cashRefundPaise:number;
+  netSalesTotalPaise:number;
   discountPaise:number;
   extraChargesPaise:number;
   voidCount:number;
@@ -51,6 +55,10 @@ export async function getShopDayReconciliation(shopId:string,businessDate:string
     businessDate:String(raw.businessDate??businessDate),
     invoiceCount:n(raw.invoiceCount),
     salesTotalPaise:n(raw.salesTotalPaise),
+    saleReturnCount:n(raw.saleReturnCount),
+    saleReturnTotalPaise:n(raw.saleReturnTotalPaise),
+    cashRefundPaise:n(raw.cashRefundPaise),
+    netSalesTotalPaise:n(raw.netSalesTotalPaise),
     discountPaise:n(raw.discountPaise),
     extraChargesPaise:n(raw.extraChargesPaise),
     voidCount:n(raw.voidCount),
