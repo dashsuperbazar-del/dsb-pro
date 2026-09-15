@@ -843,3 +843,26 @@ holds the initial date response until after import completes, making this regres
 The sync adapter also whitelists replicated reference fields, supplies the local source key and
 rejects a sale confirmation whose cash/balance split does not equal its return value. Latest-head
 CI must pass after these corrections; the failed candidate is not represented as fully green.
+
+### Verification handoff — provisional returns
+
+Exact code head 88d828a87ed85d7824973291c5be576e0e0987d7 passed CI run
+[34952366402](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/34952366402), attempt 1:
+lint, real admin typecheck, all 191 unit tests, audit, all 29 pgTAP files / 431 assertions, both
+invite/sale concurrency scripts, 23 browser tests passed and 1 intentional heavy-performance skip.
+Both configured mirror artifacts passed installability and the 250 KiB bundle ceiling at 128 KiB
+gzip (51%). The browser suite includes the controlled late pre-import response regression and
+the provisional-return/restart/lost-acknowledgement/stale-rejection path; no unchanged CI rerun
+was used to turn a failure green.
+
+Verified GitHub PR #17 is open, draft and unmerged, head matching the tested code. main remains
+2566c21afa841574d4195b4198ace80ebfc2b109. Live DB upgrade, preview, deployment and DR jobs were
+SKIPPED on this branch, not passed. The handover-only commit after this code head also needs its
+normal required CI checks; use GitHub for the latest exact-head status.
+
+Ready for Claude's SQL/sync review, not merge or phase acceptance. Outstanding operational limits:
+only recent synced source documents can be returned offline; confirmed-return voids need online
+confirmation; pending unknown-outcome returns cannot be cancelled. Automated idempotency proves
+one refund ledger row, not physical cash handoff. Real counter/stock reconciliation and paper-key
+hosted recovery/RPO/RTO drills remain human gates. R2's first-attempt 501 behavior is unchanged.
+After review and explicit consolidation authorization, multi-line purchases is the next build item.
