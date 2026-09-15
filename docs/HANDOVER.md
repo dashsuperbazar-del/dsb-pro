@@ -825,9 +825,21 @@ voids that would leave active cash refunds exceeding receipts. These serialize o
 invoice lock used by post_return. void_return first marks its parent VOID, then reverses payment,
 within the same atomic transaction; failure rolls everything back.
 
-Local lint, real admin typecheck and all 190 unit tests pass (including malformed-confirmation
+Local lint, real admin typecheck and all 191 unit tests pass (including malformed-confirmation
 and wrong-shop source tests). Both configured mirror builds pass installability and the bundle
 ceiling at approximately 127 KiB gzip / 250 KiB (51%). SQL/browser evidence must be read from
 the new exact-head CI run before calling this change verified. No merge or phase acceptance is
 authorized by this build; PR #17 remains draft and main is untouched. Human shop and paper-key
 recovery gates remain open.
+
+At candidate c3c4eea, CI run 34951712692 passed all 29 pgTAP files / 431 assertions and both live
+concurrency scripts against its throwaway database, but e2e failed the existing legacy-import
+picker test (22 passed, 1 failed, 1 intentional skip). Read its uploaded trace: the initial
+pre-import refresh captured empty items/suppliers, then its delayed business-date request
+finished after the complete post-import refresh and overwrote the populated screen with empty
+arrays. This was a real stale-response race, not a select-key explanation. Inventory refresh now
+uses a generation token to ignore superseded responses. The importer browser test deliberately
+holds the initial date response until after import completes, making this regression deterministic.
+The sync adapter also whitelists replicated reference fields, supplies the local source key and
+rejects a sale confirmation whose cash/balance split does not equal its return value. Latest-head
+CI must pass after these corrections; the failed candidate is not represented as fully green.

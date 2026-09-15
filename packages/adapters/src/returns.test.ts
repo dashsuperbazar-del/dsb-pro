@@ -3,7 +3,7 @@ import {pullReturnSources,pushSyncedReturn} from './returns';
 const {rpc}=vi.hoisted(()=>({rpc:vi.fn()}));
 vi.mock('./client',()=>({getSupabaseClient:()=>({rpc})}));
 const input={type:'SALE' as const,sourceId:'sale',shopId:'shop',businessDate:'2026-09-15',clientId:'return-intent',lines:[{sourceLineId:'line',qty:1,disposition:'RETURN_TO_SELLABLE' as const}]};
-const source={return_type:'SALE',id:'sale',shop_id:'shop',posted_return_client_ids:[],lines:[{id:'line',item_id:'item',qty:2,base_qty:2,returned_qty:0}]};
+const source={return_type:'SALE',id:'sale',shop_id:'shop',doc_no:'S-1',business_date:'2026-09-15',total_paise:200,party_name:null,customer_name:null,posted_return_client_ids:[],lines:[{id:'line',item_id:'item',item_name_snapshot:'Item',unit_name_snapshot:'piece',qty:2,base_qty:2,returned_qty:0}]};
 const confirmation={returnId:'return',docNo:'SR-1',status:'POSTED',totalPaise:100,cashRefundPaise:60,balanceCreditPaise:40,stock:[{shop_id:'shop',item_id:'item',updated_at:1,available:2,on_hand:2,reserved:0,qty_base:2}]};
 beforeEach(()=>rpc.mockReset());
 describe('return sync adapter',()=>{
@@ -22,6 +22,7 @@ describe('return sync adapter',()=>{
   it.each([
     {...confirmation,cashRefundPaise:-1},
     {...confirmation,balanceCreditPaise:0.1},
+    {...confirmation,balanceCreditPaise:39},
     {...confirmation,stock:[{...confirmation.stock[0],shop_id:'other-shop'}]},
     {...confirmation,stock:[{...confirmation.stock[0],available:NaN}]},
   ])('rejects malformed confirmation without acknowledging unknown outcome',async data=>{
@@ -29,8 +30,8 @@ describe('return sync adapter',()=>{
     await expect(pushSyncedReturn({...input,deviceId:'device'})).rejects.toThrow('Malformed return confirmation');
   });
   it('accepts scoped source snapshots without payment ledgers',async()=>{
-    rpc.mockResolvedValue({data:{sources:[source]},error:null});
-    await expect(pullReturnSources({deviceId:'device',shopId:'shop'})).resolves.toEqual([source]);
+    rpc.mockResolvedValue({data:{sources:[{...source,payments:[{amount_paise:999}],payment_allocations:[{amount_paise:999}]}]},error:null});
+    await expect(pullReturnSources({deviceId:'device',shopId:'shop'})).resolves.toStrictEqual([{...source,key:'SALE:sale'}]);
   });
   it.each([{...source,shop_id:'other-shop'},{...source,lines:[{...source.lines[0],qty:NaN}]}])('refuses malformed/cross-shop source replacement',async row=>{
     rpc.mockResolvedValue({data:{sources:[row]},error:null});

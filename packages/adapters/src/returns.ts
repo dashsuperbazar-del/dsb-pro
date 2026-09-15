@@ -103,7 +103,11 @@ export async function pullReturnSources(input:{deviceId:string;shopId:string}):P
   const result=data as {sources:CachedReturnSource[]};
   if(!result||!Array.isArray(result.sources))throw new Error('Invalid return source sync response.');
   if(result.sources.some(source=>source.shop_id!==input.shopId||!['SALE','PURCHASE'].includes(source.return_type)||typeof source.id!=='string'||!Array.isArray(source.posted_return_client_ids)||!Array.isArray(source.lines)||source.lines.some(line=>!line.id||!line.item_id||![line.qty,line.base_qty,line.returned_qty].every(Number.isFinite)||line.qty<=0||line.base_qty<=0||line.returned_qty<0)))throw new Error('Invalid return source rows; keeping previous cache.');
-  return result.sources;
+  // Whitelist the offline reference fields. An accidental future RPC expansion
+  // must not replicate payment/allocation ledgers or refund decisions.
+  return result.sources.map(source=>({key:`${source.return_type}:${source.id}`,return_type:source.return_type,id:source.id,shop_id:source.shop_id,doc_no:source.doc_no,business_date:source.business_date,total_paise:source.total_paise,party_name:source.party_name,customer_name:source.customer_name,posted_return_client_ids:source.posted_return_client_ids,
+    lines:source.lines.map(line=>({id:line.id,item_id:line.item_id,item_name_snapshot:line.item_name_snapshot,unit_name_snapshot:line.unit_name_snapshot,qty:line.qty,base_qty:line.base_qty,returned_qty:line.returned_qty})),
+  }));
 }
 export async function pushSyncedReturn(input:OfflineReturnPayload&{deviceId:string}):Promise<SyncedReturnResult>{
   const {data,error}=await getSupabaseClient().rpc('phase65_sync_post_return',{
@@ -113,8 +117,9 @@ export async function pushSyncedReturn(input:OfflineReturnPayload&{deviceId:stri
   });
   if(error)throw new Error(error.message);
   const result=data as SyncedReturnResult;
-  if(!result||!result.returnId||!result.docNo||!['POSTED','VOID'].includes(result.status)||!Array.isArray(result.stock)||
+  if(!result||typeof result.returnId!=='string'||!result.returnId||typeof result.docNo!=='string'||!result.docNo||!['POSTED','VOID'].includes(result.status)||!Array.isArray(result.stock)||
     ![result.totalPaise,result.cashRefundPaise,result.balanceCreditPaise].every(n=>Number.isSafeInteger(n)&&n>=0)||
+    (input.type==='SALE'&&result.cashRefundPaise+result.balanceCreditPaise!==result.totalPaise)||
     result.stock.some(row=>row.shop_id!==input.shopId||!row.item_id||![row.updated_at,row.available,row.on_hand,row.reserved,row.qty_base].every(Number.isFinite)))throw new Error('Malformed return confirmation; retrying the same intent safely.');
   return result;
 }

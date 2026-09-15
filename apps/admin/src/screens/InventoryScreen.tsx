@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   addItemBarcode, createItem, createParty, getCurrentMembership, getDefaultShopId, getShopBusinessDate, importLegacyDsbMaster, listCurrentPrices,
   listItems, listParties, listStock, postPurchase, replaceItemImage, setItemPrice,
@@ -16,12 +16,16 @@ export function InventoryScreen() {
   const [purchaseClientId,setPurchaseClientId]=useState(()=>crypto.randomUUID()); const [purchaseBusy,setPurchaseBusy]=useState(false);
   const [legacyPlan,setLegacyPlan]=useState<LegacyDsbImportPlan|null>(null); const [legacyFileName,setLegacyFileName]=useState(''); const [legacyClientId,setLegacyClientId]=useState(()=>crypto.randomUUID()); const [legacyBusy,setLegacyBusy]=useState(false);
   const [message,setMessage]=useState(''); const [error,setError]=useState('');
+  const refreshGeneration=useRef(0);
   async function refresh(){
+    const generation=++refreshGeneration.current;
     const membership=await getCurrentMembership(); if(!membership) throw new Error('No tenant membership.');
-    const shop=await getDefaultShopId(); setTenantId(membership.tenantId); setShopId(shop);
-    const [i,p,s,d]=await Promise.all([listItems(),listParties(),listStock(shop),getShopBusinessDate(shop)]); setItems(i); setParties(p); setStock(s); setBusinessDate(d);
+    const shop=await getDefaultShopId();if(generation!==refreshGeneration.current)return;setTenantId(membership.tenantId);setShopId(shop);
+    const [i,p,s,d]=await Promise.all([listItems(),listParties(),listStock(shop),getShopBusinessDate(shop)]);
+    if(generation!==refreshGeneration.current)return;
+    setItems(i);setParties(p);setStock(s);setBusinessDate(d);
   }
-  useEffect(()=>{ void refresh().catch(e=>setError(String(e))); },[]);
+  useEffect(()=>{ void refresh().catch(e=>setError(String(e)));return()=>{refreshGeneration.current++;}; },[]);
   useEffect(()=>{ if(!selected){setPrices([]);return;} void listCurrentPrices(selected).then(setPrices).catch(e=>setError(String(e))); },[selected]);
   const selectedItem=items.find(i=>i.id===selected); const purchaseItem=items.find(i=>i.id===purchaseItemId);
   const selectedStock=useMemo(()=>stock.find(s=>s.item_id===selected)?.qty_base??0,[stock,selected]);

@@ -17,7 +17,14 @@ async function createOwnerShop(page:import('@playwright/test').Page){
 }
 
 test('owner can import a legacy DSB backup into an empty shop and sell imported stock',async({page})=>{
+  test.setTimeout(60000);
   await createOwnerShop(page);
+  let releaseInitialDate!:()=>void,dateCalls=0;
+  const heldDate=new Promise<void>(resolve=>{releaseInitialDate=resolve;});
+  await page.route('**/rest/v1/rpc/shop_business_date',async route=>{
+    if(++dateCalls===1){const response=await route.fetch();await heldDate;await route.fulfill({response});}
+    else await route.continue();
+  });
   await page.getByRole('link',{name:'Inventory & purchases'}).click();
 
   const backup={
@@ -38,6 +45,12 @@ test('owner can import a legacy DSB backup into an empty shop and sell imported 
   page.once('dialog',d=>d.accept());
   await page.getByRole('button',{name:'Import checked backup'}).click();
   await expect(page.getByRole('status')).toContainText('Import complete: 1 items, 1 suppliers, 1 customers');
+  // Finish the initial pre-import refresh AFTER the post-import refresh. Its
+  // empty catalog must never overwrite the newer catalog and stock.
+  const initialResponse=page.waitForResponse(response=>response.url().endsWith('/rest/v1/rpc/shop_business_date'));
+  releaseInitialDate();await initialResponse;
+  await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
+  await expect(page.getByLabel('Peek item').locator('option')).toHaveCount(2);
 
   await page.getByLabel('Peek item').selectOption({label:'Imported Biscuit'});
   await expect(page.getByLabel('item peek')).toContainText('Stock 12 Pcs');
