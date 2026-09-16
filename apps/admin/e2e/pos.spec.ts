@@ -166,4 +166,28 @@ test('real browser money path posts stock then finalizes a paid sale',async({pag
   await page.goto('/inventory');
   await page.getByLabel('Peek item').selectOption({label:'POS E2E Item'});
   await expect(page.locator('[aria-label="item peek"]')).toContainText('Stock 5 piece');
+  // Exercise the actual counter void path, not just the sync helper. Lose the
+  // response after commit, restart offline, then replay and save reversed stock.
+  await page.goto('/returns');
+  let lostVoid=false;
+  await page.route('**/rest/v1/rpc/phase65_sync_void_return',async route=>{
+    if(!lostVoid){const response=await route.fetch();expect(response.ok()).toBe(true);lostVoid=true;await context.setOffline(true);await route.abort('failed');}
+    else await route.continue();
+  });
+  page.once('dialog',dialog=>dialog.accept());
+  await page.getByRole('button',{name:'Void',exact:true}).first().click();
+  await expect.poll(()=>lostVoid).toBe(true);
+  await expect(page.getByRole('alert')).toContainText('Void confirmation pending');
+  await page.reload();
+  const pendingVoid=await page.evaluate(async()=>{
+    const name=(await indexedDB.databases()).find(db=>db.name?.startsWith('dsb-pro-sync-'))!.name!;
+    return new Promise<boolean>((resolve,reject)=>{const request=indexedDB.open(name);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,tx=db.transaction('meta','readonly'),get=tx.objectStore('meta').get('pendingReturnVoid');get.onsuccess=()=>{resolve(!!get.result);db.close();};};});
+  });
+  expect(pendingVoid).toBe(true);
+  await context.setOffline(false);await page.goto('/sync');
+  await page.getByRole('button',{name:'Retry queued work now'}).click();
+  await expect(page.getByTestId('sync-outbox-count')).toHaveText('0',{timeout:15000});
+  await context.setOffline(true);await page.goto('/inventory');
+  await page.getByLabel('Peek item').selectOption({label:'POS E2E Item'});
+  await expect(page.locator('[aria-label="item peek"]')).toContainText('Stock 4 piece');
 });

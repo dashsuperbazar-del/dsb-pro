@@ -2,10 +2,16 @@ import {describe,expect,it} from 'vitest';
 import {
   advanceCursor,compareCursor,isRowAfterCursor,markOutboxRetry,markOutboxSending,
   isDefinitiveFinancialRejectionMessage,mergeMasterRow,nextOutboxEntry,provisionalDocNo,reconcileAppendOnlyEvent,retryDelayMs,
-  returnStockDelta,type MasterSyncRow,type OutboxEntry,
+  returnStockDelta,canUnblockRejectedReturnVoid,type MasterSyncRow,type OutboxEntry,
 } from './index';
 
 describe('provisional return dispositions',()=>{
+  it('never unblocks stock on a rejection after an unknown void attempt',()=>{
+    expect(canUnblockRejectedReturnVoid(1,'insufficient stock to void sale return')).toBe(true);
+    expect(canUnblockRejectedReturnVoid(2,'device revoked')).toBe(false);
+    expect(canUnblockRejectedReturnVoid(1,'Failed to fetch')).toBe(false);
+    expect(canUnblockRejectedReturnVoid(1,'not permitted',true)).toBe(false);
+  });
   it('restores only sellable customer returns and never guesses money',()=>{
     expect(returnStockDelta('SALE','RETURN_TO_SELLABLE',2.5)).toBe(2.5);
     for(const disposition of ['DAMAGED','EXPIRED','SUPPLIER_RETURN'] as const)expect(returnStockDelta('SALE',disposition,2.5)).toBe(0);

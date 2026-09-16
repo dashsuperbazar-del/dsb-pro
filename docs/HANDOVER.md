@@ -882,3 +882,24 @@ returning yesterday's item on a day with zero sales, negative cash/day-book rece
 an independent sold-only item. Local 193 unit tests and project-reference typecheck pass;
 clean-database pgTAP and browser verification must come from exact-head CI, not this note.
 Main and live databases are untouched. Hold merge; human shop/recovery gates remain open.
+
+### 2026-09-16 — GST allocation and durable void confirmation patch
+
+GST sale/purchase reporting now uses the same deterministic original-line allocation as
+returns; a two-line, one-paisa header discount conserves 199 paise before a return and zero
+after a full return. Added four database assertions for sale and purchase reporting.
+
+Counter voids now persist a stable intent and pending-return-void billing block atomically
+before sending. Server void RPC returns authoritative affected stock; local acknowledgment
+atomically saves stock, marks known return VOID, adjusts cached quantities and removes the
+block/outbox intent. Lost responses/restarts replay the same void; no stale-stock billing while
+confirmation is pending. Another-device VOID observation reads the same guarded snapshot
+without a new financial write. A first-attempt definitive DB rejection releases the block with
+a conflict; permission/device failure after an unknown attempt does NOT prove no commit and
+keeps the block. Such blocked cases require restored authorized confirmation, not blind cancel.
+
+Added RPC privilege/device/permission/reversal-replay assertions, adapter checks, browser
+IndexedDB block/restart/atomic-stock tests and actual counter void lost-response/reconnect
+coverage. Manual e2e typecheck runs from apps/admin (root lacks @types/node); it passes.
+Exact-head clean-database/browser/build evidence is required from CI. No main/live DB change,
+no merge authorization, no phase acceptance. Human shop/recovery and R2 501 work remain open.

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'preact/hooks';
 import {
-  getShopBusinessDate,listRecentReturns,voidReturn,
+  getShopBusinessDate,listRecentReturns,
   type PostedReturn,type ReturnDisposition,type ReturnSource,type ReturnType,type ReturnableLine,
 } from '@dsb-pro/adapters';
 import { appRoute } from '../lib/paths';
-import {getOfflineRuntimeIdentity,getOfflineBusinessDate,getOfflineReturnSources,getOfflineReturnLines,listOfflineReturns,postReturnResilient,refreshOfflineReturnSources,recordLocalReturnVoid,waitForOfflineRuntime} from '../lib/offlineSync';
+import {getOfflineRuntimeIdentity,getOfflineBusinessDate,getOfflineReturnSources,getOfflineReturnLines,listOfflineReturns,postReturnResilient,refreshOfflineReturnSources,recordLocalReturnVoid,voidReturnResilient,hasPendingReturnVoid,waitForOfflineRuntime} from '../lib/offlineSync';
 import type {OfflineReturnRecord} from '@dsb-pro/sync';
 
 const money=(paise:number)=>`₹${(paise/100).toFixed(2)}`;
@@ -23,8 +23,9 @@ export function ReturnsScreen(){
   const [recent,setRecent]=useState<PostedReturn[]>([]); const [busy,setBusy]=useState(false); const [error,setError]=useState(''); const [message,setMessage]=useState('');
   const [clientId,setClientId]=useState(()=>crypto.randomUUID());
   const [localReturns,setLocalReturns]=useState<OfflineReturnRecord[]>([]);
+  const [voidPending,setVoidPending]=useState(false);
 
-  async function refreshRecent(shop:string){setLocalReturns(await listOfflineReturns());if(navigator.onLine)try{const rows=await listRecentReturns(shop);setRecent(rows);await Promise.all(rows.filter(row=>row.status==='VOID').map(row=>recordLocalReturnVoid(row.id)));}catch{/* Local queue remains available during a degraded connection. */}}
+  async function refreshRecent(shop:string){setLocalReturns(await listOfflineReturns());setVoidPending(await hasPendingReturnVoid());if(navigator.onLine)try{const rows=await listRecentReturns(shop);setRecent(rows);await Promise.all(rows.filter(row=>row.status==='VOID').map(row=>recordLocalReturnVoid(row.id)));}catch{/* Local queue remains available during a degraded connection. */}}
   async function refreshSources(nextType:ReturnType){setSources(await getOfflineReturnSources(nextType));setSourceId('');setLines([]);setDraft([]);}
   useEffect(()=>{void (async()=>{try{
     await waitForOfflineRuntime();const shop=getOfflineRuntimeIdentity()!.shopId;setShopId(shop);
@@ -58,12 +59,13 @@ export function ReturnsScreen(){
 
   async function undo(row:PostedReturn){if(!confirm(`Void return ${row.doc_no}? Its money and stock effects will be reversed without deleting history.`))return;setBusy(true);setError('');try{
     if(!navigator.onLine)throw new Error('Voiding a confirmed return requires reconnecting so its refund can be reversed safely.');
-    await voidReturn(row.return_type,row.id,crypto.randomUUID());await recordLocalReturnVoid(row.id);setMessage(`Return ${row.doc_no} voided.`);await refreshOfflineReturnSources();await refreshRecent(shopId);if(sourceId)await loadLines(sourceId);
+    await voidReturnResilient(row.return_type,row.id);setMessage(`Return ${row.doc_no} voided; stock confirmation saved on this till.`);await refreshOfflineReturnSources();await refreshRecent(shopId);if(sourceId)await loadLines(sourceId);
   }catch(e){setError(String(e));}finally{setBusy(false);}}
 
   return <main class="page wide"><p><a href={appRoute.home}>← Home</a></p><h1>Returns</h1>
     <p class="muted">Returns are separate immutable documents. The server calculates amounts, refund limits, stock movements and ledger entries.</p>
     <p class="muted">Offline: accept the goods and note the provisional credit; tell the customer cash is available after reconnect and server confirmation. Only the latest 100 synced source documents of each type are available offline. Pending sales must sync first.</p>
+    {voidPending&&<p class="alert">Void confirmation pending — stock is unconfirmed. Billing and new returns are blocked until reconnect; do not act on previously displayed stock or refund amounts.</p>}
     {error&&<p role="alert" class="alert">{error}</p>}{message&&<p role="status" class="success">{message}</p>}
     <section class="card"><h2>Post a return</h2><form onSubmit={submit}>
       <div class="grid-form">

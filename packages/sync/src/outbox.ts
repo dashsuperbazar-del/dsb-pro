@@ -52,3 +52,6 @@ export function isDefinitiveFinancialRejectionMessage(message:string):boolean{
     'unavailable for return','return quantity exceeds','invalid return','return source',
   ].some(pattern=>normalized.includes(pattern));
 }
+export function canUnblockRejectedReturnVoid(attempts:number,message:string,readOnly=false):boolean{
+  return !readOnly&&attempts===1&&isDefinitiveFinancialRejectionMessage(message);
+}

@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(69);
+select plan(73);
 
 insert into auth.users(id) values
  ('b6500000-0000-0000-0000-000000000001'),
@@ -117,6 +117,26 @@ select post_purchase(current_setting('r65.shop')::uuid,null,'OTHER-SEED','2026-0
 select post_sale(current_setting('r65.shop')::uuid,null,'2026-09-16',0,0,'r65-other-sale',jsonb_build_array(jsonb_build_object('item_id',current_setting('r65.other_item'),'unit_level',1,'qty',1,'price_kind','retail')),jsonb_build_array(jsonb_build_object('amount_paise',10,'mode','cash')),null);
 select is(jsonb_array_length(get_shop_day_reconciliation(current_setting('r65.shop')::uuid,'2026-09-16')->'soldItems'),2,'full outer join retains sold-only and return-only items');
 select is((select (x->>'soldQtySmallest')::numeric from jsonb_array_elements(get_shop_day_reconciliation(current_setting('r65.shop')::uuid,'2026-09-16')->'soldItems') x where x->>'itemId'=current_setting('r65.other_item')),1::numeric,'sold-only item retains positive quantity');
+
+-- Two equal lines with a one-paisa header discount must allocate 99+100,
+-- not independently round to 100+100. Full returns must leave no phantom GST.
+select post_sale(current_setting('r65.shop')::uuid,null,'2026-09-17',1,0,'r65-round-sale',jsonb_build_array(
+ jsonb_build_object('item_id',current_setting('r65.item'),'unit_level',1,'qty',1,'price_kind','retail'),
+ jsonb_build_object('item_id',current_setting('r65.item'),'unit_level',1,'qty',1,'price_kind','retail')),
+ jsonb_build_array(jsonb_build_object('amount_paise',199,'mode','cash')),null);
+select set_config('r65.round_sale',(select id::text from sale_invoices where client_id='r65-round-sale'),false);
+select is((select gross_sales_paise from get_gst_summary(current_setting('r65.shop')::uuid,'2026-09-17','2026-09-17') where tax_rate_bp=0),199::bigint,'GST sale line allocation conserves header-discounted total');
+select post_return('SALE',current_setting('r65.round_sale')::uuid,'2026-09-17','r65-round-sale-return',
+ (select jsonb_agg(jsonb_build_object('sale_invoice_item_id',id,'qty',1,'disposition','RETURN_TO_SELLABLE') order by line_no) from sale_invoice_items where sale_invoice_id=current_setting('r65.round_sale')::uuid),null);
+select is((select gross_sales_paise from get_gst_summary(current_setting('r65.shop')::uuid,'2026-09-17','2026-09-17') where tax_rate_bp=0),0::bigint,'full discounted sale return leaves zero GST gross sales');
+select post_purchase(current_setting('r65.shop')::uuid,null,'ROUND-PURCHASE','2026-09-17',1,0,'r65-round-purchase',jsonb_build_array(
+ jsonb_build_object('item_id',current_setting('r65.item'),'unit_level',1,'qty',1,'unit_price_paise',100),
+ jsonb_build_object('item_id',current_setting('r65.item'),'unit_level',1,'qty',1,'unit_price_paise',100)),null);
+select set_config('r65.round_purchase',(select id::text from purchase_bills where client_id='r65-round-purchase'),false);
+select is((select gross_purchases_paise from get_gst_summary(current_setting('r65.shop')::uuid,'2026-09-17','2026-09-17') where tax_rate_bp=0),199::bigint,'GST purchase line allocation conserves discounted total');
+select post_return('PURCHASE',current_setting('r65.round_purchase')::uuid,'2026-09-17','r65-round-purchase-return',
+ (select jsonb_agg(jsonb_build_object('purchase_bill_item_id',id,'qty',1,'disposition','SUPPLIER_RETURN') order by line_no) from purchase_bill_items where purchase_bill_id=current_setting('r65.round_purchase')::uuid),null);
+select is((select gross_purchases_paise from get_gst_summary(current_setting('r65.shop')::uuid,'2026-09-17','2026-09-17') where tax_rate_bp=0),0::bigint,'full discounted purchase return leaves zero GST gross purchases');
 
 reset role;
 insert into tenants(id,name,slug,created_by) values('b6500000-0000-0000-0000-000000000099','Returns B','returns-b','b6500000-0000-0000-0000-000000000003');

@@ -1,5 +1,5 @@
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-import {pullReturnSources,pushSyncedReturn} from './returns';
+import {pullReturnSources,pushSyncedReturn,pushSyncedReturnVoid} from './returns';
 const {rpc}=vi.hoisted(()=>({rpc:vi.fn()}));
 vi.mock('./client',()=>({getSupabaseClient:()=>({rpc})}));
 const input={type:'SALE' as const,sourceId:'sale',shopId:'shop',businessDate:'2026-09-15',clientId:'return-intent',lines:[{sourceLineId:'line',qty:1,disposition:'RETURN_TO_SELLABLE' as const}]};
@@ -7,6 +7,18 @@ const source={return_type:'SALE',id:'sale',shop_id:'shop',doc_no:'S-1',business_
 const confirmation={returnId:'return',docNo:'SR-1',status:'POSTED',totalPaise:100,cashRefundPaise:60,balanceCreditPaise:40,stock:[{shop_id:'shop',item_id:'item',updated_at:1,available:2,on_hand:2,reserved:0,qty_base:2}]};
 beforeEach(()=>rpc.mockReset());
 describe('return sync adapter',()=>{
+  it('voids with stable identity and requires authoritative stock',async()=>{
+    rpc.mockResolvedValue({data:{...confirmation,status:'VOID'},error:null});
+    await expect(pushSyncedReturnVoid({deviceId:'device',shopId:'shop',type:'SALE',returnId:'return',clientId:'void-id'})).resolves.toMatchObject({status:'VOID'});
+    expect(rpc).toHaveBeenCalledWith('phase65_sync_void_return',{p_device_id:'device',p_schema_version:1,p_return_type:'SALE',p_return_id:'return',p_client_id:'void-id'});
+    rpc.mockResolvedValue({data:{...confirmation,status:'VOID',stock:[]},error:null});
+    await expect(pushSyncedReturnVoid({deviceId:'device',shopId:'shop',type:'SALE',returnId:'return',clientId:'void-id'})).rejects.toThrow('Malformed void confirmation');
+  });
+  it('reads another-device void without performing a financial write',async()=>{
+    rpc.mockResolvedValue({data:{...confirmation,status:'VOID'},error:null});
+    await pushSyncedReturnVoid({deviceId:'device',shopId:'shop',type:'SALE',returnId:'return',clientId:'read-id',readOnly:true});
+    expect(rpc).toHaveBeenCalledWith('phase65_sync_return_snapshot',{p_device_id:'device',p_schema_version:1,p_return_type:'SALE',p_return_id:'return'});
+  });
   it('sends only the intent, never an offline refund split',async()=>{
     rpc.mockResolvedValue({data:confirmation,error:null});
     await expect(pushSyncedReturn({...input,deviceId:'device'})).resolves.toEqual(confirmation);

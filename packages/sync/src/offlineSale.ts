@@ -57,6 +57,7 @@ export async function queueOfflineSale(
   for(const p of input.payments)nonNegativeMoney(p.amountPaise,'payment');
 
   return db.transaction('rw',[db.items,db.prices,db.customers,db.stock,db.outbox,db.meta,db.reservations,db.offlineSales,db.offlineReturns],async()=>{
+    if(await getMeta(db,'pendingReturnVoid'))throw new Error('Return void confirmation pending. Reconnect before billing.');
     if(await db.outbox.where('clientId').equals(input.clientId).count()){
       const existing=await db.offlineSales.get(input.clientId);
       if(existing)return existing;

@@ -47,10 +47,16 @@ test('return IndexedDB transactions preserve replay, overlays and rejection roll
     let forbidden=false;try{await s.queueOfflineReturn(db,{...purchaseIntent,clientId:'cashier-return'},{...context,role:'cashier'});}catch{forbidden=true;}
     let overReturn=false;try{await s.queueOfflineReturn(db,{...second,clientId:'over-return',lines:[{...second.lines[0],qty:9}]},context);}catch{overReturn=true;}
     const final={outbox:await db.outbox.count(),reservations:await db.reservations.count(),overReturnPersisted:!!await db.offlineReturns.get('over-return')};
-    await s.completeOfflineReturn(db,input.clientId,{...ack,status:'VOID',stock:[{...stock,updated_at:3}]});
+    const voidIntent={type:'SALE' as const,returnId:ack.returnId,shopId:'shop',clientId:'void-id'};
+    await s.queueReturnVoid(db,voidIntent);await s.queueReturnVoid(db,voidIntent);
+    db.close();await db.open();
+    let billingBlocked=false;try{await s.queueOfflineSale(db,{shopId:'shop',businessDate:'2026-09-15',discountPaise:0,extraChargesPaise:0,clientId:'blocked-sale',lines:[{itemId:'item',unitLevel:1,qty:1,priceKind:'retail',discountPaise:0}],payments:[{amountPaise:100,mode:'cash'}]},{...context,policy:{allowCashierOfflineFinalization:true},onlineInitiated:false});}catch(e){billingBlocked=String(e).includes('void confirmation pending');}
+    let malformedBlocked=false;try{await s.completeReturnVoid(db,voidIntent,ack);}catch{malformedBlocked=!!await s.getMeta(db,'pendingReturnVoid');}
+    await s.completeReturnVoid(db,voidIntent,{...ack,status:'VOID',stock:[{...stock,updated_at:3}]});
     await s.completeOfflineReturn(db,input.clientId,ack); // stale POSTED reply cannot resurrect a void
     const voided={status:(await db.offlineReturns.get(input.clientId))?.status,returned:(await db.returnSources.get(source.key))?.lines[0].returned_qty,stock:(await db.stock.get(stock.key))?.available};
-    await db.delete();return {initial,mismatch,mixedProjection,acknowledged,recovered:{state:recovered?.state,clientId:recovered?.clientId,payloadMatches:JSON.stringify(recovered?.payload)===JSON.stringify(second)},rejected,purchaseProjection,forbidden,overReturn,final,voided};
+    const voidSafety={billingBlocked,malformedBlocked,blockCleared:!await s.getMeta(db,'pendingReturnVoid'),outbox:await db.outbox.count()};
+    await db.delete();return {initial,mismatch,mixedProjection,acknowledged,recovered:{state:recovered?.state,clientId:recovered?.clientId,payloadMatches:JSON.stringify(recovered?.payload)===JSON.stringify(second)},rejected,purchaseProjection,forbidden,overReturn,final,voided,voidSafety};
   });
   expect(result.initial).toEqual({outbox:1,reservation:-2,refund:null,balance:null});
   expect(result.mismatch).toBe(true);expect(result.mixedProjection).toBe(0);
@@ -60,4 +66,5 @@ test('return IndexedDB transactions preserve replay, overlays and rejection roll
   expect(result.purchaseProjection).toBe(2);expect(result.forbidden).toBe(true);expect(result.overReturn).toBe(true);
   expect(result.final).toEqual({outbox:0,reservations:0,overReturnPersisted:false});
   expect(result.voided).toEqual({status:'VOID',returned:0,stock:4});
+  expect(result.voidSafety).toEqual({billingBlocked:true,malformedBlocked:true,blockCleared:true,outbox:0});
 });

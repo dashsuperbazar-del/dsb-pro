@@ -655,21 +655,19 @@ declare v_tenant uuid:=phase6_assert_report_access();
 begin
  perform phase3_assert_shop(p_shop_id);
  return query
- with sale_base as (
-  select sii.tax_rate_bp_snapshot rate,sii.line_total_paise,si.id invoice_id,
-   greatest(si.subtotal_paise-si.discount_paise,0)::bigint after_all_discounts,
-   sum(sii.line_total_paise) over(partition by si.id)::bigint after_line_discounts
-  from sale_invoice_items sii join sale_invoices si on si.tenant_id=sii.tenant_id and si.id=sii.sale_invoice_id
-  where sii.tenant_id=v_tenant and sii.shop_id=p_shop_id and si.status='FINALIZED' and si.business_date between p_from and p_to
- ), sale_lines as (
-  select rate,case when after_line_discounts>0 then round(line_total_paise::numeric*after_all_discounts/after_line_discounts)::bigint else 0::bigint end adjusted from sale_base
+ with sale_lines as (
+  select rate,phase65_sale_line_cap(line_id) adjusted from (
+   select sii.id line_id,sii.tax_rate_bp_snapshot rate from sale_invoice_items sii
+    join sale_invoices si on si.tenant_id=sii.tenant_id and si.id=sii.sale_invoice_id
+    where sii.tenant_id=v_tenant and sii.shop_id=p_shop_id and si.status='FINALIZED' and si.business_date between p_from and p_to
+  ) original_lines
   union all
   select sri.tax_rate_bp_snapshot,-sri.amount_paise from sale_return_items sri
    join sale_returns sr on sr.tenant_id=sri.tenant_id and sr.id=sri.sale_return_id
    where sri.tenant_id=v_tenant and sri.shop_id=p_shop_id and sr.status='POSTED' and sr.business_date between p_from and p_to
  ), purchase_lines as (
   select pbi.tax_rate_bp_snapshot rate,
-   case when pb.subtotal_paise>0 then round(pbi.line_total_paise::numeric*greatest(pb.subtotal_paise-pb.discount_paise,0)/pb.subtotal_paise)::bigint else 0::bigint end adjusted
+   phase65_purchase_line_cap(pbi.id) adjusted
   from purchase_bill_items pbi join purchase_bills pb on pb.tenant_id=pbi.tenant_id and pb.id=pbi.purchase_bill_id
   where pbi.tenant_id=v_tenant and pbi.shop_id=p_shop_id and pb.status='POSTED' and pb.business_date between p_from and p_to
   union all

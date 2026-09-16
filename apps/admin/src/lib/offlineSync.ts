@@ -1,14 +1,14 @@
 import {
   ackSync,classifyError,ensureFreshSession,errorMessage,getDefaultShopId,getOrCreateDeviceId,listServerSyncConflicts,pullSyncTable,pushSyncedSale,
   recordServerSyncConflict,resolveServerSyncConflict,setOfflineCashierFinalization,subscribeSyncWakeup,SYNC_PULL_LIMITS,
-  pullReturnSources,pushSyncedReturn,type Membership,type SaleLineInput,type SalePaymentInput,type SyncPullTable,
+  pullReturnSources,pushSyncedReturn,pushSyncedReturnVoid,type Membership,type SaleLineInput,type SalePaymentInput,type SyncPullTable,
 } from '@dsb-pro/adapters';
 import {
   applySyncPull,completeOfflineSale,getCachedBusinessDate,getCachedCustomers,getCachedItems,getCachedPolicy,getCachedPrices,
   getSyncCursors,getSyncHealth,isDefinitiveFinancialRejectionMessage,markOutboxRetry,markOutboxSending,nextOutboxEntry,openSyncDb,queueOfflineSale,
   recoverInterruptedOutbox,rejectOfflineSale,retryDelayMs,resolveLocalConflict,
   type DsbSyncDb,type LocalSyncConflict,type OfflineSalePayload,type OfflineSaleRecord,type OutboxEntry,
-  cacheReturnSources,returnableCachedLines,queueOfflineReturn,completeOfflineReturn,rejectOfflineReturn,
+  cacheReturnSources,returnableCachedLines,queueOfflineReturn,completeOfflineReturn,rejectOfflineReturn,queueReturnVoid,completeReturnVoid,getMeta,canUnblockRejectedReturnVoid,type ReturnVoidIntent,
   type OfflineReturnPayload,type OfflineReturnRecord,type OfflineReturnType,
   type SyncedBarcode,type SyncedCustomer,type SyncedItem,type SyncedPrice,type SyncIdentity,type SyncPullPayload,type SyncedSaleResult,
 } from '@dsb-pro/sync';
@@ -88,6 +88,23 @@ async function processOutbox(rt:Runtime){
     if(!next)return rows.length===0;
     const sending=markOutboxSending(next);
     await rt.db.outbox.put(sending);
+    if(sending.kind==='financial-rpc'&&sending.target==='void_return'){
+      const intent=sending.payload as ReturnVoidIntent;
+      try{await completeReturnVoid(rt.db,intent,await pushSyncedReturnVoid({...intent,deviceId:rt.identity.deviceId}));}
+      catch(error){
+        const message=error instanceof Error?error.message:String(error);
+        // Unknown outcomes and read snapshots retain the durable billing block.
+        // A later permission/device rejection cannot prove an earlier unknown
+        // attempt did not commit. Only a first-attempt DB rejection can unblock.
+        if(canUnblockRejectedReturnVoid(sending.attempts,message,intent.readOnly)){
+          await rt.db.transaction('rw',[rt.db.meta,rt.db.outbox,rt.db.conflicts],async()=>{
+            await rt.db.conflicts.add({createdAt:Date.now(),status:'OPEN',kind:'financial-rejection',target:'void_return',clientId:intent.clientId,reason:message,payload:intent,serverRef:null});
+            await rt.db.outbox.where('clientId').equals(intent.clientId).delete();await rt.db.meta.delete('pendingReturnVoid');
+          });
+        }else{await rt.db.outbox.put(markOutboxRetry(sending,message,Date.now()+retryDelayMs(sending.attempts+1)));throw error;}
+      }
+      continue;
+    }
     if(sending.kind==='financial-rpc'&&sending.target==='post_return'){
       try{
         const result=await pushSyncedReturn({...sending.payload as OfflineReturnPayload,deviceId:rt.identity.deviceId});
@@ -237,9 +254,20 @@ export async function getOfflineReturnSources(type:OfflineReturnType){
 export async function getOfflineReturnLines(type:OfflineReturnType,sourceId:string){return returnableCachedLines(requireRuntime().db,type,sourceId);}
 export async function listOfflineReturns():Promise<OfflineReturnRecord[]>{return (await requireRuntime().db.offlineReturns.orderBy('createdAt').reverse().toArray()).slice(0,100);}
 export async function recordLocalReturnVoid(returnId:string):Promise<void>{
-  const db=requireRuntime().db;
-  const changed=await db.offlineReturns.filter(row=>row.officialReturnId===returnId&&row.status!=='VOID').modify({status:'VOID'});if(changed)emit();
+  const rt=requireRuntime(),row=await rt.db.offlineReturns.filter(row=>row.officialReturnId===returnId&&row.status!=='VOID').first();
+  if(!row||await getMeta(rt.db,'pendingReturnVoid'))return;
+  await queueReturnVoid(rt.db,{type:row.payload.type,returnId,shopId:rt.identity.shopId,clientId:crypto.randomUUID(),readOnly:true});
+  emit();await runSyncNow();
 }
+export async function voidReturnResilient(type:OfflineReturnType,returnId:string):Promise<void>{
+  if(!navigator.onLine)throw new Error('Reconnect before voiding a confirmed return.');
+  const rt=requireRuntime(),intent=await queueReturnVoid(rt.db,{type,returnId,shopId:rt.identity.shopId,clientId:crypto.randomUUID()});
+  emit();await runSyncNow();
+  if(await getMeta(rt.db,'pendingReturnVoid'))throw new Error('Void confirmation pending — billing is blocked until reconnect confirms authoritative stock.');
+  const rejected=await rt.db.conflicts.filter(row=>row.target==='void_return'&&row.status==='OPEN'&&row.clientId===intent.clientId).first();
+  if(rejected)throw new Error(rejected.reason);
+}
+export async function hasPendingReturnVoid():Promise<boolean>{return !!await getMeta(requireRuntime().db,'pendingReturnVoid');}
 export async function postReturnResilient(input:OfflineReturnPayload):Promise<OfflineReturnRecord>{
   const rt=requireRuntime();
   if(input.shopId!==rt.identity.shopId)throw new Error('Return shop does not match this till.');

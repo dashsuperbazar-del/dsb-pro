@@ -123,3 +123,16 @@ export async function pushSyncedReturn(input:OfflineReturnPayload&{deviceId:stri
     result.stock.some(row=>row.shop_id!==input.shopId||!row.item_id||![row.updated_at,row.available,row.on_hand,row.reserved,row.qty_base].every(Number.isFinite)))throw new Error('Malformed return confirmation; retrying the same intent safely.');
   return result;
 }
+
+export async function pushSyncedReturnVoid(input:{deviceId:string;shopId:string;type:ReturnType;returnId:string;clientId:string;readOnly?:boolean}):Promise<SyncedReturnResult>{
+  const {data,error}=await getSupabaseClient().rpc(input.readOnly?'phase65_sync_return_snapshot':'phase65_sync_void_return',{
+    p_device_id:input.deviceId,p_schema_version:1,p_return_type:input.type,p_return_id:input.returnId,...(input.readOnly?{}:{p_client_id:input.clientId}),
+  });
+  if(error)throw new Error(error.message);
+  const result=data as SyncedReturnResult;
+  if(!result||result.returnId!==input.returnId||result.status!=='VOID'||typeof result.docNo!=='string'||!result.docNo||!Array.isArray(result.stock)||!result.stock.length||
+    ![result.totalPaise,result.cashRefundPaise,result.balanceCreditPaise].every(n=>Number.isSafeInteger(n)&&n>=0)||
+    (input.type==='SALE'&&result.cashRefundPaise+result.balanceCreditPaise!==result.totalPaise)||
+    result.stock.some(row=>row.shop_id!==input.shopId||!row.item_id||![row.updated_at,row.available,row.on_hand,row.reserved,row.qty_base].every(Number.isFinite)))throw new Error('Malformed void confirmation; retrying without unblocking billing.');
+  return result;
+}

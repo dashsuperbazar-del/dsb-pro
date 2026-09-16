@@ -84,6 +84,43 @@ revoke all on function phase65_sync_return_sources(text,uuid,integer) from publi
 grant execute on function phase65_sync_return_sources(text,uuid,integer) to authenticated;
 
 -- Payment voids must not detach a live refund or erase the receipt that backs
+-- Snapshot read and void response share the authoritative post-transaction stock.
+create function phase65_sync_return_snapshot(p_device_id text,p_schema_version integer,p_return_type text,p_return_id uuid)
+returns jsonb language plpgsql security definer set search_path=public as $$
+declare v_tenant uuid; v_shop uuid; v_doc text; v_status text; v_total bigint; v_cash bigint:=0; v_balance bigint:=0; v_stock jsonb;
+begin
+ perform phase5_assert_schema(p_schema_version); perform phase5_assert_sync_device(p_device_id);
+ v_tenant:=current_tenant_id();
+ if p_return_type='SALE' then
+  select shop_id,doc_no,status,total_paise,cash_refund_paise,balance_credit_paise into v_shop,v_doc,v_status,v_total,v_cash,v_balance
+   from sale_returns where tenant_id=v_tenant and id=p_return_id;
+ elsif p_return_type='PURCHASE' then
+  select shop_id,doc_no,status,total_paise into v_shop,v_doc,v_status,v_total from purchase_returns where tenant_id=v_tenant and id=p_return_id;
+ else raise exception 'invalid return type'; end if;
+ if v_shop is null then raise exception 'return unavailable'; end if;
+ perform phase3_assert_shop(v_shop);
+ select coalesce(jsonb_agg(to_jsonb(q)),'[]'::jsonb) into v_stock from (
+  select (s.shop_id::text||':'||s.item_id::text) id,(s.shop_id::text||':'||s.item_id::text) key,s.tenant_id,s.shop_id,s.item_id,
+   s.on_hand::double precision on_hand,s.reserved::double precision reserved,s.available::double precision available,
+   s.qty_base::double precision qty_base,s.updated_at,null::bigint deleted_at from stock_current s
+   where s.tenant_id=v_tenant and s.shop_id=v_shop and s.item_id in (
+    select item_id from sale_return_items where tenant_id=v_tenant and sale_return_id=p_return_id
+    union select item_id from purchase_return_items where tenant_id=v_tenant and purchase_return_id=p_return_id
+   )
+ ) q;
+ return jsonb_build_object('returnId',p_return_id,'docNo',v_doc,'status',v_status,'totalPaise',v_total,'cashRefundPaise',v_cash,'balanceCreditPaise',v_balance,'stock',v_stock);
+end $$;
+create function phase65_sync_void_return(p_device_id text,p_schema_version integer,p_return_type text,p_return_id uuid,p_client_id text)
+returns jsonb language plpgsql security definer set search_path=public as $$
+begin
+ perform phase5_assert_schema(p_schema_version); perform phase5_assert_sync_device(p_device_id);
+ perform void_return(p_return_type,p_return_id,p_client_id);
+ return phase65_sync_return_snapshot(p_device_id,p_schema_version,p_return_type,p_return_id);
+end $$;
+revoke all on function phase65_sync_return_snapshot(text,integer,text,uuid),phase65_sync_void_return(text,integer,text,uuid,text) from public,anon;
+grant execute on function phase65_sync_return_snapshot(text,integer,text,uuid),phase65_sync_void_return(text,integer,text,uuid,text) to authenticated;
+
+-- Payment voids must not detach a live refund or erase the receipt that backs
 -- money already paid out. Lock the same invoices as post_return(), including
 -- allocation rows already marked VOID by void_payment() in this transaction.
 create function phase65_refund_payment_void_guard() returns trigger

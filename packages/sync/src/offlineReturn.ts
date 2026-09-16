@@ -26,6 +26,7 @@ export async function queueOfflineReturn(db:DsbSyncDb,input:OfflineReturnPayload
   if(context.role==='accountant'||(input.type==='PURCHASE'&&context.role==='cashier'))throw new Error('Your role cannot post this return.');
   if(!['SALE','PURCHASE'].includes(input.type)||!input.clientId.trim()||!/^\d{4}-\d{2}-\d{2}$/.test(input.businessDate)||!input.lines.length)throw new Error('Invalid return intent.');
   return db.transaction('rw',[db.returnSources,db.offlineReturns,db.offlineSales,db.outbox,db.meta,db.reservations,db.stock],async()=>{
+    if(await getMeta(db,'pendingReturnVoid'))throw new Error('Return void confirmation pending. Reconnect before billing or returning stock.');
     const fingerprint=JSON.stringify(input),existing=await db.offlineReturns.get(input.clientId);
     if(existing){if(existing.fingerprint!==fingerprint)throw new Error('Return client_id payload mismatch.');return existing;}
     if(await db.outbox.where('clientId').equals(input.clientId).count())throw new Error('clientId is already used by another operation.');
@@ -73,5 +74,30 @@ export async function rejectOfflineReturn(db:DsbSyncDb,clientId:string,reason:st
     await db.outbox.where('clientId').equals(clientId).delete();
     await db.conflicts.add({createdAt:Date.now(),status:'OPEN',kind:'financial-rejection',target:'post_return',clientId,reason,payload:row.payload,serverRef:null});
     await rebuildReservations(db);
+  });
+}
+
+export type ReturnVoidIntent={type:OfflineReturnPayload['type'];returnId:string;shopId:string;clientId:string;readOnly?:boolean};
+export async function queueReturnVoid(db:DsbSyncDb,intent:ReturnVoidIntent):Promise<ReturnVoidIntent>{
+  return db.transaction('rw',[db.meta,db.outbox],async()=>{
+    const pending=await getMeta<ReturnVoidIntent>(db,'pendingReturnVoid');
+    if(pending){if(pending.returnId===intent.returnId&&pending.type===intent.type)return pending;throw new Error('Another return void is pending confirmation.');}
+    const sequence=((await getMeta<number>(db,'outboxSeq'))??0)+1;
+    await setMeta(db,'outboxSeq',sequence);await setMeta(db,'pendingReturnVoid',intent);
+    await db.outbox.add({sequence,clientId:intent.clientId,kind:'financial-rpc',target:'void_return',payload:intent,createdAt:Date.now(),attempts:0,state:'pending',nextAttemptAt:0,lastError:null});
+    return intent;
+  });
+}
+export async function completeReturnVoid(db:DsbSyncDb,intent:ReturnVoidIntent,result:SyncedReturnResult):Promise<void>{
+  if(result.returnId!==intent.returnId||result.status!=='VOID')throw new Error('Malformed void confirmation; keeping billing blocked.');
+  await db.transaction('rw',[db.meta,db.outbox,db.stock,db.offlineReturns,db.returnSources],async()=>{
+    const pending=await getMeta<ReturnVoidIntent>(db,'pendingReturnVoid');if(!pending||pending.clientId!==intent.clientId)return;
+    for(const raw of result.stock){const key=stockKey(raw.shop_id,raw.item_id),prev=await db.stock.get(key);if(!prev||raw.updated_at>=prev.updated_at)await db.stock.put({...raw,key});}
+    for(const row of await db.offlineReturns.filter(r=>r.officialReturnId===intent.returnId).toArray()){
+      const source=await db.returnSources.get(returnSourceKey(row.payload.type,row.payload.sourceId));
+      if(source?.posted_return_client_ids.includes(row.clientId))await db.returnSources.put({...source,posted_return_client_ids:source.posted_return_client_ids.filter(id=>id!==row.clientId),lines:source.lines.map(line=>({...line,returned_qty:Math.max(0,line.returned_qty-(row.lines.find(x=>x.sourceLineId===line.id)?.qty??0))}))});
+      await db.offlineReturns.put({...row,status:'VOID'});
+    }
+    await db.outbox.where('clientId').equals(intent.clientId).delete();await db.meta.delete('pendingReturnVoid');
   });
 }
