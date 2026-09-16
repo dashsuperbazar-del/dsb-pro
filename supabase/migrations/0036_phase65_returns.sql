@@ -749,13 +749,15 @@ begin
   where sii.tenant_id=v_tenant and sii.shop_id=p_shop_id and si.business_date=v_date and si.status='FINALIZED'
     and sii.deleted_at is null and si.deleted_at is null group by sii.item_id
  ), returned_base as (
-  select sri.item_id,sum(sri.base_qty)::numeric returned_qty_smallest
+  select sri.item_id,max(sri.item_name_snapshot) item_name,sum(sri.base_qty)::numeric returned_qty_smallest
   from sale_return_items sri join sale_returns sr on sr.tenant_id=sri.tenant_id and sr.id=sri.sale_return_id
   where sri.tenant_id=v_tenant and sri.shop_id=p_shop_id and sr.business_date=v_date and sr.status='POSTED'
   group by sri.item_id
  ), sold as (
-  select s.*,s.sold_qty_smallest-coalesce(r.returned_qty_smallest,0) sold_qty_net
-  from sold_base s left join returned_base r using(item_id)
+  select coalesce(s.item_id,r.item_id) item_id,coalesce(s.item_name,r.item_name) item_name,
+    coalesce(s.sale_lines,0)::bigint sale_lines,
+    coalesce(s.sold_qty_smallest,0)-coalesce(r.returned_qty_smallest,0) sold_qty_net
+  from sold_base s full outer join returned_base r using(item_id)
  )
  select jsonb_build_object(
   'businessDate',v_date,

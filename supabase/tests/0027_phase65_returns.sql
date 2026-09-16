@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(60);
+select plan(69);
 
 insert into auth.users(id) values
  ('b6500000-0000-0000-0000-000000000001'),
@@ -97,6 +97,26 @@ set role authenticated;
 select set_config('request.jwt.claims',json_build_object('sub','b6500000-0000-0000-0000-000000000002','role','authenticated')::text,true);
 select throws_ok(format($q$select post_return('PURCHASE',%L::uuid,'2026-09-15','r65-cashier-purchase-return',jsonb_build_array(jsonb_build_object('purchase_bill_item_id',(select id from purchase_bill_items where purchase_bill_id=%L::uuid),'qty',1,'disposition','SUPPLIER_RETURN')),null)$q$,current_setting('r65.purchase'),current_setting('r65.purchase')),null,'not permitted','cashier cannot post purchase return');
 select throws_ok(format($q$select void_return('SALE',%L::uuid,'r65-cashier-void')$q$,(select id from sale_returns where client_id='r65-walkin-return')),null,'not permitted','cashier cannot void sale return');
+
+-- Return yesterday's remaining walk-in piece on a day with zero sales.
+-- Restore owner identity after the preceding cashier permission assertions.
+select set_config('request.jwt.claims',json_build_object('sub','b6500000-0000-0000-0000-000000000001','role','authenticated')::text,true);
+select lives_ok(format($q$select post_return('SALE',%L::uuid,'2026-09-16','r65-next-day-return',jsonb_build_array(jsonb_build_object('sale_invoice_item_id',(select id from sale_invoice_items where sale_invoice_id=%L::uuid),'qty',1,'disposition','RETURN_TO_SELLABLE')),null)$q$,current_setting('r65.walkin'),current_setting('r65.walkin')),'return previous-day item with no sales today');
+select set_config('r65.nextday',get_shop_day_reconciliation(current_setting('r65.shop')::uuid,'2026-09-16')::text,false);
+select is((current_setting('r65.nextday')::jsonb->>'invoiceCount')::bigint,0::bigint,'refund-only day has zero sales');
+select is(jsonb_array_length(current_setting('r65.nextday')::jsonb->'soldItems'),1,'return-only item remains in reconciliation');
+select is((current_setting('r65.nextday')::jsonb->'soldItems'->0->>'soldQtySmallest')::numeric,-1::numeric,'return-only item shows negative net quantity');
+select is((current_setting('r65.nextday')::jsonb->'soldItems'->0->>'saleLines')::bigint,0::bigint,'return-only item has zero sale lines');
+select is((current_setting('r65.nextday')::jsonb->'paymentModes'->>'cash')::bigint,-100::bigint,'refund-only day permits negative cash');
+select is((select receipts_paise from get_day_book(current_setting('r65.shop')::uuid,'2026-09-16','2026-09-16')),-100::bigint,'day book preserves negative net receipts');
+-- Exercise the other outer-join side: another item sold today, never returned.
+insert into items(tenant_id,name,unit1,client_id) values(current_tenant_id(),'Sold Only Item','piece','r65-sold-only');
+select set_config('r65.other_item',(select id::text from items where client_id='r65-sold-only'),false);
+select set_item_price(current_setting('r65.other_item')::uuid,current_setting('r65.shop')::uuid,'retail',1::smallint,10::bigint,'r65-other-price');
+select post_purchase(current_setting('r65.shop')::uuid,null,'OTHER-SEED','2026-09-16',0,0,'r65-other-purchase',jsonb_build_array(jsonb_build_object('item_id',current_setting('r65.other_item'),'unit_level',1,'qty',5,'unit_price_paise',5)),null);
+select post_sale(current_setting('r65.shop')::uuid,null,'2026-09-16',0,0,'r65-other-sale',jsonb_build_array(jsonb_build_object('item_id',current_setting('r65.other_item'),'unit_level',1,'qty',1,'price_kind','retail')),jsonb_build_array(jsonb_build_object('amount_paise',10,'mode','cash')),null);
+select is(jsonb_array_length(get_shop_day_reconciliation(current_setting('r65.shop')::uuid,'2026-09-16')->'soldItems'),2,'full outer join retains sold-only and return-only items');
+select is((select (x->>'soldQtySmallest')::numeric from jsonb_array_elements(get_shop_day_reconciliation(current_setting('r65.shop')::uuid,'2026-09-16')->'soldItems') x where x->>'itemId'=current_setting('r65.other_item')),1::numeric,'sold-only item retains positive quantity');
 
 reset role;
 insert into tenants(id,name,slug,created_by) values('b6500000-0000-0000-0000-000000000099','Returns B','returns-b','b6500000-0000-0000-0000-000000000003');

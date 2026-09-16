@@ -75,7 +75,7 @@ export function SalesHistoryScreen(){
           <p><strong>{legacyCompareFile}</strong><br/>Old DSB exported at {new Date(legacyComparison.legacy.exportedAt).toLocaleString()}.</p>
           <p role="status" class={legacyComparison.exactMatch?'success':'alert'}><strong>{legacyComparison.exactMatch?'MATCH — Phase 4 day totals reconcile':'MISMATCH — review the rows below'}</strong></p>
           <div class="table-wrap"><table><thead><tr><th>Check</th><th>Old DSB</th><th>DSB Pro</th><th>Result</th></tr></thead><tbody>
-            {legacyComparison.rows.map(row=><tr><td>{row.label}</td><td>{row.kind==='paise'?money(row.legacy):row.legacy}</td><td>{row.kind==='paise'?money(row.dsbPro):row.dsbPro}</td><td><strong>{row.match?'MATCH':'MISMATCH'}</strong></td></tr>)}
+            {legacyComparison.rows.map(row=><tr><td>{row.label}</td><td>{row.legacy===null?'Unknown — verify payout':row.kind==='paise'?money(row.legacy):row.legacy}</td><td>{row.kind==='paise'?money(row.dsbPro):row.dsbPro}</td><td><strong>{row.legacy===null?'REVIEW REQUIRED':row.match?'MATCH':'MISMATCH'}</strong></td></tr>)}
           </tbody></table></div>
           {legacyComparison.legacy.returnCreditPaise>0&&<p>Old DSB sale-return credit: {money(legacyComparison.legacy.returnCreditPaise)}. It is compared with DSB Pro returns and netted from cash.</p>}
           {legacyComparison.legacy.warnings.length>0&&<details><summary>Comparison warnings ({legacyComparison.legacy.warnings.length})</summary><ul>{legacyComparison.legacy.warnings.map(w=><li>{w}</li>)}</ul></details>}

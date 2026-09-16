@@ -866,3 +866,19 @@ confirmation; pending unknown-outcome returns cannot be cancelled. Automated ide
 one refund ledger row, not physical cash handoff. Real counter/stock reconciliation and paper-key
 hosted recovery/RPO/RTO drills remain human gates. R2's first-attempt 501 behavior is unchanged.
 After review and explicit consolidation authorization, multi-line purchases is the next build item.
+
+### 2026-09-16 — Phase 6.5 reconciliation correction (merge held)
+
+Corrected two review findings on draft PR #17: legacy v3 return credits do not prove cash
+payout, so cash/net-receipt comparison values are null and rendered as Unknown / REVIEW
+REQUIRED rather than invented cash refunds. Every comparator warning now requires manual
+review; an ambiguous full-cash-shaped match cannot produce exactMatch. No guessed split or
+Pro result is used as legacy evidence. Independently verified counter evidence is still required.
+
+Day reconciliation now FULL OUTER JOINs sold and returned quantities by item, preserving
+both sold-only and return-only items, snapshot names, zero sale-line counts and negative net
+quantities. Added unpaid/part-paid comparator flag tests and nine pgTAP assertions, including
+returning yesterday's item on a day with zero sales, negative cash/day-book receipts, and
+an independent sold-only item. Local 193 unit tests and project-reference typecheck pass;
+clean-database pgTAP and browser verification must come from exact-head CI, not this note.
+Main and live databases are untouched. Hold merge; human shop/recovery gates remain open.
