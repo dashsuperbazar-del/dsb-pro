@@ -258,11 +258,15 @@ export async function recordLocalReturnVoid(returnId:string):Promise<void>{
   if(!row||await getMeta(rt.db,'pendingReturnVoid'))return;
   await queueReturnVoid(rt.db,{type:row.payload.type,returnId,shopId:rt.identity.shopId,clientId:crypto.randomUUID(),readOnly:true});
   emit();await runSyncNow();
+  if(navigator.onLine&&await getMeta(rt.db,'pendingReturnVoid'))await runSyncNow();
 }
 export async function voidReturnResilient(type:OfflineReturnType,returnId:string):Promise<void>{
   if(!navigator.onLine)throw new Error('Reconnect before voiding a confirmed return.');
   const rt=requireRuntime(),intent=await queueReturnVoid(rt.db,{type,returnId,shopId:rt.identity.shopId,clientId:crypto.randomUUID()});
   emit();await runSyncNow();
+  // The intent can be appended after an already-running cycle drained its
+  // outbox. Joining that cycle alone does not send this newly queued void.
+  if(navigator.onLine&&await getMeta(rt.db,'pendingReturnVoid'))await runSyncNow();
   if(await getMeta(rt.db,'pendingReturnVoid'))throw new Error('Void confirmation pending — billing is blocked until reconnect confirms authoritative stock.');
   const rejected=await rt.db.conflicts.filter(row=>row.target==='void_return'&&row.status==='OPEN'&&row.clientId===intent.clientId).first();
   if(rejected)throw new Error(rejected.reason);

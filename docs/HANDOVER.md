@@ -903,3 +903,10 @@ IndexedDB block/restart/atomic-stock tests and actual counter void lost-response
 coverage. Manual e2e typecheck runs from apps/admin (root lacks @types/node); it passes.
 Exact-head clean-database/browser/build evidence is required from CI. No main/live DB change,
 no merge authorization, no phase acceptance. Human shop/recovery and R2 501 work remain open.
+
+Candidate 997e7c5 / CI 35046626625 passed 452 database assertions and 22 browser tests, but
+the new counter void test failed before any void request was sent. Trace showed a persisted
+pending void while stock pulls were active: joining an existing sync cycle does not flush an
+intent appended after its outbox drain. Added a second immediate flush when a void remains
+pending after the joined cycle, and a held-pull regression to make that interleaving deliberate.
+This is a new corrective commit, not an unchanged CI rerun. Exact-head evidence is still required.

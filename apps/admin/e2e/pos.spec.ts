@@ -168,7 +168,13 @@ test('real browser money path posts stock then finalizes a paid sale',async({pag
   await expect(page.locator('[aria-label="item peek"]')).toContainText('Stock 5 piece');
   // Exercise the actual counter void path, not just the sync helper. Lose the
   // response after commit, restart offline, then replay and save reversed stock.
+  let heldPull=false;let releasePull!:()=>void;
+  const pullGate=new Promise<void>(resolve=>{releasePull=resolve;});
+  await page.route('**/rest/v1/rpc/phase5_sync_pull',async route=>{
+    if(!heldPull){heldPull=true;await pullGate;}await route.continue();
+  });
   await page.goto('/returns');
+  await expect.poll(()=>heldPull).toBe(true);
   let lostVoid=false;
   await page.route('**/rest/v1/rpc/phase65_sync_void_return',async route=>{
     if(!lostVoid){const response=await route.fetch();expect(response.ok()).toBe(true);lostVoid=true;await context.setOffline(true);await route.abort('failed');}
@@ -176,6 +182,8 @@ test('real browser money path posts stock then finalizes a paid sale',async({pag
   });
   page.once('dialog',dialog=>dialog.accept());
   await page.getByRole('button',{name:'Void',exact:true}).first().click();
+  await expect(page.getByText('Void confirmation pending — stock is unconfirmed.',{exact:false})).toBeVisible();
+  releasePull();
   await expect.poll(()=>lostVoid).toBe(true);
   await expect(page.getByRole('alert')).toContainText('Void confirmation pending');
   await page.reload();
