@@ -195,7 +195,11 @@ test('real browser money path posts stock then finalizes a paid sale',async({pag
   await context.setOffline(false);await page.goto('/sync');
   await page.getByRole('button',{name:'Retry queued work now'}).click();
   await expect(page.getByTestId('sync-outbox-count')).toHaveText('0',{timeout:15000});
-  await context.setOffline(true);await page.goto('/inventory');
-  await page.getByLabel('Peek item').selectOption({label:'POS E2E Item'});
-  await expect(page.locator('[aria-label="item peek"]')).toContainText('Stock 4 piece');
+  await context.setOffline(true);await page.goto('/returns');
+  await expect(page.locator('section').filter({has:page.getByRole('heading',{name:'This till’s return queue'})})).toContainText('Voided — refund and stock reversed');
+  const reversedStock=await page.evaluate(async()=>{
+    const name=(await indexedDB.databases()).find(db=>db.name?.startsWith('dsb-pro-sync-'))!.name!;
+    return new Promise<{stock:number;pending:boolean}>((resolve,reject)=>{const request=indexedDB.open(name);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,tx=db.transaction(['stock','meta'],'readonly'),stocks=tx.objectStore('stock').getAll(),pending=tx.objectStore('meta').get('pendingReturnVoid');tx.oncomplete=()=>{resolve({stock:stocks.result[0].available,pending:!!pending.result});db.close();};};});
+  });
+  expect(reversedStock).toEqual({stock:4,pending:false});
 });

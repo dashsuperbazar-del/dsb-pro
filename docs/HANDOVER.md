@@ -910,3 +910,9 @@ pending void while stock pulls were active: joining an existing sync cycle does 
 intent appended after its outbox drain. Added a second immediate flush when a void remains
 pending after the joined cycle, and a held-pull regression to make that interleaving deliberate.
 This is a new corrective commit, not an unchanged CI rerun. Exact-head evidence is still required.
+
+Candidate d1611cb / CI 35047026957 passed 452 database assertions and the new held-cycle
+void/lost-response/restart/replay checks, but its final test tried to use Inventory's server-backed
+picker while offline and timed out. Corrected that test assumption: after disconnect/restart,
+assert Returns' persisted VOID state and IndexedDB stock=4 with pending block cleared. Inventory
+offline master-data UI was not built or claimed by this patch. No timeout/retry threshold relaxed.
