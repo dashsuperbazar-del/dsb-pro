@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import {
   getCurrentMembership, getDefaultShopId, getShopSettings, updateShopSettings, getCashierOfflineFinalizationPolicy,
-  type PrinterWidth, type ShopSettings,
+  type PrinterWidth,
 } from '@dsb-pro/adapters';
 import { updateCashierOfflinePolicy } from '../lib/offlineSync';
 import { appRoute } from '../lib/paths';
@@ -10,7 +10,10 @@ const MONTHS = ['January','February','March','April','May','June','July','August
 
 export function SettingsScreen() {
   const [shopId,setShopId]=useState(''); const [role,setRole]=useState('');
-  const [settings,setSettings]=useState<ShopSettings|null>(null);
+  const [loaded,setLoaded]=useState(false);
+  const [name,setName]=useState(''); const [address,setAddress]=useState(''); const [gstin,setGstin]=useState('');
+  const [invoicePrefix,setInvoicePrefix]=useState(''); const [timezone,setTimezone]=useState('');
+  const [printerWidth,setPrinterWidth]=useState<PrinterWidth>('80mm'); const [fiscalYearStartMonth,setFiscalYearStartMonth]=useState(4);
   const [allowCashierOffline,setAllowCashierOffline]=useState(false); const [policyBusy,setPolicyBusy]=useState(false);
   const [busy,setBusy]=useState(false); const [message,setMessage]=useState(''); const [error,setError]=useState('');
 
@@ -19,20 +22,16 @@ export function SettingsScreen() {
     const shop=await getDefaultShopId();
     setRole(membership.role); setShopId(shop);
     const [s,policy]=await Promise.all([getShopSettings(shop),getCashierOfflineFinalizationPolicy(membership.tenantId)]);
-    setSettings(s); setAllowCashierOffline(policy);
+    setName(s.name); setAddress(s.address??''); setGstin(s.gstin??''); setInvoicePrefix(s.invoicePrefix??'');
+    setTimezone(s.timezone); setPrinterWidth(s.printerWidth); setFiscalYearStartMonth(s.fiscalYearStartMonth);
+    setAllowCashierOffline(policy); setLoaded(true);
   }
   useEffect(()=>{ void refresh().catch(e=>setError(String(e))); },[]);
 
   async function saveProfile(ev:Event){
-    ev.preventDefault(); if(busy||!settings)return; setError(''); setMessage('');
-    const f=new FormData(ev.currentTarget as HTMLFormElement); setBusy(true);
+    ev.preventDefault(); if(busy)return; setError(''); setMessage(''); setBusy(true);
     try{
-      await updateShopSettings({
-        shopId,name:String(f.get('name')),address:String(f.get('address')||'')||undefined,gstin:String(f.get('gstin')||'')||undefined,
-        invoicePrefix:String(f.get('invoicePrefix')||'')||undefined,timezone:String(f.get('timezone')),
-        printerWidth:String(f.get('printerWidth')) as PrinterWidth,fiscalYearStartMonth:Number(f.get('fiscalYearStartMonth')),
-      });
-      setSettings(await getShopSettings(shopId));
+      await updateShopSettings({ shopId, name, address: address||undefined, gstin: gstin||undefined, invoicePrefix: invoicePrefix||undefined, timezone, printerWidth, fiscalYearStartMonth });
       setMessage('Shop settings saved.');
     }catch(e){setError(String(e));} finally{setBusy(false);}
   }
@@ -43,16 +42,16 @@ export function SettingsScreen() {
     catch(e){setError(String(e));} finally{setPolicyBusy(false);}
   }
 
-  if(!settings) return <main><p><a href={appRoute.home}>← Home</a></p><h1>Settings</h1>{error?<p role="alert">{error}</p>:<p>Loading…</p>}</main>;
+  if(!loaded) return <main><p><a href={appRoute.home}>← Home</a></p><h1>Settings</h1>{error?<p role="alert">{error}</p>:<p>Loading…</p>}</main>;
   return <main>
     <p><a href={appRoute.home}>← Home</a></p><h1>Settings</h1>
     {error&&<p role="alert">{error}</p>}{message&&<p role="status">{message}</p>}
     <section><h2>Shop profile</h2>
       <form onSubmit={saveProfile}>
-        <label>Shop name <input name="name" defaultValue={settings.name} required/></label> <label>Address <input name="address" defaultValue={settings.address??''}/></label> <label>GSTIN <input name="gstin" defaultValue={settings.gstin??''} placeholder="27ABCDE1234F1Z5"/></label>
-        <br/><label>Invoice prefix <input name="invoicePrefix" defaultValue={settings.invoicePrefix??''} placeholder="INV"/></label> <label>Timezone <input name="timezone" defaultValue={settings.timezone} required/></label>
-        <label>Printer width <select name="printerWidth" defaultValue={settings.printerWidth}><option value="58mm">58mm thermal</option><option value="80mm">80mm thermal</option></select></label>
-        <label>Fiscal year starts <select name="fiscalYearStartMonth" defaultValue={String(settings.fiscalYearStartMonth)}>{MONTHS.map((m,i)=><option key={m} value={i+1}>{m}</option>)}</select></label>
+        <label>Shop name <input value={name} onInput={e=>setName((e.currentTarget as HTMLInputElement).value)} required/></label> <label>Address <input value={address} onInput={e=>setAddress((e.currentTarget as HTMLInputElement).value)}/></label> <label>GSTIN <input value={gstin} onInput={e=>setGstin((e.currentTarget as HTMLInputElement).value)} placeholder="27ABCDE1234F1Z5"/></label>
+        <br/><label>Invoice prefix <input value={invoicePrefix} onInput={e=>setInvoicePrefix((e.currentTarget as HTMLInputElement).value)} placeholder="INV"/></label> <label>Timezone <input value={timezone} onInput={e=>setTimezone((e.currentTarget as HTMLInputElement).value)} required/></label>
+        <label>Printer width <select value={printerWidth} onChange={e=>setPrinterWidth((e.currentTarget as HTMLSelectElement).value as PrinterWidth)}><option value="58mm">58mm thermal</option><option value="80mm">80mm thermal</option></select></label>
+        <label>Fiscal year starts <select value={String(fiscalYearStartMonth)} onChange={e=>setFiscalYearStartMonth(Number((e.currentTarget as HTMLSelectElement).value))}>{MONTHS.map((m,i)=><option key={m} value={i+1}>{m}</option>)}</select></label>
         <p><button disabled={busy}>{busy?'Saving…':'Save shop profile'}</button></p>
       </form>
     </section>
