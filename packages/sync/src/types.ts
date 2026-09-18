@@ -131,6 +131,9 @@ export type SyncedSaleResult=Readonly<{
   saleId:string; docNo:string; stock:SyncedStock[];
 }>;
 
+export type HeldCartLine={itemId:string;unitLevel:1|2|3;qty:number;priceKind:'retail'|'wholesale';discountPaise:number};
+export type HeldCartRecord={id:string;shopId:string;createdAt:number;label:string;customerId:string;globalDiscount:string;extra:string;lines:HeldCartLine[]};
+
 export type OfflineReturnType='SALE'|'PURCHASE';
 export type OfflineReturnDisposition='RETURN_TO_SELLABLE'|'DAMAGED'|'EXPIRED'|'SUPPLIER_RETURN';
 export type CachedReturnLine={id:string;item_id:string;item_name_snapshot:string;unit_name_snapshot:string;qty:number;base_qty:number;returned_qty:number};

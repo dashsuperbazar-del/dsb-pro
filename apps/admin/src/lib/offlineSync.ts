@@ -10,6 +10,7 @@ import {
   type DsbSyncDb,type LocalSyncConflict,type OfflineSalePayload,type OfflineSaleRecord,type OutboxEntry,
   cacheReturnSources,returnableCachedLines,queueOfflineReturn,completeOfflineReturn,rejectOfflineReturn,queueReturnVoid,completeReturnVoid,getMeta,canUnblockRejectedReturnVoid,type ReturnVoidIntent,
   type OfflineReturnPayload,type OfflineReturnRecord,type OfflineReturnType,
+  holdCart,listHeldCarts,discardHeldCart,takeHeldCart,type HeldCartLine,type HeldCartRecord,
   type SyncedBarcode,type SyncedCustomer,type SyncedItem,type SyncedPrice,type SyncIdentity,type SyncPullPayload,type SyncedSaleResult,
 } from '@dsb-pro/sync';
 
@@ -253,6 +254,16 @@ export async function getOfflineReturnSources(type:OfflineReturnType){
 }
 export async function getOfflineReturnLines(type:OfflineReturnType,sourceId:string){return returnableCachedLines(requireRuntime().db,type,sourceId);}
 export async function listOfflineReturns():Promise<OfflineReturnRecord[]>{return (await requireRuntime().db.offlineReturns.orderBy('createdAt').reverse().toArray()).slice(0,100);}
+export async function holdCurrentCart(input:{label:string;customerId:string;globalDiscount:string;extra:string;lines:HeldCartLine[]}):Promise<HeldCartRecord>{
+  const rt=requireRuntime();
+  return holdCart(rt.db,{shopId:rt.identity.shopId,...input});
+}
+export async function listHeldCartsForShop():Promise<HeldCartRecord[]>{
+  const rt=requireRuntime();
+  return listHeldCarts(rt.db,rt.identity.shopId);
+}
+export async function resumeHeldCart(id:string):Promise<HeldCartRecord|undefined>{return takeHeldCart(requireRuntime().db,id);}
+export async function discardHeldCartById(id:string):Promise<void>{return discardHeldCart(requireRuntime().db,id);}
 export async function recordLocalReturnVoid(returnId:string):Promise<void>{
   const rt=requireRuntime(),row=await rt.db.offlineReturns.filter(row=>row.officialReturnId===returnId&&row.status!=='VOID').first();
   if(!row||await getMeta(rt.db,'pendingReturnVoid'))return;
@@ -295,14 +306,14 @@ export async function listOfflineSales():Promise<OfflineSaleRecord[]>{
 }
 export async function exportOfflineBillingSnapshot(){
   const rt=requireRuntime();
-  const [items,barcodes,prices,customers,stock,outbox,metadata,conflicts,reservations,offlineSales,returnSources,offlineReturns]=await Promise.all([
+  const [items,barcodes,prices,customers,stock,outbox,metadata,conflicts,reservations,offlineSales,returnSources,offlineReturns,heldCarts]=await Promise.all([
     rt.db.items.toArray(),rt.db.barcodes.toArray(),rt.db.prices.toArray(),rt.db.customers.toArray(),rt.db.stock.toArray(),
     rt.db.outbox.toArray(),rt.db.meta.toArray(),rt.db.conflicts.toArray(),rt.db.reservations.toArray(),rt.db.offlineSales.toArray(),
-    rt.db.returnSources.toArray(),rt.db.offlineReturns.toArray(),
+    rt.db.returnSources.toArray(),rt.db.offlineReturns.toArray(),rt.db.heldCarts.toArray(),
   ]);
   return {
-    schemaVersion:2,exportKind:'offline-billing-continuity',exportedAt:new Date().toISOString(),identity:rt.identity,
-    items,barcodes,prices,customers,stock,outbox,metadata,conflicts,reservations,offlineSales,returnSources,offlineReturns,
+    schemaVersion:3,exportKind:'offline-billing-continuity',exportedAt:new Date().toISOString(),identity:rt.identity,
+    items,barcodes,prices,customers,stock,outbox,metadata,conflicts,reservations,offlineSales,returnSources,offlineReturns,heldCarts,
   };
 }
 export async function getSyncDashboard(){
