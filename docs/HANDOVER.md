@@ -1012,7 +1012,37 @@ writing any SQL for it. Everything else on the §19.1 Settings list is now built
 **Branch stack, in merge order:** `phase-6-5-returns` (PR #17, reviewed, ready, not merged —
 harness blocked an attempted squash-merge as "merge without review"; a human needs to run
 `gh pr merge 17 --squash`) → `phase-6-5-multi-line-purchases` (PR #18, CI-green) →
-`phase-6-5-settings-screen` (PR #19, CI pending as this entry is written — check
-https://github.com/dashsuperbazar-del/dsb-pro/actions before trusting this line). Each branch
-needs the previous one merged and then a rebase onto the new `main` before its own diff is
-clean. Do not merge #18 or #19 out of order ahead of #17; they were built on top of it.
+`phase-6-5-settings-screen` (PR #19, CI-green as of run
+[35327033128](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/35327033128)).
+Each branch needs the previous one merged and then a rebase onto the new `main` before its
+own diff is clean. Do not merge #18 or #19 out of order ahead of #17; they were built on top
+of it.
+
+**PR #19 was not green on the first attempt — three real, distinct bugs, each found from the
+actual CI failure output and fixed in its own commit, none rerun unchanged:**
+1. `pgtap`: the manager/cashier test users were inserted into `tenant_users` while still running
+   as role `authenticated` (permission denied) — every other test file in this suite does that
+   insert under `reset role` first; this one skipped it. Separately, bare integer literals passed
+   positionally to the RPC's `smallint` parameter didn't resolve through pgTAP's `EXECUTE`-based
+   calls (`int4→int2` is an assignment cast, not implicit) — every existing `smallint`-parameter
+   call elsewhere in this suite already casts explicitly (e.g. `set_item_price`'s `unit_level`);
+   this file's literals didn't. Both fixed; the RPC itself was correct the whole time — PostgREST
+   resolves it by name with concrete decoded types, so production calls were never affected.
+2. `e2e`: Preact does not honor `defaultValue` on a `<select>` the way React does — it rendered
+   whichever `<option>` came first in markup regardless of the prop. This codebase had no other
+   `defaultValue` usage anywhere to have caught this convention gap sooner. Every profile field
+   is now controlled state instead, matching how the rest of this codebase already handles
+   dynamic fields.
+3. `e2e`: a second real bug, this time in the checkbox handler, not the test — `togglePolicy`
+   called `setError('')`/`setMessage('')` synchronously before awaiting the policy RPC; those
+   forced a re-render of the controlled checkbox with its still-old `checked` value, visibly
+   undoing the click before the async call resolved. Fixed by flipping the bound state
+   optimistically first and rolling it back only on an actual rejection.
+4. `e2e`: and one bug in the test itself — it created an item and set its price but never posted
+   a purchase for it, so `/pos` correctly refused the sale with "Insufficient cached stock for
+   this offline sale" (confirmed from the downloaded trace's error-context, not guessed). Added
+   the same post-purchase step the main `pos.spec.ts` flow already uses.
+
+Recorded in this detail because CLAUDE.md requires evidence before success claims: every one of
+these was diagnosed from the real failing job's log or downloaded trace (`gh run view --job
+<id> --log`, `gh run download`), not assumed from reading the diff a second time.
