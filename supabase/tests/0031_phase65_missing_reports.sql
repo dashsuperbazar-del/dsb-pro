@@ -76,7 +76,9 @@ select is((select days_31_60_paise from get_customer_aging_report(current_settin
 select is((select total_outstanding_paise from get_customer_aging_report(current_setting('rp.shop')::uuid,'2026-09-19') where customer_id=current_setting('rp.customer')::uuid),200::bigint,'the fully-paid invoice contributes nothing to the total');
 
 -- Cashier is denied all four reports, same as every existing report RPC.
+reset role;
 insert into tenant_users(tenant_id,user_id,role,shop_ids,status,client_id) values(current_setting('rp.tenant')::uuid,'b6540000-0000-0000-0000-000000000002','cashier',array[current_setting('rp.shop')::uuid],'active','rp-cashier');
+set role authenticated;
 select set_config('request.jwt.claims','{"sub":"b6540000-0000-0000-0000-000000000002","role":"authenticated"}',true);
 select throws_ok($$select * from get_low_stock_report(current_setting('rp.shop')::uuid)$$,null,'not permitted','cashier cannot read low stock report');
 select throws_ok($$select * from get_item_sales_report(current_setting('rp.shop')::uuid,'2026-09-19','2026-09-19')$$,null,'not permitted','cashier cannot read item sales report');
