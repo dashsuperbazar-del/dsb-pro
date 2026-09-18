@@ -53,6 +53,13 @@ test('owner can edit shop profile and the cashier offline policy, and it survive
   const priceForm=page.getByRole('button',{name:'Set price'}).locator('xpath=..');
   await priceForm.locator('input[name="price"]').fill('10');
   await page.getByRole('button',{name:'Set price'}).click();
+  const purchase=page.locator('section').filter({has:page.getByRole('heading',{name:'Post purchase'})});
+  await purchase.locator('select[name="itemId"]').selectOption({label:'Settings E2E Item'});
+  await purchase.locator('input[name="qty"]').fill('5');
+  await purchase.locator('input[name="price"]').fill('5');
+  await purchase.getByRole('button',{name:'Add line'}).click();
+  await purchase.getByRole('button',{name:'Post purchase'}).click();
+  await expect(page.getByRole('status')).toContainText('Purchase posted (1 line) and stock updated');
   await page.goto('/pos');
   await page.getByLabel('Find product').fill('Settings E2E Item');
   await expect(page.getByLabel('Item').locator('option')).toHaveCount(2);
