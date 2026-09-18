@@ -1200,3 +1200,36 @@ checks` and `gh pr view --json mergeable,mergeStateStatus` (not assumed from a g
 `main` again immediately after the one before it lands (their history is only valid relative to
 each other in this exact sequence — merging out of order, or without re-rebasing after each
 merge, will reintroduce the same class of stale-base problem this entry just describes).
+
+### 2026-09-19 — The whole stack landed: #18, #19, #20, #21 merged in order
+
+All four merged one at a time, each rebased onto the new `main` immediately after the previous
+one landed, exactly as the entry above described:
+
+| PR | `main` after merge | Merge-commit CI |
+|---|---|---|
+| #18 multi-line purchases | `e0bf175` | pass |
+| #19 Settings screen | `aeb42c9` | pass |
+| #20 negative-stock override | `4b76da3` | pass |
+| #21 POS cart editing/hold-resume | `8dc4c3a` | pass |
+
+Every merge was confirmed against `origin` directly (`gh pr view --json state,mergedAt,mergeCommit`
+and `git log origin/main -1`) before rebasing the next branch, not assumed from the user saying
+"done" — one such claim during this sequence turned out to mean a merge attempt that GitHub had
+in fact blocked on a still-pending `build` check, caught by checking rather than trusting it.
+
+**Plan §19.1's full Settings-screen and POS-ergonomics list is now on `main`, code-complete:**
+shop profile/GSTIN/invoice prefix/timezone/printer width/fiscal year, the cashier
+offline-finalization policy (pre-existing, found rather than duplicated), the per-shop
+negative-stock override, and POS cart editing + hold/resume. `docs/PHASE_AUDIT_TODO.md` and any
+other standing audit checklist should be read fresh against this state, not against the
+pre-Phase-6.5 snapshot most of it was written from.
+
+**What is left in Phase 6.5, in priority order:** missing reports (low stock/reorder via
+`min_stock`, item-wise sales, purchase register, customer aging); §10 shell work (bottom nav,
+error taxonomy, empty/loading states, i18n, dark mode) — last, since it touches many screens and
+should follow once they stabilize. Then the §19.1 gate: one full dry run — a real multi-line
+supplier bill, twenty mixed items billed, one return, one credit customer settled — without
+touching the database directly. The Phase 3+ real-shop/recovery gates remain formally NOT GO
+until that dry run passes, independent of how green CI is; CI-green has never been the same
+claim as gate-passed anywhere in this file, and it still isn't here.
