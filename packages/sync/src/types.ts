@@ -67,7 +67,7 @@ export type SyncedStock=ServerSyncRow&{
   key:string; tenant_id:string; shop_id:string; item_id:string; on_hand:number; reserved:number; available:number; qty_base:number;
 };
 
-export type SyncPolicy=Readonly<{allowCashierOfflineFinalization:boolean}>;
+export type SyncPolicy=Readonly<{allowCashierOfflineFinalization:boolean;allowNegativeStock:boolean}>;
 export type SyncPullPayload=Readonly<{
   schemaVersion:number;
   serverNowMs:number;

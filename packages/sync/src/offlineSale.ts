@@ -96,11 +96,13 @@ export async function queueOfflineSale(
     if(paymentTotal>total)throw new Error('Payments exceed sale total.');
     if(!input.customerId&&paymentTotal!==total)throw new Error('Walk-in sale must be fully paid.');
 
-    for(const [key,qty] of required){
-      const stock=await db.stock.get(key);
-      const local=await db.reservations.get(key);
-      const available=(stock?.available??0)-(local?.qty??0);
-      if(available<qty)throw new Error('Insufficient cached stock for this offline sale.');
+    if(!context.policy.allowNegativeStock){
+      for(const [key,qty] of required){
+        const stock=await db.stock.get(key);
+        const local=await db.reservations.get(key);
+        const available=(stock?.available??0)-(local?.qty??0);
+        if(available<qty)throw new Error('Insufficient cached stock for this offline sale.');
+      }
     }
 
     const provisionalSequence=await nextSequence(db,'provisionalSeq');
