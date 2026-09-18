@@ -32,8 +32,9 @@ async function seedOfflineItem(page:import('@playwright/test').Page){
   await purchase.locator('select[name="itemId"]').selectOption({label:'Offline E2E Item'});
   await purchase.locator('input[name="qty"]').fill('3');
   await purchase.locator('input[name="price"]').fill('5');
+  await purchase.getByRole('button',{name:'Add line'}).click();
   await purchase.getByRole('button',{name:'Post purchase'}).click();
-  await expect(page.getByRole('status')).toContainText('Purchase posted and stock updated');
+  await expect(page.getByRole('status')).toContainText('Purchase posted (1 line) and stock updated');
   await page.waitForTimeout(1200);
   await page.goto('/sync');
   await page.getByRole('button',{name:'Sync now'}).click();

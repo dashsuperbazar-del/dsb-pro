@@ -46,8 +46,9 @@ test('real browser money path posts stock then finalizes a paid sale',async({pag
   await purchase.locator('select[name="itemId"]').selectOption({label:'POS E2E Item'});
   await purchase.locator('input[name="qty"]').fill('5');
   await purchase.locator('input[name="price"]').fill('5');
+  await purchase.getByRole('button',{name:'Add line'}).click();
   await purchase.getByRole('button',{name:'Post purchase'}).click();
-  await expect(page.getByRole('status')).toContainText('Purchase posted and stock updated');
+  await expect(page.getByRole('status')).toContainText('Purchase posted (1 line) and stock updated');
 
   await page.goto('/pos');
   await page.getByLabel('Find product').fill('POS E2E Item');
