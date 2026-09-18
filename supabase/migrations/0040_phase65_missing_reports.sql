@@ -6,6 +6,16 @@
 -- get_gst_summary, get_party_ledger, all in 0030/0034/0036): a
 -- phase6_assert_report_access() check (VIEW_REPORTS; owner/manager/
 -- accountant, not cashier) plus phase3_assert_shop() where a shop is scoped.
+--
+-- Every ORDER BY below uses an ordinal position, not a column-name alias.
+-- A `returns table(...)` function's OUT parameter names are visible as
+-- plpgsql variables inside its own body; an ORDER BY (or a bare/USING-joined
+-- column reference) that happens to share a name with one of them raises
+-- "column reference is ambiguous" -- caught from the real CI failure on
+-- get_item_sales_report's `using(item_id)` (item_id is also an OUT
+-- parameter), then applied everywhere else in this file rather than only
+-- at the one confirmed failure, since it's the same shadowing rule either
+-- way and cannot be re-verified locally this session (Docker unavailable).
 
 create function get_low_stock_report(p_shop_id uuid)
 returns table(item_id uuid,item_name text,unit_name text,on_hand numeric,min_stock numeric,shortfall numeric)
@@ -18,7 +28,7 @@ begin
    greatest(i.min_stock-coalesce(sc.on_hand,0),0) shortfall
  from items i left join stock_current sc on sc.tenant_id=i.tenant_id and sc.shop_id=p_shop_id and sc.item_id=i.id
  where i.tenant_id=v_tenant and i.deleted_at is null and i.is_active and coalesce(sc.on_hand,0)<=i.min_stock
- order by shortfall desc,i.name;
+ order by 6 desc,i.name;
 end $$;
 revoke all on function get_low_stock_report(uuid) from public,anon;
 grant execute on function get_low_stock_report(uuid) to authenticated;
@@ -48,11 +58,11 @@ begin
   where sri.tenant_id=v_tenant and sri.shop_id=p_shop_id and sr.status='POSTED' and sr.business_date between p_from and p_to
   group by sri.item_id
  )
- select item_id,coalesce(sold.item_name,returned.item_name) item_name,coalesce(sold.qty,0),coalesce(returned.qty,0),
-  coalesce(sold.qty,0)-coalesce(returned.qty,0),coalesce(sold.gross,0)::bigint,
+ select coalesce(sold.item_id,returned.item_id) item_id,coalesce(sold.item_name,returned.item_name) item_name,
+  coalesce(sold.qty,0),coalesce(returned.qty,0),coalesce(sold.qty,0)-coalesce(returned.qty,0),coalesce(sold.gross,0)::bigint,
   (coalesce(sold.gross,0)-coalesce(returned.amt,0))::bigint net_sales_paise
- from sold full outer join returned using(item_id)
- order by net_sales_paise desc,item_name;
+ from sold full outer join returned on returned.item_id=sold.item_id
+ order by 7 desc,2;
 end $$;
 revoke all on function get_item_sales_report(uuid,date,date) from public,anon;
 grant execute on function get_item_sales_report(uuid,date,date) to authenticated;
@@ -101,7 +111,7 @@ begin
  from customers c join buckets b on b.customer_id=c.id
  where c.tenant_id=v_tenant
  group by c.id,c.name
- order by total_outstanding_paise desc,c.name;
+ order by 8 desc,c.name;
 end $$;
 revoke all on function get_customer_aging_report(uuid,date) from public,anon;
 grant execute on function get_customer_aging_report(uuid,date) to authenticated;
