@@ -1117,3 +1117,39 @@ error taxonomy, empty/loading states, i18n, dark mode) — last, since it touche
 Then the §19.1 gate: one full dry run — real multi-line supplier bill, twenty mixed items billed,
 one return, one credit customer settled — without touching the database directly. The Phase 3+
 real-shop/recovery gates stay formally NOT GO until that dry run passes, regardless of CI color.
+
+### 2026-09-18 — POS cart editing and hold/resume (PR #21)
+
+Cart lines were previously remove-and-re-add only: no way to change a posted line's quantity or
+discount in place. The cart table's Qty and Discount columns are now bound inputs; editing either
+recomputes the line and invoice preview immediately.
+
+Added hold/resume/discard for a whole cart, deliberately client-only: nothing is posted, no stock
+reserved, no financial document exists until Finalize sale runs, so this needed no SQL migration
+at all — a new Dexie store `heldCarts` (`packages/sync`, version 3, existing stores untouched)
+holds only `{shopId, label, customerId, discounts, lines}`, where each line is
+`itemId/unitLevel/qty/priceKind/discountPaise` — no price snapshot. Resume re-adds every line
+through the same price lookup a manual add already uses, so a price change between hold and
+resume shows the current price rather than a stale one, and Finalize sale's existing
+price-changed protection covers the rest. The continuity export
+(`exportOfflineBillingSnapshot`) now includes `heldCarts` and moved to schemaVersion 3.
+
+Not green on the first attempt — a real but low-stakes bug: the new cart-row discount input is
+labelled "Discount for X"; the test queried "Cart discount for X" (I'd only renamed the *qty*
+label, to dodge the existing bare `getByLabel('Quantity')` substring-collision risk noted in the
+commit, and never touched the discount one to match). `locator.fill()` waited the full 60s for
+an element that was never going to exist. Fixed the test to match the real label. Confirmed via
+`gh pr checks` on run [35338185872](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/35338185872):
+lint, typecheck, build, test, pgtap (untouched, still passes — no SQL in this change-set), e2e all
+pass.
+
+**Branch stack, all confirmed CI-green now, in merge order:** `phase-6-5-returns` (PR #17,
+reviewed, ready, **still not merged** — needs a human to run `gh pr merge 17 --squash`) →
+`phase-6-5-multi-line-purchases` (#18) → `phase-6-5-settings-screen` (#19) →
+`phase-6-5-negative-stock-override` (#20) → `phase-6-5-pos-cart-hold` (#21). Merge and rebase
+each onto the new `main` in that exact order once #17 lands.
+
+**Remaining Phase 6.5 work, in priority order:** missing reports (low stock/reorder via
+`min_stock`, item-wise sales, purchase register, customer aging); §10 shell work (bottom nav,
+error taxonomy, empty/loading states, i18n, dark mode) — last. Then the §19.1 dry-run gate, then
+(only after that) the Phase 3+ real-shop/recovery gates, which stay NOT GO regardless of CI color.
