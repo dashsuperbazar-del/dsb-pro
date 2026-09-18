@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { __setSupabaseClientForTest } from './client';
-import { getShopSettings, updateShopSettings, getCashierOfflineFinalizationPolicy } from './shopSettings';
+import { getShopSettings, updateShopSettings } from './shopSettings';
 
 function makeMockClient(rpcResults: Record<string, unknown> = {}, fromResults: Record<string, unknown> = {}) {
   return {
@@ -42,14 +42,5 @@ describe('shop settings adapter', () => {
       p_shop_id: 'shop-1', p_name: 'Ramesh Store', p_address: null, p_gstin: null, p_invoice_prefix: null,
       p_timezone: 'Asia/Kolkata', p_printer_width: '80mm', p_fiscal_year_start_month: 4,
     });
-  });
-
-  it('getCashierOfflineFinalizationPolicy reads the tenant settings flag, defaulting to false', async () => {
-    const enabled = makeMockClient({}, { tenants: { settings: { allow_cashier_offline_finalization: true } } });
-    __setSupabaseClientForTest(enabled as never);
-    await expect(getCashierOfflineFinalizationPolicy('tenant-1')).resolves.toBe(true);
-    const disabled = makeMockClient({}, { tenants: { settings: {} } });
-    __setSupabaseClientForTest(disabled as never);
-    await expect(getCashierOfflineFinalizationPolicy('tenant-1')).resolves.toBe(false);
   });
 });

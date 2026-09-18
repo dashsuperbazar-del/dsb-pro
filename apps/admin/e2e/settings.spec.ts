@@ -15,13 +15,12 @@ async function createOwnerShop(page:import('@playwright/test').Page){
   await expect(page.getByText(/DSB Pro — Admin/)).toBeVisible();
 }
 
-test('owner can edit shop profile and the cashier offline policy, and it survives a reload',async({page})=>{
+test('owner can edit shop profile and it survives a reload, and the invoice prefix reaches a real sale',async({page})=>{
   await createOwnerShop(page);
   await page.getByRole('link',{name:'Settings'}).click();
   await expect(page.getByRole('heading',{name:'Settings'})).toBeVisible();
   await expect(page.getByLabel('Shop name')).toHaveValue('Settings Screen Shop');
   await expect(page.getByLabel('Printer width')).toHaveValue('80mm');
-  await expect(page.getByLabel('Allow cashiers to finalize sales while offline')).not.toBeChecked();
 
   await page.getByLabel('Shop name').fill('Renamed Corner Store');
   await page.getByLabel('Address').fill('12 Market Road');
@@ -32,16 +31,12 @@ test('owner can edit shop profile and the cashier offline policy, and it survive
   await page.getByRole('button',{name:'Save shop profile'}).click();
   await expect(page.getByRole('status')).toContainText('Shop settings saved');
 
-  await page.getByLabel('Allow cashiers to finalize sales while offline').check();
-  await expect(page.getByRole('status')).toContainText('Cashier offline finalization enabled');
-
   await page.reload();
   await expect(page.getByLabel('Shop name')).toHaveValue('Renamed Corner Store');
   await expect(page.getByLabel('Address')).toHaveValue('12 Market Road');
   await expect(page.getByLabel('GSTIN')).toHaveValue('27ABCDE1234F1Z5');
   await expect(page.getByLabel('Invoice prefix')).toHaveValue('RCS');
   await expect(page.getByLabel('Printer width')).toHaveValue('58mm');
-  await expect(page.getByLabel('Allow cashiers to finalize sales while offline')).toBeChecked();
 
   // The renamed shop's own invoice prefix must show up on a real posted sale's doc number.
   await page.goto('/inventory');

@@ -27,10 +27,3 @@ export async function updateShopSettings(input: ShopSettingsInput): Promise<void
   });
   if (error) throw error;
 }
-
-export async function getCashierOfflineFinalizationPolicy(tenantId: string): Promise<boolean> {
-  const { data, error } = await getSupabaseClient().from('tenants').select('settings').eq('id', tenantId).single();
-  if (error) throw error;
-  const settings = (data as { settings: Record<string, unknown> }).settings;
-  return settings?.allow_cashier_offline_finalization === true;
-}

@@ -1,30 +1,28 @@
 import { useEffect, useState } from 'preact/hooks';
 import {
-  getCurrentMembership, getDefaultShopId, getShopSettings, updateShopSettings, getCashierOfflineFinalizationPolicy,
+  getCurrentMembership, getDefaultShopId, getShopSettings, updateShopSettings,
   type PrinterWidth,
 } from '@dsb-pro/adapters';
-import { updateCashierOfflinePolicy } from '../lib/offlineSync';
 import { appRoute } from '../lib/paths';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 export function SettingsScreen() {
-  const [shopId,setShopId]=useState(''); const [role,setRole]=useState('');
+  const [shopId,setShopId]=useState('');
   const [loaded,setLoaded]=useState(false);
   const [name,setName]=useState(''); const [address,setAddress]=useState(''); const [gstin,setGstin]=useState('');
   const [invoicePrefix,setInvoicePrefix]=useState(''); const [timezone,setTimezone]=useState('');
   const [printerWidth,setPrinterWidth]=useState<PrinterWidth>('80mm'); const [fiscalYearStartMonth,setFiscalYearStartMonth]=useState(4);
-  const [allowCashierOffline,setAllowCashierOffline]=useState(false); const [policyBusy,setPolicyBusy]=useState(false);
   const [busy,setBusy]=useState(false); const [message,setMessage]=useState(''); const [error,setError]=useState('');
 
   async function refresh(){
     const membership=await getCurrentMembership(); if(!membership) throw new Error('No tenant membership.');
     const shop=await getDefaultShopId();
-    setRole(membership.role); setShopId(shop);
-    const [s,policy]=await Promise.all([getShopSettings(shop),getCashierOfflineFinalizationPolicy(membership.tenantId)]);
+    setShopId(shop);
+    const s=await getShopSettings(shop);
     setName(s.name); setAddress(s.address??''); setGstin(s.gstin??''); setInvoicePrefix(s.invoicePrefix??'');
     setTimezone(s.timezone); setPrinterWidth(s.printerWidth); setFiscalYearStartMonth(s.fiscalYearStartMonth);
-    setAllowCashierOffline(policy); setLoaded(true);
+    setLoaded(true);
   }
   useEffect(()=>{ void refresh().catch(e=>setError(String(e))); },[]);
 
@@ -34,17 +32,6 @@ export function SettingsScreen() {
       await updateShopSettings({ shopId, name, address: address||undefined, gstin: gstin||undefined, invoicePrefix: invoicePrefix||undefined, timezone, printerWidth, fiscalYearStartMonth });
       setMessage('Shop settings saved.');
     }catch(e){setError(String(e));} finally{setBusy(false);}
-  }
-  async function togglePolicy(ev:Event){
-    const allow=(ev.currentTarget as HTMLInputElement).checked;
-    if(policyBusy)return;
-    // Optimistic: this is a controlled checkbox, so the setError/setMessage
-    // calls below trigger a re-render before the RPC resolves. Flip the
-    // bound state first so that render reflects the click instead of
-    // snapping the checkbox back to its old value until the await settles.
-    setAllowCashierOffline(allow); setError(''); setMessage(''); setPolicyBusy(true);
-    try{ await updateCashierOfflinePolicy(allow); setMessage(`Cashier offline finalization ${allow?'enabled':'disabled'}.`); }
-    catch(e){ setAllowCashierOffline(!allow); setError(String(e)); } finally{setPolicyBusy(false);}
   }
 
   if(!loaded) return <main><p><a href={appRoute.home}>← Home</a></p><h1>Settings</h1>{error?<p role="alert">{error}</p>:<p>Loading…</p>}</main>;
@@ -60,10 +47,6 @@ export function SettingsScreen() {
         <p><button disabled={busy}>{busy?'Saving…':'Save shop profile'}</button></p>
       </form>
     </section>
-    <section><h2>POS ergonomics policy</h2>
-      <p class="muted">A cashier till may finalize a sale while offline only when this is on. When it is off, a cashier who loses connection cannot finalize — the cart stays on screen as a draft, unsubmitted, until the connection returns. An owner or manager can always finalize offline regardless of this setting.</p>
-      <label><input type="checkbox" checked={allowCashierOffline} disabled={policyBusy||role!=='owner'} onChange={togglePolicy}/> Allow cashiers to finalize sales while offline</label>
-      {role!=='owner'&&<p class="muted">Only the owner can change this.</p>}
-    </section>
+    <p class="muted">Cashier offline-finalization policy moved to <a href={appRoute.sync}>Sync & offline</a>, where it already lived.</p>
   </main>;
 }

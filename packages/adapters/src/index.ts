@@ -35,4 +35,4 @@ export type { ReturnType, ReturnDisposition, ReturnSource, ReturnableLine, Poste
 export { listReturnSources, listReturnableLines, postReturn, listRecentReturns, voidReturn, pullReturnSources, pushSyncedReturn, pushSyncedReturnVoid } from './returns';
 
 export type { PrinterWidth, ShopSettings, ShopSettingsInput } from './shopSettings';
-export { getShopSettings, updateShopSettings, getCashierOfflineFinalizationPolicy } from './shopSettings';
+export { getShopSettings, updateShopSettings } from './shopSettings';
