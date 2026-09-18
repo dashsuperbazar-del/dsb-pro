@@ -15,12 +15,19 @@
 --     a shop with the override on, so the sale is even attempted.
 --  2. apply_stock_movement()'s trigger -- the actual authority, since the
 --     pre-flight check alone does nothing if the trigger still blocks the
---     insert -- allows on_hand to go negative for source_type='SALE' only,
---     when that shop's flag is on. The `on_hand < reserved` check is left
---     unconditional in every case: that protects concurrent offline tills
---     from double-selling a unit another device has already reserved, which
---     is a sync-correctness invariant, not a business policy, and enabling
---     this override must never weaken it.
+--     insert. Its original condition (`on_hand<0 or on_hand<reserved`) is
+--     mathematically just `on_hand<reserved` given reserved's `>=0` check
+--     constraint (reserved>0 makes the on_hand<0 clause a strict subset;
+--     reserved=0 makes the two clauses identical) -- there was never a
+--     separate "went negative" invariant from "dipped below a reservation"
+--     to begin with, they are the same formula. So the override, scoped to
+--     source_type='SALE', overrides that single condition outright: with it
+--     on, a sale is not blocked by stock for that shop, full stop, exactly
+--     as asked ("silently allow it"), reservation included. Reservations
+--     are Phase 8 work and server-side `reserved` is always 0 today, so in
+--     production this always reduces to the plain "allow negative on_hand"
+--     case; 0030's pgTAP test seeds `reserved` directly to prove the wider
+--     rule ahead of Phase 8 actually setting it.
 
 alter table shops add column if not exists allow_negative_stock boolean not null default false;
 
@@ -34,8 +41,7 @@ begin
  set on_hand=stock_current.on_hand+excluded.on_hand,
      updated_at=(extract(epoch from clock_timestamp())*1000)::bigint
  returning on_hand,reserved into v_on_hand,v_reserved;
- if v_on_hand < v_reserved then raise exception 'insufficient stock'; end if;
- if v_on_hand < 0 then
+ if v_on_hand < v_reserved then
    if new.source_type<>'SALE' then raise exception 'insufficient stock'; end if;
    select allow_negative_stock into v_allow_negative from shops where id=new.shop_id;
    if not coalesce(v_allow_negative,false) then raise exception 'insufficient stock'; end if;

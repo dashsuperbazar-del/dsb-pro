@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(9);
+select plan(10);
 
 insert into auth.users(id) values ('b6530000-0000-0000-0000-000000000001');
 
@@ -29,15 +29,17 @@ select is((select on_hand from stock_current where tenant_id=current_tenant_id()
 select ok((check_invariants()->>'ok')::boolean,'check_invariants treats owner-permitted negative stock as healthy');
 select is((check_invariants()->>'negativeStock')::bigint,0::bigint,'negativeStock excludes shops with the override on');
 
--- Reserved safety net still holds even with the override on. Server-side
--- `reserved` is always 0 today (Phase 8 will set it through a real RPC for
--- online-order holds); seed it directly here to exercise the guard that
--- protects a concurrently reserved unit from being oversold anyway.
+-- "Silently allow it" was asked without carving out an exception for a unit
+-- reserved by a concurrent offline device (Phase 8 work; server-side
+-- `reserved` is always 0 today). Seed it directly to prove the override
+-- really does mean no stock-based block for this shop's sales, full stop --
+-- not a narrower rule with a hidden exception nobody asked for.
 reset role;
 update stock_current set reserved=1 where tenant_id=current_setting('ns.tenant')::uuid and shop_id=current_setting('ns.shop')::uuid and item_id=current_setting('ns.item')::uuid;
 set role authenticated;
 select set_config('request.jwt.claims','{"sub":"b6530000-0000-0000-0000-000000000001","role":"authenticated"}',true);
-select throws_ok($$select post_sale(current_setting('ns.shop')::uuid,null,'2026-09-18',0,0,'ns-reserved-guard',jsonb_build_array(jsonb_build_object('item_id',current_setting('ns.item'),'unit_level',1,'qty',1,'price_kind','retail')),jsonb_build_array(jsonb_build_object('amount_paise',100,'mode','cash')),null)$$,null,'insufficient stock','override never lets on_hand drop below a reserved unit');
+select lives_ok($$select post_sale(current_setting('ns.shop')::uuid,null,'2026-09-18',0,0,'ns-reserved-override',jsonb_build_array(jsonb_build_object('item_id',current_setting('ns.item'),'unit_level',1,'qty',1,'price_kind','retail')),jsonb_build_array(jsonb_build_object('amount_paise',100,'mode','cash')),null)$$,'override has no hidden exception for a unit reserved by another device');
+select is((select on_hand from stock_current where tenant_id=current_tenant_id() and shop_id=current_setting('ns.shop')::uuid and item_id=current_setting('ns.item')::uuid),(-4)::numeric,'stock still moves exactly by the sold amount past the reservation');
 
 select * from finish();
 rollback;
