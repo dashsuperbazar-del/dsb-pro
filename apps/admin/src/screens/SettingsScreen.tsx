@@ -37,9 +37,14 @@ export function SettingsScreen() {
   }
   async function togglePolicy(ev:Event){
     const allow=(ev.currentTarget as HTMLInputElement).checked;
-    if(policyBusy)return; setError(''); setMessage(''); setPolicyBusy(true);
-    try{ await updateCashierOfflinePolicy(allow); setAllowCashierOffline(allow); setMessage(`Cashier offline finalization ${allow?'enabled':'disabled'}.`); }
-    catch(e){setError(String(e));} finally{setPolicyBusy(false);}
+    if(policyBusy)return;
+    // Optimistic: this is a controlled checkbox, so the setError/setMessage
+    // calls below trigger a re-render before the RPC resolves. Flip the
+    // bound state first so that render reflects the click instead of
+    // snapping the checkbox back to its old value until the await settles.
+    setAllowCashierOffline(allow); setError(''); setMessage(''); setPolicyBusy(true);
+    try{ await updateCashierOfflinePolicy(allow); setMessage(`Cashier offline finalization ${allow?'enabled':'disabled'}.`); }
+    catch(e){ setAllowCashierOffline(!allow); setError(String(e)); } finally{setPolicyBusy(false);}
   }
 
   if(!loaded) return <main><p><a href={appRoute.home}>← Home</a></p><h1>Settings</h1>{error?<p role="alert">{error}</p>:<p>Loading…</p>}</main>;
