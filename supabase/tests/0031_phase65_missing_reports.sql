@@ -51,10 +51,18 @@ select is((select qty_returned from get_item_sales_report(current_setting('rp.sh
 select is((select net_qty from get_item_sales_report(current_setting('rp.shop')::uuid,'2026-09-19','2026-09-19') where item_id=current_setting('rp.sales_item')::uuid),3::numeric,'net_qty is sold minus returned');
 select is((select net_sales_paise from get_item_sales_report(current_setting('rp.shop')::uuid,'2026-09-19','2026-09-19') where item_id=current_setting('rp.sales_item')::uuid),300::bigint,'net_sales_paise is gross minus the returned line amount');
 
--- Purchase register: a bill stays visible, with its real status, after voiding.
-select is((select count(*) from get_purchase_register(current_setting('rp.shop')::uuid,'2026-09-19','2026-09-19') where doc_no='RP-SEED'),1::bigint,'a posted bill appears in its business date');
-select void_purchase((select id from purchase_bills where client_id='rp-seed'),'rp-seed-void');
-select is((select status from get_purchase_register(current_setting('rp.shop')::uuid,'2026-09-19','2026-09-19') where doc_no='RP-SEED'),'VOID','a voided bill stays in the register instead of disappearing');
+-- Purchase register: a bill stays visible, with its real status, after
+-- voiding. A dedicated, never-sold item -- voiding rp-seed itself would
+-- fail with 'insufficient stock', since 8 of its 10 units were already
+-- drawn down by rp-drawdown above; that failure is the system correctly
+-- protecting stock, not something to route around by picking an item this
+-- test never touches again.
+insert into items(tenant_id,name,unit1,client_id) values(current_tenant_id(),'Void Register Item','piece','rp-void-item');
+select set_config('rp.void_item',(select id::text from items where client_id='rp-void-item'),false);
+select post_purchase(current_setting('rp.shop')::uuid,null,'RP-VOID-BILL','2026-09-19',0,0,'rp-void-seed',jsonb_build_array(jsonb_build_object('item_id',current_setting('rp.void_item'),'unit_level',1,'qty',5,'unit_price_paise',50)),null);
+select is((select count(*) from get_purchase_register(current_setting('rp.shop')::uuid,'2026-09-19','2026-09-19') where doc_no='RP-VOID-BILL'),1::bigint,'a posted bill appears in its business date');
+select void_purchase((select id from purchase_bills where client_id='rp-void-seed'),'rp-void-seed-void');
+select is((select status from get_purchase_register(current_setting('rp.shop')::uuid,'2026-09-19','2026-09-19') where doc_no='RP-VOID-BILL'),'VOID','a voided bill stays in the register instead of disappearing');
 
 -- Customer aging: one invoice settled in full (must not appear at all,
 -- since customer_invoice_outstanding excludes it), one left unpaid and
