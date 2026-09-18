@@ -26,6 +26,8 @@ export type LegacyDsbDaySummary = {
 export type DsbProComparableDay = {
   invoiceCount:number;
   salesTotalPaise:number;
+  saleReturnTotalPaise:number;
+  netSalesTotalPaise:number;
   directSaleReceiptsPaise:number;
   creditCreatedPaise:number;
   standaloneCustomerReceiptsPaise:number;
@@ -42,7 +44,7 @@ export type DsbProComparableDay = {
 export type LegacyDsbDayComparisonRow = {
   key:string;
   label:string;
-  legacy:number;
+  legacy:number|null;
   dsbPro:number;
   kind:'count'|'paise';
   match:boolean;
@@ -110,7 +112,7 @@ export function summarizeLegacyDsbDayBackup(snapshot:unknown,businessDate:string
     const mode=txt(payment.mode).toLowerCase();
     if(mode==='return'){
       returnCreditPaise+=amount;
-      warnings.push(`Sale return credit ${txt(payment.id)||'(unknown)'} for ₹${(amount/100).toFixed(2)} requires manual review; Phase 4 does not auto-equate legacy returns with voids.`);
+      warnings.push(`Sale return credit ${txt(payment.id)||'(unknown)'} for ₹${(amount/100).toFixed(2)} has no verified cash/balance split. Verify cash payout manually; do not infer it from the credit amount.`);
       continue;
     }
     standaloneCustomerReceiptsPaise+=amount;
@@ -127,19 +129,27 @@ export function summarizeLegacyDsbDayBackup(snapshot:unknown,businessDate:string
 
 export function compareLegacyDsbDayToPro(snapshot:unknown,businessDate:string,pro:DsbProComparableDay):LegacyDsbDayComparison {
   const legacy=summarizeLegacyDsbDayBackup(snapshot,businessDate);
+  const legacyNetSales=legacy.salesTotalPaise-legacy.returnCreditPaise;
+  // v3 mode='return' records value, not independently verified cash payout.
+  // Unknown is deliberately not zero, and Pro's result is not legacy evidence.
+  const legacyNetReceipts=legacy.returnCreditPaise>0?null:legacy.allCustomerReceiptsPaise;
+  const legacyNetCash=legacy.returnCreditPaise>0?null:legacy.paymentModes.cashPaise;
   const rows:LegacyDsbDayComparisonRow[]=[
     {key:'invoiceCount',label:'Finalized invoices',legacy:legacy.invoiceCount,dsbPro:pro.invoiceCount,kind:'count',match:legacy.invoiceCount===pro.invoiceCount},
     {key:'salesTotal',label:'Sales total',legacy:legacy.salesTotalPaise,dsbPro:pro.salesTotalPaise,kind:'paise',match:legacy.salesTotalPaise===pro.salesTotalPaise},
+    {key:'saleReturns',label:'Sale returns',legacy:legacy.returnCreditPaise,dsbPro:pro.saleReturnTotalPaise,kind:'paise',match:legacy.returnCreditPaise===pro.saleReturnTotalPaise},
+    {key:'netSales',label:'Net sales',legacy:legacyNetSales,dsbPro:pro.netSalesTotalPaise,kind:'paise',match:legacyNetSales===pro.netSalesTotalPaise},
     {key:'directReceipts',label:'Direct sale receipts',legacy:legacy.directSaleReceiptsPaise,dsbPro:pro.directSaleReceiptsPaise,kind:'paise',match:legacy.directSaleReceiptsPaise===pro.directSaleReceiptsPaise},
     {key:'creditCreated',label:'Credit created on sales',legacy:legacy.creditCreatedPaise,dsbPro:pro.creditCreatedPaise,kind:'paise',match:legacy.creditCreatedPaise===pro.creditCreatedPaise},
     {key:'standaloneReceipts',label:'Standalone customer receipts',legacy:legacy.standaloneCustomerReceiptsPaise,dsbPro:pro.standaloneCustomerReceiptsPaise,kind:'paise',match:legacy.standaloneCustomerReceiptsPaise===pro.standaloneCustomerReceiptsPaise},
-    {key:'allReceipts',label:'All customer receipts',legacy:legacy.allCustomerReceiptsPaise,dsbPro:pro.allCustomerReceiptsPaise,kind:'paise',match:legacy.allCustomerReceiptsPaise===pro.allCustomerReceiptsPaise},
-    {key:'cash',label:'Cash',legacy:legacy.paymentModes.cashPaise,dsbPro:pro.paymentModes.cash,kind:'paise',match:legacy.paymentModes.cashPaise===pro.paymentModes.cash},
+    {key:'allReceipts',label:'Net customer receipts',legacy:legacyNetReceipts,dsbPro:pro.allCustomerReceiptsPaise,kind:'paise',match:legacyNetReceipts===pro.allCustomerReceiptsPaise},
+    {key:'cash',label:'Cash net of returns',legacy:legacyNetCash,dsbPro:pro.paymentModes.cash,kind:'paise',match:legacyNetCash===pro.paymentModes.cash},
     {key:'upi',label:'UPI',legacy:legacy.paymentModes.upiPaise,dsbPro:pro.paymentModes.upi,kind:'paise',match:legacy.paymentModes.upiPaise===pro.paymentModes.upi},
     {key:'card',label:'Card',legacy:legacy.paymentModes.cardPaise,dsbPro:pro.paymentModes.card,kind:'paise',match:legacy.paymentModes.cardPaise===pro.paymentModes.card},
     {key:'bank',label:'Bank / cheque',legacy:legacy.paymentModes.bankPaise,dsbPro:pro.paymentModes.bank,kind:'paise',match:legacy.paymentModes.bankPaise===pro.paymentModes.bank},
     {key:'other',label:'Other',legacy:legacy.paymentModes.otherPaise,dsbPro:pro.paymentModes.other,kind:'paise',match:legacy.paymentModes.otherPaise===pro.paymentModes.other},
   ];
-  const manualReviewRequired=legacy.returnCreditPaise>0||legacy.warnings.some(w=>w.includes('unknown payment mode'));
+  // Fail closed for every warning, not a brittle allowlist of warning phrases.
+  const manualReviewRequired=legacy.warnings.length>0;
   return {legacy,rows,exactMatch:rows.every(r=>r.match)&&!manualReviewRequired,manualReviewRequired};
 }

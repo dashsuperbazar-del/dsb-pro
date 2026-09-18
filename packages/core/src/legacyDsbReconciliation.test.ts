@@ -36,7 +36,7 @@ describe('legacy DSB day reconciliation',()=>{
 
   it('matches an equivalent DSB Pro server report exactly',()=>{
     const result=compareLegacyDsbDayToPro(backup,'2026-09-08',{
-      invoiceCount:4,salesTotalPaise:370000,directSaleReceiptsPaise:320000,creditCreatedPaise:50000,
+      invoiceCount:4,salesTotalPaise:370000,saleReturnTotalPaise:0,netSalesTotalPaise:370000,directSaleReceiptsPaise:320000,creditCreatedPaise:50000,
       standaloneCustomerReceiptsPaise:22500,allCustomerReceiptsPaise:342500,
       paymentModes:{cash:235000,upi:35000,card:0,bank:72500,other:0},
     });
@@ -46,7 +46,7 @@ describe('legacy DSB day reconciliation',()=>{
 
   it('pinpoints mismatched totals rather than collapsing to one verdict',()=>{
     const result=compareLegacyDsbDayToPro(backup,'2026-09-08',{
-      invoiceCount:4,salesTotalPaise:369900,directSaleReceiptsPaise:320000,creditCreatedPaise:50000,
+      invoiceCount:4,salesTotalPaise:369900,saleReturnTotalPaise:0,netSalesTotalPaise:370000,directSaleReceiptsPaise:320000,creditCreatedPaise:50000,
       standaloneCustomerReceiptsPaise:22500,allCustomerReceiptsPaise:342500,
       paymentModes:{cash:235000,upi:35000,card:0,bank:72500,other:0},
     });
@@ -54,15 +54,33 @@ describe('legacy DSB day reconciliation',()=>{
     expect(result.rows.filter(r=>!r.match).map(r=>r.key)).toEqual(['salesTotal']);
   });
 
-  it('forces manual review for legacy sale returns',()=>{
+  it('requires review even when a guessed full-cash refund would match',()=>{
     const result=compareLegacyDsbDayToPro({...backup,salePayments:[...backup.salePayments,{id:'RET1',date:'2026-09-08',amount:100,mode:'return'}]},'2026-09-08',{
-      invoiceCount:4,salesTotalPaise:370000,directSaleReceiptsPaise:320000,creditCreatedPaise:50000,
-      standaloneCustomerReceiptsPaise:22500,allCustomerReceiptsPaise:342500,
-      paymentModes:{cash:235000,upi:35000,card:0,bank:72500,other:0},
+      invoiceCount:4,salesTotalPaise:370000,saleReturnTotalPaise:10000,netSalesTotalPaise:360000,directSaleReceiptsPaise:320000,creditCreatedPaise:50000,
+      standaloneCustomerReceiptsPaise:22500,allCustomerReceiptsPaise:332500,
+      paymentModes:{cash:225000,upi:35000,card:0,bank:72500,other:0},
     });
     expect(result.manualReviewRequired).toBe(true);
     expect(result.exactMatch).toBe(false);
+    expect(result.rows.find(r=>r.key==='cash')?.legacy).toBeNull();
     expect(result.legacy.returnCreditPaise).toBe(10000);
+  });
+
+  it.each([0,15000])('does not invent cash for an ambiguous unpaid/part-paid return (paid %i)',paid=>{
+    const result=compareLegacyDsbDayToPro({version:3,exportedAt:backup.exportedAt,
+      saleInvoices:[{id:'credit',date:'2026-09-08',paymentType:'credit',grandTotal:400}],
+      salePayments:[...(paid?[{id:'receipt',date:'2026-09-08',mode:'cash',amount:paid/100}]:[]),
+        {id:'return',date:'2026-09-08',mode:'return',amount:200}]},'2026-09-08',{
+      invoiceCount:1,salesTotalPaise:40000,saleReturnTotalPaise:20000,netSalesTotalPaise:20000,
+      directSaleReceiptsPaise:0,creditCreatedPaise:40000,standaloneCustomerReceiptsPaise:paid,
+      allCustomerReceiptsPaise:0,paymentModes:{cash:0,upi:0,card:0,bank:0,other:0},
+    });
+    expect(result.manualReviewRequired).toBe(true);
+    expect(result.exactMatch).toBe(false);
+    for(const key of ['cash','allReceipts']){
+      expect(result.rows.find(r=>r.key===key)).toMatchObject({legacy:null,match:false});
+    }
+    expect(result.legacy.warnings.join(' ')).toContain('no verified cash/balance split');
   });
 
   it('rejects stale schema shapes instead of guessing',()=>{

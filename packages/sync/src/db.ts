@@ -1,7 +1,7 @@
 import Dexie,{type Table} from 'dexie';
 import type {
   LocalMeta,LocalReservation,LocalSyncConflict,OfflineSaleRecord,OutboxEntry,
-  SyncedBarcode,SyncedCustomer,SyncedItem,SyncedPrice,SyncedStock,SyncIdentity,
+  SyncedBarcode,SyncedCustomer,SyncedItem,SyncedPrice,SyncedStock,SyncIdentity,CachedReturnSource,OfflineReturnRecord,
 } from './types';
 
 function safePart(value:string){return value.replace(/[^A-Za-z0-9_-]/g,'_');}
@@ -21,6 +21,8 @@ export class DsbSyncDb extends Dexie{
   conflicts!:Table<LocalSyncConflict,number>;
   reservations!:Table<LocalReservation,string>;
   offlineSales!:Table<OfflineSaleRecord,string>;
+  returnSources!:Table<CachedReturnSource,string>;
+  offlineReturns!:Table<OfflineReturnRecord,string>;
 
   constructor(name:string){
     super(name);
@@ -36,6 +38,7 @@ export class DsbSyncDb extends Dexie{
       reservations:'&key,shop_id,item_id',
       offlineSales:'&clientId,status,businessDate,createdAt,provisionalDocNo',
     });
+    this.version(2).stores({returnSources:'&key,shop_id,return_type',offlineReturns:'&clientId,status,shopId,createdAt'});
   }
 }
 

@@ -50,6 +50,9 @@ export function SalesHistoryScreen(){
         <div class="table-wrap"><table><tbody>
           <tr><th>Finalized invoices</th><td>{report.invoiceCount}</td></tr>
           <tr><th>Sales total</th><td>{money(report.salesTotalPaise)}</td></tr>
+          <tr><th>Sale returns</th><td>{report.saleReturnCount} · −{money(report.saleReturnTotalPaise)}</td></tr>
+          <tr><th>Net sales</th><td>{money(report.netSalesTotalPaise)}</td></tr>
+          <tr><th>Cash refunded</th><td>−{money(report.cashRefundPaise)}</td></tr>
           <tr><th>Discounts</th><td>{money(report.discountPaise)}</td></tr>
           <tr><th>Extra charges</th><td>{money(report.extraChargesPaise)}</td></tr>
           <tr><th>Direct sale receipts</th><td>{money(report.directSaleReceiptsPaise)}</td></tr>
@@ -72,9 +75,9 @@ export function SalesHistoryScreen(){
           <p><strong>{legacyCompareFile}</strong><br/>Old DSB exported at {new Date(legacyComparison.legacy.exportedAt).toLocaleString()}.</p>
           <p role="status" class={legacyComparison.exactMatch?'success':'alert'}><strong>{legacyComparison.exactMatch?'MATCH — Phase 4 day totals reconcile':'MISMATCH — review the rows below'}</strong></p>
           <div class="table-wrap"><table><thead><tr><th>Check</th><th>Old DSB</th><th>DSB Pro</th><th>Result</th></tr></thead><tbody>
-            {legacyComparison.rows.map(row=><tr><td>{row.label}</td><td>{row.kind==='paise'?money(row.legacy):row.legacy}</td><td>{row.kind==='paise'?money(row.dsbPro):row.dsbPro}</td><td><strong>{row.match?'MATCH':'MISMATCH'}</strong></td></tr>)}
+            {legacyComparison.rows.map(row=><tr><td>{row.label}</td><td>{row.legacy===null?'Unknown — verify payout':row.kind==='paise'?money(row.legacy):row.legacy}</td><td>{row.kind==='paise'?money(row.dsbPro):row.dsbPro}</td><td><strong>{row.legacy===null?'REVIEW REQUIRED':row.match?'MATCH':'MISMATCH'}</strong></td></tr>)}
           </tbody></table></div>
-          {legacyComparison.legacy.returnCreditPaise>0&&<p class="alert">Old DSB contains sale-return credit of {money(legacyComparison.legacy.returnCreditPaise)}. Returns need manual review and cannot receive an automatic PASS.</p>}
+          {legacyComparison.legacy.returnCreditPaise>0&&<p>Old DSB sale-return credit: {money(legacyComparison.legacy.returnCreditPaise)}. It is compared with DSB Pro returns and netted from cash.</p>}
           {legacyComparison.legacy.warnings.length>0&&<details><summary>Comparison warnings ({legacyComparison.legacy.warnings.length})</summary><ul>{legacyComparison.legacy.warnings.map(w=><li>{w}</li>)}</ul></details>}
         </div>}
       </div>}
@@ -86,7 +89,7 @@ export function SalesHistoryScreen(){
       <header><h1>DSB Store</h1><p>Invoice {receipt.invoice.doc_no}<br/>Date {receipt.invoice.business_date}<br/>Status {receipt.invoice.status}</p></header>
       <table><thead><tr><th>Item</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody>{receipt.lines.map(l=><tr><td>{l.item_name_snapshot}<small>{l.unit_name_snapshot}{l.discount_paise?` · discount ${money(l.discount_paise)}`:''}</small></td><td>{l.qty}</td><td>{money(l.unit_price_paise)}</td><td>{money(l.line_total_paise)}</td></tr>)}</tbody></table>
       <dl class="receipt-totals"><div><dt>Subtotal</dt><dd>{money(receipt.invoice.subtotal_paise)}</dd></div>{receipt.invoice.discount_paise>0&&<div><dt>Discount</dt><dd>−{money(receipt.invoice.discount_paise)}</dd></div>}{receipt.invoice.extra_charges_paise>0&&<div><dt>Extra charges</dt><dd>{money(receipt.invoice.extra_charges_paise)}</dd></div>}<div><dt>Total</dt><dd><strong>{money(receipt.invoice.total_paise)}</strong></dd></div></dl>
-      <h2>Payments</h2>{receipt.payments.length?<ul>{receipt.payments.map(p=><li>{p.mode.toUpperCase()} {money(p.amount_paise)}{p.reference?` · ${p.reference}`:''}{p.status==='VOID'?' · VOID':''}</li>)}</ul>:<p>Credit / unpaid</p>}
+      <h2>Payments</h2>{receipt.payments.length?<ul>{receipt.payments.map(p=><li>{p.direction==='out'?'REFUND':'RECEIPT'} · {p.mode.toUpperCase()} {money(p.amount_paise)}{p.reference?` · ${p.reference}`:''}{p.status==='VOID'?' · VOID':''}</li>)}</ul>:<p>Credit / unpaid</p>}
       {receipt.invoice.notes&&<p>Notes: {receipt.invoice.notes}</p>}<footer><p>Thank you · Powered by DSB Pro</p></footer>
     </article>}
   </main>;

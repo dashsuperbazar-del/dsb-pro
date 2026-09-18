@@ -2,8 +2,30 @@ import {describe,expect,it} from 'vitest';
 import {
   advanceCursor,compareCursor,isRowAfterCursor,markOutboxRetry,markOutboxSending,
   isDefinitiveFinancialRejectionMessage,mergeMasterRow,nextOutboxEntry,provisionalDocNo,reconcileAppendOnlyEvent,retryDelayMs,
-  type MasterSyncRow,type OutboxEntry,
+  returnStockDelta,canUnblockRejectedReturnVoid,type MasterSyncRow,type OutboxEntry,
 } from './index';
+
+describe('provisional return dispositions',()=>{
+  it('never unblocks stock on a rejection after an unknown void attempt',()=>{
+    expect(canUnblockRejectedReturnVoid(1,'insufficient stock to void sale return')).toBe(true);
+    expect(canUnblockRejectedReturnVoid(2,'device revoked')).toBe(false);
+    expect(canUnblockRejectedReturnVoid(1,'Failed to fetch')).toBe(false);
+    expect(canUnblockRejectedReturnVoid(1,'not permitted',true)).toBe(false);
+  });
+  it('restores only sellable customer returns and never guesses money',()=>{
+    expect(returnStockDelta('SALE','RETURN_TO_SELLABLE',2.5)).toBe(2.5);
+    for(const disposition of ['DAMAGED','EXPIRED','SUPPLIER_RETURN'] as const)expect(returnStockDelta('SALE',disposition,2.5)).toBe(0);
+  });
+  it('removes supplier returns but leaves a sellable disposition unchanged',()=>{
+    expect(returnStockDelta('PURCHASE','RETURN_TO_SELLABLE',3)).toBe(0);
+    for(const disposition of ['DAMAGED','EXPIRED','SUPPLIER_RETURN'] as const)expect(returnStockDelta('PURCHASE',disposition,3)).toBe(-3);
+  });
+  it('distinguishes definite rejection from an unknown-outcome retry',()=>{
+    expect(isDefinitiveFinancialRejectionMessage('sale return quantity exceeds sold quantity')).toBe(true);
+    expect(isDefinitiveFinancialRejectionMessage('sale unavailable for return')).toBe(true);
+    expect(isDefinitiveFinancialRejectionMessage('Failed to fetch')).toBe(false);
+  });
+});
 
 describe('sync cursor',()=>{
   it('uses updated_at plus id so equal timestamps cannot skip rows',()=>{
