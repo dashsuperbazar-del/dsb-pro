@@ -1,0 +1,65 @@
+import { useEffect, useState } from 'preact/hooks';
+import {
+  getCurrentMembership, getDefaultShopId, getShopSettings, updateShopSettings, getCashierOfflineFinalizationPolicy,
+  type PrinterWidth, type ShopSettings,
+} from '@dsb-pro/adapters';
+import { updateCashierOfflinePolicy } from '../lib/offlineSync';
+import { appRoute } from '../lib/paths';
+
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+export function SettingsScreen() {
+  const [shopId,setShopId]=useState(''); const [role,setRole]=useState('');
+  const [settings,setSettings]=useState<ShopSettings|null>(null);
+  const [allowCashierOffline,setAllowCashierOffline]=useState(false); const [policyBusy,setPolicyBusy]=useState(false);
+  const [busy,setBusy]=useState(false); const [message,setMessage]=useState(''); const [error,setError]=useState('');
+
+  async function refresh(){
+    const membership=await getCurrentMembership(); if(!membership) throw new Error('No tenant membership.');
+    const shop=await getDefaultShopId();
+    setRole(membership.role); setShopId(shop);
+    const [s,policy]=await Promise.all([getShopSettings(shop),getCashierOfflineFinalizationPolicy(membership.tenantId)]);
+    setSettings(s); setAllowCashierOffline(policy);
+  }
+  useEffect(()=>{ void refresh().catch(e=>setError(String(e))); },[]);
+
+  async function saveProfile(ev:Event){
+    ev.preventDefault(); if(busy||!settings)return; setError(''); setMessage('');
+    const f=new FormData(ev.currentTarget as HTMLFormElement); setBusy(true);
+    try{
+      await updateShopSettings({
+        shopId,name:String(f.get('name')),address:String(f.get('address')||'')||undefined,gstin:String(f.get('gstin')||'')||undefined,
+        invoicePrefix:String(f.get('invoicePrefix')||'')||undefined,timezone:String(f.get('timezone')),
+        printerWidth:String(f.get('printerWidth')) as PrinterWidth,fiscalYearStartMonth:Number(f.get('fiscalYearStartMonth')),
+      });
+      setSettings(await getShopSettings(shopId));
+      setMessage('Shop settings saved.');
+    }catch(e){setError(String(e));} finally{setBusy(false);}
+  }
+  async function togglePolicy(ev:Event){
+    const allow=(ev.currentTarget as HTMLInputElement).checked;
+    if(policyBusy)return; setError(''); setMessage(''); setPolicyBusy(true);
+    try{ await updateCashierOfflinePolicy(allow); setAllowCashierOffline(allow); setMessage(`Cashier offline finalization ${allow?'enabled':'disabled'}.`); }
+    catch(e){setError(String(e));} finally{setPolicyBusy(false);}
+  }
+
+  if(!settings) return <main><p><a href={appRoute.home}>← Home</a></p><h1>Settings</h1>{error?<p role="alert">{error}</p>:<p>Loading…</p>}</main>;
+  return <main>
+    <p><a href={appRoute.home}>← Home</a></p><h1>Settings</h1>
+    {error&&<p role="alert">{error}</p>}{message&&<p role="status">{message}</p>}
+    <section><h2>Shop profile</h2>
+      <form onSubmit={saveProfile}>
+        <label>Shop name <input name="name" defaultValue={settings.name} required/></label> <label>Address <input name="address" defaultValue={settings.address??''}/></label> <label>GSTIN <input name="gstin" defaultValue={settings.gstin??''} placeholder="27ABCDE1234F1Z5"/></label>
+        <br/><label>Invoice prefix <input name="invoicePrefix" defaultValue={settings.invoicePrefix??''} placeholder="INV"/></label> <label>Timezone <input name="timezone" defaultValue={settings.timezone} required/></label>
+        <label>Printer width <select name="printerWidth" defaultValue={settings.printerWidth}><option value="58mm">58mm thermal</option><option value="80mm">80mm thermal</option></select></label>
+        <label>Fiscal year starts <select name="fiscalYearStartMonth" defaultValue={String(settings.fiscalYearStartMonth)}>{MONTHS.map((m,i)=><option key={m} value={i+1}>{m}</option>)}</select></label>
+        <p><button disabled={busy}>{busy?'Saving…':'Save shop profile'}</button></p>
+      </form>
+    </section>
+    <section><h2>POS ergonomics policy</h2>
+      <p class="muted">A cashier till may finalize a sale while offline only when this is on. When it is off, a cashier who loses connection cannot finalize — the cart stays on screen as a draft, unsubmitted, until the connection returns. An owner or manager can always finalize offline regardless of this setting.</p>
+      <label><input type="checkbox" checked={allowCashierOffline} disabled={policyBusy||role!=='owner'} onChange={togglePolicy}/> Allow cashiers to finalize sales while offline</label>
+      {role!=='owner'&&<p class="muted">Only the owner can change this.</p>}
+    </section>
+  </main>;
+}

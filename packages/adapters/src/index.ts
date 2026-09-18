@@ -33,3 +33,6 @@ export type { BackupHealth } from './health';
 export { getLatestBackupHealth } from './health';
 export type { ReturnType, ReturnDisposition, ReturnSource, ReturnableLine, PostedReturn, ReturnLineInput } from './returns';
 export { listReturnSources, listReturnableLines, postReturn, listRecentReturns, voidReturn, pullReturnSources, pushSyncedReturn, pushSyncedReturnVoid } from './returns';
+
+export type { PrinterWidth, ShopSettings, ShopSettingsInput } from './shopSettings';
+export { getShopSettings, updateShopSettings, getCashierOfflineFinalizationPolicy } from './shopSettings';
