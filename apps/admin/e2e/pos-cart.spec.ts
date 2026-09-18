@@ -55,7 +55,7 @@ test('cart lines edit in place, and a held cart survives being parked and comes 
   await expect(cartSection).toContainText('₹30.00');
 
   // Editing the line discount in place does too.
-  await page.getByLabel('Cart discount for Cart Edit Item A').fill('5');
+  await page.getByLabel('Discount for Cart Edit Item A').fill('5');
   await expect(cartSection).toContainText('₹25.00');
 
   // Hold the cart. It must clear the active cart without losing the edits.
