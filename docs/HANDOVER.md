@@ -961,3 +961,88 @@ The §19.1 gate after all of that: one full dry run — real multi-line supplier
 items billed, one return, one credit customer settled — without touching the database directly.
 Do not attempt the Phase 3+ real-shop/recovery gates before that dry run passes; they are still
 formally NOT GO regardless of how green CI looks, per standing project rule.
+
+**Multi-line purchases confirmed CI-green.** PR #18's run
+[35312955497](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/35312955497) passed first
+attempt: lint, typecheck, build, 196 unit tests, and — the evidence that was missing when the
+previous entry was written — `e2e` passed too, covering the new multi-line cart UI plus both
+updated single-line purchase flows. PR #18 is still draft/unmerged and still stacked on
+`phase-6-5-returns` (PR #17); it needs a rebase onto `main` once #17 merges, same as before.
+
+### 2026-09-18 — Settings screen, first slice (PR #19)
+
+Built the plan §19.1 Settings screen's shop-profile half: name/address/GSTIN/invoice
+prefix/timezone/printer width/fiscal year start month, plus a UI toggle for the
+`allow_cashier_offline_finalization` policy — that RPC and its client wrapper
+(`updateCashierOfflinePolicy`) already existed and were unused; no screen ever called them.
+
+New migration `0038_phase65_shop_settings.sql` adds `shops.gstin`, `.printer_width` (58mm|80mm)
+and `.fiscal_year_start_month` (1-12), and one `update_shop_settings()` RPC restricted to
+owner/manager via an explicit role check (the pre-existing offline-finalization RPC is
+owner-only — checked before writing the UI's disabled-state and copy, rather than assuming
+parity between the two). No client UPDATE policy was added; like every other table in this
+schema, the write goes through a SECURITY DEFINER function. 15 new pgTAP assertions:
+anon denied, owner and manager can write, cashier cannot, invalid printer width/fiscal month
+rejected with no partial write surviving, cross-tenant shop rejected.
+
+`packages/adapters/src/shopSettings.ts` reads shop rows and the tenant `settings` JSONB
+directly (both already SELECT-able under existing RLS, no new read RPC needed) and wraps
+the write RPC. `apps/admin/e2e/settings.spec.ts` edits every field, reloads to prove the
+values persisted server-side rather than only in local state, and then posts one real sale
+through `/pos` to confirm the invoice prefix set on this screen actually appears in the
+posted sale's real doc number (`RCS-...`) — proving the field is wired to behavior, not just
+stored and displayed back.
+
+Local lint, `apps/admin` typecheck (`tsc -b`, covers e2e) and all 199 unit tests pass. Docker
+Desktop was launched this session but never finished starting (WSL2/first-run step this
+session cannot click through), so pgTAP and browser e2e are unverified locally for both PR
+#18 and PR #19 — exact-head CI is the evidence for both, per this file's standing convention.
+
+**Deliberately not done in this slice:** negative-stock override. `post_sale()` currently
+hard-blocks any sale that would take `stock_current.available` negative (`0023_phase4_sales_payments.sql`,
+`raise exception 'insufficient stock'`) — there is no existing toggle of any kind for this, so
+adding one means a real new write path inside the single most safety-critical function in the
+system, exactly the class of risk plan §19.2 already named and chose to avoid elsewhere. Before
+touching it, the actual shop-floor behavior needs a decision only the owner can make: does
+enabling the override (a) silently allow the sale to go negative every time, (b) require a
+per-sale confirmation click showing the resulting negative quantity, or (c) something else —
+and does it apply per-shop or per-tenant. Ask this as the one question next session, before
+writing any SQL for it. Everything else on the §19.1 Settings list is now built.
+
+**Branch stack, in merge order:** `phase-6-5-returns` (PR #17, reviewed, ready, not merged —
+harness blocked an attempted squash-merge as "merge without review"; a human needs to run
+`gh pr merge 17 --squash`) → `phase-6-5-multi-line-purchases` (PR #18, CI-green) →
+`phase-6-5-settings-screen` (PR #19, CI-green as of run
+[35327033128](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/35327033128)).
+Each branch needs the previous one merged and then a rebase onto the new `main` before its
+own diff is clean. Do not merge #18 or #19 out of order ahead of #17; they were built on top
+of it.
+
+**PR #19 was not green on the first attempt — three real, distinct bugs, each found from the
+actual CI failure output and fixed in its own commit, none rerun unchanged:**
+1. `pgtap`: the manager/cashier test users were inserted into `tenant_users` while still running
+   as role `authenticated` (permission denied) — every other test file in this suite does that
+   insert under `reset role` first; this one skipped it. Separately, bare integer literals passed
+   positionally to the RPC's `smallint` parameter didn't resolve through pgTAP's `EXECUTE`-based
+   calls (`int4→int2` is an assignment cast, not implicit) — every existing `smallint`-parameter
+   call elsewhere in this suite already casts explicitly (e.g. `set_item_price`'s `unit_level`);
+   this file's literals didn't. Both fixed; the RPC itself was correct the whole time — PostgREST
+   resolves it by name with concrete decoded types, so production calls were never affected.
+2. `e2e`: Preact does not honor `defaultValue` on a `<select>` the way React does — it rendered
+   whichever `<option>` came first in markup regardless of the prop. This codebase had no other
+   `defaultValue` usage anywhere to have caught this convention gap sooner. Every profile field
+   is now controlled state instead, matching how the rest of this codebase already handles
+   dynamic fields.
+3. `e2e`: a second real bug, this time in the checkbox handler, not the test — `togglePolicy`
+   called `setError('')`/`setMessage('')` synchronously before awaiting the policy RPC; those
+   forced a re-render of the controlled checkbox with its still-old `checked` value, visibly
+   undoing the click before the async call resolved. Fixed by flipping the bound state
+   optimistically first and rolling it back only on an actual rejection.
+4. `e2e`: and one bug in the test itself — it created an item and set its price but never posted
+   a purchase for it, so `/pos` correctly refused the sale with "Insufficient cached stock for
+   this offline sale" (confirmed from the downloaded trace's error-context, not guessed). Added
+   the same post-purchase step the main `pos.spec.ts` flow already uses.
+
+Recorded in this detail because CLAUDE.md requires evidence before success claims: every one of
+these was diagnosed from the real failing job's log or downloaded trace (`gh run view --job
+<id> --log`, `gh run download`), not assumed from reading the diff a second time.

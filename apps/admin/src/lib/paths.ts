@@ -18,4 +18,5 @@ export const appRoute = {
   sync: appPath('/sync'),
   reports: appPath('/reports'),
   returns: appPath('/returns'),
+  settings: appPath('/settings'),
 };
