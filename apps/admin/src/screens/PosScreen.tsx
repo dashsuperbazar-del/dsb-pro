@@ -11,7 +11,9 @@ import { appRoute } from '../lib/paths';
 import {
   finalizeSaleResilient, findOfflineBarcode, getOfflineBusinessDate, getOfflineCustomers, getOfflineItems,
   getOfflinePrices, getOfflineRuntimeIdentity, listOfflineSales, waitForOfflineRuntime,
+  holdCurrentCart, listHeldCartsForShop, resumeHeldCart, discardHeldCartById,
 } from '../lib/offlineSync';
+import type { HeldCartRecord } from '@dsb-pro/sync';
 
 type CartLine = { item:Item; unitLevel:1|2|3; qty:number; priceKind:'retail'|'wholesale'; unitPricePaise:number; discountPaise:number };
 type Tender = { mode:'cash'|'upi'|'card'|'bank'|'other'; amount:string };
@@ -28,6 +30,7 @@ export function PosScreen(){
   const [cart,setCart]=useState<CartLine[]>([]); const [customerId,setCustomerId]=useState(''); const [globalDiscount,setGlobalDiscount]=useState('0'); const [extra,setExtra]=useState('0');
   const [tenders,setTenders]=useState<Tender[]>([{mode:'cash',amount:''}]); const [message,setMessage]=useState(''); const [error,setError]=useState(''); const [busy,setBusy]=useState(false);
   const [barcode,setBarcode]=useState(''); const [itemQuery,setItemQuery]=useState(''); const [manualItemId,setManualItemId]=useState(''); const [manualUnitLevel,setManualUnitLevel]=useState<1|2|3>(1); const [saleClientId,setSaleClientId]=useState(()=>crypto.randomUUID()); const [paymentClientId,setPaymentClientId]=useState(()=>crypto.randomUUID()); const [paymentCustomer,setPaymentCustomer]=useState(''); const [paymentAmount,setPaymentAmount]=useState(''); const [paymentMode,setPaymentMode]=useState<Tender['mode']>('cash');
+  const [heldCarts,setHeldCarts]=useState<HeldCartRecord[]>([]); const [holdLabel,setHoldLabel]=useState('');
 
   async function refresh(){
     await waitForOfflineRuntime();
@@ -57,6 +60,7 @@ export function PosScreen(){
       }
     }
     setOfflineSales(await listOfflineSales());
+    setHeldCarts(await listHeldCartsForShop());
   }
   useEffect(()=>{ void refresh().catch(e=>setError(String(e))); },[]);
 
@@ -77,6 +81,35 @@ export function PosScreen(){
     const chosen=matching.find(p=>p.shop_id===shopId)??matching.find(p=>p.shop_id===null);
     if(!chosen) throw new Error(`No active ${priceKind} price for ${item.name} / ${unitName(item,unitLevel)}.`);
     setCart(v=>[...v,{item,unitLevel,qty,priceKind,unitPricePaise:chosen.price_paise,discountPaise}]);
+  }
+
+  async function holdCartNow(){
+    setError('');
+    if(!cart.length){setError('Add at least one item before holding.');return;}
+    try{
+      await holdCurrentCart({label:holdLabel,customerId,globalDiscount,extra,
+        lines:cart.map(l=>({itemId:l.item.id,unitLevel:l.unitLevel,qty:l.qty,priceKind:l.priceKind,discountPaise:l.discountPaise}))});
+      setCart([]); setCustomerId(''); setGlobalDiscount('0'); setExtra('0'); setHoldLabel(''); setSaleClientId(crypto.randomUUID());
+      setHeldCarts(await listHeldCartsForShop()); setMessage('Cart held. Start a new sale, or resume it later.');
+    }catch(e){setError(String(e));}
+  }
+  async function resumeCart(id:string){
+    setError('');
+    if(cart.length){setError('Hold or clear the current cart before resuming another.');return;}
+    try{
+      const record=await resumeHeldCart(id); if(!record)return;
+      setCustomerId(record.customerId); setGlobalDiscount(record.globalDiscount); setExtra(record.extra);
+      for(const line of record.lines){
+        const item=items.find(i=>i.id===line.itemId);
+        if(!item){setError('An item in this held cart is no longer available and was skipped.');continue;}
+        await addLine(item,line.unitLevel,line.qty,line.priceKind,line.discountPaise);
+      }
+      setHeldCarts(await listHeldCartsForShop()); setMessage('Cart resumed.');
+    }catch(e){setError(String(e));}
+  }
+  async function discardCart(id:string){
+    setError('');
+    try{ await discardHeldCartById(id); setHeldCarts(await listHeldCartsForShop()); }catch(e){setError(String(e));}
   }
 
   async function addManual(ev:Event){ ev.preventDefault(); setError(''); const f=new FormData(ev.currentTarget as HTMLFormElement); const item=items.find(i=>i.id===String(f.get('itemId'))); if(!item)return;
@@ -138,9 +171,11 @@ export function PosScreen(){
       </form>
     </section>
 
-    <section class="card"><h2>2. Cart</h2>{!cart.length?<p class="muted">Cart is empty.</p>:<div class="table-wrap"><table><thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Discount</th><th>Total</th><th/></tr></thead><tbody>{cart.map((l,n)=><tr><td>{l.item.name}<small>{unitName(l.item,l.unitLevel)} · {l.priceKind}</small></td><td>{l.qty}</td><td>{money(l.unitPricePaise)}</td><td>{money(l.discountPaise)}</td><td>{money(Math.round(l.qty*l.unitPricePaise)-l.discountPaise)}</td><td><button type="button" onClick={()=>setCart(v=>v.filter((_,i)=>i!==n))}>Remove</button></td></tr>)}</tbody></table></div>}
+    <section class="card"><h2>2. Cart</h2>{!cart.length?<p class="muted">Cart is empty.</p>:<div class="table-wrap"><table><thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Discount</th><th>Total</th><th/></tr></thead><tbody>{cart.map((l,n)=><tr><td>{l.item.name}<small>{unitName(l.item,l.unitLevel)} · {l.priceKind}</small></td><td><input type="number" min="0.000001" step="any" value={l.qty} aria-label={`Cart qty for ${l.item.name}`} onInput={e=>{const qty=Number((e.currentTarget as HTMLInputElement).value);if(Number.isFinite(qty)&&qty>0)setCart(v=>v.map((x,i)=>i===n?{...x,qty}:x));}}/></td><td>{money(l.unitPricePaise)}</td><td><input type="number" min="0" step="0.01" value={(l.discountPaise/100).toFixed(2)} aria-label={`Discount for ${l.item.name}`} onInput={e=>{const discountPaise=paise((e.currentTarget as HTMLInputElement).value);if(Number.isFinite(discountPaise)&&discountPaise>=0)setCart(v=>v.map((x,i)=>i===n?{...x,discountPaise}:x));}}/></td><td>{money(Math.round(l.qty*l.unitPricePaise)-l.discountPaise)}</td><td><button type="button" onClick={()=>setCart(v=>v.filter((_,i)=>i!==n))}>Remove</button></td></tr>)}</tbody></table></div>}
       <div class="row"><label>Invoice discount ₹ <input value={globalDiscount} type="number" min="0" step="0.01" onInput={e=>setGlobalDiscount((e.currentTarget as HTMLInputElement).value)}/></label><label>Extra charges ₹ <input value={extra} type="number" min="0" step="0.01" onInput={e=>setExtra((e.currentTarget as HTMLInputElement).value)}/></label><strong>Preview {money(Math.max(0,preview))}</strong></div>
+      <div class="row"><label>Hold label <input value={holdLabel} placeholder="e.g. Table 3" onInput={e=>setHoldLabel((e.currentTarget as HTMLInputElement).value)}/></label><button type="button" disabled={!cart.length} onClick={()=>void holdCartNow()}>Hold cart</button></div>
     </section>
+    {heldCarts.length>0&&<section class="card" aria-label="Held carts"><h2>Held carts</h2><div class="table-wrap"><table><thead><tr><th>Label</th><th>Items</th><th/></tr></thead><tbody>{heldCarts.map(h=><tr key={h.id}><td>{h.label}</td><td>{h.lines.length}</td><td><button type="button" onClick={()=>void resumeCart(h.id)}>Resume</button> <button type="button" onClick={()=>void discardCart(h.id)}>Discard</button></td></tr>)}</tbody></table></div></section>}
 
     <section class="card"><h2>3. Customer & payment</h2>
       <label>Customer <select value={customerId} onChange={e=>setCustomerId((e.currentTarget as HTMLSelectElement).value)}><option value="">Walk-in</option>{customers.map(c=><option key={c.id} value={c.id}>{c.name}{balances[c.id]?` · balance ${money(balances[c.id])}`:''}</option>)}</select></label>
