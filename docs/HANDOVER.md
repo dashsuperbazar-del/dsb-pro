@@ -1153,3 +1153,50 @@ each onto the new `main` in that exact order once #17 lands.
 `min_stock`, item-wise sales, purchase register, customer aging); §10 shell work (bottom nav,
 error taxonomy, empty/loading states, i18n, dark mode) — last. Then the §19.1 dry-run gate, then
 (only after that) the Phase 3+ real-shop/recovery gates, which stay NOT GO regardless of CI color.
+
+### 2026-09-18/19 — PR #17 merged; the stack rebased onto it, two real bugs found doing it
+
+The user merged PR #17 (`gh pr merge 17 --squash`, since the harness blocks an assistant from
+merging without human review). `main` moved `2566c21` → `46ae74a`. Rebased `phase-6-5-multi-line-purchases`
+(#18) → `phase-6-5-settings-screen` (#19) → `phase-6-5-negative-stock-override` (#20) →
+`phase-6-5-pos-cart-hold` (#21) onto it in that order, each with `git rebase --onto <new-base>
+<old-fork-point> <branch>` (not a plain `git rebase <upstream>` — that replays the entire
+pre-squash returns history and produces bogus add/add conflicts against content already in the
+squash commit; `--onto` replays only each branch's own unique commits).
+
+**Two real bugs found doing this, neither hypothetical:**
+
+1. **A force-push reported success but never landed.** `phase-6-5-settings-screen`'s rebase
+   push was backgrounded (60s timeout) and later reported "completed, exit 0" — but `origin`'s
+   ref never moved. This surfaced as PR #19 showing `CONFLICTING`/`DIRTY` against `main` on
+   GitHub, which a local `git merge-tree` proved was **not a real conflict** (zero actual
+   conflicting content). Chasing that contradiction to `gh api repos/.../pulls/19` and comparing
+   `head.sha` against the local rebased tip is what found the stale ref. Re-pushed explicitly and
+   confirmed via `git ls-remote` this time, not the push command's own reported exit status —
+   a push's own success message is not evidence; the remote ref after it is. #20 and #21 were
+   unaffected because `git rebase --onto` copies commits into the branch being rebased directly;
+   they didn't depend on `origin/phase-6-5-settings-screen` being up to date, only on the local
+   ref, which was correct throughout.
+2. **A genuine Preact DOM-reuse bug**, found only because the rebase re-ran e2e on unchanged
+   content and it failed differently than before (proving it wasn't the earlier fixed issue
+   recurring). `PosScreen.tsx`'s new "Hold label" input had no explicit `type`. Playwright's
+   trace showed it correctly targeting that exact input (placeholder matched) but the live DOM
+   node carried `type="number"` anyway — almost certainly a stale attribute surviving DOM-node
+   reuse as the cart table and the conditional "Held carts" section mount/unmount around it
+   (the qty/discount cells directly above are real `type="number"` inputs). Fixed by declaring
+   `type="text"` explicitly, so Preact manages that attribute on every render rather than
+   inheriting whatever the reused node happened to carry. Left this codebase's other
+   already-existing, unaffected plain-text inputs (Barcode, Find product, Quick customer, Phone)
+   untouched rather than patch speculatively.
+
+All four PRs confirmed CI-green **and** `MERGEABLE`/`CLEAN` against the new `main` via `gh pr
+checks` and `gh pr view --json mergeable,mergeStateStatus` (not assumed from a green run alone):
+#18 [35374033634](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/35374033634), #19
+[35390478102](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/35390478102), #20
+[35374899633](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/35374899633), #21
+[35390968226](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/35390968226).
+
+**Branch stack, ready to merge in order:** #18 → #19 → #20 → #21, each rebasing onto the new
+`main` again immediately after the one before it lands (their history is only valid relative to
+each other in this exact sequence — merging out of order, or without re-rebasing after each
+merge, will reintroduce the same class of stale-base problem this entry just describes).
