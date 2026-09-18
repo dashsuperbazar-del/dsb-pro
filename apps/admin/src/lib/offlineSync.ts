@@ -212,7 +212,7 @@ export async function finalizeSaleResilient(input:{
   lines:SaleLineInput[];payments:SalePaymentInput[];notes?:string;
 }):Promise<ResilientSaleResult>{
   const rt=requireRuntime();
-  const policy=(await getCachedPolicy(rt.db))??{allowCashierOfflineFinalization:false};
+  const policy=(await getCachedPolicy(rt.db))??{allowCashierOfflineFinalization:false,allowNegativeStock:false};
   if(rt.identity.role==='cashier'&&!policy.allowCashierOfflineFinalization){
     if(typeof navigator==='undefined'||!navigator.onLine){
       throw new Error('Offline finalization is disabled for cashiers. Keep this sale as a draft until online.');
@@ -314,7 +314,7 @@ export async function getSyncDashboard(){
     getSyncHealth(rt.db),rt.db.conflicts.orderBy('createdAt').reverse().toArray(),listOfflineSales(),
     serverConflictPromise,
   ]);
-  return {health,conflicts,sales,serverConflicts,state:getOfflineRuntimeState(),identity:rt.identity,policy:(await getCachedPolicy(rt.db))??{allowCashierOfflineFinalization:false}};
+  return {health,conflicts,sales,serverConflicts,state:getOfflineRuntimeState(),identity:rt.identity,policy:(await getCachedPolicy(rt.db))??{allowCashierOfflineFinalization:false,allowNegativeStock:false}};
 }
 export async function forceRetryNow():Promise<void>{
   const rt=requireRuntime();

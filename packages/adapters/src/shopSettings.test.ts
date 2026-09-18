@@ -24,23 +24,23 @@ describe('shop settings adapter', () => {
     const client = makeMockClient({}, {
       shops: {
         id: 'shop-1', tenant_id: 'tenant-1', name: 'Ramesh Store', address: '12 Market Road', gstin: '27ABCDE1234F1Z5',
-        invoice_prefix: 'RS', timezone: 'Asia/Kolkata', printer_width: '58mm', fiscal_year_start_month: 4,
+        invoice_prefix: 'RS', timezone: 'Asia/Kolkata', printer_width: '58mm', fiscal_year_start_month: 4, allow_negative_stock: true,
       },
     });
     __setSupabaseClientForTest(client as never);
     await expect(getShopSettings('shop-1')).resolves.toEqual({
       id: 'shop-1', tenantId: 'tenant-1', name: 'Ramesh Store', address: '12 Market Road', gstin: '27ABCDE1234F1Z5',
-      invoicePrefix: 'RS', timezone: 'Asia/Kolkata', printerWidth: '58mm', fiscalYearStartMonth: 4,
+      invoicePrefix: 'RS', timezone: 'Asia/Kolkata', printerWidth: '58mm', fiscalYearStartMonth: 4, allowNegativeStock: true,
     });
   });
 
   it('updateShopSettings sends every field to update_shop_settings, defaulting optional text to null', async () => {
     const client = makeMockClient({ update_shop_settings: null });
     __setSupabaseClientForTest(client as never);
-    await updateShopSettings({ shopId: 'shop-1', name: 'Ramesh Store', timezone: 'Asia/Kolkata', printerWidth: '80mm', fiscalYearStartMonth: 4 });
+    await updateShopSettings({ shopId: 'shop-1', name: 'Ramesh Store', timezone: 'Asia/Kolkata', printerWidth: '80mm', fiscalYearStartMonth: 4, allowNegativeStock: false });
     expect(client.rpc).toHaveBeenCalledWith('update_shop_settings', {
       p_shop_id: 'shop-1', p_name: 'Ramesh Store', p_address: null, p_gstin: null, p_invoice_prefix: null,
-      p_timezone: 'Asia/Kolkata', p_printer_width: '80mm', p_fiscal_year_start_month: 4,
+      p_timezone: 'Asia/Kolkata', p_printer_width: '80mm', p_fiscal_year_start_month: 4, p_allow_negative_stock: false,
     });
   });
 });

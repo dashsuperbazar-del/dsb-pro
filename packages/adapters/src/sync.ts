@@ -11,7 +11,7 @@ const DISABLED_CURSOR:SyncCursorWire={updatedAt:Number.MAX_SAFE_INTEGER,id:'\uff
 export type SyncCursorWire={updatedAt:number;id:string};
 export type SyncPullWire={
   schemaVersion:number;serverNowMs:number;cutoffMs:number;businessDate:string;
-  policy:{allowCashierOfflineFinalization:boolean};
+  policy:{allowCashierOfflineFinalization:boolean;allowNegativeStock:boolean};
   items:Array<Record<string,unknown>>;barcodes:Array<Record<string,unknown>>;prices:Array<Record<string,unknown>>;
   customers:Array<Record<string,unknown>>;stock:Array<Record<string,unknown>>;
 };

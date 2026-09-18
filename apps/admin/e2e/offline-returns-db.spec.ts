@@ -25,7 +25,7 @@ test('return IndexedDB transactions preserve replay, overlays and rejection roll
     const first=await s.queueOfflineReturn(db,input,context);await s.queueOfflineReturn(db,input,context);
     const initial={outbox:await db.outbox.count(),reservation:(await db.reservations.get('shop:item'))?.qty,refund:first.cashRefundPaise,balance:first.balanceCreditPaise};
     let mismatch=false;try{await s.queueOfflineReturn(db,{...input,notes:'different'},context);}catch{mismatch=true;}
-    await s.queueOfflineSale(db,{shopId:'shop',businessDate:'2026-09-15',discountPaise:0,extraChargesPaise:0,clientId:'sale-1',lines:[{itemId:'item',unitLevel:1,qty:2,priceKind:'retail',discountPaise:0}],payments:[{amountPaise:200,mode:'cash'}]},{...context,policy:{allowCashierOfflineFinalization:true},onlineInitiated:false});
+    await s.queueOfflineSale(db,{shopId:'shop',businessDate:'2026-09-15',discountPaise:0,extraChargesPaise:0,clientId:'sale-1',lines:[{itemId:'item',unitLevel:1,qty:2,priceKind:'retail',discountPaise:0}],payments:[{amountPaise:200,mode:'cash'}]},{...context,policy:{allowCashierOfflineFinalization:true,allowNegativeStock:false},onlineInitiated:false});
     const mixedProjection=(await db.reservations.get('shop:item'))?.qty;
     const ack={returnId:'official-return',docNo:'SR-1',status:'POSTED' as const,totalPaise:200,cashRefundPaise:150,balanceCreditPaise:50,stock:[{...stock,available:6,on_hand:6,qty_base:6,updated_at:2}]};
     await s.completeOfflineReturn(db,input.clientId,ack);await s.completeOfflineReturn(db,input.clientId,ack);
@@ -50,7 +50,7 @@ test('return IndexedDB transactions preserve replay, overlays and rejection roll
     const voidIntent={type:'SALE' as const,returnId:ack.returnId,shopId:'shop',clientId:'void-id'};
     await s.queueReturnVoid(db,voidIntent);await s.queueReturnVoid(db,voidIntent);
     db.close();await db.open();
-    let billingBlocked=false;try{await s.queueOfflineSale(db,{shopId:'shop',businessDate:'2026-09-15',discountPaise:0,extraChargesPaise:0,clientId:'blocked-sale',lines:[{itemId:'item',unitLevel:1,qty:1,priceKind:'retail',discountPaise:0}],payments:[{amountPaise:100,mode:'cash'}]},{...context,policy:{allowCashierOfflineFinalization:true},onlineInitiated:false});}catch(e){billingBlocked=String(e).includes('void confirmation pending');}
+    let billingBlocked=false;try{await s.queueOfflineSale(db,{shopId:'shop',businessDate:'2026-09-15',discountPaise:0,extraChargesPaise:0,clientId:'blocked-sale',lines:[{itemId:'item',unitLevel:1,qty:1,priceKind:'retail',discountPaise:0}],payments:[{amountPaise:100,mode:'cash'}]},{...context,policy:{allowCashierOfflineFinalization:true,allowNegativeStock:false},onlineInitiated:false});}catch(e){billingBlocked=String(e).includes('void confirmation pending');}
     let malformedBlocked=false;try{await s.completeReturnVoid(db,voidIntent,ack);}catch{malformedBlocked=!!await s.getMeta(db,'pendingReturnVoid');}
     await s.completeReturnVoid(db,voidIntent,{...ack,status:'VOID',stock:[{...stock,updated_at:3}]});
     await s.completeOfflineReturn(db,input.clientId,ack); // stale POSTED reply cannot resurrect a void

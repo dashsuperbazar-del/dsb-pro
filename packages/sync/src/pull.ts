@@ -72,7 +72,7 @@ export async function getCachedPrices(db:DsbSyncDb,itemId:string):Promise<Synced
   return (await db.prices.where('item_id').equals(itemId).toArray()).filter(r=>r.deleted_at===null&&r.effective_to===null);
 }
 export async function getCachedBusinessDate(db:DsbSyncDb):Promise<string|null>{return getMeta<string>(db,'businessDate');}
-export async function getCachedPolicy(db:DsbSyncDb){return getMeta<{allowCashierOfflineFinalization:boolean}>(db,'policy');}
+export async function getCachedPolicy(db:DsbSyncDb){return getMeta<{allowCashierOfflineFinalization:boolean;allowNegativeStock:boolean}>(db,'policy');}
 
 export async function getSyncHealth(db:DsbSyncDb):Promise<SyncHealth>{
   const [outboxCount,conflictCount,queuedSales,lastSyncAt,lastServerNowMs,clockDriftMs,businessDate]=await Promise.all([

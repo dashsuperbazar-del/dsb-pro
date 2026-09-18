@@ -1046,3 +1046,74 @@ actual CI failure output and fixed in its own commit, none rerun unchanged:**
 Recorded in this detail because CLAUDE.md requires evidence before success claims: every one of
 these was diagnosed from the real failing job's log or downloaded trace (`gh run view --job
 <id> --log`, `gh run download`), not assumed from reading the diff a second time.
+
+### 2026-09-18 — Negative-stock override built, then a duplication mistake found and fixed (PR #20)
+
+Owner's answer to the one queued question: negative-stock override should silently allow the
+sale (stock goes negative, reconciled at the next physical count), scoped per-shop. Built as
+`phase-6-5-negative-stock-override`, stacked on `phase-6-5-settings-screen` (PR #19 → #20).
+
+Not green on the first two attempts, both real bugs in the SQL itself, not test flakiness:
+
+1. **The trigger's own `on_hand<0` branch was dead code.** The original `apply_stock_movement()`
+   condition was `on_hand<0 or on_hand<reserved`. Given `reserved`'s `>=0` check constraint, that
+   OR is mathematically just `on_hand<reserved` in every case — reserved=0 makes the two clauses
+   identical, reserved>0 makes `on_hand<0` a strict subset. There was never a separate "went
+   negative" invariant apart from "dipped below a reservation" to begin with. Splitting it into
+   two sequential checks (one unconditional, one override-aware) meant the unconditional one
+   fired first for every real case (server-side `reserved` is always 0 today), so the override
+   never took effect. Collapsed back to one condition with the override — scoped to
+   `source_type='SALE'` — overriding it outright. This also meant dropping a "protect a reserved
+   unit even under the override" idea from the design: once oversell is unconditionally allowed,
+   a narrower rule that still blocked on a concurrent reservation would be a carve-out nobody
+   asked for. Flipped the corresponding pgTAP assertion from `throws_ok` to `lives_ok` to match.
+2. **The server was right; the offline client wasn't told.** After the trigger fix, pgTAP passed
+   but e2e still died with the *client's own* "Insufficient cached stock for this offline sale" —
+   `packages/sync/src/offlineSale.ts` has a local pre-check (instant feedback, no round-trip) that
+   knew nothing about `allow_negative_stock`. The actual POS flow goes through this offline-first
+   path, not a raw RPC call, so fixing only the server left real usage still blocked.
+   `phase5_sync_pull()` now hands the shop's flag down alongside the existing
+   `allowCashierOfflineFinalization`, both under the same cached `policy` object;
+   `queueOfflineSale()` skips its local check when the policy says so.
+
+**Separately, a duplication mistake was found and fixed while doing this work, not by the user:**
+the PR #19 commit message claimed "`allow_cashier_offline_finalization` already had a full RPC
+and a client wrapper but no UI ever called them" — that was wrong. The check only grepped
+`apps/admin/src/screens/`, not `apps/admin/src/lib/`; `SyncScreen.tsx` already had a working,
+owner-gated toggle for it (section "Offline finalization policy"). Removed the Settings-screen
+duplicate (the checkbox, its state, the now-unused `getCashierOfflineFinalizationPolicy` adapter
+call and its test, and the e2e assertions exercising it), left a one-line pointer to `/sync`
+instead. **Noted but not fixed:** no e2e test actually exercises `SyncScreen`'s own toggle today —
+a pre-existing coverage gap, recorded rather than silently left.
+
+Also caught while resolving the resulting merge conflict: the negative-stock checkbox's own
+description still claimed "a unit another till has already reserved offline can never be sold
+twice" — true of the first (buggy) trigger, not the corrected one. Fixed the copy before it
+shipped an overstated guarantee.
+
+Final state, confirmed via `gh pr checks` (not just a green exit code): PR #18
+[35312955497](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/35312955497), PR #19
+[35335551169](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/35335551169), PR #20
+[35335877668](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/35335877668) are all
+CI-green with the fixes merged through the stack. **Docker/local Supabase were unavailable this
+entire session** (Docker Desktop launched but never finished starting) — every one of the bugs
+above, in both the SQL and the client, was found from real CI failure logs and a downloaded
+Playwright trace, never assumed or guessed.
+
+**Branch stack, current and confirmed:** `phase-6-5-returns` (PR #17, reviewed clean, ready,
+**still not merged** — a human needs to run `gh pr merge 17 --squash`, the harness blocks an
+assistant from doing it) → `phase-6-5-multi-line-purchases` (PR #18, CI-green) →
+`phase-6-5-settings-screen` (PR #19, CI-green) → `phase-6-5-negative-stock-override` (PR #20,
+CI-green, includes #19's fix via an explicit merge commit, not a rebase). Merge and rebase each
+onto the new `main` in that order once #17 lands; nothing later in the stack should merge ahead
+of an earlier one.
+
+**Everything on the plan §19.1 Settings list is now built:** shop profile/GSTIN/invoice
+prefix/timezone/printer width/fiscal year, cashier offline-finalization policy (pre-existing,
+just found instead of duplicated), and negative-stock override. Remaining Phase 6.5 work, in
+priority order: POS cart editing and hold/resume; missing reports (low stock/reorder via
+`min_stock`, item-wise sales, purchase register, customer aging); §10 shell work (bottom nav,
+error taxonomy, empty/loading states, i18n, dark mode) — last, since it touches many screens.
+Then the §19.1 gate: one full dry run — real multi-line supplier bill, twenty mixed items billed,
+one return, one credit customer settled — without touching the database directly. The Phase 3+
+real-shop/recovery gates stay formally NOT GO until that dry run passes, regardless of CI color.
