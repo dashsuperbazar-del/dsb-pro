@@ -12,7 +12,9 @@ const paise = (rupees:string) => Math.round(Number(rupees || '0') * 100);
 
 export function InventoryScreen() {
   const [items,setItems]=useState<Item[]>([]); const [parties,setParties]=useState<Party[]>([]); const [stock,setStock]=useState<StockRow[]>([]);
-  const [shopId,setShopId]=useState(''); const [tenantId,setTenantId]=useState(''); const [businessDate,setBusinessDate]=useState(''); const [selected,setSelected]=useState(''); const [purchaseItemId,setPurchaseItemId]=useState(''); const [prices,setPrices]=useState<ItemPrice[]>([]);
+  const [shopId,setShopId]=useState(''); const [tenantId,setTenantId]=useState(''); const [businessDate,setBusinessDate]=useState(''); const [selected,setSelected]=useState(''); const [purchaseLineItemId,setPurchaseLineItemId]=useState(''); const [prices,setPrices]=useState<ItemPrice[]>([]);
+  const [purchaseLineUnitLevel,setPurchaseLineUnitLevel]=useState<1|2|3>(1); const [purchaseLineQty,setPurchaseLineQty]=useState(''); const [purchaseLinePrice,setPurchaseLinePrice]=useState('');
+  const [purchaseCart,setPurchaseCart]=useState<{item:Item;unitLevel:1|2|3;qty:number;unitPricePaise:number}[]>([]);
   const [purchaseClientId,setPurchaseClientId]=useState(()=>crypto.randomUUID()); const [purchaseBusy,setPurchaseBusy]=useState(false);
   const [legacyPlan,setLegacyPlan]=useState<LegacyDsbImportPlan|null>(null); const [legacyFileName,setLegacyFileName]=useState(''); const [legacyClientId,setLegacyClientId]=useState(()=>crypto.randomUUID()); const [legacyBusy,setLegacyBusy]=useState(false);
   const [message,setMessage]=useState(''); const [error,setError]=useState('');
@@ -27,8 +29,10 @@ export function InventoryScreen() {
   }
   useEffect(()=>{ void refresh().catch(e=>setError(String(e)));return()=>{refreshGeneration.current++;}; },[]);
   useEffect(()=>{ if(!selected){setPrices([]);return;} void listCurrentPrices(selected).then(setPrices).catch(e=>setError(String(e))); },[selected]);
-  const selectedItem=items.find(i=>i.id===selected); const purchaseItem=items.find(i=>i.id===purchaseItemId);
+  const selectedItem=items.find(i=>i.id===selected); const purchaseLineItem=items.find(i=>i.id===purchaseLineItemId);
   const selectedStock=useMemo(()=>stock.find(s=>s.item_id===selected)?.qty_base??0,[stock,selected]);
+  const purchaseTotalPaise=useMemo(()=>purchaseCart.reduce((sum,l)=>sum+Math.round(l.qty*l.unitPricePaise),0),[purchaseCart]);
+  const unitLabel=(item:Item,unitLevel:1|2|3)=>unitLevel===1?item.unit1:unitLevel===2?(item.unit2||item.unit1):(item.unit3||item.unit2||item.unit1);
 
   async function chooseLegacyBackup(ev:Event){
     setError(''); setMessage(''); setLegacyPlan(null); setLegacyFileName('');
@@ -64,8 +68,25 @@ export function InventoryScreen() {
   async function addParty(ev:Event){ ev.preventDefault(); setError(''); if(!tenantId){setError('Shop data is still loading.');return;} const form=ev.currentTarget as HTMLFormElement; const f=new FormData(form);
     try { const party=await createParty({tenantId,name:String(f.get('name')),phone:String(f.get('phone')||'')||undefined,gstin:String(f.get('gstin')||'')||undefined,clientId:crypto.randomUUID()}); form.reset(); await refresh(); setMessage(`Created supplier ${party.name}.`); } catch(e){setError(String(e));}
   }
-  async function addPurchase(ev:Event){ ev.preventDefault(); if(purchaseBusy)return; setError(''); if(!shopId||!businessDate){setError('Shop data is still loading.');return;} const f=new FormData(ev.currentTarget as HTMLFormElement); const itemId=String(f.get('itemId')); const item=items.find(i=>i.id===itemId); if(!item){setError('Choose an item.');return;} setPurchaseBusy(true);
-    try { await postPurchase({shopId,partyId:String(f.get('partyId')||'')||undefined,billNo:String(f.get('billNo')||'')||undefined,businessDate:String(f.get('date')),discountPaise:paise(String(f.get('discount'))),extraChargesPaise:paise(String(f.get('extra'))),clientId:purchaseClientId,lines:[{itemId,unitLevel:Number(f.get('unitLevel')) as 1|2|3,qty:Number(f.get('qty')),unitPricePaise:paise(String(f.get('price')))}]}); setPurchaseClientId(crypto.randomUUID()); await refresh(); setMessage('Purchase posted and stock updated.'); } catch(e){setError(String(e));} finally{setPurchaseBusy(false);}
+  function addPurchaseLine(ev:Event){ ev.preventDefault(); setError('');
+    const item=items.find(i=>i.id===purchaseLineItemId); const qty=Number(purchaseLineQty); const unitPricePaise=paise(purchaseLinePrice);
+    if(!item){setError('Choose an item for the purchase line.');return;}
+    if(!(qty>0)){setError('Enter a purchase quantity greater than zero.');return;}
+    if(!purchaseLinePrice.trim()||!(unitPricePaise>=0)){setError('Enter a unit cost.');return;}
+    setPurchaseCart(v=>[...v,{item,unitLevel:purchaseLineUnitLevel,qty,unitPricePaise}]);
+    setPurchaseLineItemId(''); setPurchaseLineUnitLevel(1); setPurchaseLineQty(''); setPurchaseLinePrice('');
+  }
+  function removePurchaseLine(index:number){ setPurchaseCart(v=>v.filter((_,i)=>i!==index)); }
+  async function addPurchase(ev:Event){ ev.preventDefault(); if(purchaseBusy)return; setError('');
+    if(!shopId||!businessDate){setError('Shop data is still loading.');return;}
+    if(!purchaseCart.length){setError('Add at least one purchase line.');return;}
+    const f=new FormData(ev.currentTarget as HTMLFormElement); const lineCount=purchaseCart.length; setPurchaseBusy(true);
+    try {
+      await postPurchase({shopId,partyId:String(f.get('partyId')||'')||undefined,billNo:String(f.get('billNo')||'')||undefined,businessDate:String(f.get('date')),discountPaise:paise(String(f.get('discount'))),extraChargesPaise:paise(String(f.get('extra'))),clientId:purchaseClientId,
+        lines:purchaseCart.map(l=>({itemId:l.item.id,unitLevel:l.unitLevel,qty:l.qty,unitPricePaise:l.unitPricePaise}))});
+      setPurchaseClientId(crypto.randomUUID()); setPurchaseCart([]); await refresh();
+      setMessage(`Purchase posted (${lineCount} line${lineCount===1?'':'s'}) and stock updated.`);
+    } catch(e){setError(String(e));} finally{setPurchaseBusy(false);}
   }
   async function changePrice(ev:Event){ ev.preventDefault(); if(!shopId){setError('Shop data is still loading.');return;} if(!selected)return; const f=new FormData(ev.currentTarget as HTMLFormElement);
     try { await setItemPrice({itemId:selected,shopId,kind:String(f.get('kind')) as ItemPrice['kind'],unitLevel:Number(f.get('unitLevel')) as 1|2|3,pricePaise:paise(String(f.get('price'))),clientId:crypto.randomUUID()}); setPrices(await listCurrentPrices(selected)); setMessage('Price history updated atomically.'); } catch(e){setError(String(e));}
@@ -90,6 +111,13 @@ export function InventoryScreen() {
       {selectedItem&&<form onSubmit={changePrice}><select name="kind"><option value="retail">Retail</option><option value="wholesale">Wholesale</option><option value="mrp">MRP</option><option value="cost_last">Last cost</option></select> <select name="unitLevel"><option value="1">{selectedItem.unit1}</option>{selectedItem.unit2&&<option value="2">{selectedItem.unit2}</option>}{selectedItem.unit3&&<option value="3">{selectedItem.unit3}</option>}</select> <input name="price" type="number" min="0" step="0.01" placeholder="₹ price" required/> <button disabled={!shopId}>Set price</button></form>}
     </section>
     <section><h2>Suppliers</h2><form onSubmit={addParty}><input name="name" placeholder="Supplier name" required/> <input name="phone" placeholder="Phone"/> <input name="gstin" placeholder="GSTIN"/> <button disabled={!tenantId}>Create supplier</button></form></section>
-    <section><h2>Post purchase</h2><form onSubmit={addPurchase}><input name="billNo" placeholder="Bill no."/> <input name="date" type="date" value={businessDate} onInput={e=>setBusinessDate((e.currentTarget as HTMLInputElement).value)} required/> <select name="partyId"><option value="">No supplier</option>{parties.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select> <select name="itemId" required value={purchaseItemId} onChange={e=>setPurchaseItemId((e.currentTarget as HTMLSelectElement).value)}><option value="">Item…</option>{items.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select> <select name="unitLevel" required disabled={!purchaseItem}><option value="1">{purchaseItem?.unit1||'Big unit'}</option>{purchaseItem?.unit2&&<option value="2">{purchaseItem.unit2}</option>}{purchaseItem?.unit3&&<option value="3">{purchaseItem.unit3}</option>}</select> <input name="qty" type="number" min="0.000001" step="any" placeholder="Qty" required/> <input name="price" type="number" min="0" step="0.01" placeholder="Unit cost ₹" required/> <input name="discount" type="number" min="0" step="0.01" placeholder="Discount ₹"/> <input name="extra" type="number" min="0" step="0.01" placeholder="Extra ₹"/> <button disabled={purchaseBusy||!shopId||!businessDate}>{purchaseBusy?'Posting…':'Post purchase'}</button></form></section>
+    <section><h2>Post purchase</h2><form onSubmit={addPurchase}>
+      <input name="billNo" placeholder="Bill no."/> <input name="date" type="date" value={businessDate} onInput={e=>setBusinessDate((e.currentTarget as HTMLInputElement).value)} required/> <select name="partyId"><option value="">No supplier</option>{parties.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select> <input name="discount" type="number" min="0" step="0.01" placeholder="Discount ₹"/> <input name="extra" type="number" min="0" step="0.01" placeholder="Extra ₹"/>
+      <fieldset><legend>Add purchase line</legend>
+        <select name="itemId" value={purchaseLineItemId} onChange={e=>{setPurchaseLineItemId((e.currentTarget as HTMLSelectElement).value);setPurchaseLineUnitLevel(1);}}><option value="">Item…</option>{items.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select> <select name="unitLevel" disabled={!purchaseLineItem} value={purchaseLineUnitLevel} onChange={e=>setPurchaseLineUnitLevel(Number((e.currentTarget as HTMLSelectElement).value) as 1|2|3)}><option value="1">{purchaseLineItem?.unit1||'Big unit'}</option>{purchaseLineItem?.unit2&&<option value="2">{purchaseLineItem.unit2}</option>}{purchaseLineItem?.unit3&&<option value="3">{purchaseLineItem.unit3}</option>}</select> <input name="qty" type="number" min="0.000001" step="any" placeholder="Qty" value={purchaseLineQty} onInput={e=>setPurchaseLineQty((e.currentTarget as HTMLInputElement).value)}/> <input name="price" type="number" min="0" step="0.01" placeholder="Unit cost ₹" value={purchaseLinePrice} onInput={e=>setPurchaseLinePrice((e.currentTarget as HTMLInputElement).value)}/> <button type="button" onClick={addPurchaseLine}>Add line</button>
+      </fieldset>
+      {purchaseCart.length>0&&<div class="table-wrap" aria-label="Purchase cart"><table><thead><tr><th>Item</th><th>Qty</th><th>Unit cost</th><th>Line total</th><th/></tr></thead><tbody>{purchaseCart.map((l,n)=><tr key={n}><td>{l.item.name}<small> {unitLabel(l.item,l.unitLevel)}</small></td><td>{l.qty}</td><td>₹{(l.unitPricePaise/100).toFixed(2)}</td><td>₹{(Math.round(l.qty*l.unitPricePaise)/100).toFixed(2)}</td><td><button type="button" aria-label={`Remove purchase line ${n+1}`} onClick={()=>removePurchaseLine(n)}>Remove</button></td></tr>)}</tbody></table><p>Lines total: ₹{(purchaseTotalPaise/100).toFixed(2)}</p></div>}
+      <button disabled={purchaseBusy||!shopId||!businessDate||!purchaseCart.length}>{purchaseBusy?'Posting…':'Post purchase'}</button>
+    </form></section>
   </main>;
 }
