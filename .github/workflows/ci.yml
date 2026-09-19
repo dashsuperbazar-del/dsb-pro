@@ -73,6 +73,8 @@ jobs:
         run: node scripts/test-invite-concurrency.mjs
       - name: Prove sale stock locking and idempotency under concurrency
         run: node scripts/test-sale-concurrency.mjs
+      - name: Prove negative-stock recovery serialization
+        run: node scripts/test-stock-recovery-concurrency.mjs
 
   e2e:
     runs-on: ubuntu-latest
@@ -111,6 +113,8 @@ jobs:
           done
           pnpm --filter @dsb-pro/admin exec playwright install --with-deps chromium
       - run: pnpm --filter @dsb-pro/admin run e2e
+      - name: Repeat held-cart resume scenario 10 times
+        run: pnpm --filter @dsb-pro/admin exec playwright test e2e/pos-cart.spec.ts --repeat-each=10
       - name: Upload Playwright trace and report on failure
         if: failure()
         uses: actions/upload-artifact@v4

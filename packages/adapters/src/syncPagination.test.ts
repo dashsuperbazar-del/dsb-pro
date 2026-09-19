@@ -5,7 +5,7 @@ function pull(overrides:Partial<Record<'items'|'barcodes'|'prices'|'customers'|'
   const rows=(n:number)=>Array.from({length:n},()=>({}));
   return {
     schemaVersion:1,serverNowMs:2,cutoffMs:1,businessDate:'2026-09-10',
-    policy:{allowCashierOfflineFinalization:false,allowNegativeStock:false},
+    policy:{allowCashierOfflineFinalization:false,allowNegativeStock:false,canViewCostPrices:false},
     items:rows(overrides.items??0),
     barcodes:rows(overrides.barcodes??0),
     prices:rows(overrides.prices??0),
