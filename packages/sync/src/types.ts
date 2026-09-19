@@ -132,7 +132,10 @@ export type SyncedSaleResult=Readonly<{
 }>;
 
 export type HeldCartLine={itemId:string;unitLevel:1|2|3;qty:number;priceKind:'retail'|'wholesale';discountPaise:number};
-export type HeldCartRecord={id:string;shopId:string;createdAt:number;label:string;customerId:string;globalDiscount:string;extra:string;lines:HeldCartLine[]};
+export type HeldCartRecord={
+  id:string;shopId:string;createdAt:number;label:string;customerId:string;globalDiscount:string;extra:string;lines:HeldCartLine[];
+  resumeToken?:string|null;resumingAt?:number|null;
+};
 
 export type OfflineReturnType='SALE'|'PURCHASE';
 export type OfflineReturnDisposition='RETURN_TO_SELLABLE'|'DAMAGED'|'EXPIRED'|'SUPPLIER_RETURN';

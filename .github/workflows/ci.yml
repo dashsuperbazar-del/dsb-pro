@@ -111,6 +111,8 @@ jobs:
           done
           pnpm --filter @dsb-pro/admin exec playwright install --with-deps chromium
       - run: pnpm --filter @dsb-pro/admin run e2e
+      - name: Repeat held-cart resume scenario 10 times
+        run: pnpm --filter @dsb-pro/admin exec playwright test e2e/pos-cart.spec.ts --repeat-each=10
       - name: Upload Playwright trace and report on failure
         if: failure()
         uses: actions/upload-artifact@v4

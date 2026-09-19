@@ -10,7 +10,7 @@ import {
   type DsbSyncDb,type LocalSyncConflict,type OfflineSalePayload,type OfflineSaleRecord,type OutboxEntry,
   cacheReturnSources,returnableCachedLines,queueOfflineReturn,completeOfflineReturn,rejectOfflineReturn,queueReturnVoid,completeReturnVoid,getMeta,canUnblockRejectedReturnVoid,type ReturnVoidIntent,
   type OfflineReturnPayload,type OfflineReturnRecord,type OfflineReturnType,
-  holdCart,listHeldCarts,discardHeldCart,takeHeldCart,type HeldCartLine,type HeldCartRecord,
+  holdCart,listHeldCarts,discardHeldCart,claimHeldCart,releaseHeldCartClaim,completeHeldCartResume,type HeldCartLine,type HeldCartRecord,
   type SyncedBarcode,type SyncedCustomer,type SyncedItem,type SyncedPrice,type SyncIdentity,type SyncPullPayload,type SyncedSaleResult,
 } from '@dsb-pro/sync';
 
@@ -262,7 +262,9 @@ export async function listHeldCartsForShop():Promise<HeldCartRecord[]>{
   const rt=requireRuntime();
   return listHeldCarts(rt.db,rt.identity.shopId);
 }
-export async function resumeHeldCart(id:string):Promise<HeldCartRecord|undefined>{return takeHeldCart(requireRuntime().db,id);}
+export async function claimHeldCartForResume(id:string,token:string):Promise<HeldCartRecord|undefined>{return claimHeldCart(requireRuntime().db,id,token);}
+export async function releaseHeldCartForResume(id:string,token:string):Promise<boolean>{return releaseHeldCartClaim(requireRuntime().db,id,token);}
+export async function completeHeldCartForResume(id:string,token:string):Promise<boolean>{return completeHeldCartResume(requireRuntime().db,id,token);}
 export async function discardHeldCartById(id:string):Promise<void>{return discardHeldCart(requireRuntime().db,id);}
 export async function recordLocalReturnVoid(returnId:string):Promise<void>{
   const rt=requireRuntime(),row=await rt.db.offlineReturns.filter(row=>row.officialReturnId===returnId&&row.status!=='VOID').first();
