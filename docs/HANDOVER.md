@@ -1282,3 +1282,33 @@ ready for review. Stacks on nothing else currently open — based directly on th
 
 **Remaining Phase 6.5 work:** §10 shell work (bottom nav, error taxonomy, empty/loading states,
 i18n, dark mode) is the last item on the plan §19.1 list, then the dry-run gate described above.
+
+### 2026-09-19 — PR #23 merged; session handover
+
+PR #23 merged via `gh pr merge 23 --squash`. Confirmed against origin, not the merge command's
+own exit status: `git log origin/main -1` shows merge commit `2a00a13` ("Phase 6.5: missing
+reports ... (#23)") as the current tip, and `gh pr view 23 --json state,mergedAt,mergeCommit`
+reports `MERGED` at `2026-09-19T01:28:12Z`. Final pre-merge CI run on the PR's last (docs-only)
+commit was fully green job-by-job (`gh pr checks 23`): audit, build, e2e, lint, pgtap, test,
+typecheck all `pass`, run
+[35401878669](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/35401878669).
+
+With #17-23 all merged, `main` now carries the full Phase 6.5 stack: returns, negative-stock
+override, multi-line purchases, Settings screen, POS cart hold, and the missing reports above.
+**The only Phase 6.5 item left is the §10 shell work** (bottom nav, error taxonomy, empty/loading
+states, i18n coverage, dark mode) — start there next. After that, the plan's own §19.1 gate is a
+real-shop dry run (a real multi-line supplier bill, twenty mixed items billed, one return, one
+credit customer settled, without touching the database directly) done by a human, not built.
+Every Phase 3+ gate stays formally NOT GO until that dry run passes, regardless of CI color.
+
+**Known, unresolved, non-blocking flakiness:** `pos-cart.spec.ts`'s "Hold label" test failed once
+during PR #23's CI with a self-contradictory Playwright diagnostic (reported it couldn't type into
+`input[type=number]` while its own DOM dump showed `type="text"`), then passed on every re-run.
+Suspected Preact reconciliation timing race, not a real regression — nothing was changed for it.
+Worth a look only if it starts failing repeatedly.
+
+**Flag for whoever starts the next session:** `CLAUDE.md`'s "Current phase" paragraph in this
+repo is stale as of this entry — it still describes Phase 6.5 returns as sitting on an unmerged
+draft PR #17 and lists multi-line purchases/Settings/POS ergonomics/missing reports as future
+work, all of which is now merged (see above and the rest of this file). Read this file's tail,
+not that paragraph, for actual current state before doing anything else.
