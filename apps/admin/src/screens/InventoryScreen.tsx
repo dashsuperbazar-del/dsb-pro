@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   addItemBarcode, createItem, createParty, getCurrentMembership, getDefaultShopId, getShopBusinessDate, importLegacyDsbMaster, listCurrentPrices,
-  listItems, listParties, listStock, postPurchase, replaceItemImage, setItemPrice,
+  listItems, listParties, listStock, postPurchase, replaceItemImage, setItemPrice, setItemMinStock,
   type Item, type ItemPrice, type Party, type StockRow,
 } from '@dsb-pro/adapters';
 import { buildLegacyDsbImportPlan, type LegacyDsbImportPlan } from '@dsb-pro/core';
@@ -92,6 +92,9 @@ export function InventoryScreen() {
     try { await setItemPrice({itemId:selected,shopId,kind:String(f.get('kind')) as ItemPrice['kind'],unitLevel:Number(f.get('unitLevel')) as 1|2|3,pricePaise:paise(String(f.get('price'))),clientId:crypto.randomUUID()}); setPrices(await listCurrentPrices(selected)); setMessage('Price history updated atomically.'); } catch(e){setError(String(e));}
   }
   async function changeImage(ev:Event){ const file=(ev.currentTarget as HTMLInputElement).files?.[0]; if(!file||!selectedItem)return; try { const blob=await compressItemImage(file); const path=await replaceItemImage({tenantId,itemId:selectedItem.id,blob,oldPath:selectedItem.image_path}); setMessage(`Image stored (${Math.round(blob.size/1024)} KB).`); setItems(v=>v.map(i=>i.id===selectedItem.id?{...i,image_path:path}:i)); } catch(e){setError(String(e));} }
+  async function changeMinStock(ev:Event){ ev.preventDefault(); if(!selectedItem)return; const f=new FormData(ev.currentTarget as HTMLFormElement);
+    try { const updated=await setItemMinStock(selectedItem.id,Number(f.get('minStock'))); setItems(v=>v.map(i=>i.id===updated.id?updated:i)); setMessage('Reorder threshold saved.'); } catch(e){setError(String(e));}
+  }
 
   return <main>
     <p><a href={appRoute.home}>← Home</a></p><h1>Inventory & purchases</h1>
@@ -106,7 +109,8 @@ export function InventoryScreen() {
     </section>
     <section><h2>Item master</h2><p>Unit order follows DSB: big → small → piece. Stock is stored in the smallest configured unit.</p><form onSubmit={addItem}><input name="name" placeholder="Item name" required/> <input name="sku" placeholder="SKU"/> <input name="unit1" placeholder="Big unit (e.g. case)" required/> <input name="unit2" placeholder="Small unit (e.g. pack)"/> <input name="conv1" type="number" min="0" step="any" placeholder="Small units per big"/> <input name="unit3" placeholder="Piece unit (optional)"/> <input name="conv2" type="number" min="0" step="any" placeholder="Pieces per small"/> <button disabled={!tenantId}>Create item</button></form>
       <label>Peek item <select value={selected} onChange={e=>setSelected((e.currentTarget as HTMLSelectElement).value)}><option value="">Choose…</option>{items.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select></label>
-      {selectedItem&&<div aria-label="item peek"><strong>{selectedItem.name}</strong> · Stock {selectedStock} {selectedItem.unit3||selectedItem.unit2||selectedItem.unit1}<br/>Current prices: {prices.length?prices.map(p=>`${p.kind} ₹${(p.price_paise/100).toFixed(2)}`).join(' · '):'none'}<br/><input type="file" accept="image/*" onChange={changeImage}/></div>}
+      {selectedItem&&<div aria-label="item peek"><strong>{selectedItem.name}</strong> · Stock {selectedStock} {selectedItem.unit3||selectedItem.unit2||selectedItem.unit1}<br/>Current prices: {prices.length?prices.map(p=>`${p.kind} ₹${(p.price_paise/100).toFixed(2)}`).join(' · '):'none'}<br/>Reorder at: {selectedItem.min_stock} {selectedItem.unit3||selectedItem.unit2||selectedItem.unit1}<br/><input type="file" accept="image/*" onChange={changeImage}/></div>}
+      {selectedItem&&<form onSubmit={changeMinStock}><label>Reorder threshold ({selectedItem.unit3||selectedItem.unit2||selectedItem.unit1}) <input name="minStock" type="number" min="0" step="any" defaultValue={selectedItem.min_stock} key={selectedItem.id}/></label> <button disabled={!shopId}>Save reorder threshold</button></form>}
       {selectedItem&&<form onSubmit={addBarcode}><input name="barcode" placeholder="Barcode" required/> <select name="unitLevel"><option value="1">{selectedItem.unit1}</option>{selectedItem.unit2&&<option value="2">{selectedItem.unit2}</option>}{selectedItem.unit3&&<option value="3">{selectedItem.unit3}</option>}</select> <button disabled={!tenantId}>Link barcode</button></form>}
       {selectedItem&&<form onSubmit={changePrice}><select name="kind"><option value="retail">Retail</option><option value="wholesale">Wholesale</option><option value="mrp">MRP</option><option value="cost_last">Last cost</option></select> <select name="unitLevel"><option value="1">{selectedItem.unit1}</option>{selectedItem.unit2&&<option value="2">{selectedItem.unit2}</option>}{selectedItem.unit3&&<option value="3">{selectedItem.unit3}</option>}</select> <input name="price" type="number" min="0" step="0.01" placeholder="₹ price" required/> <button disabled={!shopId}>Set price</button></form>}
     </section>

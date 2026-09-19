@@ -8,7 +8,7 @@ export { createTenant, getDefaultShopId, createInvite, revokeInvite, acceptInvit
 export type { Device } from './devices';
 export { getOrCreateDeviceId, guessDeviceLabel, registerCurrentDevice, listDevices, renameDevice, revokeDevice } from './devices';
 export type { Item, Party, StockRow, PurchaseLine, ItemBarcode } from './masterData';
-export { listItems, listParties, createItem, createParty, addItemBarcode, findItemByBarcode, listStock, getShopBusinessDate, postPurchase, voidPurchase, archiveMaster, uploadItemImage, purgeItemImage } from './masterData';
+export { listItems, listParties, createItem, createParty, addItemBarcode, findItemByBarcode, listStock, getShopBusinessDate, postPurchase, voidPurchase, archiveMaster, uploadItemImage, purgeItemImage, setItemMinStock } from './masterData';
 export type { ItemPrice } from './pricing';
 export { listCurrentPrices, setItemPrice } from './pricing';
 export { replaceItemImage } from './itemImages';
@@ -26,8 +26,8 @@ export { getShopDayReconciliation } from './reconciliation';
 export type { SyncCursorWire, SyncPullWire, SyncPullTable, SyncSaleResultWire, ServerSyncConflict } from './sync';
 export { SYNC_SCHEMA_VERSION, SYNC_PULL_LIMITS, syncPullMayHaveMore, isolateSyncPullCursors, pullSync, pullSyncTable, ackSync, pushSyncedSale, setOfflineCashierFinalization, recordServerSyncConflict, listServerSyncConflicts, resolveServerSyncConflict, subscribeSyncWakeup } from './sync';
 
-export type { DayBookRow, StockValueRow, GstRow, PartyLedgerRow, InvariantHealth } from './reports';
-export { getDayBook, getStockValuation, getGstSummary, postExpense, voidExpense, exportTenant, checkInvariants, getPartyLedger, createStockCount, postStockCount } from './reports';
+export type { DayBookRow, StockValueRow, GstRow, PartyLedgerRow, InvariantHealth, LowStockRow, ItemSalesRow, PurchaseRegisterRow, CustomerAgingRow } from './reports';
+export { getDayBook, getStockValuation, getGstSummary, postExpense, voidExpense, exportTenant, checkInvariants, getPartyLedger, createStockCount, postStockCount, getLowStockReport, getItemSalesReport, getPurchaseRegister, getCustomerAgingReport } from './reports';
 
 export type { BackupHealth } from './health';
 export { getLatestBackupHealth } from './health';

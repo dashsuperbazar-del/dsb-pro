@@ -1233,3 +1233,52 @@ supplier bill, twenty mixed items billed, one return, one credit customer settle
 touching the database directly. The Phase 3+ real-shop/recovery gates remain formally NOT GO
 until that dry run passes, independent of how green CI is; CI-green has never been the same
 claim as gate-passed anywhere in this file, and it still isn't here.
+
+### 2026-09-19 — Missing reports built (PR #23): low stock, item sales, purchase register, aging
+
+Four new read-only report RPCs (`0040_phase65_missing_reports.sql`): `get_low_stock_report`,
+`get_item_sales_report`, `get_purchase_register`, `get_customer_aging_report`. Each uses the
+same access pattern every existing report RPC already uses — `phase6_assert_report_access()`
+(VIEW_REPORTS) plus `phase3_assert_shop()`. Also closed a real gap: `min_stock` has existed
+since Phase 3 and synced to every device since Phase 5, but no screen could ever set it, which
+would have made the new low-stock report permanently inert. Added `setItemMinStock` (a direct
+client update under the `items_write`/`MANAGE_MASTER_DATA` RLS policy already used for item
+creation, not a new pattern) and a "Reorder threshold" field in Inventory.
+
+**A near-miss, caught before it left the working tree:** the first draft of this work assumed
+`get_day_book`/`get_stock_valuation`/`get_gst_summary`/`get_party_ledger` still lacked
+`phase6_assert_report_access()` (true only of their original 0030 bodies) and started a
+"hardening" migration that would have reverted all four to that stale, unprotected shape —
+`get_gst_summary` would have lost its 0036 return-handling entirely. Found by checking for later
+`create or replace` versions before writing the migration, not after. Deleted the draft.
+
+**Three real bugs found from actual CI failures, not guessed, each fixed in its own commit:**
+1. `ERROR: column reference "item_id" is ambiguous` — `get_item_sales_report`'s
+   `RETURNS TABLE(item_id ...)` declares `item_id` as an OUT parameter, which plpgsql exposes as
+   a variable inside the function's own body. A `FULL OUTER JOIN ... USING(item_id)` merges the
+   joined column under the same name, and the bare `item_id` this created genuine ambiguity
+   between the joined column and the OUT-parameter variable. Fixed by joining explicitly
+   (`sold.item_id=returned.item_id`) and selecting `coalesce(sold.item_id,returned.item_id)`.
+   Applied the same defensive fix (ordinal `ORDER BY` instead of an alias identical to a
+   declared OUT parameter) to the other three functions, since it's the same shadowing rule
+   either way and none of it could be re-verified locally this session (Docker unavailable).
+2. `ERROR: insufficient stock` — the pgTAP test voided a purchase bill whose stock had already
+   been half consumed by a later sale earlier in the same file. The system correctly refused;
+   the test was wrong to reuse that bill. Added a dedicated, never-sold item and bill for the
+   void assertion.
+3. `permission denied for table tenant_users` — the exact same mistake already made and fixed
+   once earlier this session (the Settings-screen pgTAP): a raw `tenant_users` insert ran under
+   role `authenticated` instead of under `reset role`. Fixed the same way.
+
+A fourth failure on the first attempt — `pos-cart.spec.ts`'s already-merged, already-twice-green
+"Hold label" test — did **not** repeat once the three real bugs above were fixed, confirming it
+was one-off CI flakiness unrelated to this change-set, not a recurring regression. Worth knowing
+about if it resurfaces, but not something this PR needed to chase further.
+
+Confirmed via `gh pr checks` (job-by-job, not the run's overall status) and `gh pr view
+--json mergeable,mergeStateStatus`: CI-green and `MERGEABLE`/`CLEAN` at run
+[35401414864](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/35401414864). Marked
+ready for review. Stacks on nothing else currently open — based directly on the current `main`.
+
+**Remaining Phase 6.5 work:** §10 shell work (bottom nav, error taxonomy, empty/loading states,
+i18n, dark mode) is the last item on the plan §19.1 list, then the dry-run gate described above.

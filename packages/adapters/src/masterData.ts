@@ -37,6 +37,11 @@ export async function createItem(input:{tenantId:string;name:string;sku?:string;
  const {data,error}=await getSupabaseClient().from('items').insert({tenant_id:input.tenantId,name:input.name,sku:input.sku??null,unit1:input.unit1,unit2:input.unit2??null,unit3:input.unit3??null,conv1:input.conv1??null,conv2:input.conv2??null,tax_rate_bp:input.taxRateBp??0,client_id:input.clientId}).select().single();
  return must(data,error) as Item;
 }
+export async function setItemMinStock(itemId:string,minStock:number):Promise<Item>{
+ if(!Number.isFinite(minStock)||minStock<0) throw new Error('Minimum stock must be zero or more.');
+ const {data,error}=await getSupabaseClient().from('items').update({min_stock:minStock}).eq('id',itemId).select().single();
+ return must(data,error) as Item;
+}
 export async function addItemBarcode(input:{tenantId:string;itemId:string;barcode:string;unitLevel:1|2|3;clientId:string}):Promise<ItemBarcode>{
  const barcode=input.barcode.trim(); if(!barcode) throw new Error('Barcode is required.');
  const {data,error}=await getSupabaseClient().from('item_barcodes').insert({tenant_id:input.tenantId,item_id:input.itemId,barcode,unit_level:input.unitLevel,client_id:input.clientId}).select('id,item_id,barcode,unit_level').single();
