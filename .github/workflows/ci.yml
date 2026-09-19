@@ -73,6 +73,8 @@ jobs:
         run: node scripts/test-invite-concurrency.mjs
       - name: Prove sale stock locking and idempotency under concurrency
         run: node scripts/test-sale-concurrency.mjs
+      - name: Prove negative-stock recovery serialization
+        run: node scripts/test-stock-recovery-concurrency.mjs
 
   e2e:
     runs-on: ubuntu-latest
