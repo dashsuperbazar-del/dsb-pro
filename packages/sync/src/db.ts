@@ -41,6 +41,9 @@ export class DsbSyncDb extends Dexie{
     });
     this.version(2).stores({returnSources:'&key,shop_id,return_type',offlineReturns:'&clientId,status,shopId,createdAt'});
     this.version(3).stores({heldCarts:'&id,shopId,createdAt'});
+    // Claim fields added in v4 are not indexed: carts are coordinated by id.
+    // Existing v3 records remain valid and are treated as unclaimed.
+    this.version(4).stores({heldCarts:'&id,shopId,createdAt'});
   }
 }
 
