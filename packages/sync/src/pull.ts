@@ -2,15 +2,11 @@ import {advanceCursor} from './cursor';
 import {getMeta,setMeta,stockKey,type DsbSyncDb} from './db';
 import type {
   ServerSyncRow,SyncedBarcode,SyncedCustomer,SyncedItem,SyncedPrice,
-  SyncCursor,SyncHealth,SyncPolicy,SyncPullPayload,SyncTableName,
+  SyncCursor,SyncHealth,SyncPullPayload,SyncTableName,
 } from './types';
 
 const ZERO:SyncCursor={updatedAt:0,id:''};
 const tables:SyncTableName[]=['items','barcodes','prices','customers','stock'];
-
-export function priceVisibilityTransition(previous:boolean|null,next:boolean){
-  return {purgeCostPrices:!next,resetPriceCursor:previous===false&&next};
-}
 
 export async function getSyncCursors(db:DsbSyncDb):Promise<Record<SyncTableName,SyncCursor>>{
   const result={} as Record<SyncTableName,SyncCursor>;
@@ -36,19 +32,9 @@ async function applyRows<T extends ServerSyncRow>(table:BulkTable<T>,rows:T[]){
 }
 export async function applySyncPull(db:DsbSyncDb,payload:SyncPullPayload):Promise<void>{
   await db.transaction('rw',[db.items,db.barcodes,db.prices,db.customers,db.stock,db.meta],async()=>{
-    const previousVisibility=await getMeta<boolean>(db,'canViewCostPrices');
-    const visibility=priceVisibilityTransition(previousVisibility,payload.policy.canViewCostPrices);
-    if(visibility.purgeCostPrices)await db.prices.filter(row=>row.kind==='cost_last').delete();
-    if(visibility.resetPriceCursor)await setMeta(db,'cursor:prices',ZERO);
     await applyRows(db.items,payload.items);
     await applyRows(db.barcodes,payload.barcodes);
-    const authorizedPrices=payload.policy.canViewCostPrices?payload.prices:payload.prices.filter(row=>row.kind!=='cost_last');
-    // A price page requested with the old restricted cursor can sit in flight
-    // while another parallel table response reveals newly granted access.
-    // Discard that stale page so it cannot advance past previously hidden cost
-    // rows after we rewind the price cursor.
-    const acceptedPrices=visibility.resetPriceCursor?[]:authorizedPrices;
-    await applyRows(db.prices,acceptedPrices);
+    await applyRows(db.prices,payload.prices);
     await applyRows(db.customers,payload.customers);
     if(payload.stock.length){
       const stockRows=payload.stock.map(raw=>({...raw,key:stockKey(raw.shop_id,raw.item_id)}));
@@ -57,7 +43,7 @@ export async function applySyncPull(db:DsbSyncDb,payload:SyncPullPayload):Promis
       if(accepted.length)await db.stock.bulkPut(accepted);
     }
     const rowSets:Record<SyncTableName,ServerSyncRow[]>={
-      items:payload.items,barcodes:payload.barcodes,prices:acceptedPrices,customers:payload.customers,stock:payload.stock,
+      items:payload.items,barcodes:payload.barcodes,prices:payload.prices,customers:payload.customers,stock:payload.stock,
     };
     for(const table of tables){
       const current=(await getMeta<SyncCursor>(db,`cursor:${table}`))??ZERO;
@@ -65,20 +51,10 @@ export async function applySyncPull(db:DsbSyncDb,payload:SyncPullPayload):Promis
     }
     await setMeta(db,'businessDate',payload.businessDate);
     await setMeta(db,'policy',payload.policy);
-    await setMeta(db,'canViewCostPrices',payload.policy.canViewCostPrices);
     await setMeta(db,'lastSyncAt',Date.now());
     await setMeta(db,'lastServerNowMs',payload.serverNowMs);
     await setMeta(db,'clockDriftMs',Math.abs(Date.now()-payload.serverNowMs));
     await setMeta(db,'schemaVersion',payload.schemaVersion);
-  });
-}
-
-export async function restrictCachedCostPrices(db:DsbSyncDb):Promise<void>{
-  await db.transaction('rw',[db.prices,db.meta],async()=>{
-    await db.prices.filter(row=>row.kind==='cost_last').delete();
-    await setMeta(db,'canViewCostPrices',false);
-    const policy=await getMeta<SyncPolicy>(db,'policy');
-    if(policy)await setMeta(db,'policy',{...policy,canViewCostPrices:false});
   });
 }
 
@@ -96,7 +72,7 @@ export async function getCachedPrices(db:DsbSyncDb,itemId:string):Promise<Synced
   return (await db.prices.where('item_id').equals(itemId).toArray()).filter(r=>r.deleted_at===null&&r.effective_to===null);
 }
 export async function getCachedBusinessDate(db:DsbSyncDb):Promise<string|null>{return getMeta<string>(db,'businessDate');}
-export async function getCachedPolicy(db:DsbSyncDb){return getMeta<SyncPolicy>(db,'policy');}
+export async function getCachedPolicy(db:DsbSyncDb){return getMeta<{allowCashierOfflineFinalization:boolean;allowNegativeStock:boolean}>(db,'policy');}
 
 export async function getSyncHealth(db:DsbSyncDb):Promise<SyncHealth>{
   const [outboxCount,conflictCount,queuedSales,lastSyncAt,lastServerNowMs,clockDriftMs,businessDate]=await Promise.all([
