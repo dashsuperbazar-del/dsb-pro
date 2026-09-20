@@ -1,0 +1,12 @@
+# version group migration
+0030 foundation supabase/migrations/0030_phase6_ledgers_reports_dr.sql
+0031 hardening supabase/migrations/0031_phase6_sync_page_size.sql
+0032 hardening supabase/migrations/0032_phase6_parallel_sync_pulls.sql
+0033 hardening supabase/migrations/0033_phase6_streaming_page_size.sql
+0034 hardening supabase/migrations/0034_phase6_integrity_hardening.sql
+0035 hardening supabase/migrations/0035_phase6_complete_export.sql
+0036 phase65 supabase/migrations/0036_phase65_returns.sql
+0037 phase65 supabase/migrations/0037_phase65_offline_returns.sql
+0038 phase65 supabase/migrations/0038_phase65_shop_settings.sql
+0039 phase65 supabase/migrations/0039_phase65_negative_stock_override.sql
+0040 phase65 supabase/migrations/0040_phase65_missing_reports.sql
