@@ -7,11 +7,10 @@ import {
   applySyncPull,completeOfflineSale,getCachedBusinessDate,getCachedCustomers,getCachedItems,getCachedPolicy,getCachedPrices,
   getSyncCursors,getSyncHealth,isDefinitiveFinancialRejectionMessage,markOutboxRetry,markOutboxSending,nextOutboxEntry,openSyncDb,queueOfflineSale,
   recoverInterruptedOutbox,rejectOfflineSale,retryDelayMs,resolveLocalConflict,
-  restrictCachedCostPrices,
   type DsbSyncDb,type LocalSyncConflict,type OfflineSalePayload,type OfflineSaleRecord,type OutboxEntry,
   cacheReturnSources,returnableCachedLines,queueOfflineReturn,completeOfflineReturn,rejectOfflineReturn,queueReturnVoid,completeReturnVoid,getMeta,canUnblockRejectedReturnVoid,type ReturnVoidIntent,
   type OfflineReturnPayload,type OfflineReturnRecord,type OfflineReturnType,
-  holdCart,listHeldCarts,discardHeldCart,claimHeldCart,releaseHeldCartClaim,completeHeldCartResume,type HeldCartLine,type HeldCartRecord,
+  holdCart,listHeldCarts,discardHeldCart,takeHeldCart,type HeldCartLine,type HeldCartRecord,
   type SyncedBarcode,type SyncedCustomer,type SyncedItem,type SyncedPrice,type SyncIdentity,type SyncPullPayload,type SyncedSaleResult,
 } from '@dsb-pro/sync';
 
@@ -60,9 +59,6 @@ export async function startOfflineSync(input:{userId:string;membership:Membershi
   if(runtime&&runtime.identity.userId===identity.userId&&runtime.identity.tenantId===identity.tenantId&&runtime.identity.deviceId===identity.deviceId)return;
   stopOfflineSync();
   const db=await openSyncDb(identity);
-  // A role downgrade must remove a formerly authorized cost cache even when
-  // this device starts offline and cannot yet receive the server capability.
-  if(identity.role==='cashier')await restrictCachedCostPrices(db);
   await recoverInterruptedOutbox(db);
   runtime={identity,db,timer:0,unsubscribeRealtime:null,running:null};
   runtime.timer=window.setInterval(()=>{void runSyncNow();},30000);
@@ -217,7 +213,7 @@ export async function finalizeSaleResilient(input:{
   lines:SaleLineInput[];payments:SalePaymentInput[];notes?:string;
 }):Promise<ResilientSaleResult>{
   const rt=requireRuntime();
-  const policy=(await getCachedPolicy(rt.db))??{allowCashierOfflineFinalization:false,allowNegativeStock:false,canViewCostPrices:false};
+  const policy=(await getCachedPolicy(rt.db))??{allowCashierOfflineFinalization:false,allowNegativeStock:false};
   if(rt.identity.role==='cashier'&&!policy.allowCashierOfflineFinalization){
     if(typeof navigator==='undefined'||!navigator.onLine){
       throw new Error('Offline finalization is disabled for cashiers. Keep this sale as a draft until online.');
@@ -266,9 +262,7 @@ export async function listHeldCartsForShop():Promise<HeldCartRecord[]>{
   const rt=requireRuntime();
   return listHeldCarts(rt.db,rt.identity.shopId);
 }
-export async function claimHeldCartForResume(id:string,token:string):Promise<HeldCartRecord|undefined>{return claimHeldCart(requireRuntime().db,id,token);}
-export async function releaseHeldCartForResume(id:string,token:string):Promise<boolean>{return releaseHeldCartClaim(requireRuntime().db,id,token);}
-export async function completeHeldCartForResume(id:string,token:string):Promise<boolean>{return completeHeldCartResume(requireRuntime().db,id,token);}
+export async function resumeHeldCart(id:string):Promise<HeldCartRecord|undefined>{return takeHeldCart(requireRuntime().db,id);}
 export async function discardHeldCartById(id:string):Promise<void>{return discardHeldCart(requireRuntime().db,id);}
 export async function recordLocalReturnVoid(returnId:string):Promise<void>{
   const rt=requireRuntime(),row=await rt.db.offlineReturns.filter(row=>row.officialReturnId===returnId&&row.status!=='VOID').first();
@@ -331,7 +325,7 @@ export async function getSyncDashboard(){
     getSyncHealth(rt.db),rt.db.conflicts.orderBy('createdAt').reverse().toArray(),listOfflineSales(),
     serverConflictPromise,
   ]);
-  return {health,conflicts,sales,serverConflicts,state:getOfflineRuntimeState(),identity:rt.identity,policy:(await getCachedPolicy(rt.db))??{allowCashierOfflineFinalization:false,allowNegativeStock:false,canViewCostPrices:false}};
+  return {health,conflicts,sales,serverConflicts,state:getOfflineRuntimeState(),identity:rt.identity,policy:(await getCachedPolicy(rt.db))??{allowCashierOfflineFinalization:false,allowNegativeStock:false}};
 }
 export async function forceRetryNow():Promise<void>{
   const rt=requireRuntime();
