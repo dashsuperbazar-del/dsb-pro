@@ -73,6 +73,10 @@ test('cart lines edit in place, and a held cart survives being parked and comes 
   await page.getByTestId('pos-add-quantity').fill('1');
   await page.getByRole('button',{name:'Add line'}).click();
   await page.getByTestId('pos-hold-label').fill('Temp Cart');
+  // The add-line price lookup resolves asynchronously. Its later cart render
+  // must not reset a label typed immediately after the click.
+  await expect(page.getByRole('cell',{name:/Cart Edit Item B/})).toBeVisible();
+  await expect(page.getByTestId('pos-hold-label')).toHaveValue('Temp Cart');
   await page.getByRole('button',{name:'Hold cart'}).click();
   await expect(heldSection.locator('tr').filter({hasText:'Temp Cart'})).toBeVisible();
   await heldSection.locator('tr').filter({hasText:'Temp Cart'}).getByRole('button',{name:'Discard'}).click();
