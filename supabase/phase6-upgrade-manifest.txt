@@ -10,3 +10,5 @@
 0038 phase65 supabase/migrations/0038_phase65_shop_settings.sql
 0039 phase65 supabase/migrations/0039_phase65_negative_stock_override.sql
 0040 phase65 supabase/migrations/0040_phase65_missing_reports.sql
+0041 batcha supabase/migrations/0041_phase65_sync_cost_confidentiality.sql
+0042 batcha supabase/migrations/0042_phase65_negative_stock_recovery.sql

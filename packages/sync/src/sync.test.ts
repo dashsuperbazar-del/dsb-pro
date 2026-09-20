@@ -1,8 +1,10 @@
 import {describe,expect,it} from 'vitest';
+import 'fake-indexeddb/auto';
 import {
-  advanceCursor,compareCursor,isRowAfterCursor,markOutboxRetry,markOutboxSending,
+  advanceCursor,applySyncPull,compareCursor,DsbSyncDb,getMeta,isRowAfterCursor,markOutboxRetry,markOutboxSending,
   isDefinitiveFinancialRejectionMessage,mergeMasterRow,nextOutboxEntry,provisionalDocNo,reconcileAppendOnlyEvent,retryDelayMs,
-  returnStockDelta,canUnblockRejectedReturnVoid,type MasterSyncRow,type OutboxEntry,
+  restrictCachedCostPrices,returnStockDelta,canUnblockRejectedReturnVoid,setMeta,type MasterSyncRow,type OutboxEntry,type SyncPullPayload,type SyncedPrice,
+  priceVisibilityTransition,
 } from './index';
 
 describe('provisional return dispositions',()=>{
@@ -42,6 +44,66 @@ describe('sync cursor',()=>{
       {id:'c',updated_at:100},
       {id:'a',updated_at:101},
     ])).toEqual({updatedAt:101,id:'a'});
+  });
+});
+
+describe('cost-price cache visibility',()=>{
+  it('purges cost rows whenever the server denies cost visibility',()=>{
+    expect(priceVisibilityTransition(null,false)).toEqual({purgeCostPrices:true,resetPriceCursor:false});
+    expect(priceVisibilityTransition(true,false)).toEqual({purgeCostPrices:true,resetPriceCursor:false});
+  });
+
+  it('resets only the price cursor when cost visibility is newly granted',()=>{
+    expect(priceVisibilityTransition(false,true)).toEqual({purgeCostPrices:false,resetPriceCursor:true});
+    expect(priceVisibilityTransition(true,true)).toEqual({purgeCostPrices:false,resetPriceCursor:false});
+    expect(priceVisibilityTransition(null,true)).toEqual({purgeCostPrices:false,resetPriceCursor:false});
+  });
+
+  const price=(id:string,kind:SyncedPrice['kind'],updated_at:number):SyncedPrice=>({
+    id,tenant_id:'tenant',item_id:'item',shop_id:'shop',kind,unit_level:1,price_paise:kind==='cost_last'?77:125,
+    effective_from:'2026-09-19T00:00:00Z',effective_to:null,updated_at,deleted_at:null,
+  });
+  const payload=(canViewCostPrices:boolean,prices:SyncedPrice[]):SyncPullPayload=>({
+    schemaVersion:1,serverNowMs:10,cutoffMs:9,businessDate:'2026-09-19',
+    policy:{allowCashierOfflineFinalization:false,allowNegativeStock:false,canViewCostPrices},
+    items:[],barcodes:[],prices,customers:[],stock:[],
+  });
+
+  it('purges an already-cached leak and refuses an unauthorized cost row from the payload',async()=>{
+    const db=new DsbSyncDb(`cost-purge-${crypto.randomUUID()}`);
+    try{
+      await db.open();
+      await db.prices.bulkPut([price('old-cost','cost_last',1),price('old-retail','retail',1)]);
+      await applySyncPull(db,payload(false,[price('new-cost','cost_last',2),price('new-retail','retail',2)]));
+      expect((await db.prices.toArray()).map(row=>row.kind).sort()).toEqual(['retail','retail']);
+      expect(await getMeta(db,'canViewCostPrices')).toBe(false);
+    }finally{db.close();await db.delete();}
+  });
+
+  it('rewinds the price cursor when visibility is granted so previously hidden history is fetched',async()=>{
+    const db=new DsbSyncDb(`cost-grant-${crypto.randomUUID()}`);
+    try{
+      await db.open();
+      await setMeta(db,'canViewCostPrices',false);
+      await setMeta(db,'cursor:prices',{updatedAt:999,id:'later-visible-row'});
+      await applySyncPull(db,payload(true,[price('stale-in-flight-cost','cost_last',1000)]));
+      expect(await getMeta(db,'cursor:prices')).toEqual({updatedAt:0,id:''});
+      expect(await db.prices.get('stale-in-flight-cost')).toBeUndefined();
+      await applySyncPull(db,payload(true,[price('authorized-cost','cost_last',3)]));
+      expect((await db.prices.get('authorized-cost'))?.price_paise).toBe(77);
+    }finally{db.close();await db.delete();}
+  });
+
+  it('purges a downgraded cashier cache before any network sync is possible',async()=>{
+    const db=new DsbSyncDb(`cost-offline-downgrade-${crypto.randomUUID()}`);
+    try{
+      await db.open();
+      await db.prices.bulkPut([price('cached-cost','cost_last',1),price('cached-retail','retail',1)]);
+      await setMeta(db,'policy',{allowCashierOfflineFinalization:false,allowNegativeStock:false,canViewCostPrices:true});
+      await restrictCachedCostPrices(db);
+      expect((await db.prices.toArray()).map(row=>row.kind)).toEqual(['retail']);
+      expect(await getMeta(db,'policy')).toEqual({allowCashierOfflineFinalization:false,allowNegativeStock:false,canViewCostPrices:false});
+    }finally{db.close();await db.delete();}
   });
 });
 

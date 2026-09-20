@@ -64,6 +64,8 @@ test('cart lines edit in place, and a held cart survives being parked and comes 
   await expect(page.getByText('Cart is empty.')).toBeVisible();
   const heldSection=page.locator('section[aria-label="Held carts"]');
   await expect(heldSection).toContainText('Table 3');
+  await page.reload();
+  await expect(heldSection).toContainText('Table 3');
 
   // A second, throwaway hold proves discard removes only the intended one.
   await page.getByLabel('Find product').fill('Cart Edit Item B');
@@ -71,6 +73,10 @@ test('cart lines edit in place, and a held cart survives being parked and comes 
   await page.getByTestId('pos-add-quantity').fill('1');
   await page.getByRole('button',{name:'Add line'}).click();
   await page.getByTestId('pos-hold-label').fill('Temp Cart');
+  // The add-line price lookup resolves asynchronously. Its later cart render
+  // must not reset a label typed immediately after the click.
+  await expect(page.getByRole('cell',{name:/Cart Edit Item B/})).toBeVisible();
+  await expect(page.getByTestId('pos-hold-label')).toHaveValue('Temp Cart');
   await page.getByRole('button',{name:'Hold cart'}).click();
   await expect(heldSection.locator('tr').filter({hasText:'Temp Cart'})).toBeVisible();
   await heldSection.locator('tr').filter({hasText:'Temp Cart'}).getByRole('button',{name:'Discard'}).click();
@@ -87,9 +93,12 @@ test('cart lines edit in place, and a held cart survives being parked and comes 
   await expect(page.getByRole('status')).toContainText('Sale finalized');
 
   // Resume restores the exact edited quantity/discount, not the original add.
-  await page.getByRole('button',{name:'Resume'}).click();
+  // A double click must still yield one claimant, one active cart and one
+  // cleanup. The Dexie token is the authority; button disabling is only UX.
+  await page.getByRole('button',{name:'Resume Table 3'}).dblclick();
   await expect(page.getByRole('status')).toContainText('Cart resumed');
   await expect(page.getByRole('cell',{name:/Cart Edit Item A/})).toBeVisible();
+  await expect(cartSection.locator('tbody tr')).toHaveCount(1);
   await expect(cartSection).toContainText('₹25.00');
   await expect(heldSection).toHaveCount(0);
 

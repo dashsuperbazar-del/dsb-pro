@@ -11,7 +11,7 @@ const DISABLED_CURSOR:SyncCursorWire={updatedAt:Number.MAX_SAFE_INTEGER,id:'\uff
 export type SyncCursorWire={updatedAt:number;id:string};
 export type SyncPullWire={
   schemaVersion:number;serverNowMs:number;cutoffMs:number;businessDate:string;
-  policy:{allowCashierOfflineFinalization:boolean;allowNegativeStock:boolean};
+  policy:{allowCashierOfflineFinalization:boolean;allowNegativeStock:boolean;canViewCostPrices:boolean};
   items:Array<Record<string,unknown>>;barcodes:Array<Record<string,unknown>>;prices:Array<Record<string,unknown>>;
   customers:Array<Record<string,unknown>>;stock:Array<Record<string,unknown>>;
 };
@@ -27,8 +27,11 @@ function object(value:unknown):Record<string,unknown>|null{
 }
 function requirePull(value:unknown):SyncPullWire{
   const row=object(value);
+  const policy=object(row?.policy);
   if(!row||row.schemaVersion!==SYNC_SCHEMA_VERSION||typeof row.serverNowMs!=='number'||typeof row.cutoffMs!=='number'||
-    typeof row.businessDate!=='string'||!object(row.policy)||!Array.isArray(row.items)||!Array.isArray(row.barcodes)||
+    typeof row.businessDate!=='string'||!policy||typeof policy.canViewCostPrices!=='boolean'||
+    typeof policy.allowCashierOfflineFinalization!=='boolean'||typeof policy.allowNegativeStock!=='boolean'||
+    !Array.isArray(row.items)||!Array.isArray(row.barcodes)||
     !Array.isArray(row.prices)||!Array.isArray(row.customers)||!Array.isArray(row.stock)){
     throw new Error('Server returned an invalid sync payload.');
   }

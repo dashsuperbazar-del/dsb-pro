@@ -84,11 +84,14 @@ jobs:
         run: node scripts/test-invite-concurrency.mjs
       - name: Prove sale stock locking and idempotency under concurrency
         run: node scripts/test-sale-concurrency.mjs
+      - name: Prove negative-stock recovery serialization
+        run: node scripts/test-stock-recovery-concurrency.mjs
 
   phase6_db_upgrade_proof:
     # This is deliberately a disposable local database with no repository
     # secrets. It exercises the same manifest and script as the attended live
-    # upgrade, starting from a genuine Phase 5-only schema.
+    # upgrade, starting from a genuine Phase 5-only schema. Every resumable
+    # boundary is inspected with the same classifier used by the live job.
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -113,14 +116,26 @@ jobs:
           echo "PROOF_ROOT=$PROOF_ROOT" >> "$GITHUB_ENV"
       - name: Start the disposable Phase 5 target
         run: supabase start --workdir "$PROOF_ROOT"
-      - name: Prove the attended upgrade path through the declared target
+      - name: Prove the staged attended upgrade path through Batch A
         env:
           PROOF_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
         run: |
           set -euo pipefail
-          BASELINE=$(psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -At -c "select to_regclass('public.sync_conflicts') is not null and to_regclass('public.expenses') is null and to_regclass('public.sale_returns') is null;")
-          test "$BASELINE" = "t" || { echo 'Disposable target is not a clean Phase 5 baseline'; exit 1; }
-          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" all
+          assert_state() {
+            expected=$1
+            state=$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")
+            echo "$state"
+            grep -Fx "observed_state=$expected" <<<"$state" >/dev/null
+          }
+          assert_state '0:0:0:0'
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" foundation
+          assert_state '5:0:0:0'
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" hardening
+          assert_state '5:2:0:0'
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" phase65
+          assert_state '5:2:5:0'
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" batcha
+          assert_state '5:2:5:2'
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
           do $proof$
           begin
@@ -130,8 +145,12 @@ jobs:
                or to_regprocedure('public.phase65_sync_post_return(text,integer,text,uuid,date,text,jsonb,text)') is null
                or not exists(select 1 from information_schema.columns where table_schema='public' and table_name='shops' and column_name='gstin')
                or not exists(select 1 from information_schema.columns where table_schema='public' and table_name='shops' and column_name='allow_negative_stock')
-               or to_regprocedure('public.get_low_stock_report(uuid)') is null then
-              raise exception 'Disposable Phase 6.5 upgrade contract failed';
+               or to_regprocedure('public.get_low_stock_report(uuid)') is null
+               or regexp_replace(pg_get_functiondef('public.phase5_sync_pull(text,uuid,integer,jsonb)'::regprocedure), E'\\s+', '', 'g')
+                    not like '%(v_can_view_cost_pricesorp.kind<>''cost_last'')%'
+               or regexp_replace(pg_get_functiondef('public.apply_stock_movement()'::regprocedure), E'\\s+', '', 'g')
+                    not like '%ifnew.qty_base<=0andv_on_hand<v_reservedthen%' then
+              raise exception 'Disposable Batch A upgrade contract failed';
             end if;
             if not exists(select 1 from pg_class where oid='public.expenses'::regclass and relrowsecurity)
                or not exists(select 1 from pg_class where oid='public.sale_returns'::regclass and relrowsecurity) then
@@ -140,7 +159,7 @@ jobs:
           end
           $proof$;
           SQL
-          echo 'DISPOSABLE PHASE 5 -> PHASE 6.5 UPGRADE: PASS'
+          echo 'DISPOSABLE STAGED PHASE 5 -> BATCH A UPGRADE: PASS'
       - name: Stop and erase the disposable target
         if: always()
         run: supabase stop --workdir "$PROOF_ROOT" --no-backup
@@ -182,6 +201,8 @@ jobs:
           done
           pnpm --filter @dsb-pro/admin exec playwright install --with-deps chromium
       - run: pnpm --filter @dsb-pro/admin run e2e
+      - name: Repeat held-cart resume scenario 10 times
+        run: pnpm --filter @dsb-pro/admin exec playwright test e2e/pos-cart.spec.ts --repeat-each=10
       - name: Upload Playwright trace and report on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -619,64 +640,7 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$SUPABASE_DB_URL" || { echo 'SUPABASE_DB_URL is required'; exit 1; }
-          BASE_OK=$(psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -At -c "select to_regclass('public.sync_conflicts') is not null and to_regprocedure('public.phase5_sync_pull(text,uuid,integer,jsonb)') is not null and to_regprocedure('public.phase5_sync_post_sale(text,integer,uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text)') is not null;")
-          test "$BASE_OK" = "t" || { echo 'Live database is not at verified Phase 5; refusing Phase 6 migration.'; exit 1; }
-          read -r FOUNDATION HARDENING PHASE65 <<<"$(psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -At -F' ' <<'SQL'
-          with foundation(present) as (
-            values
-              (to_regclass('public.expenses') is not null),
-              (to_regclass('public.stock_counts') is not null),
-              (to_regprocedure('public.get_day_book(uuid,date,date)') is not null),
-              (to_regprocedure('public.phase6_export_tenant(uuid)') is not null),
-              (to_regprocedure('public.check_invariants()') is not null)
-          ), hardening(present) as (
-            values
-              (to_regprocedure('public.phase6_assert_report_access()') is not null),
-              (to_regprocedure('public.phase6_export_tenant_v3_base(uuid)') is not null)
-          ), phase65(present) as (
-            values
-              (to_regclass('public.sale_returns') is not null),
-              (to_regprocedure('public.phase65_sync_post_return(text,integer,text,uuid,date,text,jsonb,text)') is not null),
-              (exists(select 1 from information_schema.columns where table_schema='public' and table_name='shops' and column_name='gstin')),
-              (exists(select 1 from information_schema.columns where table_schema='public' and table_name='shops' and column_name='allow_negative_stock')),
-              (to_regprocedure('public.get_low_stock_report(uuid)') is not null)
-          )
-          select
-            (select count(*) from foundation where present),
-            (select count(*) from hardening where present),
-            (select count(*) from phase65 where present);
-          SQL
-          )"
-          case "$FOUNDATION:$HARDENING:$PHASE65" in
-            0:0:0)
-              echo "needs_upgrade=true" >> "$GITHUB_OUTPUT"
-              echo "needs_foundation=true" >> "$GITHUB_OUTPUT"
-              echo "needs_hardening=true" >> "$GITHUB_OUTPUT"
-              echo "needs_phase65=true" >> "$GITHUB_OUTPUT"
-              ;;
-            5:0:0)
-              echo "needs_upgrade=true" >> "$GITHUB_OUTPUT"
-              echo "needs_foundation=false" >> "$GITHUB_OUTPUT"
-              echo "needs_hardening=true" >> "$GITHUB_OUTPUT"
-              echo "needs_phase65=true" >> "$GITHUB_OUTPUT"
-              ;;
-            5:2:0)
-              echo "needs_upgrade=true" >> "$GITHUB_OUTPUT"
-              echo "needs_foundation=false" >> "$GITHUB_OUTPUT"
-              echo "needs_hardening=false" >> "$GITHUB_OUTPUT"
-              echo "needs_phase65=true" >> "$GITHUB_OUTPUT"
-              ;;
-            5:2:5)
-              echo "needs_upgrade=false" >> "$GITHUB_OUTPUT"
-              echo "needs_foundation=false" >> "$GITHUB_OUTPUT"
-              echo "needs_hardening=false" >> "$GITHUB_OUTPUT"
-              echo "needs_phase65=false" >> "$GITHUB_OUTPUT"
-              ;;
-            *)
-              echo "Partial or out-of-order Phase 6 schema detected ($FOUNDATION/5 foundation, $HARDENING/2 hardening, $PHASE65/5 Phase 6.5). Refusing migration."
-              exit 1
-              ;;
-          esac
+          scripts/inspect-phase6-upgrade-state.sh "$SUPABASE_DB_URL" >> "$GITHUB_OUTPUT"
       - name: Install backup tools
         if: steps.preflight.outputs.needs_upgrade == 'true'
         run: |
@@ -747,7 +711,12 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" phase65
-      - name: Verify live Phase 6.5 contract
+      - name: Apply Batch A repairs atomically
+        if: steps.preflight.outputs.needs_batcha == 'true'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" batcha
+      - name: Verify live Batch A contract
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         shell: bash
@@ -767,8 +736,12 @@ jobs:
                or to_regprocedure('public.phase65_sync_post_return(text,integer,text,uuid,date,text,jsonb,text)') is null
                or not exists(select 1 from information_schema.columns where table_schema='public' and table_name='shops' and column_name='gstin')
                or not exists(select 1 from information_schema.columns where table_schema='public' and table_name='shops' and column_name='allow_negative_stock')
-               or to_regprocedure('public.get_low_stock_report(uuid)') is null then
-              raise exception 'Phase 6.5 live schema verification failed';
+               or to_regprocedure('public.get_low_stock_report(uuid)') is null
+               or regexp_replace(pg_get_functiondef('public.phase5_sync_pull(text,uuid,integer,jsonb)'::regprocedure), E'\\s+', '', 'g')
+                    not like '%(v_can_view_cost_pricesorp.kind<>''cost_last'')%'
+               or regexp_replace(pg_get_functiondef('public.apply_stock_movement()'::regprocedure), E'\\s+', '', 'g')
+                    not like '%ifnew.qty_base<=0andv_on_hand<v_reservedthen%' then
+              raise exception 'Batch A live schema verification failed';
             end if;
             if has_table_privilege('authenticated','public.expenses','INSERT')
                or has_table_privilege('authenticated','public.stock_counts','INSERT') then
