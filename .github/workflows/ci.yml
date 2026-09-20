@@ -9,6 +9,17 @@ on:
     # Phase 6 proofs here makes them survive consolidation onto main.
     - cron: '0 22 * * 0'
   workflow_dispatch:
+    inputs:
+      operation:
+        description: Explicit operation to run after validation
+        required: true
+        default: validate
+        type: choice
+        options:
+          - validate
+          - deploy_production
+          - phase6_db_upgrade
+          - phase6_dr_proofs
 
 jobs:
   lint:
@@ -477,7 +488,9 @@ jobs:
 
   deploy:
     needs: [build]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # Production publishing must be a separate human action. A merge/push to
+    # main may validate the release candidate, but can never deploy it.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.operation == 'deploy_production'
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -533,7 +546,7 @@ jobs:
     # stays available for a deliberate, attended upgrade.
     if: >-
       (github.ref == 'refs/heads/phase-6-ledgers-reports-dr' && github.event_name == 'push') ||
-      github.event_name == 'workflow_dispatch'
+      (github.event_name == 'workflow_dispatch' && inputs.operation == 'phase6_db_upgrade')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions: {}
@@ -701,7 +714,7 @@ jobs:
       needs.phase6_db_upgrade.result != 'failure' &&
       ((github.ref == 'refs/heads/phase-6-ledgers-reports-dr' && github.event_name == 'push') ||
       github.event_name == 'schedule' ||
-      github.event_name == 'workflow_dispatch')
+      (github.event_name == 'workflow_dispatch' && inputs.operation == 'phase6_dr_proofs'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions: {}
@@ -791,7 +804,7 @@ jobs:
       needs.phase6_db_upgrade.result != 'failure' &&
       ((github.ref == 'refs/heads/phase-6-ledgers-reports-dr' && github.event_name == 'push') ||
       github.event_name == 'schedule' ||
-      github.event_name == 'workflow_dispatch')
+      (github.event_name == 'workflow_dispatch' && inputs.operation == 'phase6_dr_proofs'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions: {}
