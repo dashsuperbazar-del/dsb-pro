@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { searchCatalogItems } from '@dsb-pro/core';
 import { route } from 'preact-router';
 import {
@@ -6,14 +6,13 @@ import {
   listCurrentPrices, listCustomerBalances, listCustomers, listItems, listRecentSales, recordCustomerPayment,
   type Customer, type Item, type SaleInvoice,
 } from '@dsb-pro/adapters';
-import type { OfflineSaleRecord } from '@dsb-pro/sync';
+import { resolveHeldCart,type HeldCartRecord,type OfflineSaleRecord } from '@dsb-pro/sync';
 import { appRoute } from '../lib/paths';
 import {
   finalizeSaleResilient, findOfflineBarcode, getOfflineBusinessDate, getOfflineCustomers, getOfflineItems,
   getOfflinePrices, getOfflineRuntimeIdentity, listOfflineSales, waitForOfflineRuntime,
-  holdCurrentCart, listHeldCartsForShop, resumeHeldCart, discardHeldCartById,
+  holdCurrentCart, listHeldCartsForShop, claimHeldCartForResume, releaseHeldCartForResume, completeHeldCartForResume, discardHeldCartById,
 } from '../lib/offlineSync';
-import type { HeldCartRecord } from '@dsb-pro/sync';
 
 type CartLine = { item:Item; unitLevel:1|2|3; qty:number; priceKind:'retail'|'wholesale'; unitPricePaise:number; discountPaise:number };
 type Tender = { mode:'cash'|'upi'|'card'|'bank'|'other'; amount:string };
@@ -31,6 +30,8 @@ export function PosScreen(){
   const [tenders,setTenders]=useState<Tender[]>([{mode:'cash',amount:''}]); const [message,setMessage]=useState(''); const [error,setError]=useState(''); const [busy,setBusy]=useState(false);
   const [barcode,setBarcode]=useState(''); const [itemQuery,setItemQuery]=useState(''); const [manualItemId,setManualItemId]=useState(''); const [manualUnitLevel,setManualUnitLevel]=useState<1|2|3>(1); const [saleClientId,setSaleClientId]=useState(()=>crypto.randomUUID()); const [paymentClientId,setPaymentClientId]=useState(()=>crypto.randomUUID()); const [paymentCustomer,setPaymentCustomer]=useState(''); const [paymentAmount,setPaymentAmount]=useState(''); const [paymentMode,setPaymentMode]=useState<Tender['mode']>('cash');
   const [heldCarts,setHeldCarts]=useState<HeldCartRecord[]>([]); const [holdLabel,setHoldLabel]=useState('');
+  const [resumeBusyId,setResumeBusyId]=useState(''); const [heldCleanup,setHeldCleanup]=useState<{id:string;token:string}|null>(null);
+  const resumeLock=useRef(false); const holdLabelInput=useRef<HTMLInputElement>(null);
 
   async function refresh(){
     await waitForOfflineRuntime();
@@ -63,20 +64,36 @@ export function PosScreen(){
     setHeldCarts(await listHeldCartsForShop());
   }
   useEffect(()=>{ void refresh().catch(e=>setError(String(e))); },[]);
+  useEffect(()=>{
+    if(!heldCleanup)return;
+    let active=true;
+    void completeHeldCartForResume(heldCleanup.id,heldCleanup.token).then(()=>{
+      if(!active)return;
+      setHeldCleanup(null);setHeldCarts(current=>current.filter(cart=>cart.id!==heldCleanup.id));setMessage('Cart resumed.');
+      void listHeldCartsForShop().then(remaining=>{if(active)setHeldCarts(remaining);}).catch(()=>undefined);
+    }).catch(reason=>{
+      if(active)setError(`Cart was restored, but its held copy could not be removed. Retry cleanup before finalizing: ${String(reason)}`);
+    });
+    return()=>{active=false;};
+  },[heldCleanup?.id,heldCleanup?.token]);
 
   const manualItem=items.find(i=>i.id===manualItemId);
   const visibleItems=useMemo(()=>searchCatalogItems(items,itemQuery,50),[items,itemQuery]);
   const preview=useMemo(()=>cart.reduce((sum,l)=>sum+Math.round(l.qty*l.unitPricePaise)-l.discountPaise,0)-paise(globalDiscount)+paise(extra),[cart,globalDiscount,extra]);
   const tenderTotal=useMemo(()=>tenders.reduce((sum,t)=>sum+paise(t.amount),0),[tenders]);
 
-  async function addLine(item:Item,unitLevel:1|2|3,qty:number,priceKind:'retail'|'wholesale',discountPaise=0){
-    if(!Number.isFinite(qty)||qty<=0) throw new Error('Quantity must be greater than zero.');
+  async function currentPrices(itemId:string){
     let prices;
     if(typeof navigator!=='undefined'&&!navigator.onLine){
-      prices=await getOfflinePrices(item.id);
+      prices=await getOfflinePrices(itemId);
     }else{
-      try{ prices=await listCurrentPrices(item.id); }catch{ prices=await getOfflinePrices(item.id); }
+      try{ prices=await listCurrentPrices(itemId); }catch{ prices=await getOfflinePrices(itemId); }
     }
+    return prices;
+  }
+  async function addLine(item:Item,unitLevel:1|2|3,qty:number,priceKind:'retail'|'wholesale',discountPaise=0){
+    if(!Number.isFinite(qty)||qty<=0) throw new Error('Quantity must be greater than zero.');
+    const prices=await currentPrices(item.id);
     const matching=prices.filter(p=>p.kind===priceKind&&p.unit_level===unitLevel);
     const chosen=matching.find(p=>p.shop_id===shopId)??matching.find(p=>p.shop_id===null);
     if(!chosen) throw new Error(`No active ${priceKind} price for ${item.name} / ${unitName(item,unitLevel)}.`);
@@ -85,9 +102,12 @@ export function PosScreen(){
 
   async function holdCartNow(){
     setError('');
+    if(heldCleanup){setError('Remove the previous held-cart copy before holding another cart.');return;}
     if(!cart.length){setError('Add at least one item before holding.');return;}
     try{
-      await holdCurrentCart({label:holdLabel,customerId,globalDiscount,extra,
+      // Read at the action boundary: a fast fill+click can precede the next
+      // Preact render even though the input event has already changed the DOM.
+      await holdCurrentCart({label:holdLabelInput.current?.value??holdLabel,customerId,globalDiscount,extra,
         lines:cart.map(l=>({itemId:l.item.id,unitLevel:l.unitLevel,qty:l.qty,priceKind:l.priceKind,discountPaise:l.discountPaise}))});
       setCart([]); setCustomerId(''); setGlobalDiscount('0'); setExtra('0'); setHoldLabel(''); setSaleClientId(crypto.randomUUID());
       setHeldCarts(await listHeldCartsForShop()); setMessage('Cart held. Start a new sale, or resume it later.');
@@ -96,16 +116,25 @@ export function PosScreen(){
   async function resumeCart(id:string){
     setError('');
     if(cart.length){setError('Hold or clear the current cart before resuming another.');return;}
+    if(resumeLock.current)return;
+    resumeLock.current=true;
+    const token=crypto.randomUUID(); let claimed=false;
+    setResumeBusyId(id);
     try{
-      const record=await resumeHeldCart(id); if(!record)return;
-      setCustomerId(record.customerId); setGlobalDiscount(record.globalDiscount); setExtra(record.extra);
-      for(const line of record.lines){
-        const item=items.find(i=>i.id===line.itemId);
-        if(!item){setError('An item in this held cart is no longer available and was skipped.');continue;}
-        await addLine(item,line.unitLevel,line.qty,line.priceKind,line.discountPaise);
-      }
-      setHeldCarts(await listHeldCartsForShop()); setMessage('Cart resumed.');
-    }catch(e){setError(String(e));}
+      const record=await claimHeldCartForResume(id,token); if(!record){setError('This held cart no longer exists.');return;} claimed=true;
+      const candidate=await resolveHeldCart(record,{shopId,items,customerIds:new Set(customers.map(customer=>customer.id)),loadPrices:currentPrices});
+      setCustomerId(candidate.customerId);setGlobalDiscount(candidate.globalDiscount);setExtra(candidate.extra);setCart(candidate.lines);
+      setHeldCleanup({id,token});setMessage('Cart restored. Removing the held copy…');
+    }catch(e){
+      if(claimed)await releaseHeldCartForResume(id,token).catch(()=>false);
+      setHeldCarts(await listHeldCartsForShop().catch(()=>heldCarts));setError(String(e));
+    }finally{resumeLock.current=false;setResumeBusyId('');}
+  }
+  async function retryHeldCleanup(){
+    if(!heldCleanup)return;
+    setError('');
+    try{await completeHeldCartForResume(heldCleanup.id,heldCleanup.token);setHeldCleanup(null);setHeldCarts(current=>current.filter(cart=>cart.id!==heldCleanup.id));setMessage('Cart resumed and held copy removed.');void listHeldCartsForShop().then(setHeldCarts).catch(()=>undefined);}
+    catch(e){setError(`Held-copy cleanup still failed; the active cart and held copy are both preserved: ${String(e)}`);}
   }
   async function discardCart(id:string){
     setError('');
@@ -128,7 +157,7 @@ export function PosScreen(){
   }catch(e){setError(String(e));} }
 
   async function finalizeSale(){
-    if(busy)return; if(!cart.length){setError('Add at least one item.');return;} setBusy(true); setError('');
+    if(busy)return;if(heldCleanup){setError('Retry held-cart cleanup before finalizing this sale.');return;} if(!cart.length){setError('Add at least one item.');return;} setBusy(true); setError('');
     try{
       const result=await finalizeSaleResilient({shopId,customerId:customerId||undefined,businessDate,discountPaise:paise(globalDiscount),extraChargesPaise:paise(extra),clientId:saleClientId,
         lines:cart.map(l=>({itemId:l.item.id,unitLevel:l.unitLevel,qty:l.qty,priceKind:l.priceKind,discountPaise:l.discountPaise})),
@@ -165,7 +194,7 @@ export function PosScreen(){
         <label>Find product <input value={itemQuery} placeholder="Name or SKU" onInput={e=>{setItemQuery((e.currentTarget as HTMLInputElement).value);setManualItemId('');}} /></label>
         <label>Item <select name="itemId" required value={manualItemId} onChange={e=>{const id=(e.currentTarget as HTMLSelectElement).value;setManualItemId(id);const item=items.find(i=>i.id===id);setManualUnitLevel(item?.unit3?3:item?.unit2?2:1);}}><option value="">Choose…</option>{visibleItems.map(i=><option key={i.id} value={i.id}>{i.name}{i.sku?` · ${i.sku}`:''}</option>)}</select><small>Showing up to 50 matches from {items.length} items.</small></label>
         <label>Unit <select name="unitLevel" value={manualUnitLevel} disabled={!manualItem} onChange={e=>setManualUnitLevel(Number((e.currentTarget as HTMLSelectElement).value) as 1|2|3)}><option value="1">{manualItem?.unit1||'Unit 1'}</option>{manualItem?.unit2&&<option value="2">{manualItem.unit2}</option>}{manualItem?.unit3&&<option value="3">{manualItem.unit3}</option>}</select></label>
-        <label>Quantity <input name="qty" type="number" min="0.000001" step="any" value="1" required/></label>
+        <label>Quantity <input key="pos-add-quantity" data-testid="pos-add-quantity" name="qty" type="number" min="0.000001" step="any" value="1" required/></label>
         <label>Price <select name="priceKind"><option value="retail">Retail</option><option value="wholesale">Wholesale</option></select></label>
         <label>Line discount ₹ <input name="lineDiscount" type="number" min="0" step="0.01" value="0"/></label><button>Add line</button>
       </form>
@@ -173,15 +202,15 @@ export function PosScreen(){
 
     <section class="card"><h2>2. Cart</h2>{!cart.length?<p class="muted">Cart is empty.</p>:<div class="table-wrap"><table><thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Discount</th><th>Total</th><th/></tr></thead><tbody>{cart.map((l,n)=><tr><td>{l.item.name}<small>{unitName(l.item,l.unitLevel)} · {l.priceKind}</small></td><td><input type="number" min="0.000001" step="any" value={l.qty} aria-label={`Cart qty for ${l.item.name}`} onInput={e=>{const qty=Number((e.currentTarget as HTMLInputElement).value);if(Number.isFinite(qty)&&qty>0)setCart(v=>v.map((x,i)=>i===n?{...x,qty}:x));}}/></td><td>{money(l.unitPricePaise)}</td><td><input type="number" min="0" step="0.01" value={(l.discountPaise/100).toFixed(2)} aria-label={`Discount for ${l.item.name}`} onInput={e=>{const discountPaise=paise((e.currentTarget as HTMLInputElement).value);if(Number.isFinite(discountPaise)&&discountPaise>=0)setCart(v=>v.map((x,i)=>i===n?{...x,discountPaise}:x));}}/></td><td>{money(Math.round(l.qty*l.unitPricePaise)-l.discountPaise)}</td><td><button type="button" onClick={()=>setCart(v=>v.filter((_,i)=>i!==n))}>Remove</button></td></tr>)}</tbody></table></div>}
       <div class="row"><label>Invoice discount ₹ <input value={globalDiscount} type="number" min="0" step="0.01" onInput={e=>setGlobalDiscount((e.currentTarget as HTMLInputElement).value)}/></label><label>Extra charges ₹ <input value={extra} type="number" min="0" step="0.01" onInput={e=>setExtra((e.currentTarget as HTMLInputElement).value)}/></label><strong>Preview {money(Math.max(0,preview))}</strong></div>
-      <div class="row"><label>Hold label <input type="text" value={holdLabel} placeholder="e.g. Table 3" onInput={e=>setHoldLabel((e.currentTarget as HTMLInputElement).value)}/></label><button type="button" disabled={!cart.length} onClick={()=>void holdCartNow()}>Hold cart</button></div>
+      <div class="row"><label>Hold label <input ref={holdLabelInput} key="pos-hold-label" data-testid="pos-hold-label" type="text" value={holdLabel} placeholder="e.g. Table 3" onInput={e=>setHoldLabel((e.currentTarget as HTMLInputElement).value)}/></label><button type="button" disabled={!cart.length||Boolean(heldCleanup)} onClick={()=>void holdCartNow()}>Hold cart</button>{heldCleanup&&<button type="button" onClick={()=>void retryHeldCleanup()}>Retry held-cart cleanup</button>}</div>
     </section>
-    {heldCarts.length>0&&<section class="card" aria-label="Held carts"><h2>Held carts</h2><div class="table-wrap"><table><thead><tr><th>Label</th><th>Items</th><th/></tr></thead><tbody>{heldCarts.map(h=><tr key={h.id}><td>{h.label}</td><td>{h.lines.length}</td><td><button type="button" onClick={()=>void resumeCart(h.id)}>Resume</button> <button type="button" onClick={()=>void discardCart(h.id)}>Discard</button></td></tr>)}</tbody></table></div></section>}
+    {heldCarts.length>0&&<section class="card" aria-label="Held carts"><h2>Held carts</h2><div class="table-wrap"><table><thead><tr><th>Label</th><th>Items</th><th/></tr></thead><tbody>{heldCarts.map(h=><tr key={h.id}><td>{h.label}</td><td>{h.lines.length}</td><td><button type="button" disabled={Boolean(resumeBusyId)} aria-label={`Resume ${h.label}`} onClick={()=>void resumeCart(h.id)}>{resumeBusyId===h.id?'Resuming…':'Resume'}</button> <button type="button" disabled={Boolean(resumeBusyId)||heldCleanup?.id===h.id} onClick={()=>void discardCart(h.id)}>Discard</button></td></tr>)}</tbody></table></div></section>}
 
     <section class="card"><h2>3. Customer & payment</h2>
       <label>Customer <select value={customerId} onChange={e=>setCustomerId((e.currentTarget as HTMLSelectElement).value)}><option value="">Walk-in</option>{customers.map(c=><option key={c.id} value={c.id}>{c.name}{balances[c.id]?` · balance ${money(balances[c.id])}`:''}</option>)}</select></label>
       <form onSubmit={addCustomer} class="row"><label>Quick customer <input name="name" placeholder="Name" required/></label><label>Phone <input name="phone" placeholder="Phone"/></label><button>Create & select</button></form>
       {tenders.map((t,n)=><div class="row"><label>Mode <select value={t.mode} onChange={e=>setTenders(v=>v.map((x,i)=>i===n?{...x,mode:(e.currentTarget as HTMLSelectElement).value as Tender['mode']}:x))}><option value="cash">Cash</option><option value="upi">UPI</option><option value="card">Card</option><option value="bank">Bank</option><option value="other">Other</option></select></label><label>Amount ₹ <input value={t.amount} type="number" min="0" step="0.01" onInput={e=>setTenders(v=>v.map((x,i)=>i===n?{...x,amount:(e.currentTarget as HTMLInputElement).value}:x))}/></label>{n>0&&<button type="button" onClick={()=>setTenders(v=>v.filter((_,i)=>i!==n))}>Remove tender</button>}</div>)}
-      <div class="row"><button type="button" onClick={()=>setTenders(v=>[...v,{mode:'upi',amount:''}])}>+ Split tender</button><span>Entered {money(tenderTotal)}</span><button class="primary" type="button" disabled={busy||!cart.length} onClick={()=>void finalizeSale()}>{busy?'Saving…':'Finalize sale'}</button></div>
+      <div class="row"><button type="button" onClick={()=>setTenders(v=>[...v,{mode:'upi',amount:''}])}>+ Split tender</button><span>Entered {money(tenderTotal)}</span><button class="primary" type="button" disabled={busy||!cart.length||Boolean(heldCleanup)} onClick={()=>void finalizeSale()}>{busy?'Saving…':'Finalize sale'}</button></div>
     </section>
 
     <section class="card"><h2>Customer payment / advance</h2><form onSubmit={receivePayment} class="grid-form"><label>Customer <select value={paymentCustomer} onChange={e=>setPaymentCustomer((e.currentTarget as HTMLSelectElement).value)} required><option value="">Choose…</option>{customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label>Amount ₹ <input value={paymentAmount} onInput={e=>setPaymentAmount((e.currentTarget as HTMLInputElement).value)} type="number" min="0.01" step="0.01" required/></label><label>Mode <select value={paymentMode} onChange={e=>setPaymentMode((e.currentTarget as HTMLSelectElement).value as Tender['mode'])}><option value="cash">Cash</option><option value="upi">UPI</option><option value="card">Card</option><option value="bank">Bank</option><option value="other">Other</option></select></label><button disabled={busy}>Record payment</button></form></section>
