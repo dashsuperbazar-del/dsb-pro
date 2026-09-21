@@ -101,6 +101,9 @@ importers:
 
   packages/sync:
     dependencies:
+      '@dsb-pro/core':
+        specifier: workspace:*
+        version: link:../core
       dexie:
         specifier: 4.4.5
         version: 4.4.5

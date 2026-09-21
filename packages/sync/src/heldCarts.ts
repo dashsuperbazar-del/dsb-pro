@@ -1,12 +1,13 @@
 import type {DsbSyncDb} from './db';
 import type {HeldCartLine,HeldCartRecord} from './types';
+import {canonicalQuantity} from '@dsb-pro/core';
 
 export const HELD_CART_CLAIM_LEASE_MS=60_000;
 
 export type HeldCartResolvableItem={id:string;name:string;unit1:string;unit2:string|null;unit3:string|null};
 export type HeldCartResolvablePrice={shop_id:string|null;kind:string;unit_level:number;price_paise:number};
 export type ResolvedHeldCartLine<T extends HeldCartResolvableItem>={
-  item:T;unitLevel:1|2|3;qty:number;priceKind:'retail'|'wholesale';unitPricePaise:number;discountPaise:number;
+  item:T;unitLevel:1|2|3;qty:string;priceKind:'retail'|'wholesale';unitPricePaise:number;discountPaise:number;
 };
 export type ResolvedHeldCart<T extends HeldCartResolvableItem>={
   customerId:string;globalDiscount:string;extra:string;lines:ResolvedHeldCartLine<T>[];
@@ -82,7 +83,8 @@ export async function resolveHeldCart<T extends HeldCartResolvableItem>(record:H
   for(const line of record.lines){
     const item=input.items.find(candidate=>candidate.id===line.itemId);
     if(!item)throw new Error('An item in this held cart is no longer available.');
-    if(!Number.isFinite(line.qty)||line.qty<=0)throw new Error(`Quantity is invalid for ${item.name}.`);
+    let qty:string;
+    try{qty=canonicalQuantity(line.qty);}catch{throw new Error(`Quantity is invalid for ${item.name}.`);}
     if(!unitAvailable(item,line.unitLevel))throw new Error(`The saved unit is no longer available for ${item.name}.`);
     if(line.priceKind!=='retail'&&line.priceKind!=='wholesale')throw new Error(`Price kind is invalid for ${item.name}.`);
     if(!Number.isSafeInteger(line.discountPaise)||line.discountPaise<0)throw new Error(`Line discount is invalid for ${item.name}.`);
@@ -90,7 +92,7 @@ export async function resolveHeldCart<T extends HeldCartResolvableItem>(record:H
     const matching=prices.filter(price=>price.kind===line.priceKind&&price.unit_level===line.unitLevel);
     const chosen=matching.find(price=>price.shop_id===input.shopId)??matching.find(price=>price.shop_id===null);
     if(!chosen||!Number.isSafeInteger(chosen.price_paise)||chosen.price_paise<0)throw new Error(`No active ${line.priceKind} price for ${item.name}.`);
-    lines.push({item,unitLevel:line.unitLevel,qty:line.qty,priceKind:line.priceKind,unitPricePaise:chosen.price_paise,discountPaise:line.discountPaise});
+    lines.push({item,unitLevel:line.unitLevel,qty,priceKind:line.priceKind,unitPricePaise:chosen.price_paise,discountPaise:line.discountPaise});
   }
   return {customerId:record.customerId,globalDiscount:record.globalDiscount,extra:record.extra,lines};
 }

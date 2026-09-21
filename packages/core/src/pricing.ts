@@ -1,4 +1,5 @@
 import { getUnitSpec, type UnitLike, type UnitTier } from './units';
+import { multiplyPaiseByRatio } from './fixedPoint';
 
 export type PriceType = 'retail' | 'wholesale';
 
@@ -28,12 +29,8 @@ export function priceForUnitFromAnchorPaise(
   if (!Number.isFinite(conv1) || conv1 <= 0 || !Number.isFinite(conv2) || conv2 <= 0) {
     throw new Error('conversion factors must be finite positive numbers');
   }
-  const toSmallest: Record<UnitTier, number> = {
-    '1': conv1 * conv2,
-    '2': conv2,
-    '3': 1,
-  };
-  return Math.round(anchorPricePaise * toSmallest[targetTier] / toSmallest[anchorTier]);
+  const factors = (tier: UnitTier): number[] => tier === '1' ? [conv1, conv2] : tier === '2' ? [conv2] : [];
+  return multiplyPaiseByRatio(anchorPricePaise, factors(targetTier), factors(anchorTier));
 }
 
 /**
@@ -50,12 +47,13 @@ export function priceForUnitPaise(item: PricedItem, priceType: PriceType, target
   assertPaise(wholesaleSale, 'wholesaleSalePaise');
   if (!Number.isFinite(wholesaleQty) || wholesaleQty <= 0) throw new Error('wholesaleQty must be positive');
 
-  const wholesalePerAnchor = wholesaleSale > 0 ? wholesaleSale / wholesaleQty : 0;
-  const preferred = priceType === 'wholesale' ? wholesalePerAnchor : retail;
-  const fallback = priceType === 'wholesale' ? retail : wholesalePerAnchor;
-  const anchor = preferred || fallback;
-  if (!anchor) return 0;
-
-  return Math.round(anchor * ({ '1': conv1 * conv2, '2': conv2, '3': 1 }[targetTier]) /
-    ({ '1': conv1 * conv2, '2': conv2, '3': 1 }[priceUnit]));
+  const useWholesale = priceType === 'wholesale' ? wholesaleSale > 0 : retail === 0 && wholesaleSale > 0;
+  const anchorPaise = useWholesale ? wholesaleSale : retail;
+  if (!anchorPaise) return 0;
+  const factors = (tier: UnitTier): number[] => tier === '1' ? [conv1, conv2] : tier === '2' ? [conv2] : [];
+  return multiplyPaiseByRatio(
+    anchorPaise,
+    factors(targetTier),
+    [...(useWholesale ? [wholesaleQty] : []), ...factors(priceUnit)],
+  );
 }

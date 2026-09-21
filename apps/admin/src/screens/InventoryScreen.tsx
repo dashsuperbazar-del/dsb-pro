@@ -4,17 +4,17 @@ import {
   listItems, listParties, listStock, postPurchase, replaceItemImage, setItemPrice, setItemMinStock,
   type Item, type ItemPrice, type Party, type StockRow,
 } from '@dsb-pro/adapters';
-import { buildLegacyDsbImportPlan, type LegacyDsbImportPlan } from '@dsb-pro/core';
+import { buildLegacyDsbImportPlan,canonicalQuantity,parseRupeesToPaise,quantityTimesPaise,type LegacyDsbImportPlan } from '@dsb-pro/core';
 import { compressItemImage } from '../lib/compressImage';
 import { appRoute } from '../lib/paths';
 
-const paise = (rupees:string) => Math.round(Number(rupees || '0') * 100);
+const paise = (rupees:string) => parseRupeesToPaise(rupees || '0');
 
 export function InventoryScreen() {
   const [items,setItems]=useState<Item[]>([]); const [parties,setParties]=useState<Party[]>([]); const [stock,setStock]=useState<StockRow[]>([]);
   const [shopId,setShopId]=useState(''); const [tenantId,setTenantId]=useState(''); const [businessDate,setBusinessDate]=useState(''); const [selected,setSelected]=useState(''); const [purchaseLineItemId,setPurchaseLineItemId]=useState(''); const [prices,setPrices]=useState<ItemPrice[]>([]);
   const [purchaseLineUnitLevel,setPurchaseLineUnitLevel]=useState<1|2|3>(1); const [purchaseLineQty,setPurchaseLineQty]=useState(''); const [purchaseLinePrice,setPurchaseLinePrice]=useState('');
-  const [purchaseCart,setPurchaseCart]=useState<{item:Item;unitLevel:1|2|3;qty:number;unitPricePaise:number}[]>([]);
+  const [purchaseCart,setPurchaseCart]=useState<{item:Item;unitLevel:1|2|3;qty:string;unitPricePaise:number}[]>([]);
   const [purchaseClientId,setPurchaseClientId]=useState(()=>crypto.randomUUID()); const [purchaseBusy,setPurchaseBusy]=useState(false);
   const [legacyPlan,setLegacyPlan]=useState<LegacyDsbImportPlan|null>(null); const [legacyFileName,setLegacyFileName]=useState(''); const [legacyClientId,setLegacyClientId]=useState(()=>crypto.randomUUID()); const [legacyBusy,setLegacyBusy]=useState(false);
   const [message,setMessage]=useState(''); const [error,setError]=useState('');
@@ -31,7 +31,7 @@ export function InventoryScreen() {
   useEffect(()=>{ if(!selected){setPrices([]);return;} void listCurrentPrices(selected).then(setPrices).catch(e=>setError(String(e))); },[selected]);
   const selectedItem=items.find(i=>i.id===selected); const purchaseLineItem=items.find(i=>i.id===purchaseLineItemId);
   const selectedStock=useMemo(()=>stock.find(s=>s.item_id===selected)?.qty_base??0,[stock,selected]);
-  const purchaseTotalPaise=useMemo(()=>purchaseCart.reduce((sum,l)=>sum+Math.round(l.qty*l.unitPricePaise),0),[purchaseCart]);
+  const purchaseTotalPaise=useMemo(()=>purchaseCart.reduce((sum,l)=>sum+quantityTimesPaise(l.qty,l.unitPricePaise),0),[purchaseCart]);
   const unitLabel=(item:Item,unitLevel:1|2|3)=>unitLevel===1?item.unit1:unitLevel===2?(item.unit2||item.unit1):(item.unit3||item.unit2||item.unit1);
 
   async function chooseLegacyBackup(ev:Event){
@@ -69,9 +69,9 @@ export function InventoryScreen() {
     try { const party=await createParty({tenantId,name:String(f.get('name')),phone:String(f.get('phone')||'')||undefined,gstin:String(f.get('gstin')||'')||undefined,clientId:crypto.randomUUID()}); form.reset(); await refresh(); setMessage(`Created supplier ${party.name}.`); } catch(e){setError(String(e));}
   }
   function addPurchaseLine(ev:Event){ ev.preventDefault(); setError('');
-    const item=items.find(i=>i.id===purchaseLineItemId); const qty=Number(purchaseLineQty); const unitPricePaise=paise(purchaseLinePrice);
+    const item=items.find(i=>i.id===purchaseLineItemId); let qty:string; const unitPricePaise=paise(purchaseLinePrice);
     if(!item){setError('Choose an item for the purchase line.');return;}
-    if(!(qty>0)){setError('Enter a purchase quantity greater than zero.');return;}
+    try{qty=canonicalQuantity(purchaseLineQty);}catch{setError('Enter a purchase quantity with at most 6 decimal places.');return;}
     if(!purchaseLinePrice.trim()||!(unitPricePaise>=0)){setError('Enter a unit cost.');return;}
     setPurchaseCart(v=>[...v,{item,unitLevel:purchaseLineUnitLevel,qty,unitPricePaise}]);
     setPurchaseLineItemId(''); setPurchaseLineUnitLevel(1); setPurchaseLineQty(''); setPurchaseLinePrice('');
@@ -120,7 +120,7 @@ export function InventoryScreen() {
       <fieldset><legend>Add purchase line</legend>
         <select name="itemId" value={purchaseLineItemId} onChange={e=>{setPurchaseLineItemId((e.currentTarget as HTMLSelectElement).value);setPurchaseLineUnitLevel(1);}}><option value="">Item…</option>{items.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select> <select name="unitLevel" disabled={!purchaseLineItem} value={purchaseLineUnitLevel} onChange={e=>setPurchaseLineUnitLevel(Number((e.currentTarget as HTMLSelectElement).value) as 1|2|3)}><option value="1">{purchaseLineItem?.unit1||'Big unit'}</option>{purchaseLineItem?.unit2&&<option value="2">{purchaseLineItem.unit2}</option>}{purchaseLineItem?.unit3&&<option value="3">{purchaseLineItem.unit3}</option>}</select> <input name="qty" type="number" min="0.000001" step="any" placeholder="Qty" value={purchaseLineQty} onInput={e=>setPurchaseLineQty((e.currentTarget as HTMLInputElement).value)}/> <input name="price" type="number" min="0" step="0.01" placeholder="Unit cost ₹" value={purchaseLinePrice} onInput={e=>setPurchaseLinePrice((e.currentTarget as HTMLInputElement).value)}/> <button type="button" onClick={addPurchaseLine}>Add line</button>
       </fieldset>
-      {purchaseCart.length>0&&<div class="table-wrap" aria-label="Purchase cart"><table><thead><tr><th>Item</th><th>Qty</th><th>Unit cost</th><th>Line total</th><th/></tr></thead><tbody>{purchaseCart.map((l,n)=><tr key={n}><td>{l.item.name}<small> {unitLabel(l.item,l.unitLevel)}</small></td><td>{l.qty}</td><td>₹{(l.unitPricePaise/100).toFixed(2)}</td><td>₹{(Math.round(l.qty*l.unitPricePaise)/100).toFixed(2)}</td><td><button type="button" aria-label={`Remove purchase line ${n+1}`} onClick={()=>removePurchaseLine(n)}>Remove</button></td></tr>)}</tbody></table><p>Lines total: ₹{(purchaseTotalPaise/100).toFixed(2)}</p></div>}
+      {purchaseCart.length>0&&<div class="table-wrap" aria-label="Purchase cart"><table><thead><tr><th>Item</th><th>Qty</th><th>Unit cost</th><th>Line total</th><th/></tr></thead><tbody>{purchaseCart.map((l,n)=><tr key={n}><td>{l.item.name}<small> {unitLabel(l.item,l.unitLevel)}</small></td><td>{l.qty}</td><td>₹{(l.unitPricePaise/100).toFixed(2)}</td><td>₹{(quantityTimesPaise(l.qty,l.unitPricePaise)/100).toFixed(2)}</td><td><button type="button" aria-label={`Remove purchase line ${n+1}`} onClick={()=>removePurchaseLine(n)}>Remove</button></td></tr>)}</tbody></table><p>Lines total: ₹{(purchaseTotalPaise/100).toFixed(2)}</p></div>}
       <button disabled={purchaseBusy||!shopId||!businessDate||!purchaseCart.length}>{purchaseBusy?'Posting…':'Post purchase'}</button>
     </form></section>
   </main>;

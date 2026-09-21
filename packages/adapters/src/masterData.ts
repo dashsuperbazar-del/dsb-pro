@@ -5,7 +5,7 @@ import { deleteItemImage, putItemImage } from './itemImageStorage';
 export type Item = { id:string; name:string; sku:string|null; unit1:string; unit2:string|null; unit3:string|null; conv1:number|null; conv2:number|null; tax_rate_bp:number; min_stock:number; image_path:string|null };
 export type Party = { id:string; name:string; phone:string|null; gstin:string|null };
 export type StockRow = { tenant_id:string; shop_id:string; item_id:string; qty_base:number };
-export type PurchaseLine = { itemId:string; unitLevel:1|2|3; qty:number; unitPricePaise:number };
+export type PurchaseLine = { itemId:string; unitLevel:1|2|3; qty:string|number; unitPricePaise:number };
 export type ItemBarcode = { id:string; item_id:string; barcode:string; unit_level:1|2|3 };
 
 const friendly=(error:unknown)=>errorMessage(classifyError(error),error);

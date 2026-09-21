@@ -8,6 +8,7 @@ import {
   getSyncCursors,getSyncHealth,isDefinitiveFinancialRejectionMessage,markOutboxRetry,markOutboxSending,nextOutboxEntry,openSyncDb,queueOfflineSale,
   recoverInterruptedOutbox,rejectOfflineSale,retryDelayMs,resolveLocalConflict,
   restrictCachedCostPrices,
+  reviewOfflineSaleReconciliation,
   type DsbSyncDb,type LocalSyncConflict,type OfflineSalePayload,type OfflineSaleRecord,type OutboxEntry,
   cacheReturnSources,returnableCachedLines,queueOfflineReturn,completeOfflineReturn,rejectOfflineReturn,queueReturnVoid,completeReturnVoid,getMeta,canUnblockRejectedReturnVoid,type ReturnVoidIntent,
   type OfflineReturnPayload,type OfflineReturnRecord,type OfflineReturnType,
@@ -132,6 +133,7 @@ async function processOutbox(rt:Runtime){
       result=await pushSyncedSale({
         deviceId:rt.identity.deviceId,shopId:payload.shopId,customerId:payload.customerId,businessDate:payload.businessDate,
         discountPaise:payload.discountPaise,extraChargesPaise:payload.extraChargesPaise,clientId:payload.clientId,
+        intentFingerprint:payload.intentFingerprint??'',
         lines:payload.lines as Array<SaleLineInput&{expectedUnitPricePaise?:number}>,payments:payload.payments as SalePaymentInput[],notes:payload.notes,
       });
     }catch(error){
@@ -258,6 +260,7 @@ export async function getOfflineReturnSources(type:OfflineReturnType){
 }
 export async function getOfflineReturnLines(type:OfflineReturnType,sourceId:string){return returnableCachedLines(requireRuntime().db,type,sourceId);}
 export async function listOfflineReturns():Promise<OfflineReturnRecord[]>{return (await requireRuntime().db.offlineReturns.orderBy('createdAt').reverse().toArray()).slice(0,100);}
+export async function reviewOfflineSaleMismatch(clientId:string):Promise<void>{await reviewOfflineSaleReconciliation(requireRuntime().db,clientId);emit();}
 export async function holdCurrentCart(input:{label:string;customerId:string;globalDiscount:string;extra:string;lines:HeldCartLine[]}):Promise<HeldCartRecord>{
   const rt=requireRuntime();
   return holdCart(rt.db,{shopId:rt.identity.shopId,...input});

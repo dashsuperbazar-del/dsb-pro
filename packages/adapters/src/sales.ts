@@ -5,7 +5,7 @@ export type Customer = {
   id:string; name:string; phone:string|null; address:string|null; gstin:string|null;
   credit_limit_paise:number; notes:string|null;
 };
-export type SaleLineInput = { itemId:string; unitLevel:1|2|3; qty:number; priceKind:'retail'|'wholesale'; discountPaise?:number };
+export type SaleLineInput = { itemId:string; unitLevel:1|2|3; qty:string|number; priceKind:'retail'|'wholesale'; discountPaise?:number };
 export type SalePaymentInput = { amountPaise:number; mode:'cash'|'upi'|'card'|'bank'|'other'; reference?:string };
 export type SaleInvoice = {
   id:string; customer_id:string|null; doc_no:string; business_date:string; status:'DRAFT'|'FINALIZED'|'VOID';

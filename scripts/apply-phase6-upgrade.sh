@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: $0 <database-url> <foundation|hardening|phase65|batcha|all> [...]" >&2
+  echo "usage: $0 <database-url> <foundation|hardening|phase65|batcha|batchb|all> [...]" >&2
   exit 2
 }
 
@@ -17,8 +17,8 @@ manifest="$repo_root/supabase/phase6-upgrade-manifest.txt"
 declare -A requested=()
 for group in "$@"; do
   case "$group" in
-    foundation|hardening|phase65|batcha) requested["$group"]=1 ;;
-    all) requested[foundation]=1; requested[hardening]=1; requested[phase65]=1; requested[batcha]=1 ;;
+    foundation|hardening|phase65|batcha|batchb) requested["$group"]=1 ;;
+    all) requested[foundation]=1; requested[hardening]=1; requested[phase65]=1; requested[batcha]=1; requested[batchb]=1 ;;
     *) echo "Unknown Phase 6 migration group: $group" >&2; usage ;;
   esac
 done
