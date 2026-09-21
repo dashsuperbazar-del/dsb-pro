@@ -23,6 +23,16 @@ const lineGross=(qty:string,pricePaise:number)=>{try{return quantityTimesPaise(q
 
 function unitName(item:Item,level:1|2|3){ return level===1?item.unit1:level===2?(item.unit2??item.unit1):(item.unit3??item.unit2??item.unit1); }
 
+function HoldLabelField({draft,resetVersion}:{draft:{current:string};resetVersion:number}){
+  const [value,setValue]=useState(()=>draft.current);
+  useEffect(()=>{draft.current='';setValue('');},[resetVersion]);
+  return <input data-testid="pos-hold-label" type="text" placeholder="e.g. Table 3" value={value} onInput={event=>{
+    const next=(event.currentTarget as HTMLInputElement).value;
+    draft.current=next;
+    setValue(next);
+  }}/>;
+}
+
 export function PosScreen(){
   const [items,setItems]=useState<Item[]>([]); const [customers,setCustomers]=useState<Customer[]>([]); const [sales,setSales]=useState<SaleInvoice[]>([]);
   const [catalogReady,setCatalogReady]=useState(false);
@@ -31,9 +41,9 @@ export function PosScreen(){
   const [cart,setCart]=useState<CartLine[]>([]); const [customerId,setCustomerId]=useState(''); const [globalDiscount,setGlobalDiscount]=useState('0'); const [extra,setExtra]=useState('0');
   const [tenders,setTenders]=useState<Tender[]>([{mode:'cash',amount:''}]); const [message,setMessage]=useState(''); const [error,setError]=useState(''); const [busy,setBusy]=useState(false);
   const [barcode,setBarcode]=useState(''); const [itemQuery,setItemQuery]=useState(''); const [manualItemId,setManualItemId]=useState(''); const [manualUnitLevel,setManualUnitLevel]=useState<1|2|3>(1); const [saleClientId,setSaleClientId]=useState(()=>crypto.randomUUID()); const [paymentClientId,setPaymentClientId]=useState(()=>crypto.randomUUID()); const [paymentCustomer,setPaymentCustomer]=useState(''); const [paymentAmount,setPaymentAmount]=useState(''); const [paymentMode,setPaymentMode]=useState<Tender['mode']>('cash');
-  const [heldCarts,setHeldCarts]=useState<HeldCartRecord[]>([]);
+  const [heldCarts,setHeldCarts]=useState<HeldCartRecord[]>([]); const [holdLabelResetVersion,setHoldLabelResetVersion]=useState(0);
   const [resumeBusyId,setResumeBusyId]=useState(''); const [heldCleanup,setHeldCleanup]=useState<{id:string;token:string}|null>(null);
-  const resumeLock=useRef(false); const holdLabelInput=useRef<HTMLInputElement>(null); const holdLabelDraft=useRef('');
+  const resumeLock=useRef(false); const holdLabelDraft=useRef('');
 
   async function refresh(){
     await waitForOfflineRuntime();
@@ -78,15 +88,6 @@ export function PosScreen(){
     });
     return()=>{active=false;};
   },[heldCleanup?.id,heldCleanup?.token]);
-  // Preact may reconstruct this uncontrolled input when an earlier async cart
-  // action finishes. Restore the synchronous draft after every such render so
-  // both the visible field and the hold action retain the operator's typing.
-  useEffect(()=>{
-    if(holdLabelInput.current&&holdLabelInput.current.value!==holdLabelDraft.current){
-      holdLabelInput.current.value=holdLabelDraft.current;
-    }
-  });
-
   const manualItem=items.find(i=>i.id===manualItemId);
   const visibleItems=useMemo(()=>searchCatalogItems(items,itemQuery,50),[items,itemQuery]);
   const preview=useMemo(()=>cart.reduce((sum,l)=>sum+lineGross(l.qty,l.unitPricePaise)-l.discountPaise,0)-paise(globalDiscount)+paise(extra),[cart,globalDiscount,extra]);
@@ -115,12 +116,11 @@ export function PosScreen(){
     if(heldCleanup){setError('Remove the previous held-cart copy before holding another cart.');return;}
     if(!cart.length){setError('Add at least one item before holding.');return;}
     try{
-      // This action-only field is deliberately uncontrolled. An unrelated
-      // async cart render must not overwrite a freshly typed label before the
-      // hold action reads it at the boundary.
+      // The isolated field mirrors its value into this ref synchronously, so
+      // the action boundary does not depend on a parent-state render.
       await holdCurrentCart({label:holdLabelDraft.current,customerId,globalDiscount,extra,
         lines:cart.map(l=>({itemId:l.item.id,unitLevel:l.unitLevel,qty:l.qty,priceKind:l.priceKind,discountPaise:l.discountPaise}))});
-      setCart([]); setCustomerId(''); setGlobalDiscount('0'); setExtra('0'); holdLabelDraft.current=''; if(holdLabelInput.current)holdLabelInput.current.value=''; setSaleClientId(crypto.randomUUID());
+      setCart([]); setCustomerId(''); setGlobalDiscount('0'); setExtra('0'); holdLabelDraft.current=''; setHoldLabelResetVersion(version=>version+1); setSaleClientId(crypto.randomUUID());
       setHeldCarts(await listHeldCartsForShop()); setMessage('Cart held. Start a new sale, or resume it later.');
     }catch(e){setError(String(e));}
   }
@@ -214,7 +214,7 @@ export function PosScreen(){
 
     <section class="card"><h2>2. Cart</h2>{!cart.length?<p class="muted">Cart is empty.</p>:<div class="table-wrap"><table><thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Discount</th><th>Total</th><th/></tr></thead><tbody>{cart.map((l,n)=><tr><td>{l.item.name}<small>{unitName(l.item,l.unitLevel)} · {l.priceKind}</small></td><td><input type="number" min="0.000001" step="0.000001" value={l.qty} aria-label={`Cart qty for ${l.item.name}`} onInput={e=>{const qty=(e.currentTarget as HTMLInputElement).value;setCart(v=>v.map((x,i)=>i===n?{...x,qty}:x));}}/></td><td>{money(l.unitPricePaise)}</td><td><input type="number" min="0" step="0.01" value={(l.discountPaise/100).toFixed(2)} aria-label={`Discount for ${l.item.name}`} onInput={e=>{const discountPaise=paise((e.currentTarget as HTMLInputElement).value);if(Number.isFinite(discountPaise)&&discountPaise>=0)setCart(v=>v.map((x,i)=>i===n?{...x,discountPaise}:x));}}/></td><td>{money(lineGross(l.qty,l.unitPricePaise)-l.discountPaise)}</td><td><button type="button" onClick={()=>setCart(v=>v.filter((_,i)=>i!==n))}>Remove</button></td></tr>)}</tbody></table></div>}
       <div class="row"><label>Invoice discount ₹ <input value={globalDiscount} type="number" min="0" step="0.01" onInput={e=>setGlobalDiscount((e.currentTarget as HTMLInputElement).value)}/></label><label>Extra charges ₹ <input value={extra} type="number" min="0" step="0.01" onInput={e=>setExtra((e.currentTarget as HTMLInputElement).value)}/></label><strong>Preview {money(Math.max(0,preview))}</strong></div>
-      <div class="row"><label>Hold label <input ref={holdLabelInput} key="pos-hold-label" data-testid="pos-hold-label" type="text" placeholder="e.g. Table 3" onInput={e=>{holdLabelDraft.current=(e.currentTarget as HTMLInputElement).value;}}/></label><button type="button" disabled={!cart.length||Boolean(heldCleanup)} onClick={()=>void holdCartNow()}>Hold cart</button>{heldCleanup&&<button type="button" onClick={()=>void retryHeldCleanup()}>Retry held-cart cleanup</button>}</div>
+      <div class="row"><label>Hold label <HoldLabelField draft={holdLabelDraft} resetVersion={holdLabelResetVersion}/></label><button type="button" disabled={!cart.length||Boolean(heldCleanup)} onClick={()=>void holdCartNow()}>Hold cart</button>{heldCleanup&&<button type="button" onClick={()=>void retryHeldCleanup()}>Retry held-cart cleanup</button>}</div>
     </section>
     {heldCarts.length>0&&<section class="card" aria-label="Held carts"><h2>Held carts</h2><div class="table-wrap"><table><thead><tr><th>Label</th><th>Items</th><th/></tr></thead><tbody>{heldCarts.map(h=><tr key={h.id}><td>{h.label}</td><td>{h.lines.length}</td><td><button type="button" disabled={Boolean(resumeBusyId)} aria-label={`Resume ${h.label}`} onClick={()=>void resumeCart(h.id)}>{resumeBusyId===h.id?'Resuming…':'Resume'}</button> <button type="button" disabled={Boolean(resumeBusyId)||heldCleanup?.id===h.id} onClick={()=>void discardCart(h.id)}>Discard</button></td></tr>)}</tbody></table></div></section>}
 
