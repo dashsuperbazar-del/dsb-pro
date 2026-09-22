@@ -71,12 +71,15 @@ test('cart lines edit in place, and a held cart survives being parked and comes 
   await page.getByLabel('Find product').fill('Cart Edit Item B');
   await page.getByLabel('Item').selectOption({index:1});
   await page.getByTestId('pos-add-quantity').fill('1');
+  const holdLabel=page.getByTestId('pos-hold-label');
+  await holdLabel.evaluate(node=>node.setAttribute('data-race-sentinel','same-node'));
   await page.getByRole('button',{name:'Add line'}).click();
-  await page.getByTestId('pos-hold-label').fill('Temp Cart');
+  await holdLabel.fill('Temp Cart');
   // The add-line price lookup resolves asynchronously. Its later cart render
-  // must not reset a label typed immediately after the click.
+  // must preserve the same input node and its freshly typed label.
   await expect(page.getByRole('cell',{name:/Cart Edit Item B/})).toBeVisible();
-  await expect(page.getByTestId('pos-hold-label')).toHaveValue('Temp Cart');
+  await expect(holdLabel).toHaveAttribute('data-race-sentinel','same-node');
+  await expect(holdLabel).toHaveValue('Temp Cart');
   await page.getByRole('button',{name:'Hold cart'}).click();
   await expect(heldSection.locator('tr').filter({hasText:'Temp Cart'})).toBeVisible();
   await heldSection.locator('tr').filter({hasText:'Temp Cart'}).getByRole('button',{name:'Discard'}).click();
