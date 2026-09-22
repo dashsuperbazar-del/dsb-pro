@@ -5,9 +5,10 @@ import {
   type Customer, type CustomerLedgerRow, type CustomerOutstandingInvoice,
 } from '@dsb-pro/adapters';
 import { appRoute } from '../lib/paths';
+import { parseRupeesToPaise } from '@dsb-pro/core';
 
 const money=(paise:number)=>`₹${(paise/100).toFixed(2)}`;
-const toPaise=(rupees:string)=>Math.round(Number(rupees||'0')*100);
+const toPaise=(rupees:string)=>parseRupeesToPaise(rupees||'0');
 
 type AllocationDraft={saleId:string;docNo:string;checked:boolean;amount:string};
 

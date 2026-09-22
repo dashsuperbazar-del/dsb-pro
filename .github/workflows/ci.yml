@@ -86,6 +86,8 @@ jobs:
         run: node scripts/test-sale-concurrency.mjs
       - name: Prove negative-stock recovery serialization
         run: node scripts/test-stock-recovery-concurrency.mjs
+      - name: Prove fixed-point TypeScript/PostgreSQL parity
+        run: node scripts/test-fixed-point-parity.mjs
 
   phase6_db_upgrade_proof:
     # This is deliberately a disposable local database with no repository
@@ -116,7 +118,7 @@ jobs:
           echo "PROOF_ROOT=$PROOF_ROOT" >> "$GITHUB_ENV"
       - name: Start the disposable Phase 5 target
         run: supabase start --workdir "$PROOF_ROOT"
-      - name: Prove the staged attended upgrade path through Batch A
+      - name: Prove the staged attended upgrade path through Batch B
         env:
           PROOF_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
         run: |
@@ -127,15 +129,17 @@ jobs:
             echo "$state"
             grep -Fx "observed_state=$expected" <<<"$state" >/dev/null
           }
-          assert_state '0:0:0:0'
+          assert_state '0:0:0:0:0'
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" foundation
-          assert_state '5:0:0:0'
+          assert_state '5:0:0:0:0'
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" hardening
-          assert_state '5:2:0:0'
+          assert_state '5:2:0:0:0'
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" phase65
-          assert_state '5:2:5:0'
+          assert_state '5:2:5:0:0'
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" batcha
-          assert_state '5:2:5:2'
+          assert_state '5:2:5:2:0'
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" batchb
+          assert_state '5:2:5:2:3'
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
           do $proof$
           begin
@@ -149,8 +153,11 @@ jobs:
                or regexp_replace(pg_get_functiondef('public.phase5_sync_pull(text,uuid,integer,jsonb)'::regprocedure), E'\\s+', '', 'g')
                     not like '%(v_can_view_cost_pricesorp.kind<>''cost_last'')%'
                or regexp_replace(pg_get_functiondef('public.apply_stock_movement()'::regprocedure), E'\\s+', '', 'g')
-                    not like '%ifnew.qty_base<=0andv_on_hand<v_reservedthen%' then
-              raise exception 'Disposable Batch A upgrade contract failed';
+                    not like '%ifnew.qty_base<=0andv_on_hand<v_reservedthen%'
+               or to_regprocedure('public.phase65_assert_quantity_lines(jsonb)') is null
+               or regexp_replace(pg_get_functiondef('public.phase5_sync_post_sale(text,integer,uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text)'::regprocedure), E'\\s+', '', 'g')
+                    not like '%''intentFingerprint'',v_intent_fingerprint%' then
+              raise exception 'Disposable Batch B upgrade contract failed';
             end if;
             if not exists(select 1 from pg_class where oid='public.expenses'::regclass and relrowsecurity)
                or not exists(select 1 from pg_class where oid='public.sale_returns'::regclass and relrowsecurity) then
@@ -159,7 +166,7 @@ jobs:
           end
           $proof$;
           SQL
-          echo 'DISPOSABLE STAGED PHASE 5 -> BATCH A UPGRADE: PASS'
+          echo 'DISPOSABLE STAGED PHASE 5 -> BATCH B UPGRADE: PASS'
       - name: Stop and erase the disposable target
         if: always()
         run: supabase stop --workdir "$PROOF_ROOT" --no-backup
@@ -716,7 +723,12 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" batcha
-      - name: Verify live Batch A contract
+      - name: Apply Batch B money contract atomically
+        if: steps.preflight.outputs.needs_batchb == 'true'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" batchb
+      - name: Verify live Batch B contract
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         shell: bash
@@ -740,8 +752,11 @@ jobs:
                or regexp_replace(pg_get_functiondef('public.phase5_sync_pull(text,uuid,integer,jsonb)'::regprocedure), E'\\s+', '', 'g')
                     not like '%(v_can_view_cost_pricesorp.kind<>''cost_last'')%'
                or regexp_replace(pg_get_functiondef('public.apply_stock_movement()'::regprocedure), E'\\s+', '', 'g')
-                    not like '%ifnew.qty_base<=0andv_on_hand<v_reservedthen%' then
-              raise exception 'Batch A live schema verification failed';
+                    not like '%ifnew.qty_base<=0andv_on_hand<v_reservedthen%'
+               or to_regprocedure('public.phase65_assert_quantity_lines(jsonb)') is null
+               or regexp_replace(pg_get_functiondef('public.phase5_sync_post_sale(text,integer,uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text)'::regprocedure), E'\\s+', '', 'g')
+                    not like '%''intentFingerprint'',v_intent_fingerprint%' then
+              raise exception 'Batch B live schema verification failed';
             end if;
             if has_table_privilege('authenticated','public.expenses','INSERT')
                or has_table_privilege('authenticated','public.stock_counts','INSERT') then

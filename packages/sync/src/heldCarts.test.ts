@@ -50,7 +50,7 @@ const context={shopId:'shop-1',items:[item],customerIds:new Set(['customer-1']),
 
 describe('held-cart all-or-nothing resolution',()=>{
   it('preserves customer, adjustments, quantity, kind, discount and current price',async()=>{
-    await expect(resolveHeldCart(record(),context)).resolves.toEqual({customerId:'customer-1',globalDiscount:'1.25',extra:'2.50',lines:[{item,unitLevel:1,qty:2,priceKind:'retail',unitPricePaise:1000,discountPaise:25}]});
+    await expect(resolveHeldCart(record(),context)).resolves.toEqual({customerId:'customer-1',globalDiscount:'1.25',extra:'2.50',lines:[{item,unitLevel:1,qty:'2',priceKind:'retail',unitPricePaise:1000,discountPaise:25}]});
   });
   it('rejects missing item, missing price, invalid unit and failed lookup',async()=>{
     await expect(resolveHeldCart(record(),{...context,items:[]})).rejects.toThrow(/item.*no longer available/i);

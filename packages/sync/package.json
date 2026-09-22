@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@dsb-pro/core": "workspace:*",
     "dexie": "4.4.5"
   },
   "devDependencies": {

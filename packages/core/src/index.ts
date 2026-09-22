@@ -1,4 +1,13 @@
 export { toRupeeString } from './paise';
+export {
+  canonicalQuantity,
+  divideHalfUp,
+  multiplyPaiseByRatio,
+  parseQuantityMicros,
+  parseRupeesToPaise,
+  quantityTimesPaise,
+} from './fixedPoint';
+export type { DecimalInput } from './fixedPoint';
 export { hasPerm } from './roles';
 export type { Role, PermissionCode } from './roles';
 export { toSlug, makeTenantSlug } from './slug';

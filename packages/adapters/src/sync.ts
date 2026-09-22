@@ -15,7 +15,11 @@ export type SyncPullWire={
   items:Array<Record<string,unknown>>;barcodes:Array<Record<string,unknown>>;prices:Array<Record<string,unknown>>;
   customers:Array<Record<string,unknown>>;stock:Array<Record<string,unknown>>;
 };
-export type SyncSaleResultWire={saleId:string;docNo:string;stock:Array<Record<string,unknown>>};
+export type SyncSaleResultWire={
+  saleId:string;docNo:string;clientId:string;intentFingerprint:string;stock:Array<Record<string,unknown>>;
+  subtotalPaise:number;discountPaise:number;extraChargesPaise:number;totalPaise:number;
+  lines:Array<Record<string,unknown>>;payments:Array<Record<string,unknown>>;
+};
 export type ServerSyncConflict={
   id:string;op_client_id:string|null;kind:string;target:string;reason:string;status:'OPEN'|'RESOLVED';
   created_at:string;resolved_at:string|null;
@@ -39,7 +43,22 @@ function requirePull(value:unknown):SyncPullWire{
 }
 function requireSale(value:unknown):SyncSaleResultWire{
   const row=object(value);
-  if(!row||typeof row.saleId!=='string'||typeof row.docNo!=='string'||!Array.isArray(row.stock)){
+  const money=(amount:unknown)=>typeof amount==='number'&&Number.isSafeInteger(amount)&&amount>=0;
+  const validLine=(value:unknown)=>{
+    const line=object(value);
+    return Boolean(line&&typeof line.itemId==='string'&&(line.unitLevel===1||line.unitLevel===2||line.unitLevel===3)&&
+      typeof line.qty==='string'&&(line.priceKind==='retail'||line.priceKind==='wholesale')&&money(line.unitPricePaise)&&
+      money(line.discountPaise)&&money(line.lineTotalPaise));
+  };
+  const validPayment=(value:unknown)=>{
+    const payment=object(value);
+    return Boolean(payment&&money(payment.amountPaise)&&['cash','upi','card','bank','other'].includes(String(payment.mode))&&
+      (payment.reference===null||payment.reference===undefined||typeof payment.reference==='string'));
+  };
+  if(!row||typeof row.saleId!=='string'||typeof row.docNo!=='string'||typeof row.clientId!=='string'||
+    typeof row.intentFingerprint!=='string'||!money(row.subtotalPaise)||!money(row.discountPaise)||
+    !money(row.extraChargesPaise)||!money(row.totalPaise)||!Array.isArray(row.lines)||!row.lines.every(validLine)||
+    !Array.isArray(row.payments)||!row.payments.every(validPayment)||!Array.isArray(row.stock)){
     throw new Error('Server returned an invalid synced-sale result.');
   }
   return value as SyncSaleResultWire;
@@ -79,12 +98,14 @@ export async function ackSync(input:{deviceId:string;cursors:Record<string,SyncC
 export async function pushSyncedSale(input:{
   deviceId:string;shopId:string;customerId?:string;businessDate:string;discountPaise:number;extraChargesPaise:number;
   clientId:string;lines:Array<SaleLineInput&{expectedUnitPricePaise?:number}>;payments:SalePaymentInput[];notes?:string;
+  intentFingerprint:string;
 }):Promise<SyncSaleResultWire>{
   const {data,error}=await getSupabaseClient().rpc('phase5_sync_post_sale',{
     p_device_id:input.deviceId,p_schema_version:SYNC_SCHEMA_VERSION,p_shop_id:input.shopId,p_customer_id:input.customerId??null,
     p_business_date:input.businessDate,p_discount_paise:input.discountPaise,p_extra_charges_paise:input.extraChargesPaise,
     p_client_id:input.clientId,
-    p_lines:input.lines.map(l=>({item_id:l.itemId,unit_level:l.unitLevel,qty:l.qty,price_kind:l.priceKind,discount_paise:l.discountPaise??0,expected_unit_price_paise:l.expectedUnitPricePaise??null})),
+    p_lines:input.lines.map(l=>({item_id:l.itemId,unit_level:l.unitLevel,qty:l.qty,price_kind:l.priceKind,discount_paise:l.discountPaise??0,expected_unit_price_paise:l.expectedUnitPricePaise??null,
+      ...(input.intentFingerprint?{intent_fingerprint:input.intentFingerprint}:{})})),
     p_payments:input.payments.map(p=>({amount_paise:p.amountPaise,mode:p.mode,reference:p.reference??null})),p_notes:input.notes??null,
   });
   if(error)throw new Error(friendly(error));

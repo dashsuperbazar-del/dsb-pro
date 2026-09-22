@@ -28,6 +28,7 @@ describe('DSB Pro invoice totals', () => {
 
   it('rounds fractional quantity at the line money boundary', () => {
     expect(calculateLineTotals({ qty: 1.5, unitPricePaise: 333 }).grossPaise).toBe(500);
+    expect(calculateLineTotals({ qty: '0.145', unitPricePaise: 100 }).grossPaise).toBe(15);
   });
 
   it('applies discount in basis points', () => {
@@ -47,6 +48,10 @@ describe('DSB Pro invoice totals', () => {
     expect(percentToBasisPoints(0.01)).toBe(1);
   });
 
+  it('rounds discount half-paisa ties upward', () => {
+    expect(calculateLineTotals({ qty: '1', unitPricePaise: 1, discountBps: 5000 }).discountPaise).toBe(1);
+  });
+
   it('rejects empty invoices', () => {
     expect(() => calculateInvoiceTotals([])).toThrow(/at least one line/);
   });
@@ -61,6 +66,13 @@ describe('DSB Pro invoice totals', () => {
 
   it('rejects discounts above 100 percent', () => {
     expect(() => calculateLineTotals({ qty: 1, unitPricePaise: 100, discountBps: 10001 })).toThrow(/basis points/);
+  });
+
+  it('rejects invoice sums outside the JavaScript safe integer range', () => {
+    expect(() => calculateInvoiceTotals([
+      { qty: '1', unitPricePaise: Number.MAX_SAFE_INTEGER },
+      { qty: '1', unitPricePaise: 1 },
+    ])).toThrow(/subtotal exceeds safe integer range/);
   });
 });
 

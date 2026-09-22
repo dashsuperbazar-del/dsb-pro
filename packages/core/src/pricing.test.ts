@@ -46,6 +46,11 @@ describe('sale pricing', () => {
 
   it('rounds only when crossing the integer-paise boundary', () => {
     expect(priceForUnitFromAnchorPaise(100, '1', '2', 3, 1)).toBe(33);
+    expect(priceForUnitFromAnchorPaise(1, '1', '2', 2, 1)).toBe(1);
+  });
+
+  it('does not round wholesale per-anchor before converting tiers', () => {
+    expect(priceForUnitPaise({ ...item, wholesaleSalePaise: 100, wholesaleQty: 3 }, 'wholesale', '1')).toBe(400);
   });
 
   it('rejects invalid paise values', () => {

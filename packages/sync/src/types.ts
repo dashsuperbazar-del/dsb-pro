@@ -94,14 +94,14 @@ export type SyncIdentity=Readonly<{
 }>;
 
 export type OfflineSaleLineInput=Readonly<{
-  itemId:string; unitLevel:1|2|3; qty:number; priceKind:'retail'|'wholesale'; discountPaise:number; expectedUnitPricePaise?:number;
+  itemId:string; unitLevel:1|2|3; qty:string|number; priceKind:'retail'|'wholesale'; discountPaise:number; expectedUnitPricePaise?:number;
 }>;
 export type OfflineSalePaymentInput=Readonly<{
   amountPaise:number; mode:'cash'|'upi'|'card'|'bank'|'other'; reference?:string;
 }>;
 export type OfflineSalePayload=Readonly<{
   shopId:string; customerId?:string; businessDate:string; discountPaise:number; extraChargesPaise:number;
-  clientId:string; lines:OfflineSaleLineInput[]; payments:OfflineSalePaymentInput[]; notes?:string;
+  clientId:string; lines:OfflineSaleLineInput[]; payments:OfflineSalePaymentInput[]; notes?:string; intentFingerprint?:string;
 }>;
 export type OfflineSaleLineSnapshot=OfflineSaleLineInput&Readonly<{
   itemName:string; unitName:string; unitPricePaise:number; baseQty:number; lineTotalPaise:number;
@@ -112,6 +112,8 @@ export type OfflineSaleRecord=Readonly<{
   shopId:string; customerId:string|null; businessDate:string; subtotalPaise:number; discountPaise:number;
   extraChargesPaise:number; totalPaise:number; payments:OfflineSalePaymentInput[]; lines:OfflineSaleLineSnapshot[];
   status:OfflineSaleStatus; createdAt:number; syncedAt:number|null; rejectionReason:string|null;
+  intentFingerprint?:string; provisionalTotals?:Readonly<{subtotalPaise:number;discountPaise:number;extraChargesPaise:number;totalPaise:number}>;
+  reconciliationWarning?:string|null; reconciliationReviewedAt?:number|null;
 }>;
 
 export type LocalReservation=Readonly<{key:string;shop_id:string;item_id:string;qty:number}>;
@@ -132,10 +134,15 @@ export type SyncHealth=Readonly<{
 }>;
 
 export type SyncedSaleResult=Readonly<{
-  saleId:string; docNo:string; stock:SyncedStock[];
+  saleId:string; docNo:string; clientId:string; intentFingerprint:string; stock:SyncedStock[];
+  subtotalPaise:number; discountPaise:number; extraChargesPaise:number; totalPaise:number;
+  lines:ReadonlyArray<Readonly<{
+    itemId:string;unitLevel:1|2|3;qty:string;priceKind:'retail'|'wholesale';unitPricePaise:number;discountPaise:number;lineTotalPaise:number;
+  }>>;
+  payments:OfflineSalePaymentInput[];
 }>;
 
-export type HeldCartLine={itemId:string;unitLevel:1|2|3;qty:number;priceKind:'retail'|'wholesale';discountPaise:number};
+export type HeldCartLine={itemId:string;unitLevel:1|2|3;qty:string|number;priceKind:'retail'|'wholesale';discountPaise:number};
 export type HeldCartRecord={
   id:string;shopId:string;createdAt:number;label:string;customerId:string;globalDiscount:string;extra:string;lines:HeldCartLine[];
   resumeToken?:string|null;resumingAt?:number|null;
