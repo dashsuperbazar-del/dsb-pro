@@ -1,5 +1,7 @@
 # DSB Pro — Remaining Build Plan, Architecture and Detailed Design
 
+> **SUPERSEDED.** Replaced by [`docs/COMPLETE_REMAINING_BUILD_PLAN.md`](./COMPLETE_REMAINING_BUILD_PLAN.md) (v1.1), adopted 2026-09-23 after a second debate round found eight design gaps in this file's Batch C–G design (cross-shop allocation, an unrunnable acceptance test, missing opening-balance settlement, no uncertain-outcome payment recovery, an allocation-ID namespace collision, and others). This file is retained for history only. Do not implement from it; do not combine its SQL/migration numbers with the adopted plan's.
+
 **Status:** DRAFT FOR DEBATE. No implementation is authorized by this file until the user approves it after the debate.
 **Prepared:** 2026-09-22 against `main` = `cc9c64c463526e84210df520ee534847465ae1f6` (Batch B merged; hotfix PR #35 approved, not yet merged).
 **Supersedes for Batches C–G:** `DSB_PRO_REPAIR_AND_BUILD_EXECUTION_PLAN_v2` (its Batch C–G sections were outlines; this file is the executable design).
