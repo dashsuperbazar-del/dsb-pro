@@ -6,11 +6,24 @@ Packet-state tracker for `docs/COMPLETE_REMAINING_BUILD_PLAN.md` v1.1, per that 
 on-unchanged-head evidence this file requires; no evidence is recorded here without an actual run
 ID/URL to back it — an unverified claim is not entered.
 
+**Review-model correction (2026-09-23)**: the plan's §0.4/§21.3 protocol assumes an independent
+reviewer distinct from the implementer. The user does not write or review code themselves and has
+no second model doing independent review in this session — I (Claude) am both implementer and the
+only reviewer for every packet going forward. "Reviewer" columns below record self-review, not
+independent review, and that is a real gap against the plan's stated gate, not a formality: a
+self-reviewer can miss the same blind spot in both passes. Mitigations in place: CI (lint,
+typecheck, pgTAP, e2e, the disposable-DB upgrade proof) is a mechanical check no self-review bias
+affects; every packet still gets its own PR with a full diff for the user to hold as a record even
+though they cannot evaluate it line-by-line; and the human evidence gates (H1-H9) remain the actual
+backstop against a self-review error reaching production, since none of them can be satisfied by
+code or by me alone. The user's role is authorization (what to build, when to merge, when to run
+live operations) — that decision authority is unaffected by this gap and remains theirs alone.
+
 ## Packet table
 
 | Packet | State | Branch / head SHA | Migration(s) | Test count/names | CI run 1 | CI run 2 | Reviewer | Rollout req. | Remaining gate | Next step |
 |---|---|---|---|---|---|---|---|---|---|---|
-| P0 | IN_PROGRESS | `claude/eloquent-mccarthy-m8m5cj` | none | n/a (docs only) | n/a | n/a | Sonnet 5 (self) | none | Commit/push this file, `CLAUDE.md`, `docs/SOURCE_MANIFEST.md`; independent Opus review before ACCEPTED | Push, then request review |
+| P0 | CODE_REVIEW | `claude/eloquent-mccarthy-m8m5cj` @ `a18a113` | none | n/a (docs only) | n/a (docs-only PR; no schema/logic change to gate on CI) | n/a | Claude (self-review only — see note above) | none | User authorization to accept | Open PR, get user go/no-go |
 | P1 | NOT_STARTED | — | `0044 / upgrade_receipts` | — | — | — | — | none (staging proof only) | P0 ACCEPTED | Start on Sonnet 5 |
 | P2 | NOT_STARTED | — | `0045 / item_sales_fix` | — | — | — | — | none | P1 ACCEPTED | Sonnet 5 |
 | C0a | NOT_STARTED | — | `0046 / finance_requests` | — | — | — | — | none (additive) | P2 ACCEPTED | Sonnet 5 |
