@@ -52,7 +52,7 @@ The request that produced this file authorized planning and verification. Live d
 | Current main | `74768c11b327d7920daf0570a301966a853fc7b6` — `fix(pos): persist held label across screen reconstruction (#35)` |
 | Previous plan branch | `claude/eloquent-mccarthy-m8m5cj` |
 | Previous plan commit | `01a66bf5273127cd754f0788ed7baf59e0346938` (superseded by this document) |
-| PR #35 | **Merged** (squash) at exact requested head `2b8a6dfde52d97f100a0d2652a7c9bac9b9485a6`; post-merge push run `#589` in progress at write time — see `docs/HANDOVER.md` for its confirmed outcome, recorded once complete, per §0.4 step 7 |
+| PR #35 | **Merged** (squash) at exact requested head `2b8a6dfde52d97f100a0d2652a7c9bac9b9485a6`. Post-merge push run `#589` (`35804537359`) on real `main` confirmed green: lint/typecheck/test/audit/pgtap/`phase6_db_upgrade_proof`/e2e (incl. the 10× held-cart stress) all `success`; `deploy` and every live-migration job `skipped`. P0's #35 disposition is closed. |
 | Latest baseline migration | `0043_phase65_fixed_point_sale_ack.sql` |
 | Database upgrade groups | foundation, hardening, phase65, batcha, batchb |
 | Client local database version | Dexie version 4 in `packages/sync/src/db.ts` |
