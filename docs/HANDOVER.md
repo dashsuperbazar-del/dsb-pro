@@ -1287,7 +1287,9 @@ i18n, dark mode) is the last item on the plan §19.1 list, then the dry-run gate
 
 PR #36 (`claude/eloquent-mccarthy-m8m5cj` @ `bf90858`, CI run
 [35805773505](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/35805773505), all jobs
-green) adopted `docs/COMPLETE_REMAINING_BUILD_PLAN.md` v1.1 and closed out the P0 baseline. A
+green) proposed adopting `docs/COMPLETE_REMAINING_BUILD_PLAN.md` v1.1 to close out the P0 baseline.
+It has not merged and P0 is not accepted — that PR remains open, pending review, and is being
+superseded (see the later entry below) rather than closed-out. A
 second model acting as PLANNER reviewed that exact head and returned six findings; two were
 concrete document defects, independently verified against the PR diff and fixed on a separate
 branch, `claude/dsb-pro-p0-docs-pgnc2w` (this session has no permission to push to PR #36's
