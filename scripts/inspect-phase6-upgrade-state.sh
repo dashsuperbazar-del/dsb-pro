@@ -11,7 +11,16 @@ base_ok=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -c \
   "select to_regclass('public.sync_conflicts') is not null and to_regprocedure('public.phase5_sync_pull(text,uuid,integer,jsonb)') is not null and to_regprocedure('public.phase5_sync_post_sale(text,integer,uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text)') is not null;")
 [[ "$base_ok" == "t" ]] || { echo 'Database is not at verified Phase 5; refusing Phase 6 migration.' >&2; exit 1; }
 
-read -r foundation hardening phase65 batcha batchb p1 <<<"$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -F' ' <<'SQL'
+# The DO block below (needed so a pre-P1 database doesn't fail to parse a
+# flat reference to app_migration_receipts) prints its own "DO" command tag
+# to stdout ahead of the final SELECT's tuple row -- psql prints a command
+# tag for every non-SELECT statement in a script/heredoc, regardless of -At
+# (which only affects SELECT result formatting, not command-completion
+# tags). `read -r ... <<<"$(...)"` only ever consumes the FIRST line of a
+# here-string, so without this fix `foundation` would be bound to the
+# literal string "DO" and every other field would come out empty. Take the
+# LAST line of psql's output instead, which is always the actual tuple row.
+psql_state_output=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -F' ' <<'SQL'
 -- PL/pgSQL embeds each command as a separately-prepared SPI statement,
 -- resolved only when control flow actually reaches it. That lets the IF
 -- branch below reference app_migration_receipts's rows without erroring on
@@ -96,7 +105,8 @@ select
   (select count(*) from batchb where present),
   (select count(*) from p1 where present);
 SQL
-)"
+)
+read -r foundation hardening phase65 batcha batchb p1 <<<"$(tail -n1 <<<"$psql_state_output")"
 
 emit_state() {
   local needs_foundation=$1 needs_hardening=$2 needs_phase65=$3 needs_batcha=$4 needs_batchb=$5 needs_p1=$6
