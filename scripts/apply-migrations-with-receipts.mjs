@@ -237,6 +237,34 @@ async function main(argv) {
             }
           }
 
+          if (entry.version === '0044' && receiptTableExists) {
+            // 0044's own schema (app_migration_receipts) already exists
+            // but has no receipt yet -- exactly the state every fresh
+            // `supabase db reset` + disposable bootstrap passes through,
+            // and the classifier now reports as needs_p1=true without
+            // refusing (per the p1-tuple fix above). Blindly re-running
+            // 0044's CREATE TABLE here would fail with "relation already
+            // exists" instead of gracefully recording the missing receipt
+            // for schema that is already correct. This is deliberately
+            // narrow to 0044: it is the only migration this runner can
+            // verify is idempotent-by-construction (its own target table's
+            // existence IS the check). Any OTHER receipt-tracked migration
+            // reaching this exact state (schema-shaped-object exists, no
+            // receipt, but this isn't 0044) is genuinely ambiguous -- it
+            // could be a legitimate first-time apply of brand-new schema,
+            // or content applied outside this tooling -- and must go
+            // through the attended baseline-receipt initialization path,
+            // never be silently guessed here.
+            console.log(`Skipping ${entry.relativePath}'s SQL: schema already present; recording its receipt.`);
+            await client.query(
+              `insert into app_migration_receipts (version, checksum_sha256)
+               values ($1, $2)
+               on conflict (version) do nothing`,
+              [entry.version, entry.checksumSha256],
+            );
+            continue;
+          }
+
           const sql = entry.bytes.toString('utf8');
           await client.query(sql);
 
