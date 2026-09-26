@@ -23,6 +23,7 @@
 //     node scripts/bootstrap-disposable-receipts.mjs <database-url> --disposable-target-only
 import pg from 'pg';
 import { loadManifest, ManifestError } from './verify-migration-manifest.mjs';
+import { getClassifierState } from './apply-migrations-with-receipts.mjs';
 
 const { Client } = pg;
 
@@ -55,6 +56,32 @@ async function main(argv) {
     throw error;
   }
 
+  // Schema assurance: this target must already be at the full end-state
+  // every manifest entry claims to represent -- every group the classifier
+  // knows about must report needs_<group>=false. Without this, a database
+  // that only ran a partial `supabase db reset` (or was reset against a
+  // stale migrations directory) would get backfilled with receipts for
+  // migrations whose schema was never actually applied, which is exactly
+  // the "receipts prove applied bytes, not absence of tampering" gap this
+  // bootstrap must not add to. `getClassifierState` shells out to the same
+  // trusted classifier the runner and live job use, not a re-derived check.
+  const classifierState = getClassifierState(databaseUrl);
+  // needs_upgrade is the classifier's own summary flag ("is anything still
+  // needed at all"), not a real group name -- exclude it from the list of
+  // named unsatisfied groups.
+  const unsatisfied = Object.entries(classifierState).filter(
+    ([group, needed]) => needed === true && group !== 'upgrade',
+  );
+  if (unsatisfied.length > 0) {
+    console.error(
+      `Refusing to bootstrap: this database is not at the full expected schema state ` +
+        `(still needs: ${unsatisfied.map(([group]) => group).join(', ')}). The disposable bootstrap ` +
+        `only backfills receipts for schema that genuinely already exists; it never creates schema.`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   const client = new Client({ connectionString: databaseUrl });
   await client.connect();
   try {
@@ -70,10 +97,23 @@ async function main(argv) {
     await client.query('begin');
     try {
       for (const entry of entries) {
+        const existing = await client.query(
+          'select checksum_sha256 from app_migration_receipts where version = $1',
+          [entry.version],
+        );
+        if (existing.rowCount > 0) {
+          if (existing.rows[0].checksum_sha256 !== entry.checksumSha256) {
+            throw new Error(
+              `Refusing to bootstrap: an existing receipt for ${entry.version} does not match the ` +
+                `file on disk. A silent ON CONFLICT DO NOTHING would hide this mismatch instead of ` +
+                `surfacing it; bootstrapping never overwrites a conflicting receipt.`,
+            );
+          }
+          continue;
+        }
         await client.query(
           `insert into app_migration_receipts (version, checksum_sha256)
-           values ($1, $2)
-           on conflict (version) do nothing`,
+           values ($1, $2)`,
           [entry.version, entry.checksumSha256],
         );
       }

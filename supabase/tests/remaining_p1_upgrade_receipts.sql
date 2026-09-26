@@ -11,8 +11,14 @@ select has_column('public', 'app_migration_receipts', 'applied_at', 'has applied
 select has_column('public', 'app_migration_receipts', 'applied_by', 'has applied_by column');
 select col_is_pk('public', 'app_migration_receipts', 'version', 'version is the primary key');
 
--- Its own migration (0044) is recorded, proving the receipt writer ran in
--- the same transaction as this migration during db reset/CI bootstrap.
+-- A receipt for 0044 itself exists. In THIS job (pgtap, via `supabase db
+-- reset` + the disposable-only backfill bootstrap), that receipt was
+-- written by scripts/bootstrap-disposable-receipts.mjs, not by the atomic
+-- Node transaction runner -- this assertion proves the row's shape and
+-- presence, not same-transaction atomicity. Atomicity (the runner commits
+-- schema + receipt together, or rolls back both) is proven separately by
+-- the phase6_db_upgrade_proof job's live apply/no-op-rerun/checksum-tamper
+-- CI steps against scripts/apply-migrations-with-receipts.mjs directly.
 select ok(
   exists(select 1 from app_migration_receipts where version = '0044'),
   'receipt for 0044 itself is recorded'

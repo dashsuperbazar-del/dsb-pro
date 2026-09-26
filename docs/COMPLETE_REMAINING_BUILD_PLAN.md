@@ -271,6 +271,23 @@ P1/C0a are intentionally separated: P1 introduces guarded migration receipts; C0
 
 Maintain `docs/BUILD_EXECUTION_LEDGER.md` with packet state (`NOT_STARTED`, `IN_PROGRESS`, `CODE_REVIEW`, `CI_PASSED`, `HUMAN_PENDING`, `ACCEPTED`, `BLOCKED`), branch/head, changed migration hashes, test names/counts, two CI run IDs, reviewer, rollout requirement, remaining gate and next step. This is a status ledger, not a manually asserted green badge.
 
+### 4.2 Packet 0.5 amendment (recorded 2026-09-26, in P1's PR)
+
+The dependency-graph reconciliation required by this section produced real corrections to the table
+above, recorded in full in `docs/BUILD_EXECUTION_LEDGER.md`'s "Packet 0.5" section (not duplicated
+here to avoid the two documents drifting apart). Two items affect this plan directly, not just the
+ledger's tracking columns:
+
+- **G1**'s `public_catalog` schema (§17) has no migration allocated in Appendix C1. Its SQL foundation
+  (projection/grants/RLS tests) is assigned to G0's `0057_storefront_configuration.sql` instead; G1
+  keeps only API/cache/asset work and integration tests.
+- **S3**'s support-ticket persistence (§18) has no baseline tables and no S3 migration. That schema
+  foundation and its operator-read policy are assigned to S2's `0061_saas_billing.sql` instead; S3
+  implements the service/UI and isolation tests against it.
+
+The G/S coding-decoupling amendment (user decision, 2026-09-26) is also recorded in that same ledger
+section, per this section's instruction to record it here rather than as a separate document.
+
 ---
 
 ## 5. P0–P1: establish a safe execution base
@@ -1360,6 +1377,8 @@ Use these names if 0044 remains the next unused app migration. If another PR con
 | S2 | supabase/migrations/0061_saas_billing.sql | supabase/tests/remaining_s2_saas_billing.sql |
 
 G5 is deliberately **not** an app migration. Operator control has its own migration ledger/bootstrap and explicit schema/role tests; it does not assume tenants/shops from the business database. Its deployment registry and health tables are global operator-control exceptions to app tenant columns, use deployment_id, and are readable only by authenticated authorized operators. Do not reserve an unused app migration simply to maintain a visual numbering sequence.
+
+G1 and S3 have no rows above: per the §4.2 Packet 0.5 amendment, `public_catalog`'s schema foundation lives in G0's `0057_storefront_configuration.sql` and support-ticket persistence lives in S2's `0061_saas_billing.sql`. Neither gets its own migration number.
 
 ### C2. Remaining endpoint contracts
 

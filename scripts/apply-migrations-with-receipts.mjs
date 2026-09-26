@@ -14,9 +14,65 @@
 //
 // Never logs the database URL or any connection string.
 import pg from 'pg';
-import { loadManifest, ALLOWED_GROUPS, ManifestError } from './verify-migration-manifest.mjs';
+import { execFileSync } from 'node:child_process';
+import { join } from 'node:path';
+import { loadManifest, ALLOWED_GROUPS, ManifestError, REPO_ROOT } from './verify-migration-manifest.mjs';
 
 const { Client } = pg;
+
+// Same order the legacy classifier (scripts/inspect-phase6-upgrade-state.sh)
+// emits its needs_<group> flags in. This is the one place that ordering is
+// duplicated as data (not logic) -- the actual state determination stays in
+// the shell classifier; this file only reads its output.
+const GROUP_ORDER = ['foundation', 'hardening', 'phase65', 'batcha', 'batchb', 'p1'];
+
+/**
+ * Shells out to the same classifier the live CI/attended-upgrade path uses,
+ * so this runner cannot be invoked directly against an under-migrated
+ * database and bypass the prerequisite checks that classifier already
+ * proves (mechanism point 2's "preceding-state compatibility", finding:
+ * "prove direct runner invocation cannot bypass these checks"). Refusing
+ * here reuses the classifier's own refusal (partial/out-of-order schema,
+ * wrong Phase 5 baseline) rather than re-implementing that logic.
+ */
+export function getClassifierState(databaseUrl, { repoRoot = REPO_ROOT } = {}) {
+  const scriptPath = join(repoRoot, 'scripts', 'inspect-phase6-upgrade-state.sh');
+  const output = execFileSync('bash', [scriptPath, databaseUrl], { encoding: 'utf8' });
+  const state = {};
+  for (const line of output.split('\n')) {
+    const match = /^needs_(\w+)=(true|false)$/.exec(line.trim());
+    if (match) state[match[1]] = match[2] === 'true';
+  }
+  return state;
+}
+
+/**
+ * Pure prerequisite check, separated from the shell-out above so it can be
+ * unit-tested without a live database. Every group ordered strictly before
+ * the earliest requested group must already be satisfied (needs_<group>
+ * === false). This does NOT require the requested groups themselves to be
+ * unsatisfied -- rerunning an already-applied group is a deliberate no-op
+ * (proof matrix requirement), handled separately by the checksum-match
+ * skip logic below, not by this gate.
+ */
+export function checkPrerequisites(requestedGroups, classifierState) {
+  const requestedIndices = [...requestedGroups]
+    .map((group) => GROUP_ORDER.indexOf(group))
+    .filter((index) => index >= 0);
+  if (requestedIndices.length === 0) return;
+  const earliestIndex = Math.min(...requestedIndices);
+  for (let i = 0; i < earliestIndex; i += 1) {
+    const group = GROUP_ORDER[i];
+    if (classifierState[group] !== false) {
+      throw new Error(
+        `Refusing to apply group(s) starting at "${GROUP_ORDER[earliestIndex]}": prerequisite group ` +
+          `"${group}" is not yet satisfied on this database (classifier reports needs_${group}=` +
+          `${classifierState[group]}). Migrations must be applied in order; this is not a repairable ` +
+          `local skip.`,
+      );
+    }
+  }
+}
 
 function usageError(message) {
   console.error(message);
@@ -71,13 +127,14 @@ async function main(argv) {
     return;
   }
 
-  // Preceding-state compatibility: every manifest entry strictly before the
-  // first selected one, from a group NOT in this run, must already have a
-  // receipt (or be a pre-P1 legacy migration this run does not track — the
-  // legacy classifier in inspect-phase6-upgrade-state.sh is responsible for
-  // 0030-0043 preceding-state checks; this runner enforces it for any
-  // migration versioned at or after the first row this runner ever wrote
-  // receipts for, i.e. 0044 onward).
+  // Preceding-state compatibility, enforced by reusing the trusted
+  // classifier rather than re-deriving schema state here: a direct
+  // invocation of this runner (bypassing scripts/apply-phase6-upgrade.sh
+  // and whatever preflight its caller normally runs) cannot skip ahead of
+  // an unmet prerequisite group.
+  const classifierState = getClassifierState(databaseUrl);
+  checkPrerequisites(requested, classifierState);
+
   const client = new Client({ connectionString: databaseUrl });
   await client.connect();
   try {
