@@ -1282,3 +1282,53 @@ ready for review. Stacks on nothing else currently open — based directly on th
 
 **Remaining Phase 6.5 work:** §10 shell work (bottom nav, error taxonomy, empty/loading states,
 i18n, dark mode) is the last item on the plan §19.1 list, then the dry-run gate described above.
+
+## 2026-09-26 — PR #36 (P0 docs baseline) round-1 review corrections
+
+PR #36 (`claude/eloquent-mccarthy-m8m5cj` @ `bf90858`, CI run
+[35805773505](https://github.com/dashsuperbazar-del/dsb-pro/actions/runs/35805773505), all jobs
+green) proposed adopting `docs/COMPLETE_REMAINING_BUILD_PLAN.md` v1.1 to close out the P0 baseline.
+It has not merged and P0 is not accepted — that PR remains open, pending review, and is being
+superseded (see the later entry below) rather than closed-out. A
+second model acting as PLANNER reviewed that exact head and returned six findings; two were
+concrete document defects, independently verified against the PR diff and fixed on a separate
+branch, `claude/dsb-pro-p0-docs-pgnc2w` (this session has no permission to push to PR #36's
+branch), commit `2afcff9`:
+
+1. **Appendix C stale migration numbering.** The packet registry (§4, table) already had the
+   correct split — P1=0044, P2=0045, C0a=0046, C0b=0047, C1=0048, C3=0049, D1=0050, matching
+   `docs/BUILD_EXECUTION_LEDGER.md` — but Appendix C's "exact file allocation" table still had the
+   pre-split numbering (C0 unsplit at 0045, C1 at 0046, ..., missing a P2 row entirely). Rewrote
+   Appendix C's filename table to match the packet registry exactly.
+2. **C0a revert scope.** §6 said C0a is "independently revertible by a forward migration that
+   drops the new objects, since nothing outside this packet depends on them yet" with no statement
+   of what happens once something *does* depend on them (C0b's own restore rule in §3.4 already
+   requires preserving `financial_requests`, but §6 read as a standing blanket permission to drop
+   it). Added an explicit caveat: dropping is safe only before C0b/C1/later packets read those
+   objects; after that, a forward-restore must preserve them per §3.4, not remove them.
+3. **Ledger stale SHA and review-model overclaim.** `docs/BUILD_EXECUTION_LEDGER.md`'s P0 row cited
+   an already-superseded head (`a18a113`) instead of the actual PR head (`bf90858`, run 594,
+   verified via the GitHub Actions API) and marked the two-green-runs gate as not applicable
+   instead of "not yet satisfied — only one qualifying run recorded." Its review-model note also
+   declared Claude "the only reviewer for every packet going forward," which is inaccurate in a
+   session where a second model plays PLANNER (as round 1 here did) — corrected to record the
+   second model as reviewer when a real independent review happens, and to describe self-review as
+   a per-session gap, not a permanent policy.
+
+The other four PLANNER findings from round 1: governance/merge-policy ratification and adoption-
+packet completeness were already addressed in the existing diff (CLAUDE.md's merge-policy
+paragraph already defers ratification to the user); the C0b absolute-latency-ceiling gap is now
+recorded as an explicit open item in `docs/COMPLETE_REMAINING_BUILD_PLAN.md` §3.4, to be resolved
+with a measured baseline before C0b implementation starts, not before this P0 packet; the broader
+review-gate wording finding is folded into item 3 above. No application code, schema, or CI
+configuration changed in this correction; C1–S2 remain `NOT_STARTED` and unauthorized for
+implementation.
+
+**Correction (same day):** the paragraph above originally said these fixes were "staged for the
+next push to that PR" (#36) — wrong, since this session cannot push to #36's branch. They are
+committed to `claude/dsb-pro-p0-docs-pgnc2w` instead. PR #36's CI run 594 on `bf90858` is
+historical evidence for that branch only; it does not carry over to this corrected branch, which
+has no CI run recorded against it yet (see `docs/BUILD_EXECUTION_LEDGER.md`'s P0 row). Plan: open
+a new PR from `claude/dsb-pro-p0-docs-pgnc2w` to `main` that supersedes #36, get two full green CI
+runs on that PR's final unchanged head, then close #36 as superseded once the replacement PR's
+diff is confirmed equivalent-or-better.
