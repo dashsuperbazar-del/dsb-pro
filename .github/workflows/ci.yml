@@ -212,18 +212,28 @@ jobs:
 
           # Scenario: schema exists (0044 already ran) but its receipt is
           # missing -- the exact state every fresh disposable reset passes
-          # through before the bootstrap backfill runs. A normal apply must
-          # gracefully record the missing receipt, not fail with
-          # "relation already exists" from blindly re-running the CREATE
-          # TABLE, and not duplicate the receipt if run again after.
+          # through before the bootstrap backfill runs. Ordinary apply must
+          # REFUSE here, not silently insert a receipt asserting bytes it
+          # never actually ran: a receipt is an audit-trail claim, and this
+          # runner's classifier checks are far too shallow (column names,
+          # RLS-enabled, no stray grant) to honestly back that claim for
+          # schema it didn't itself just create. Only the disposable-target
+          # bootstrap (a separate, explicitly narrower script) may fill
+          # this gap; ordinary apply must not.
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c \
             "delete from app_migration_receipts where version = '0044'"
           assert_state '5:2:5:2:3:3'
-          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" p1
-          assert_state '5:2:5:2:3:4'
+          if scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" p1; then
+            echo "Ordinary apply silently backfilled a receipt for schema it didn't create -- must refuse" >&2
+            exit 1
+          fi
           receipt_count=$(psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -At -c \
             "select count(*) from app_migration_receipts where version='0044'")
-          [[ "$receipt_count" == "1" ]] || { echo "Backfill-after-missing-receipt produced $receipt_count rows, not 1" >&2; exit 1; }
+          [[ "$receipt_count" == "0" ]] || { echo "Refused apply still left $receipt_count receipt row(s) behind" >&2; exit 1; }
+          # Restore the receipt (via the disposable bootstrap, the correct
+          # tool for this) so subsequent scenarios see the expected state.
+          DISPOSABLE_RECEIPTS_BOOTSTRAP=1 node scripts/bootstrap-disposable-receipts.mjs "$PROOF_DB_URL" --disposable-target-only
+          assert_state '5:2:5:2:3:4'
 
           # Scenario: a deliberately corrupted historical checksum is
           # refused, not silently accepted or "repaired".
