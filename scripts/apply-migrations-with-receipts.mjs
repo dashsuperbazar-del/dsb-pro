@@ -119,6 +119,22 @@ export function checkPrerequisites(requestedGroups, classifierState) {
   }
 }
 
+/**
+ * Pure predicate for the "schema exists but no receipt" refusal, extracted
+ * and exported specifically so this exact class of regression can be
+ * probed deterministically without a live database. A prior version of
+ * this guard used `tracksReceipts && receiptTableExists` (true for ANY
+ * receipt-tracked entry once the receipts table exists at all -- which is
+ * forever, after P1 merges), which would have refused every future
+ * migration's legitimate first-time apply. Only entry.version === '0044'
+ * is genuinely self-referential (its own target object IS the receipts
+ * table); every other entry reaching this point with no receipt row is
+ * simply its normal first-time apply, never ambiguous.
+ */
+export function isAmbiguousSchemaExistsCase(entry, receiptTableExists) {
+  return entry.version === '0044' && receiptTableExists;
+}
+
 function usageError(message) {
   console.error(message);
   console.error(`usage: node scripts/apply-migrations-with-receipts.mjs <database-url> <${ALLOWED_GROUPS.join('|')}|all> [...]`);
@@ -237,26 +253,34 @@ async function main(argv) {
             }
           }
 
-          if (tracksReceipts && receiptTableExists) {
-            // Schema already exists but has no receipt for this version
-            // (the "awaiting bootstrap" state the classifier now reports
-            // as needs_p1=true without hard-refusing, per the p1-tuple
-            // fix). A first draft of this fix had normal apply silently
-            // insert a receipt here for the 0044 case specifically. That
-            // was wrong to add: a receipt is an audit-trail assertion that
-            // these exact bytes were actually run, and the classifier's
-            // three shallow structural checks (column names, RLS-enabled,
-            // no anon/authenticated grant) do not verify complete types,
-            // constraints, defaults or effective privileges -- nowhere
-            // near enough to honestly back that assertion for schema this
-            // runner did not itself just create. Ordinary apply must
-            // refuse here, not guess; a real backfill belongs only to a
-            // separate, explicitly-attended (or disposable-target-
-            // verified) initialization path -- which is
-            // scripts/bootstrap-disposable-receipts.mjs for CI/disposable
-            // targets today, and remains a tracked follow-up for a live
-            // production target (see docs/BUILD_EXECUTION_LEDGER.md's P1
-            // row).
+          if (isAmbiguousSchemaExistsCase(entry, receiptTableExists)) {
+            // This guard must be scoped to 0044 SPECIFICALLY, not to
+            // "any receipt-tracked entry once the receipts table exists" --
+            // a broader `tracksReceipts && receiptTableExists` condition
+            // (a real bug in the previous commit, caught by direct
+            // extracted-function probes before this one shipped) would
+            // refuse EVERY future migration's legitimate first-time apply
+            // forever after P1 merges, since app_migration_receipts exists
+            // permanently from then on. 0044 is the one self-referential
+            // case: its own target object IS the receipts table, so
+            // "receiptTableExists with no receipt row" is ambiguous for it
+            // specifically (awaiting bootstrap vs. genuine drift). Any
+            // OTHER entry reaching this point with existing.rowCount===0
+            // is simply its normal, legitimate first-time apply -- there is
+            // no table-existence self-check available for it, and there
+            // shouldn't need to be one: a missing receipt for a
+            // never-before-selected version is not ambiguous, it's just
+            // new.
+            //
+            // A receipt is an audit-trail assertion that these exact bytes
+            // were actually run, and the classifier's three shallow
+            // structural checks (column names, RLS-enabled, no stray
+            // grant) don't verify complete types/constraints/defaults/
+            // effective privileges -- nowhere near enough to honestly back
+            // that assertion for schema this runner didn't itself just
+            // create. Refuse and route to the disposable-target bootstrap
+            // (CI/local) or attended baseline-receipt initialization (a
+            // live database, tracked as follow-up work), never guess.
             throw new Error(
               `${entry.relativePath}'s target schema already exists but has no receipt. Ordinary apply ` +
                 `refuses to guess whether these bytes actually produced it: run the disposable-target ` +
