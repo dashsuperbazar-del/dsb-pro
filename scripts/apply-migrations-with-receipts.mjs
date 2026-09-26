@@ -51,7 +51,16 @@ export function getClassifierState(databaseUrl, { repoRoot = REPO_ROOT } = {}) {
     // would all leak it. Re-throw a sanitized error with only the
     // classifier's own stderr (the actual refusal reason: partial/
     // out-of-order schema, wrong Phase 5 baseline), never the command/argv.
-    const stderr = typeof error.stderr === 'string' ? error.stderr.trim() : String(error.stderr ?? '').trim();
+    const rawStderr = typeof error.stderr === 'string' ? error.stderr.trim() : String(error.stderr ?? '').trim();
+    // Defense in depth beyond stripping argv above: also redact any
+    // URI-shaped substring (scheme://[user[:pass]@]host...) that the
+    // classifier's own stderr might contain. No real psql failure mode
+    // observed in this session's own probes actually echoes the
+    // connection string back, but a reviewer's simulated-child probe
+    // reasonably raised it as plausible for some libpq error path or a
+    // future wrapped tool -- this makes it unconditionally safe rather
+    // than dependent on today's observed psql behavior never changing.
+    const stderr = rawStderr.replace(/[a-zA-Z][a-zA-Z0-9+.-]*:\/\/\S+/g, '<redacted-connection-string>');
     // Deliberate: `cause` must NOT be the caught error itself here.
     // execFileSync's error carries the full command/argv (the database
     // URL, possibly with a password) in its own .message/.cmd fields --

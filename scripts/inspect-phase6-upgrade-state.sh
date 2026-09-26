@@ -70,43 +70,59 @@ with foundation(present) as (
       like '%atmost6places%'),
     (regexp_replace(pg_get_functiondef('public.phase5_sync_post_sale(text,integer,uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text)'::regprocedure), E'\\s+', '', 'g')
       like '%''intentFingerprint'',v_intent_fingerprint%')
-), p1(present) as (
-  -- Group p1 (Packet P1): app_migration_receipts exists with the expected
-  -- shape and access, RLS enabled with no grants to anon/authenticated. This
-  -- checks structure and grants, not merely "a table with this name exists"
-  -- (mechanism point 6): a same-named table missing columns, RLS, or with a
-  -- stray anon/authenticated grant does not count as present. All checks
-  -- here use to_regclass()/information_schema, which are safe (return
-  -- null/no-rows rather than erroring) when the table does not exist yet —
-  -- unlike a literal `from app_migration_receipts` or a `::regclass` cast
-  -- of its name, which would fail to parse pre-P1. The fourth signal (a
-  -- recorded 0044 receipt) is checked separately below via dynamic SQL,
-  -- since it requires a literal reference to the table's rows.
-  values
-    (to_regclass('public.app_migration_receipts') is not null
-      and (select count(*) from information_schema.columns
-           where table_schema='public' and table_name='app_migration_receipts'
-             and column_name in ('version','checksum_sha256','applied_at','applied_by')) = 4),
-    (to_regclass('public.app_migration_receipts') is not null
-      and exists(select 1 from pg_class where oid=to_regclass('public.app_migration_receipts') and relrowsecurity)),
-    (to_regclass('public.app_migration_receipts') is not null
-      and not exists(
-        select 1 from information_schema.role_table_grants
-        where table_schema='public' and table_name='app_migration_receipts'
-          and grantee in ('anon','authenticated')
-      )),
-    (coalesce((select present from _p1_receipt_check), false))
 )
+-- Group p1 (Packet P1)'s four signals are emitted INDIVIDUALLY, not
+-- reduced to a count. A count conflates two structurally different
+-- 3-of-4 states: (shape, rls, no_grants, NOT receipt) -- the legitimate
+-- "schema ready, receipt not yet backfilled" state every fresh disposable
+-- reset passes through before scripts/bootstrap-disposable-receipts.mjs
+-- runs -- with (shape, rls, NOT no_grants, receipt) -- a stray
+-- anon/authenticated grant added AFTER full completion, which is real
+-- corruption. Both produce count=3; only checking the actual 4-tuple can
+-- tell them apart. All checks use to_regclass()/information_schema, which
+-- are safe (return null/no-rows rather than erroring) when the table does
+-- not exist yet.
 select
   (select count(*) from foundation where present),
   (select count(*) from hardening where present),
   (select count(*) from phase65 where present),
   (select count(*) from batcha where present),
   (select count(*) from batchb where present),
-  (select count(*) from p1 where present);
+  (to_regclass('public.app_migration_receipts') is not null
+    and (select count(*) from information_schema.columns
+         where table_schema='public' and table_name='app_migration_receipts'
+           and column_name in ('version','checksum_sha256','applied_at','applied_by')) = 4) as p1_shape,
+  (to_regclass('public.app_migration_receipts') is not null
+    and exists(select 1 from pg_class where oid=to_regclass('public.app_migration_receipts') and relrowsecurity)) as p1_rls,
+  (to_regclass('public.app_migration_receipts') is not null
+    and not exists(
+      select 1 from information_schema.role_table_grants
+      where table_schema='public' and table_name='app_migration_receipts'
+        and grantee in ('anon','authenticated')
+    )) as p1_no_grants,
+  (coalesce((select present from _p1_receipt_check), false)) as p1_receipt;
 SQL
 )
-read -r foundation hardening phase65 batcha batchb p1 <<<"$(tail -n1 <<<"$psql_state_output")"
+read -r foundation hardening phase65 batcha batchb p1_shape p1_rls p1_no_grants p1_receipt \
+  <<<"$(tail -n1 <<<"$psql_state_output")"
+
+# Validate the raw p1 4-tuple against the only three legitimate
+# combinations BEFORE reducing it to a count for the legacy switch below.
+# Anything else (RLS disabled while the table exists, a stray grant, a
+# receipt recorded for a table that doesn't structurally match, etc.) is
+# real drift and refuses immediately with a specific reason, rather than
+# falling through to the legacy switch's generic "partial or out-of-order"
+# message or -- worse -- being silently accepted because it happens to
+# share a count with a legitimate state.
+case "$p1_shape:$p1_rls:$p1_no_grants:$p1_receipt" in
+  f:f:f:f) p1=0 ;;   # not started
+  t:t:t:f) p1=3 ;;   # schema ready, receipt not yet backfilled (legitimate)
+  t:t:t:t) p1=4 ;;   # fully complete
+  *)
+    echo "app_migration_receipts schema/grant drift detected (shape=$p1_shape rls=$p1_rls no_grants=$p1_no_grants receipt=$p1_receipt). Refusing migration." >&2
+    exit 1
+    ;;
+esac
 
 emit_state() {
   local needs_foundation=$1 needs_hardening=$2 needs_phase65=$3 needs_batcha=$4 needs_batchb=$5 needs_p1=$6
@@ -139,6 +155,7 @@ case "$foundation:$hardening:$phase65:$batcha:$batchb:$p1" in
   5:2:5:0:0:0) emit_state false false false true true true ;;
   5:2:5:2:0:0) emit_state false false false false true true ;;
   5:2:5:2:3:0) emit_state false false false false false true ;;
+  5:2:5:2:3:3) emit_state false false false false false true ;;
   5:2:5:2:3:4) emit_state false false false false false false ;;
   *)
     echo "Partial or out-of-order Phase 6 schema detected ($foundation/5 foundation, $hardening/2 hardening, $phase65/5 Phase 6.5, $batcha/2 Batch A, $batchb/3 Batch B, $p1/4 P1). Refusing migration." >&2
