@@ -68,6 +68,18 @@ const EXPECTED_LEGACY_ENTRIES = Object.freeze({
   '0043': ['batchb', 'supabase/migrations/0043_phase65_fixed_point_sale_ack.sql', 'cb191c062c3ed9edcfdd1a4ffcb330f969fa647031176c287f95f63511d4730e'],
 });
 
+// Group/path can be frozen for an in-flight (not yet merged) entry the
+// instant its PR author commits to a name, even though its checksum can
+// still change under review (unlike 0030-0043, which are genuinely
+// immutable once merged). There is no reason to wait for merge to catch
+// "reassigned to the wrong group" for a migration this same PR already
+// controls -- version -> [group, relativePath], checksum intentionally
+// omitted. Move an entry here into EXPECTED_LEGACY_ENTRIES (with its
+// checksum) once it has actually merged to `main`.
+const EXPECTED_IN_FLIGHT_GROUP_AND_PATH = Object.freeze({
+  '0044': ['p1', 'supabase/migrations/0044_upgrade_receipts.sql'],
+});
+
 /**
  * Reads and validates the manifest. Returns an ordered array of
  * { version, group, relativePath, absolutePath, bytes, checksumSha256 }.
@@ -131,6 +143,18 @@ export function loadManifest({ manifestPath = MANIFEST_PATH, repoRoot = REPO_ROO
             `(expected group "${expectedGroup}", path "${expectedPath}", checksum "${expectedChecksum}"). ` +
             `Migrations 0030-0043 are immutable; this is either manifest tampering or a historical file ` +
             `was edited in place, neither of which is a repairable local change.`,
+        );
+      }
+    }
+
+    const expectedInFlight = EXPECTED_IN_FLIGHT_GROUP_AND_PATH[version];
+    if (expectedInFlight) {
+      const [expectedGroup, expectedPath] = expectedInFlight;
+      if (group !== expectedGroup || relativePath !== expectedPath) {
+        throw new ManifestError(
+          `Manifest line ${index + 1}: entry "${version}" does not match its expected group/path ` +
+            `(expected group "${expectedGroup}", path "${expectedPath}"). This entry hasn't merged yet, ` +
+            `so its checksum may still change, but its group and path are already committed for this PR.`,
         );
       }
     }

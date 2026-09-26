@@ -2,7 +2,10 @@
 
 Packet-state tracker for `docs/COMPLETE_REMAINING_BUILD_PLAN.md` v1.1, per that plan's §4.1 and
 §0.4 execution protocol. States: `NOT_STARTED` / `IN_PROGRESS` / `CODE_REVIEW` / `CI_PASSED` /
-`HUMAN_PENDING` / `ACCEPTED` / `BLOCKED`. No row is marked `ACCEPTED` without the two-green-runs-
+`HUMAN_PENDING` / `ACCEPTED` / `BLOCKED`. `ACCEPTED` is this file's terminal state and is the same
+event the dual-builder peer protocol's own gate language (§9) calls "MERGED" -- both terms describe
+the same thing (code merged to `main`, CI-proven, peer-reviewed); a row may show either or both. No
+row is marked `ACCEPTED` without the two-green-runs-
 on-unchanged-head evidence this file requires; no evidence is recorded here without an actual run
 ID/URL to back it — an unverified claim is not entered.
 
@@ -34,7 +37,7 @@ is unaffected by this gap and remains theirs alone.
 
 | Packet | State | Branch / head SHA | Migration(s) | Test count/names | CI run 1 | CI run 2 | Reviewer | Rollout req. | Remaining gate | Next step |
 |---|---|---|---|---|---|---|---|---|---|---|
-| P0 | ACCEPTED | Squash-merged to `main` at `ed678512b257002bb31fc42c60ef9a91ebfbccfc` (was PR #37, `claude/dsb-pro-p0-docs-pgnc2w` @ frozen head `22a58b04fa6d5d9dd096d1d0edb3cc2d1725c269`) | none | n/a (docs only) | `36232843034` (`pull_request`, success) | `36233177164` (`workflow_dispatch operation=validate`, success) — both on the exact frozen head `22a58b04f`, verified directly against `get_check_runs`, not merely cited | GPT (PLANNER role): round 1 on `bf90858` requested changes, resolved on the corrected candidate; round 2 APPROVE @ `22a58b04fa6d5d9dd096d1d0edb3cc2d1725c269` relayed and cross-checked against live CI before merge | none | none — gate satisfied | Historical PR #36 (superseded) and stale PR #24 closed by user authorization same session. Next: P1 build in Lane A (Claude); Packet 0.5 dependency graph sent to GPT for round-1 debate, not yet recorded here. |
+| P0 | ACCEPTED (MERGED) | Squash-merged to `main` at `ed678512b257002bb31fc42c60ef9a91ebfbccfc` (was PR #37, `claude/dsb-pro-p0-docs-pgnc2w` @ frozen head `22a58b04fa6d5d9dd096d1d0edb3cc2d1725c269`) | none | n/a (docs only) | `36232843034` (`pull_request`, success) | `36233177164` (`workflow_dispatch operation=validate`, success) — both on the exact frozen head `22a58b04f`, verified directly against `get_check_runs`, not merely cited | GPT (PLANNER role): round 1 on `bf90858` requested changes, resolved on the corrected candidate; round 2 APPROVE @ `22a58b04fa6d5d9dd096d1d0edb3cc2d1725c269` relayed and cross-checked against live CI before merge | none | none — gate satisfied | Historical PR #36 (superseded) and stale PR #24 closed by user authorization same session. Next: P1 build in Lane A (Claude); Packet 0.5 dependency graph sent to GPT for round-1 debate, not yet recorded here. |
 | P1 | CODE_REVIEW | PR #38, `claude/dsb-pro-peer-protocol-kzokxq` @ `e644d23` | `0044 / upgrade_receipts` | `remaining_p1_upgrade_receipts.sql` (11 pgTAP assertions) | none yet | none yet | GPT (round 1: CHANGES_REQUESTED on `c436096`, 7 findings, CI failure `36244542047`; 6 blockers + 1 major, all independently reproduced or verified against real code by the builder before fixing, not taken on trust) | none (staging proof only) | new CI run on `e644d23` + GPT round-2 review of the disposition; 2 sub-asks in finding 7 declined with evidence (ledger state vocabulary has no "MERGED" state; full ledger column rewrite deferred as separate scope) | Awaiting CI on `e644d23` and GPT's round-2 verdict |
 | P2 | NOT_STARTED | — | `0045 / item_sales_fix` | — | — | — | — | none | P1 ACCEPTED | Sonnet 5 |
 | C0a | NOT_STARTED | — | `0046 / finance_requests` | — | — | — | — | none (additive) | P2 ACCEPTED | Sonnet 5 |

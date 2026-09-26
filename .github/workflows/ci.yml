@@ -220,6 +220,23 @@ jobs:
           fi
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c \
             "update app_migration_receipts set checksum_sha256 = '$expected_checksum' where version = '0044'"
+
+          # Scenario: a stray grant to anon/authenticated on
+          # app_migration_receipts (accidental widening, e.g. a future
+          # `grant all on all tables in schema public` migration) must be
+          # caught by the classifier's p1 signal, not accepted because the
+          # table/columns/RLS otherwise look right.
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c \
+            "grant select on app_migration_receipts to authenticated"
+          state=$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")
+          echo "$state"
+          if grep -Fx 'observed_state=5:2:5:2:3:4' <<<"$state" >/dev/null; then
+            echo "Classifier did not detect the stray authenticated grant on app_migration_receipts" >&2
+            exit 1
+          fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c \
+            "revoke select on app_migration_receipts from authenticated"
+          assert_state '5:2:5:2:3:4'
           echo 'DISPOSABLE PACKET P1 GUARDED UPGRADE RECEIPTS: PASS'
       - name: Stop and erase the disposable target
         if: always()

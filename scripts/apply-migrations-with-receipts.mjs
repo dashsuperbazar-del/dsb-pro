@@ -37,7 +37,34 @@ const GROUP_ORDER = ['foundation', 'hardening', 'phase65', 'batcha', 'batchb', '
  */
 export function getClassifierState(databaseUrl, { repoRoot = REPO_ROOT } = {}) {
   const scriptPath = join(repoRoot, 'scripts', 'inspect-phase6-upgrade-state.sh');
-  const output = execFileSync('bash', [scriptPath, databaseUrl], { encoding: 'utf8' });
+  let output;
+  try {
+    output = execFileSync('bash', [scriptPath, databaseUrl], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (error) {
+    // execFileSync's own thrown error includes the full command and argv
+    // (the database URL, which may carry a password) in its .message --
+    // confirmed directly: `execFileSync('bash', ['-c','exit 1'])`'s error
+    // message is literally "Command failed: bash -c exit 1". GitHub
+    // Actions happens to mask a registered secret in its own log rendering,
+    // but that is a coincidental safety net this code must not depend on --
+    // a local run, a different log sink, or an unregistered credential
+    // would all leak it. Re-throw a sanitized error with only the
+    // classifier's own stderr (the actual refusal reason: partial/
+    // out-of-order schema, wrong Phase 5 baseline), never the command/argv.
+    const stderr = typeof error.stderr === 'string' ? error.stderr.trim() : String(error.stderr ?? '').trim();
+    // Deliberate: `cause` must NOT be the caught error itself here.
+    // execFileSync's error carries the full command/argv (the database
+    // URL, possibly with a password) in its own .message/.cmd fields --
+    // exactly what this catch block exists to strip out. Attaching it as
+    // `cause` would silently reopen the same leak for any logger that
+    // prints an error's cause chain. Only a sanitized subset (exit status/
+    // signal) is preserved.
+    /* eslint-disable preserve-caught-error -- see comment above */
+    throw new Error(`Classifier refused: ${stderr || 'non-zero exit, no stderr captured'}`, {
+      cause: { status: error.status ?? null, signal: error.signal ?? null },
+    });
+    /* eslint-enable preserve-caught-error */
+  }
   const state = {};
   for (const line of output.split('\n')) {
     const match = /^needs_(\w+)=(true|false)$/.exec(line.trim());
@@ -48,27 +75,36 @@ export function getClassifierState(databaseUrl, { repoRoot = REPO_ROOT } = {}) {
 
 /**
  * Pure prerequisite check, separated from the shell-out above so it can be
- * unit-tested without a live database. Every group ordered strictly before
- * the earliest requested group must already be satisfied (needs_<group>
- * === false). This does NOT require the requested groups themselves to be
- * unsatisfied -- rerunning an already-applied group is a deliberate no-op
- * (proof matrix requirement), handled separately by the checksum-match
- * skip logic below, not by this gate.
+ * unit-tested without a live database. Every group ordered at or before the
+ * HIGHEST requested group's position, that is not itself requested in this
+ * same invocation, must already be satisfied (needs_<group> === false).
+ *
+ * A first draft only checked groups before the EARLIEST requested group,
+ * which missed gaps between requested groups: requesting {foundation, p1}
+ * together on a fully-unmigrated database passed silently, silently
+ * skipping hardening/phase65/batcha/batchb entirely. Checking up to the
+ * highest requested index catches that.
+ *
+ * This does NOT require the requested groups themselves to be unsatisfied
+ * -- rerunning an already-applied group is a deliberate no-op (proof
+ * matrix requirement), handled separately by the checksum-match skip logic
+ * below, not by this gate.
  */
 export function checkPrerequisites(requestedGroups, classifierState) {
   const requestedIndices = [...requestedGroups]
     .map((group) => GROUP_ORDER.indexOf(group))
     .filter((index) => index >= 0);
   if (requestedIndices.length === 0) return;
-  const earliestIndex = Math.min(...requestedIndices);
-  for (let i = 0; i < earliestIndex; i += 1) {
+  const highestIndex = Math.max(...requestedIndices);
+  for (let i = 0; i <= highestIndex; i += 1) {
     const group = GROUP_ORDER[i];
+    if (requestedGroups.has(group)) continue;
     if (classifierState[group] !== false) {
       throw new Error(
-        `Refusing to apply group(s) starting at "${GROUP_ORDER[earliestIndex]}": prerequisite group ` +
-          `"${group}" is not yet satisfied on this database (classifier reports needs_${group}=` +
-          `${classifierState[group]}). Migrations must be applied in order; this is not a repairable ` +
-          `local skip.`,
+        `Refusing to apply requested group(s): prerequisite group "${group}" (ordered before or among ` +
+          `the requested groups) is not itself requested and is not yet satisfied on this database ` +
+          `(classifier reports needs_${group}=${classifierState[group]}). Migrations must be applied ` +
+          `in order, with no gaps; this is not a repairable local skip.`,
       );
     }
   }
@@ -135,75 +171,88 @@ async function main(argv) {
   const classifierState = getClassifierState(databaseUrl);
   checkPrerequisites(requested, classifierState);
 
+  // One transaction PER GROUP, not one transaction spanning every selected
+  // group (mechanism point 3: "opens one SQL transaction per explicitly
+  // selected group"). A first draft wrapped the whole invocation in a
+  // single transaction; besides being a more literal reading of the spec,
+  // per-group transactions are also strictly safer for a multi-group
+  // invocation (e.g. "all" on a fresh install): a failure partway through
+  // one group no longer forces rolling back an earlier group that already
+  // committed successfully, so a retry doesn't have to redo already-good
+  // work. Each individual group is still fully atomic on its own.
+  const groupsInOrder = GROUP_ORDER.filter((group) => requested.has(group));
   const client = new Client({ connectionString: databaseUrl });
   await client.connect();
   try {
-    let receiptTableExists = await tableExists(client, 'app_migration_receipts');
+    let totalApplied = 0;
+    for (const group of groupsInOrder) {
+      const groupEntries = selected.filter((entry) => entry.group === group);
+      if (groupEntries.length === 0) continue;
 
-    for (const entry of selected) {
-      console.log(`Queued migration: ${entry.relativePath}`);
-    }
+      let receiptTableExists = await tableExists(client, 'app_migration_receipts');
+      for (const entry of groupEntries) {
+        console.log(`Queued migration: ${entry.relativePath}`);
+      }
 
-    await client.query('begin');
-    try {
-      for (const entry of selected) {
-        // Legacy migrations (0030-0043, versioned below 0044) predate the
-        // receipts mechanism entirely: app_migration_receipts does not
-        // exist while they are being applied for the first time (e.g. the
-        // CI proof job applies foundation/hardening/phase65/batcha/batchb
-        // before p1). Never attempt to read or write that table for them -
-        // doing so unconditionally would fail with "relation does not
-        // exist" the first time any legacy group runs on a pre-P1 database.
-        const tracksReceipts = entry.version >= '0044';
+      await client.query('begin');
+      try {
+        for (const entry of groupEntries) {
+          // Legacy migrations (0030-0043, versioned below 0044) predate the
+          // receipts mechanism entirely: app_migration_receipts does not
+          // exist while they are being applied for the first time (e.g. the
+          // CI proof job applies foundation/hardening/phase65/batcha/batchb
+          // before p1). Never attempt to read or write that table for them
+          // - doing so unconditionally would fail with "relation does not
+          // exist" the first time any legacy group runs on a pre-P1 database.
+          const tracksReceipts = entry.version >= '0044';
 
-        if (tracksReceipts && receiptTableExists) {
-          // Skip-if-already-applied-with-matching-receipt makes a rerun of
-          // a completed group a no-op (proof matrix: "rerun completed
-          // group is no-op only after matching receipt/schema").
-          const existing = await client.query(
-            'select checksum_sha256 from app_migration_receipts where version = $1',
-            [entry.version],
-          );
-          if (existing.rowCount > 0) {
-            const recordedChecksum = existing.rows[0].checksum_sha256;
-            if (recordedChecksum !== entry.checksumSha256) {
-              throw new Error(
-                `Checksum mismatch for already-applied migration ${entry.version}: ` +
-                  `recorded receipt does not match the file on disk. Refusing to reapply or ` +
-                  `silently accept drift; this requires reviewed forward repair, not automatic action.`,
-              );
+          if (tracksReceipts && receiptTableExists) {
+            // Skip-if-already-applied-with-matching-receipt makes a rerun
+            // of a completed group a no-op (proof matrix: "rerun completed
+            // group is no-op only after matching receipt/schema").
+            const existing = await client.query(
+              'select checksum_sha256 from app_migration_receipts where version = $1',
+              [entry.version],
+            );
+            if (existing.rowCount > 0) {
+              const recordedChecksum = existing.rows[0].checksum_sha256;
+              if (recordedChecksum !== entry.checksumSha256) {
+                throw new Error(
+                  `Checksum mismatch for already-applied migration ${entry.version}: ` +
+                    `recorded receipt does not match the file on disk. Refusing to reapply or ` +
+                    `silently accept drift; this requires reviewed forward repair, not automatic action.`,
+                );
+              }
+              console.log(`Skipping ${entry.relativePath}: matching receipt already recorded (no-op).`);
+              continue;
             }
-            console.log(`Skipping ${entry.relativePath}: matching receipt already recorded (no-op).`);
-            continue;
+          }
+
+          const sql = entry.bytes.toString('utf8');
+          await client.query(sql);
+
+          if (tracksReceipts) {
+            // Migration 0044 itself creates app_migration_receipts; only
+            // after that statement has just run in this same transaction
+            // can we insert into it, including its own receipt.
+            await client.query(
+              `insert into app_migration_receipts (version, checksum_sha256)
+               values ($1, $2)
+               on conflict (version) do nothing`,
+              [entry.version, entry.checksumSha256],
+            );
+            receiptTableExists = true;
           }
         }
-
-        const sql = entry.bytes.toString('utf8');
-        await client.query(sql);
-
-        if (tracksReceipts) {
-          // Migration 0044 itself creates app_migration_receipts; only
-          // after that statement has just run in this same transaction can
-          // we insert into it, including its own receipt. Every later
-          // receipt-tracked entry in this same loop can now see the table
-          // too, even though `receiptTableExists` was computed before the
-          // transaction began.
-          await client.query(
-            `insert into app_migration_receipts (version, checksum_sha256)
-             values ($1, $2)
-             on conflict (version) do nothing`,
-            [entry.version, entry.checksumSha256],
-          );
-          receiptTableExists = true;
-        }
+        await client.query('commit');
+      } catch (error) {
+        await client.query('rollback');
+        throw error;
       }
-      await client.query('commit');
-    } catch (error) {
-      await client.query('rollback');
-      throw error;
+      totalApplied += groupEntries.length;
     }
 
-    console.log(`Applied and recorded receipts for ${selected.length} migration(s).`);
+    console.log(`Applied and recorded receipts for ${totalApplied} migration(s) across ${groupsInOrder.length} group(s).`);
   } finally {
     await client.end();
   }
