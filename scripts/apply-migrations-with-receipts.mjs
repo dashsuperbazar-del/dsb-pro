@@ -128,8 +128,18 @@ export function checkPrerequisites(requestedGroups, classifierState) {
  * forever, after P1 merges), which would have refused every future
  * migration's legitimate first-time apply. Only entry.version === '0044'
  * is genuinely self-referential (its own target object IS the receipts
- * table); every other entry reaching this point with no receipt row is
- * simply its normal first-time apply, never ambiguous.
+ * table, so this runner can check its existence directly).
+ *
+ * For every OTHER entry, a missing receipt is the normal signal for "run
+ * it" -- but that is not a proof the target schema was never applied by
+ * some other means (by hand, or by a tool outside this one). This guard
+ * does not and cannot detect that case generically for an arbitrary future
+ * migration; if it happens, the migration's own SQL will typically fail
+ * loudly (e.g. "relation already exists") rather than silently succeeding
+ * or silently skipping, which is a safe failure mode but not a graceful
+ * one. Detecting and handling that gracefully for any migration, not just
+ * 0044, is exactly what the attended baseline-receipt initialization path
+ * (tracked as follow-up work, not built yet) is for.
  */
 export function isAmbiguousSchemaExistsCase(entry, receiptTableExists) {
   return entry.version === '0044' && receiptTableExists;
