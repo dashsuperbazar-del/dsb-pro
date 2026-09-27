@@ -224,6 +224,31 @@ async function main(argv) {
       const groupEntries = selected.filter((entry) => entry.group === group);
       if (groupEntries.length === 0) continue;
 
+      // Legacy groups (0030-0043, predating receipts) have no per-file
+      // record of having been applied, so without this check a rerun of
+      // an already-complete legacy group would blindly replay every
+      // statement -- most fail loudly ("already exists"), but any
+      // idempotent one (an insert with ON CONFLICT, a permissive DDL)
+      // could silently re-run needlessly, and a group with only some
+      // idempotent statements could partially succeed before hitting a
+      // non-idempotent one. classifierState was already fetched above for
+      // prerequisite checking; reuse it here rather than re-deriving
+      // schema state: if the classifier already reports this group fully
+      // satisfied (false), it is a verified no-op, not a replay.
+      //
+      // Deliberately scoped to groups with NO receipt-tracked entries:
+      // p1 (and any future receipt-tracked group) must NOT take this
+      // shortcut -- it has its own strictly more precise per-entry
+      // checksum verification below, which this group-level check would
+      // bypass entirely if applied to p1, silently defeating the
+      // checksum-mismatch-refusal proof (a corrupted receipt would never
+      // even be queried).
+      const groupTracksReceipts = groupEntries.some((entry) => entry.version >= '0044');
+      if (!groupTracksReceipts && classifierState[group] === false) {
+        console.log(`Skipping group "${group}": classifier reports it is already fully applied (no-op).`);
+        continue;
+      }
+
       let receiptTableExists = await tableExists(client, 'app_migration_receipts');
       for (const entry of groupEntries) {
         console.log(`Queued migration: ${entry.relativePath}`);

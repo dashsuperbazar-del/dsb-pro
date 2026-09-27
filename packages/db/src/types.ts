@@ -6,8 +6,20 @@
 //   - a Supabase personal access token, so `supabase gen types --project-id`
 //     can run instead (no Docker needed, but the token is account-wide, not
 //     project-scoped — see docs/HANDOVER.md).
+// Confirmed directly (P1-FOLLOWUP, 2026-09-27): `supabase gen types --db-url`
+// shells out to Docker internally regardless of target (it fails with
+// "failed to connect to the docker API" even against a real, already-running
+// bare Postgres instance, not just against `--local`) — this environment has
+// no Docker daemon, so full auto-regeneration remains blocked, not merely
+// unattempted.
 // Until then, this file is kept in sync by hand with
-// supabase/migrations/0001_init.sql and 0002_backup_status_rpc.sql.
+// supabase/migrations/0001_init.sql, 0002_backup_status_rpc.sql, and
+// 0044_upgrade_receipts.sql (app_migration_receipts, added below — its shape
+// was confirmed against a real live Postgres instance with all 44 migrations
+// applied via `\d app_migration_receipts`, not guessed from the migration
+// file alone). Every other table introduced by 0003-0043 remains absent from
+// this file; that gap predates this packet and is not something P1 or this
+// follow-up packet introduced or was asked to close in full.
 
 export type Json =
   | string
@@ -83,6 +95,27 @@ export type Database = {
           manifest?: Json | null;
           error?: string | null;
           created_at?: string;
+        };
+        Relationships: [];
+      };
+      app_migration_receipts: {
+        Row: {
+          version: string;
+          checksum_sha256: string;
+          applied_at: string;
+          applied_by: string;
+        };
+        Insert: {
+          version: string;
+          checksum_sha256: string;
+          applied_at?: string;
+          applied_by?: string;
+        };
+        Update: {
+          version?: string;
+          checksum_sha256?: string;
+          applied_at?: string;
+          applied_by?: string;
         };
         Relationships: [];
       };

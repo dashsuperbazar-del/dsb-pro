@@ -27,6 +27,25 @@ import { getClassifierState } from './apply-migrations-with-receipts.mjs';
 
 const { Client } = pg;
 
+/**
+ * Pure predicate, exported for direct testing: is this connection string's
+ * host structurally consistent with a disposable/local target? This is a
+ * real, connection-string-derived check, not a caller-supplied claim --
+ * `--disposable-target-only` and `DISPOSABLE_RECEIPTS_BOOTSTRAP=1` are both
+ * just flags the caller asserts; this parses the actual host being
+ * connected to and refuses anything that isn't localhost/127.0.0.1/::1,
+ * which no real production Supabase project ever is.
+ */
+export function isLocalHost(databaseUrl) {
+  let host;
+  try {
+    host = new URL(databaseUrl).hostname;
+  } catch {
+    return false;
+  }
+  return host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '[::1]';
+}
+
 async function main(argv) {
   const [databaseUrl, ...rest] = argv;
   if (!databaseUrl || !rest.includes('--disposable-target-only')) {
@@ -39,6 +58,15 @@ async function main(argv) {
       'Refusing to bootstrap receipts: DISPOSABLE_RECEIPTS_BOOTSTRAP=1 is not set. ' +
         'This bootstrap exists only for disposable CI/local reset targets; production ' +
         'schemas must go through the attended legacy-baseline-receipt initialization path instead.',
+    );
+    process.exitCode = 1;
+    return;
+  }
+  if (!isLocalHost(databaseUrl)) {
+    console.error(
+      'Refusing to bootstrap receipts: target host is not localhost/127.0.0.1/::1. Flags alone ' +
+        '(--disposable-target-only, DISPOSABLE_RECEIPTS_BOOTSTRAP=1) are caller-supplied claims, not ' +
+        'proof of target identity -- this checks the actual connection string.',
     );
     process.exitCode = 1;
     return;
@@ -111,6 +139,26 @@ async function main(argv) {
         `Refusing to bootstrap: app_migration_receipts does not have the expected schema yet ` +
           `(shape=${hasShape}, rls=${rlsEnabled}, no-public-grants=${noPublicGrants}). Migration 0044 ` +
           `must have actually run before this bootstrap backfills receipts for it.`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+
+    // Real data-state check, not another caller-supplied claim: a
+    // genuinely disposable target (a fresh `supabase db reset` output) has
+    // no real tenant/shop rows yet. A live database, however similar its
+    // schema looks, would. This is the strongest identity signal available
+    // short of a dedicated marker table, and it's derived from actual
+    // database contents.
+    const dataCheck = await client.query(
+      `select (select count(*) from tenants) as tenant_count, (select count(*) from shops) as shop_count`,
+    );
+    const { tenant_count: tenantCount, shop_count: shopCount } = dataCheck.rows[0];
+    if (Number(tenantCount) > 0 || Number(shopCount) > 0) {
+      console.error(
+        `Refusing to bootstrap: this database has real tenant/shop data (${tenantCount} tenant(s), ` +
+          `${shopCount} shop(s)) -- not the empty state a genuinely disposable reset target has. ` +
+          `A live database needs the attended baseline-receipt initialization path instead.`,
       );
       process.exitCode = 1;
       return;

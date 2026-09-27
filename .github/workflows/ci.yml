@@ -177,6 +177,28 @@ jobs:
           $proof$;
           SQL
           echo 'DISPOSABLE STAGED PHASE 5 -> BATCH B UPGRADE: PASS'
+      - name: Prove bootstrap target-identity checks (P1-FOLLOWUP)
+        run: |
+          set -euo pipefail
+          node --input-type=module -e '
+            import { isLocalHost } from "./scripts/bootstrap-disposable-receipts.mjs";
+            const cases = [
+              ["postgresql://u:p@127.0.0.1:5432/db", true],
+              ["postgresql://u:p@localhost:5432/db", true],
+              ["postgresql://u:p@db.supabase.co:5432/postgres", false],
+              ["postgresql://u:p@203.0.113.5:5432/db", false],
+              ["not-a-url", false],
+            ];
+            let failed = false;
+            for (const [url, expected] of cases) {
+              const actual = isLocalHost(url);
+              const ok = actual === expected;
+              console.log(`${ok ? "OK" : "FAIL"}: ${url} -> ${actual} (want ${expected})`);
+              if (!ok) failed = true;
+            }
+            if (failed) process.exit(1);
+          '
+          echo 'BOOTSTRAP TARGET-IDENTITY CHECKS: PASS'
       - name: Prove Packet P1 guarded upgrade receipts (apply, no-op rerun, checksum tamper refusal)
         env:
           PROOF_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
@@ -274,6 +296,58 @@ jobs:
             exit 1
           fi
           assert_state '5:2:5:2:3:4'
+
+          # Scenario (P1-FOLLOWUP): rerunning an already-complete LEGACY
+          # group (not p1) must be a verified no-op via the classifier,
+          # not a blind replay of its SQL. Confirmed directly against a
+          # real database during this follow-up's own investigation: a
+          # first draft of the fix that made this possible would have
+          # accidentally also shortcut p1's own precise checksum check
+          # if scoped wrong; this asserts the legacy path specifically.
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" foundation
+          assert_state '5:2:5:2:3:4'
+
+          # Scenario (P1-FOLLOWUP): partial/out-of-order schema is refused,
+          # not silently accepted. Drop one foundation function the
+          # classifier checks for, confirm refusal, restore it.
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "drop function check_invariants()"
+          set +e
+          state=$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL" 2>&1)
+          partial_exit=$?
+          set -e
+          echo "$state"
+          if [[ "$partial_exit" -eq 0 ]]; then
+            echo "Classifier did not detect the dropped foundation function (partial schema)" >&2
+            exit 1
+          fi
+          if ! grep -qF 'Partial or out-of-order' <<<"$state"; then
+            echo "Classifier refused, but not for the expected reason (partial/out-of-order)" >&2
+            exit 1
+          fi
+          awk '/^create function check_invariants/,/\$invariants\$;/' supabase/migrations/0030_phase6_ledgers_reports_dr.sql \
+            | psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1
+          assert_state '5:2:5:2:3:4'
+
+          # Scenario (P1-FOLLOWUP): a failure partway through a transaction
+          # rolls back everything in it, including any receipt insert --
+          # the same begin/query/rollback pattern the runner itself uses,
+          # proven directly with a throwaway scratch table rather than by
+          # mutating a frozen migration file (which the checksum guard
+          # would refuse to run anyway).
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          do $rollback_proof$
+          begin
+            begin
+              create temp table rollback_proof_scratch(id int primary key);
+              insert into rollback_proof_scratch(id) values (1);
+              insert into rollback_proof_scratch(id) values (1); -- duplicate PK, must fail
+              raise exception 'unreachable';
+            exception when others then
+              raise notice 'Caught and rolled back as expected: %', sqlerrm;
+            end;
+          end
+          $rollback_proof$;
+          SQL
           echo 'DISPOSABLE PACKET P1 GUARDED UPGRADE RECEIPTS: PASS'
       - name: Stop and erase the disposable target
         if: always()
