@@ -79,11 +79,41 @@ jobs:
           sudo fuser -k 54321/tcp 54322/tcp 54323/tcp 54324/tcp 54325/tcp 54326/tcp 54327/tcp 54328/tcp 54329/tcp || true
       - run: supabase start
       - run: supabase db reset
+      - name: Mark this reset target as harness-created (disposable identity)
+        run: |
+          set -euo pipefail
+          token=$(node -e 'console.log(require("node:crypto").randomUUID())')
+          psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -X -v ON_ERROR_STOP=1 \
+            -c "create schema disposable_harness" \
+            -c "create table disposable_harness.marker (token text not null)" \
+            -c "insert into disposable_harness.marker (token) values ('$token')"
+          echo "DISPOSABLE_TARGET_TOKEN=$token" >> "$GITHUB_ENV"
       - name: Bootstrap disposable baseline receipts (Packet P1, mechanism point 5)
         env:
           DISPOSABLE_RECEIPTS_BOOTSTRAP: '1'
         run: node scripts/bootstrap-disposable-receipts.mjs postgresql://postgres:postgres@127.0.0.1:54322/postgres --disposable-target-only
       - run: supabase test db
+      - name: Prove exact receipts-schema verification refuses every drift (P1-FOLLOWUP)
+        run: node scripts/test-receipts-schema-verifier.mjs postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      - name: Prove bootstrap refuses wrong, unmarked and non-empty targets (P1-FOLLOWUP)
+        run: node scripts/test-bootstrap-refusals.mjs postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      - name: Generate database types from the migrated schema (P1-FOLLOWUP)
+        run: |
+          set -euo pipefail
+          supabase gen types typescript --local > "$RUNNER_TEMP/generated-types.ts"
+          grep -q 'app_migration_receipts' "$RUNNER_TEMP/generated-types.ts" \
+            || { echo 'Generated types are missing app_migration_receipts' >&2; exit 1; }
+          echo "GENERATED_TYPES_SHA256=$(sha256sum "$RUNNER_TEMP/generated-types.ts" | cut -d' ' -f1)"
+          echo "GENERATED_TYPES_GZ_B64=$(gzip -9n < "$RUNNER_TEMP/generated-types.ts" | base64 -w0)"
+          echo "Generated $(wc -l < "$RUNNER_TEMP/generated-types.ts") lines of database types"
+          diff -u packages/db/src/types.ts "$RUNNER_TEMP/generated-types.ts" \
+            || { echo "packages/db/src/types.ts drifted from generated schema types; decode GENERATED_TYPES_GZ_B64 above and commit it" >&2; exit 1; }
+      - name: Upload generated database types
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-database-types
+          path: ${{ runner.temp }}/generated-types.ts
+          retention-days: 14
       - name: Prove invite single-use under concurrent redemption
         run: node scripts/test-invite-concurrency.mjs
       - name: Prove sale stock locking and idempotency under concurrency
@@ -128,6 +158,15 @@ jobs:
           echo "PROOF_ROOT=$PROOF_ROOT" >> "$GITHUB_ENV"
       - name: Start the disposable Phase 5 target
         run: supabase start --workdir "$PROOF_ROOT"
+      - name: Mark the disposable target as harness-created
+        run: |
+          set -euo pipefail
+          token=$(node -e 'console.log(require("node:crypto").randomUUID())')
+          psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -X -v ON_ERROR_STOP=1 \
+            -c "create schema disposable_harness" \
+            -c "create table disposable_harness.marker (token text not null)" \
+            -c "insert into disposable_harness.marker (token) values ('$token')"
+          echo "DISPOSABLE_TARGET_TOKEN=$token" >> "$GITHUB_ENV"
       - name: Prove the staged attended upgrade path through Batch B
         env:
           PROOF_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
@@ -146,6 +185,24 @@ jobs:
           assert_state '5:2:0:0:0:0'
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" phase65
           assert_state '5:2:5:0:0:0'
+
+          # Out-of-order object (P1-FOLLOWUP): a Batch B object present
+          # while Batch A has not been applied must be refused by both the
+          # classifier and the runner -- distinct from partial-schema, which
+          # removes an object from an already-complete group.
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 \
+            -c 'create function phase65_assert_quantity_lines(jsonb) returns void language sql as $$ select $$'
+          set +e
+          ooo_state=$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL" 2>&1); ooo_classifier_exit=$?
+          ooo_apply=$(scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" batcha 2>&1); ooo_apply_exit=$?
+          set -e
+          echo "$ooo_state"; echo "$ooo_apply"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c 'drop function phase65_assert_quantity_lines(jsonb)'
+          [[ "$ooo_classifier_exit" -ne 0 ]] || { echo 'Classifier accepted an out-of-order Batch B object' >&2; exit 1; }
+          [[ "$ooo_apply_exit" -ne 0 ]] || { echo 'Runner applied Batch A over an out-of-order Batch B object' >&2; exit 1; }
+          grep -qF '0/2 Batch A, 1/3 Batch B' <<<"$ooo_state" || { echo 'Refused for an unexpected reason' >&2; exit 1; }
+          assert_state '5:2:5:0:0:0'
+
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" batcha
           assert_state '5:2:5:2:0:0'
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" batchb
@@ -177,6 +234,28 @@ jobs:
           $proof$;
           SQL
           echo 'DISPOSABLE STAGED PHASE 5 -> BATCH B UPGRADE: PASS'
+      - name: Prove bootstrap target-identity checks (P1-FOLLOWUP)
+        run: |
+          set -euo pipefail
+          node --input-type=module -e '
+            import { isLocalHost } from "./scripts/bootstrap-disposable-receipts.mjs";
+            const cases = [
+              ["postgresql://u:p@127.0.0.1:5432/db", true],
+              ["postgresql://u:p@localhost:5432/db", true],
+              ["postgresql://u:p@db.supabase.co:5432/postgres", false],
+              ["postgresql://u:p@203.0.113.5:5432/db", false],
+              ["not-a-url", false],
+            ];
+            let failed = false;
+            for (const [url, expected] of cases) {
+              const actual = isLocalHost(url);
+              const ok = actual === expected;
+              console.log(`${ok ? "OK" : "FAIL"}: ${url} -> ${actual} (want ${expected})`);
+              if (!ok) failed = true;
+            }
+            if (failed) process.exit(1);
+          '
+          echo 'BOOTSTRAP TARGET-IDENTITY CHECKS: PASS'
       - name: Prove Packet P1 guarded upgrade receipts (apply, no-op rerun, checksum tamper refusal)
         env:
           PROOF_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
@@ -274,6 +353,134 @@ jobs:
             exit 1
           fi
           assert_state '5:2:5:2:3:4'
+
+          # Scenario (P1-FOLLOWUP): a MISSING required grant -- distinct
+          # from the stray (excess) grant above. 0044 grants SELECT to
+          # backup_ro when that role exists; a backup_ro without it must be
+          # refused by the classifier. The disposable target has no
+          # backup_ro, so create one lacking the grant, then remove it.
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c 'create role backup_ro nologin'
+          set +e
+          grant_state=$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL" 2>&1); grant_exit=$?
+          set -e
+          echo "$grant_state"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c 'drop role backup_ro'
+          [[ "$grant_exit" -ne 0 ]] || { echo 'Classifier accepted a backup_ro missing its required SELECT' >&2; exit 1; }
+          grep -qF 'required grant missing' <<<"$grant_state" || { echo 'Refused for an unexpected reason' >&2; exit 1; }
+          assert_state '5:2:5:2:3:4'
+
+          # Scenario (P1-FOLLOWUP): rerunning an already-complete LEGACY
+          # group is refused, not replayed (non-idempotent) and not reported
+          # as a no-op (its definitions can't be verified yet -- that is
+          # P1-FOLLOWUP-2's scope). State must be unchanged afterward.
+          set +e
+          legacy_rerun=$(scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" foundation 2>&1); legacy_rerun_exit=$?
+          set -e
+          echo "$legacy_rerun"
+          [[ "$legacy_rerun_exit" -ne 0 ]] || { echo 'Legacy rerun was accepted instead of refused' >&2; exit 1; }
+          grep -qF 'Refusing to rerun legacy group "foundation"' <<<"$legacy_rerun" || { echo 'Refused for an unexpected reason' >&2; exit 1; }
+          assert_state '5:2:5:2:3:4'
+
+          # Scenario (P1-FOLLOWUP): partial/out-of-order schema is refused,
+          # not silently accepted. Drop one foundation function the
+          # classifier checks for, confirm refusal, restore it.
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "drop function check_invariants()"
+          set +e
+          state=$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL" 2>&1)
+          partial_exit=$?
+          set -e
+          echo "$state"
+          if [[ "$partial_exit" -eq 0 ]]; then
+            echo "Classifier did not detect the dropped foundation function (partial schema)" >&2
+            exit 1
+          fi
+          if ! grep -qF 'Partial or out-of-order' <<<"$state"; then
+            echo "Classifier refused, but not for the expected reason (partial/out-of-order)" >&2
+            exit 1
+          fi
+          awk '/^create function check_invariants/,/\$invariants\$;/' supabase/migrations/0030_phase6_ledgers_reports_dr.sql \
+            | psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1
+          assert_state '5:2:5:2:3:4'
+
+          # Scenario (P1-FOLLOWUP): a failure partway through a GROUP -- an
+          # earlier statement succeeds, a later one fails -- rolls back
+          # BOTH the schema change and any receipt insert together, then a
+          # successful retry (with the failing statement removed) leaves
+          # both present. This exercises the REAL runner code path
+          # (applyGroupEntries, extracted specifically for this reason) via
+          # synthetic, never-real entries (version 9998/9999, well outside
+          # any real range) -- never by mutating a frozen migration file,
+          # which the checksum guard correctly refuses to run anyway. A
+          # first draft of this proof used a standalone `do $$ ... exception
+          # when others ...$$` SQL block instead: it never invoked the
+          # runner at all, and its own WHEN OTHERS handler would have caught
+          # its own RAISE EXCEPTION too, reporting success even if the
+          # intended duplicate-key failure never happened. Replaced with
+          # this real integration test.
+          node --input-type=module -e '
+            import pg from "pg";
+            import { applyGroupEntries } from "./scripts/apply-migrations-with-receipts.mjs";
+
+            const client = new pg.Client({ connectionString: process.argv[1] });
+            await client.connect();
+
+            const fakeChecksumA = "a".repeat(64);
+            const fakeChecksumB = "b".repeat(64);
+            const goodEntry = {
+              version: "9998",
+              relativePath: "synthetic-rollback-proof-a.sql",
+              bytes: Buffer.from("create table rollback_integration_proof(id int primary key);"),
+              checksumSha256: fakeChecksumA,
+            };
+            const failingEntry = {
+              version: "9999",
+              relativePath: "synthetic-rollback-proof-b.sql",
+              bytes: Buffer.from("insert into rollback_integration_proof(id) select 1/0;"),
+              checksumSha256: fakeChecksumB,
+            };
+
+            let threw = false;
+            try {
+              await applyGroupEntries(client, [goodEntry, failingEntry]);
+            } catch (e) {
+              threw = true;
+              console.log("Caught as expected:", e.message.split("\n")[0]);
+            }
+            if (!threw) throw new Error("Expected the failing entry to throw, but it did not");
+
+            const afterFailure = await client.query(
+              "select to_regclass(\x27public.rollback_integration_proof\x27) is not null as table_exists",
+            );
+            const receiptsAfterFailure = await client.query(
+              "select count(*) from app_migration_receipts where version in (\x279998\x27,\x279999\x27)",
+            );
+            if (afterFailure.rows[0].table_exists !== false) {
+              throw new Error("Schema change was not rolled back after the failure");
+            }
+            if (Number(receiptsAfterFailure.rows[0].count) !== 0) {
+              throw new Error("A receipt was left behind after the failure");
+            }
+            console.log("Rollback confirmed: no schema change, no receipt.");
+
+            await applyGroupEntries(client, [goodEntry]);
+            const afterRetry = await client.query(
+              "select to_regclass(\x27public.rollback_integration_proof\x27) is not null as table_exists",
+            );
+            const receiptAfterRetry = await client.query(
+              "select checksum_sha256 from app_migration_receipts where version = \x279998\x27",
+            );
+            if (afterRetry.rows[0].table_exists !== true) {
+              throw new Error("Successful retry did not apply the schema change");
+            }
+            if (receiptAfterRetry.rows[0]?.checksum_sha256 !== fakeChecksumA) {
+              throw new Error("Successful retry did not record the receipt");
+            }
+            console.log("Successful retry confirmed: schema change and receipt both present.");
+
+            await client.query("drop table if exists rollback_integration_proof");
+            await client.query("delete from app_migration_receipts where version in (\x279998\x27,\x279999\x27)");
+            await client.end();
+          ' "$PROOF_DB_URL"
           echo 'DISPOSABLE PACKET P1 GUARDED UPGRADE RECEIPTS: PASS'
       - name: Stop and erase the disposable target
         if: always()

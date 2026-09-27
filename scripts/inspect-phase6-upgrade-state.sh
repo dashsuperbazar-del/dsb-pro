@@ -100,11 +100,22 @@ select
       where table_schema='public' and table_name='app_migration_receipts'
         and grantee in ('anon','authenticated')
     )) as p1_no_grants,
-  (coalesce((select present from _p1_receipt_check), false)) as p1_receipt;
+  (coalesce((select present from _p1_receipt_check), false)) as p1_receipt,
+  -- Required access, not just prohibited access: 0044 grants SELECT to
+  -- backup_ro whenever that role exists. CASE (not OR) so
+  -- has_table_privilege is never evaluated for a role that doesn't exist.
+  (case when not exists(select 1 from pg_roles where rolname='backup_ro') then true
+        else coalesce(has_table_privilege('backup_ro', to_regclass('public.app_migration_receipts'), 'SELECT'), true)
+   end) as p1_backup_grant_ok;
 SQL
 )
-read -r foundation hardening phase65 batcha batchb p1_shape p1_rls p1_no_grants p1_receipt \
+read -r foundation hardening phase65 batcha batchb p1_shape p1_rls p1_no_grants p1_receipt p1_backup_grant_ok \
   <<<"$(tail -n1 <<<"$psql_state_output")"
+
+if [[ "$p1_shape" == "t" && "$p1_backup_grant_ok" != "t" ]]; then
+  echo "app_migration_receipts required grant missing: backup_ro exists but lacks SELECT. Refusing migration." >&2
+  exit 1
+fi
 
 # Validate the raw p1 4-tuple against the only three legitimate
 # combinations BEFORE reducing it to a count for the legacy switch below.

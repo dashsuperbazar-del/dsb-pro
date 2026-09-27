@@ -224,108 +224,143 @@ async function main(argv) {
       const groupEntries = selected.filter((entry) => entry.group === group);
       if (groupEntries.length === 0) continue;
 
-      let receiptTableExists = await tableExists(client, 'app_migration_receipts');
-      for (const entry of groupEntries) {
-        console.log(`Queued migration: ${entry.relativePath}`);
+      // A legacy group (0030-0043, no receipts) the classifier already
+      // reports as applied is REFUSED, not skipped as a "no-op": its
+      // classifier signals are mostly existence checks, so this runner
+      // cannot verify the group's definitions still match its migration
+      // files. Blind replay is not an option either -- every legacy group
+      // contains non-idempotent statements (renames, unconditional
+      // creates/drops/inserts). State-aware definition verification, which
+      // would make a verified no-op possible, is P1-FOLLOWUP-2's scope.
+      // Normal callers never hit this: the live job only applies groups the
+      // classifier reports as still needed.
+      //
+      // p1 (and any future receipt-tracked group) is excluded: its
+      // per-entry checksum verification below decides no-op vs. refusal.
+      const groupTracksReceipts = groupEntries.some((entry) => entry.version >= '0044');
+      if (!groupTracksReceipts && classifierState[group] === false) {
+        throw new Error(
+          `Refusing to rerun legacy group "${group}": the classifier reports it already applied, and its ` +
+            `definitions cannot be verified against its migration files yet, so this runner will neither ` +
+            `replay it (non-idempotent) nor report it as a verified no-op.`,
+        );
       }
 
-      await client.query('begin');
-      try {
-        for (const entry of groupEntries) {
-          // Legacy migrations (0030-0043, versioned below 0044) predate the
-          // receipts mechanism entirely: app_migration_receipts does not
-          // exist while they are being applied for the first time (e.g. the
-          // CI proof job applies foundation/hardening/phase65/batcha/batchb
-          // before p1). Never attempt to read or write that table for them
-          // - doing so unconditionally would fail with "relation does not
-          // exist" the first time any legacy group runs on a pre-P1 database.
-          const tracksReceipts = entry.version >= '0044';
-
-          if (tracksReceipts && receiptTableExists) {
-            // Skip-if-already-applied-with-matching-receipt makes a rerun
-            // of a completed group a no-op (proof matrix: "rerun completed
-            // group is no-op only after matching receipt/schema").
-            const existing = await client.query(
-              'select checksum_sha256 from app_migration_receipts where version = $1',
-              [entry.version],
-            );
-            if (existing.rowCount > 0) {
-              const recordedChecksum = existing.rows[0].checksum_sha256;
-              if (recordedChecksum !== entry.checksumSha256) {
-                throw new Error(
-                  `Checksum mismatch for already-applied migration ${entry.version}: ` +
-                    `recorded receipt does not match the file on disk. Refusing to reapply or ` +
-                    `silently accept drift; this requires reviewed forward repair, not automatic action.`,
-                );
-              }
-              console.log(`Skipping ${entry.relativePath}: matching receipt already recorded (no-op).`);
-              continue;
-            }
-          }
-
-          if (isAmbiguousSchemaExistsCase(entry, receiptTableExists)) {
-            // This guard must be scoped to 0044 SPECIFICALLY, not to
-            // "any receipt-tracked entry once the receipts table exists" --
-            // a broader `tracksReceipts && receiptTableExists` condition
-            // (a real bug in the previous commit, caught by direct
-            // extracted-function probes before this one shipped) would
-            // refuse EVERY future migration's legitimate first-time apply
-            // forever after P1 merges, since app_migration_receipts exists
-            // permanently from then on. 0044 is the one self-referential
-            // case: its own target object IS the receipts table, so
-            // "receiptTableExists with no receipt row" is ambiguous for it
-            // specifically (awaiting bootstrap vs. genuine drift). Any
-            // OTHER entry reaching this point with existing.rowCount===0
-            // is simply its normal, legitimate first-time apply -- there is
-            // no table-existence self-check available for it, and there
-            // shouldn't need to be one: a missing receipt for a
-            // never-before-selected version is not ambiguous, it's just
-            // new.
-            //
-            // A receipt is an audit-trail assertion that these exact bytes
-            // were actually run, and the classifier's three shallow
-            // structural checks (column names, RLS-enabled, no stray
-            // grant) don't verify complete types/constraints/defaults/
-            // effective privileges -- nowhere near enough to honestly back
-            // that assertion for schema this runner didn't itself just
-            // create. Refuse and route to the disposable-target bootstrap
-            // (CI/local) or attended baseline-receipt initialization (a
-            // live database, tracked as follow-up work), never guess.
-            throw new Error(
-              `${entry.relativePath}'s target schema already exists but has no receipt. Ordinary apply ` +
-                `refuses to guess whether these bytes actually produced it: run the disposable-target ` +
-                `bootstrap (CI/local reset only) or the attended baseline-receipt initialization (for a ` +
-                `live database) instead of retrying this command.`,
-            );
-          }
-
-          const sql = entry.bytes.toString('utf8');
-          await client.query(sql);
-
-          if (tracksReceipts) {
-            // Migration 0044 itself creates app_migration_receipts; only
-            // after that statement has just run in this same transaction
-            // can we insert into it, including its own receipt.
-            await client.query(
-              `insert into app_migration_receipts (version, checksum_sha256)
-               values ($1, $2)
-               on conflict (version) do nothing`,
-              [entry.version, entry.checksumSha256],
-            );
-            receiptTableExists = true;
-          }
-        }
-        await client.query('commit');
-      } catch (error) {
-        await client.query('rollback');
-        throw error;
-      }
+      await applyGroupEntries(client, groupEntries);
       totalApplied += groupEntries.length;
     }
 
     console.log(`Applied and recorded receipts for ${totalApplied} migration(s) across ${groupsInOrder.length} group(s).`);
   } finally {
     await client.end();
+  }
+}
+
+/**
+ * The actual per-group transactional apply logic, extracted so it can be
+ * exercised directly against a real, connected pg Client with synthetic
+ * entries -- never real frozen migration bytes -- specifically to prove
+ * mid-transaction rollback and successful retry through the REAL code
+ * path, not a hand-written reproduction of it. `entries` follow the same
+ * shape loadManifest() produces: { version, relativePath, bytes,
+ * checksumSha256 }.
+ */
+export async function applyGroupEntries(client, groupEntries) {
+  let receiptTableExists = await tableExists(client, 'app_migration_receipts');
+  for (const entry of groupEntries) {
+    console.log(`Queued migration: ${entry.relativePath}`);
+  }
+
+  await client.query('begin');
+  try {
+    for (const entry of groupEntries) {
+      // Legacy migrations (0030-0043, versioned below 0044) predate the
+      // receipts mechanism entirely: app_migration_receipts does not
+      // exist while they are being applied for the first time (e.g. the
+      // CI proof job applies foundation/hardening/phase65/batcha/batchb
+      // before p1). Never attempt to read or write that table for them
+      // - doing so unconditionally would fail with "relation does not
+      // exist" the first time any legacy group runs on a pre-P1 database.
+      const tracksReceipts = entry.version >= '0044';
+
+      if (tracksReceipts && receiptTableExists) {
+        // Skip-if-already-applied-with-matching-receipt makes a rerun
+        // of a completed group a no-op (proof matrix: "rerun completed
+        // group is no-op only after matching receipt/schema").
+        const existing = await client.query(
+          'select checksum_sha256 from app_migration_receipts where version = $1',
+          [entry.version],
+        );
+        if (existing.rowCount > 0) {
+          const recordedChecksum = existing.rows[0].checksum_sha256;
+          if (recordedChecksum !== entry.checksumSha256) {
+            throw new Error(
+              `Checksum mismatch for already-applied migration ${entry.version}: ` +
+                `recorded receipt does not match the file on disk. Refusing to reapply or ` +
+                `silently accept drift; this requires reviewed forward repair, not automatic action.`,
+            );
+          }
+          console.log(`Skipping ${entry.relativePath}: matching receipt already recorded (no-op).`);
+          continue;
+        }
+      }
+
+      if (isAmbiguousSchemaExistsCase(entry, receiptTableExists)) {
+        // This guard must be scoped to 0044 SPECIFICALLY, not to
+        // "any receipt-tracked entry once the receipts table exists" --
+        // a broader `tracksReceipts && receiptTableExists` condition
+        // (a real bug in the previous commit, caught by direct
+        // extracted-function probes before this one shipped) would
+        // refuse EVERY future migration's legitimate first-time apply
+        // forever after P1 merges, since app_migration_receipts exists
+        // permanently from then on. 0044 is the one self-referential
+        // case: its own target object IS the receipts table, so
+        // "receiptTableExists with no receipt row" is ambiguous for it
+        // specifically (awaiting bootstrap vs. genuine drift). Any
+        // OTHER entry reaching this point with existing.rowCount===0
+        // is simply its normal, legitimate first-time apply -- there is
+        // no table-existence self-check available for it, and there
+        // shouldn't need to be one: a missing receipt for a
+        // never-before-selected version is not ambiguous, it's just
+        // new.
+        //
+        // A receipt is an audit-trail assertion that these exact bytes
+        // were actually run, and the classifier's three shallow
+        // structural checks (column names, RLS-enabled, no stray
+        // grant) don't verify complete types/constraints/defaults/
+        // effective privileges -- nowhere near enough to honestly back
+        // that assertion for schema this runner didn't itself just
+        // create. Refuse and route to the disposable-target bootstrap
+        // (CI/local) or attended baseline-receipt initialization (a
+        // live database, tracked as follow-up work), never guess.
+        throw new Error(
+          `${entry.relativePath}'s target schema already exists but has no receipt. Ordinary apply ` +
+            `refuses to guess whether these bytes actually produced it: run the disposable-target ` +
+            `bootstrap (CI/local reset only) or the attended baseline-receipt initialization (for a ` +
+            `live database) instead of retrying this command.`,
+        );
+      }
+
+      const sql = entry.bytes.toString('utf8');
+      await client.query(sql);
+
+      if (tracksReceipts) {
+        // Migration 0044 itself creates app_migration_receipts; only
+        // after that statement has just run in this same transaction
+        // can we insert into it, including its own receipt.
+        await client.query(
+          `insert into app_migration_receipts (version, checksum_sha256)
+           values ($1, $2)
+           on conflict (version) do nothing`,
+          [entry.version, entry.checksumSha256],
+        );
+        receiptTableExists = true;
+      }
+    }
+    await client.query('commit');
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
   }
 }
 
