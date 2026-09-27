@@ -103,6 +103,8 @@ jobs:
           supabase gen types typescript --local > "$RUNNER_TEMP/generated-types.ts"
           grep -q 'app_migration_receipts' "$RUNNER_TEMP/generated-types.ts" \
             || { echo 'Generated types are missing app_migration_receipts' >&2; exit 1; }
+          echo "GENERATED_TYPES_SHA256=$(sha256sum "$RUNNER_TEMP/generated-types.ts" | cut -d' ' -f1)"
+          echo "GENERATED_TYPES_GZ_B64=$(gzip -9n < "$RUNNER_TEMP/generated-types.ts" | base64 -w0)"
           echo "Generated $(wc -l < "$RUNNER_TEMP/generated-types.ts") lines of database types"
       - name: Upload generated database types
         uses: actions/upload-artifact@v4
@@ -366,13 +368,15 @@ jobs:
           assert_state '5:2:5:2:3:4'
 
           # Scenario (P1-FOLLOWUP): rerunning an already-complete LEGACY
-          # group (not p1) must be a verified no-op via the classifier,
-          # not a blind replay of its SQL. Confirmed directly against a
-          # real database during this follow-up's own investigation: a
-          # first draft of the fix that made this possible would have
-          # accidentally also shortcut p1's own precise checksum check
-          # if scoped wrong; this asserts the legacy path specifically.
-          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" foundation
+          # group is refused, not replayed (non-idempotent) and not reported
+          # as a no-op (its definitions can't be verified yet -- that is
+          # P1-FOLLOWUP-2's scope). State must be unchanged afterward.
+          set +e
+          legacy_rerun=$(scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" foundation 2>&1); legacy_rerun_exit=$?
+          set -e
+          echo "$legacy_rerun"
+          [[ "$legacy_rerun_exit" -ne 0 ]] || { echo 'Legacy rerun was accepted instead of refused' >&2; exit 1; }
+          grep -qF 'Refusing to rerun legacy group "foundation"' <<<"$legacy_rerun" || { echo 'Refused for an unexpected reason' >&2; exit 1; }
           assert_state '5:2:5:2:3:4'
 
           # Scenario (P1-FOLLOWUP): partial/out-of-order schema is refused,

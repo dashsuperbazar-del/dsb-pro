@@ -224,42 +224,26 @@ async function main(argv) {
       const groupEntries = selected.filter((entry) => entry.group === group);
       if (groupEntries.length === 0) continue;
 
-      // Applied uniformly to every legacy group, not cherry-picked by
-      // "which ones look idempotent": a first draft of this scoped the
-      // shortcut only to foundation/phase65 (the groups with an obvious
-      // `create table`), reasoning that hardening/batcha/batchb's
-      // `create or replace function` files were already safe to blindly
-      // replay and would even self-heal a changed function body. Directly
-      // rerunning hardening against a fully-applied database DISPROVED
-      // that: 0035 contains `alter function ... rename to
-      // phase6_export_tenant_v3_base`, which errors on replay ("already
-      // exists") exactly like a plain create table would -- there is no
-      // actual self-healing being traded away, because blind replay was
-      // never going to survive far enough to reach any "healing" INSERT/
-      // UPDATE in the first place. A broader grep afterward found the same
-      // pattern (renames, unconditional drops, unconditional inserts) in
-      // every one of the five legacy groups, not just two. Cherry-picking
-      // "safe" groups by inspection is exactly the kind of assumption real
-      // testing is for -- this now skips them all uniformly.
+      // A legacy group (0030-0043, no receipts) the classifier already
+      // reports as applied is REFUSED, not skipped as a "no-op": its
+      // classifier signals are mostly existence checks, so this runner
+      // cannot verify the group's definitions still match its migration
+      // files. Blind replay is not an option either -- every legacy group
+      // contains non-idempotent statements (renames, unconditional
+      // creates/drops/inserts). State-aware definition verification, which
+      // would make a verified no-op possible, is P1-FOLLOWUP-2's scope.
+      // Normal callers never hit this: the live job only applies groups the
+      // classifier reports as still needed.
       //
-      // Still deliberately excludes p1 (and any future receipt-tracked
-      // group): p1 has its own strictly more precise per-entry checksum
-      // verification below, which a group-level shortcut would bypass
-      // entirely, silently defeating the checksum-mismatch-refusal proof.
-      //
-      // Honest limitation, not fixed by this shortcut or by blind replay:
-      // neither actually re-verifies that a group's DEFINITIONS still
-      // match what the migration files say -- the classifier's own
-      // per-group signals are the only drift detection here, and they
-      // vary in depth (batcha/batchb's signals already regex-match
-      // specific function-body content; foundation/hardening/phase65's
-      // signals are mostly existence-only). That gap is the classifier's
-      // own pre-existing design, not something this shortcut introduces
-      // or could itself close.
+      // p1 (and any future receipt-tracked group) is excluded: its
+      // per-entry checksum verification below decides no-op vs. refusal.
       const groupTracksReceipts = groupEntries.some((entry) => entry.version >= '0044');
       if (!groupTracksReceipts && classifierState[group] === false) {
-        console.log(`Skipping group "${group}": classifier reports it is already fully applied (no-op).`);
-        continue;
+        throw new Error(
+          `Refusing to rerun legacy group "${group}": the classifier reports it already applied, and its ` +
+            `definitions cannot be verified against its migration files yet, so this runner will neither ` +
+            `replay it (non-idempotent) nor report it as a verified no-op.`,
+        );
       }
 
       await applyGroupEntries(client, groupEntries);
