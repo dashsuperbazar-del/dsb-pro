@@ -328,26 +328,85 @@ jobs:
             | psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1
           assert_state '5:2:5:2:3:4'
 
-          # Scenario (P1-FOLLOWUP): a failure partway through a transaction
-          # rolls back everything in it, including any receipt insert --
-          # the same begin/query/rollback pattern the runner itself uses,
-          # proven directly with a throwaway scratch table rather than by
-          # mutating a frozen migration file (which the checksum guard
-          # would refuse to run anyway).
-          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
-          do $rollback_proof$
-          begin
-            begin
-              create temp table rollback_proof_scratch(id int primary key);
-              insert into rollback_proof_scratch(id) values (1);
-              insert into rollback_proof_scratch(id) values (1); -- duplicate PK, must fail
-              raise exception 'unreachable';
-            exception when others then
-              raise notice 'Caught and rolled back as expected: %', sqlerrm;
-            end;
-          end
-          $rollback_proof$;
-          SQL
+          # Scenario (P1-FOLLOWUP): a failure partway through a GROUP -- an
+          # earlier statement succeeds, a later one fails -- rolls back
+          # BOTH the schema change and any receipt insert together, then a
+          # successful retry (with the failing statement removed) leaves
+          # both present. This exercises the REAL runner code path
+          # (applyGroupEntries, extracted specifically for this reason) via
+          # synthetic, never-real entries (version 9998/9999, well outside
+          # any real range) -- never by mutating a frozen migration file,
+          # which the checksum guard correctly refuses to run anyway. A
+          # first draft of this proof used a standalone `do $$ ... exception
+          # when others ...$$` SQL block instead: it never invoked the
+          # runner at all, and its own WHEN OTHERS handler would have caught
+          # its own RAISE EXCEPTION too, reporting success even if the
+          # intended duplicate-key failure never happened. Replaced with
+          # this real integration test.
+          node --input-type=module -e '
+            import pg from "pg";
+            import { applyGroupEntries } from "./scripts/apply-migrations-with-receipts.mjs";
+
+            const client = new pg.Client({ connectionString: process.argv[1] });
+            await client.connect();
+
+            const fakeChecksumA = "a".repeat(64);
+            const fakeChecksumB = "b".repeat(64);
+            const goodEntry = {
+              version: "9998",
+              relativePath: "synthetic-rollback-proof-a.sql",
+              bytes: Buffer.from("create table rollback_integration_proof(id int primary key);"),
+              checksumSha256: fakeChecksumA,
+            };
+            const failingEntry = {
+              version: "9999",
+              relativePath: "synthetic-rollback-proof-b.sql",
+              bytes: Buffer.from("insert into rollback_integration_proof(id) select 1/0;"),
+              checksumSha256: fakeChecksumB,
+            };
+
+            let threw = false;
+            try {
+              await applyGroupEntries(client, [goodEntry, failingEntry]);
+            } catch (e) {
+              threw = true;
+              console.log("Caught as expected:", e.message.split("\n")[0]);
+            }
+            if (!threw) throw new Error("Expected the failing entry to throw, but it did not");
+
+            const afterFailure = await client.query(
+              "select to_regclass(\x27public.rollback_integration_proof\x27) is not null as table_exists",
+            );
+            const receiptsAfterFailure = await client.query(
+              "select count(*) from app_migration_receipts where version in (\x279998\x27,\x279999\x27)",
+            );
+            if (afterFailure.rows[0].table_exists !== false) {
+              throw new Error("Schema change was not rolled back after the failure");
+            }
+            if (Number(receiptsAfterFailure.rows[0].count) !== 0) {
+              throw new Error("A receipt was left behind after the failure");
+            }
+            console.log("Rollback confirmed: no schema change, no receipt.");
+
+            await applyGroupEntries(client, [goodEntry]);
+            const afterRetry = await client.query(
+              "select to_regclass(\x27public.rollback_integration_proof\x27) is not null as table_exists",
+            );
+            const receiptAfterRetry = await client.query(
+              "select checksum_sha256 from app_migration_receipts where version = \x279998\x27",
+            );
+            if (afterRetry.rows[0].table_exists !== true) {
+              throw new Error("Successful retry did not apply the schema change");
+            }
+            if (receiptAfterRetry.rows[0]?.checksum_sha256 !== fakeChecksumA) {
+              throw new Error("Successful retry did not record the receipt");
+            }
+            console.log("Successful retry confirmed: schema change and receipt both present.");
+
+            await client.query("drop table if exists rollback_integration_proof");
+            await client.query("delete from app_migration_receipts where version in (\x279998\x27,\x279999\x27)");
+            await client.end();
+          ' "$PROOF_DB_URL"
           echo 'DISPOSABLE PACKET P1 GUARDED UPGRADE RECEIPTS: PASS'
       - name: Stop and erase the disposable target
         if: always()

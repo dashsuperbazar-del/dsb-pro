@@ -29,12 +29,19 @@ const { Client } = pg;
 
 /**
  * Pure predicate, exported for direct testing: is this connection string's
- * host structurally consistent with a disposable/local target? This is a
- * real, connection-string-derived check, not a caller-supplied claim --
- * `--disposable-target-only` and `DISPOSABLE_RECEIPTS_BOOTSTRAP=1` are both
- * just flags the caller asserts; this parses the actual host being
- * connected to and refuses anything that isn't localhost/127.0.0.1/::1,
- * which no real production Supabase project ever is.
+ * host structurally consistent with a disposable/local target?
+ *
+ * Honest limitation (raised in review, not solved here): this is one
+ * additional safety layer, not a guarantee of target identity. A loopback
+ * address can still be an SSH/port-forwarded tunnel to a real remote
+ * database, and an empty database (the companion check below) can still be
+ * a genuinely live one that simply hasn't been used yet. Neither this
+ * check nor the data-emptiness one "establishes" identity on its own; they
+ * narrow the set of mistakes this script can make without answering the
+ * harder problem (a harness-issued, cryptographically-tied marker proving
+ * "this exact database was created by this exact CI run") that a real
+ * identity guarantee would need. That remains open, tracked as future
+ * work, not claimed solved by these two checks.
  */
 export function isLocalHost(databaseUrl) {
   let host;
@@ -198,7 +205,23 @@ async function main(argv) {
   }
 }
 
-main(process.argv.slice(2)).catch((error) => {
-  console.error(error.message ?? String(error));
-  process.exitCode = 1;
-});
+// Guard CLI execution behind an isMain check (matching apply-migrations-
+// with-receipts.mjs's own pattern) -- without this, any import of this
+// module (e.g. `import { isLocalHost } from './bootstrap-disposable-
+// receipts.mjs'` for testing the exported predicate in isolation) would
+// unconditionally invoke main() with the IMPORTING process's own argv,
+// which never matches this script's usage, setting process.exitCode = 2
+// on the importing process even though nothing it actually asked for
+// failed. Confirmed as the exact cause of CI run 36283021722's failure:
+// the new "Prove bootstrap target-identity checks" step imports
+// isLocalHost for testing and was failing this way despite every
+// predicate check passing.
+const isMain = import.meta.url === `file://${process.argv[1]}`;
+if (isMain) {
+  main(process.argv.slice(2)).catch((error) => {
+    console.error(error.message ?? String(error));
+    process.exitCode = 1;
+  });
+}
+
+export { main };

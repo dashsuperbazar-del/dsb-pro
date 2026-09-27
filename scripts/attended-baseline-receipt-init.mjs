@@ -106,29 +106,117 @@ async function main(argv) {
   const client = new Client({ connectionString: databaseUrl });
   await client.connect();
   try {
-    const schemaCheck = await client.query(`
-      select
-        to_regclass('public.app_migration_receipts') is not null
-          and (select count(*) from information_schema.columns
-               where table_schema='public' and table_name='app_migration_receipts'
-                 and column_name in ('version','checksum_sha256','applied_at','applied_by')) = 4
-          as has_shape,
-        coalesce((select relrowsecurity from pg_class
-                  where oid = to_regclass('public.app_migration_receipts')), false)
-          as rls_enabled,
-        not exists(
-          select 1 from information_schema.role_table_grants
-          where table_schema='public' and table_name='app_migration_receipts'
-            and grantee in ('anon','authenticated')
-        ) as no_public_grants
+    const tableExists = (
+      await client.query(`select to_regclass('public.app_migration_receipts') is not null as present`)
+    ).rows[0].present;
+    if (!tableExists) {
+      console.error('Refusing: app_migration_receipts does not exist. Migration 0044 must have actually run first.');
+      process.exitCode = 1;
+      return;
+    }
+
+    // Exact column-level comparison, not merely "these 4 names exist" --
+    // type, nullability and default all checked against what 0044 itself
+    // creates. GPT's finding: "counts four column names... do not validate
+    // types, nullability, defaults" was correct; this replaces that shape
+    // check.
+    const EXPECTED_COLUMNS = {
+      version: { data_type: 'text', is_nullable: 'NO', column_default: null },
+      checksum_sha256: { data_type: 'text', is_nullable: 'NO', column_default: null },
+      applied_at: { data_type: 'timestamp with time zone', is_nullable: 'NO', column_default: 'now()' },
+      applied_by: { data_type: 'text', is_nullable: 'NO', column_default: 'CURRENT_USER' },
+    };
+    const columns = await client.query(`
+      select column_name, data_type, is_nullable, column_default
+      from information_schema.columns
+      where table_schema='public' and table_name='app_migration_receipts'
     `);
-    const { has_shape: hasShape, rls_enabled: rlsEnabled, no_public_grants: noPublicGrants } = schemaCheck.rows[0];
-    if (!hasShape || !rlsEnabled || !noPublicGrants) {
-      console.error(
-        `Refusing: app_migration_receipts does not have the expected schema (shape=${hasShape}, ` +
-          `rls=${rlsEnabled}, no-public-grants=${noPublicGrants}). Migration 0044 must have actually ` +
-          `run before this initializes its receipt.`,
+    const actualColumns = Object.fromEntries(columns.rows.map((r) => [r.column_name, r]));
+    const columnMismatches = [];
+    for (const [name, expected] of Object.entries(EXPECTED_COLUMNS)) {
+      const actual = actualColumns[name];
+      if (!actual) {
+        columnMismatches.push(`${name}: missing`);
+        continue;
+      }
+      if (actual.data_type !== expected.data_type) {
+        columnMismatches.push(`${name}: type is "${actual.data_type}", expected "${expected.data_type}"`);
+      }
+      if (actual.is_nullable !== expected.is_nullable) {
+        columnMismatches.push(`${name}: nullable is "${actual.is_nullable}", expected "${expected.is_nullable}"`);
+      }
+      const normalizedDefault = actual.column_default?.replace(/::\w+(\([^)]*\))?$/, '').trim() ?? null;
+      const expectedDefault = expected.column_default;
+      if (expectedDefault !== null && normalizedDefault !== expectedDefault) {
+        columnMismatches.push(`${name}: default is "${actual.column_default}", expected "${expectedDefault}"`);
+      }
+    }
+    const extraColumns = Object.keys(actualColumns).filter((name) => !(name in EXPECTED_COLUMNS));
+    if (extraColumns.length > 0) columnMismatches.push(`unexpected extra column(s): ${extraColumns.join(', ')}`);
+
+    // Primary key and both CHECK constraints, by actual definition, not by
+    // name alone -- a same-named constraint with a weaker/different
+    // condition would not be caught by an existence check.
+    const constraints = await client.query(`
+      select conname, contype, pg_get_constraintdef(oid) as definition
+      from pg_constraint
+      where conrelid = to_regclass('public.app_migration_receipts')
+    `);
+    const pk = constraints.rows.find((r) => r.contype === 'p');
+    const checksumCheck = constraints.rows.find((r) => r.contype === 'c' && r.conname === 'app_migration_receipts_checksum_format');
+    const versionCheck = constraints.rows.find((r) => r.contype === 'c' && r.conname === 'app_migration_receipts_version_format');
+    if (!pk || !pk.definition.includes('(version)')) {
+      columnMismatches.push('primary key on (version) is missing or different');
+    }
+    if (!checksumCheck || !checksumCheck.definition.includes('0-9a-f') || !checksumCheck.definition.includes('64')) {
+      columnMismatches.push('checksum_sha256 CHECK constraint is missing or does not match the expected 64-hex-char pattern');
+    }
+    if (!versionCheck || !versionCheck.definition.includes('0-9')) {
+      columnMismatches.push('version CHECK constraint is missing or does not match the expected 4-digit pattern');
+    }
+
+    const rlsEnabled = (
+      await client.query(`select relrowsecurity from pg_class where oid = to_regclass('public.app_migration_receipts')`)
+    ).rows[0]?.relrowsecurity === true;
+    if (!rlsEnabled) columnMismatches.push('row level security is not enabled');
+
+    const publicGrants = await client.query(`
+      select grantee, privilege_type from information_schema.role_table_grants
+      where table_schema='public' and table_name='app_migration_receipts'
+        and grantee in ('anon','authenticated','PUBLIC')
+    `);
+    if (publicGrants.rowCount > 0) {
+      columnMismatches.push(
+        `unexpected grant(s) to anon/authenticated/PUBLIC: ${publicGrants.rows.map((r) => `${r.grantee}:${r.privilege_type}`).join(', ')}`,
       );
+    }
+
+    // Effective privilege check, not just "no grant row exists": ask
+    // Postgres directly whether anon/authenticated can actually select,
+    // which also catches a stray role membership or a PUBLIC-inherited
+    // grant that a role_table_grants row alone wouldn't show.
+    const effectivePrivileges = await client.query(`
+      select
+        has_table_privilege('anon', 'public.app_migration_receipts', 'SELECT') as anon_can_select,
+        has_table_privilege('authenticated', 'public.app_migration_receipts', 'SELECT') as authenticated_can_select
+    `);
+    if (effectivePrivileges.rows[0].anon_can_select || effectivePrivileges.rows[0].authenticated_can_select) {
+      columnMismatches.push('anon or authenticated has effective SELECT privilege (via role membership, not just a direct grant)');
+    }
+
+    // backup_ro coverage, per 0044's own intent ("Include it in operator
+    // backup/export, not ordinary cashier data") -- only asserted when the
+    // role exists, matching 0044's own conditional grant.
+    const backupRoExists = (await client.query(`select 1 from pg_roles where rolname='backup_ro'`)).rowCount > 0;
+    if (backupRoExists) {
+      const canBackupRead = (
+        await client.query(`select has_table_privilege('backup_ro', 'public.app_migration_receipts', 'SELECT') as can_read`)
+      ).rows[0].can_read;
+      if (!canBackupRead) columnMismatches.push('backup_ro role exists but cannot SELECT app_migration_receipts');
+    }
+
+    if (columnMismatches.length > 0) {
+      console.error(`Refusing: app_migration_receipts does not exactly match the expected schema:\n  - ${columnMismatches.join('\n  - ')}`);
       process.exitCode = 1;
       return;
     }
