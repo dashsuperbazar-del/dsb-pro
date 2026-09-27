@@ -24,6 +24,7 @@
 import pg from 'pg';
 import { loadManifest, ManifestError } from './verify-migration-manifest.mjs';
 import { getClassifierState } from './apply-migrations-with-receipts.mjs';
+import { verifyReceiptsSchema } from './verify-receipts-schema.mjs';
 
 const { Client } = pg;
 
@@ -31,17 +32,12 @@ const { Client } = pg;
  * Pure predicate, exported for direct testing: is this connection string's
  * host structurally consistent with a disposable/local target?
  *
- * Honest limitation (raised in review, not solved here): this is one
- * additional safety layer, not a guarantee of target identity. A loopback
- * address can still be an SSH/port-forwarded tunnel to a real remote
- * database, and an empty database (the companion check below) can still be
- * a genuinely live one that simply hasn't been used yet. Neither this
- * check nor the data-emptiness one "establishes" identity on its own; they
- * narrow the set of mistakes this script can make without answering the
- * harder problem (a harness-issued, cryptographically-tied marker proving
- * "this exact database was created by this exact CI run") that a real
- * identity guarantee would need. That remains open, tracked as future
- * work, not claimed solved by these two checks.
+ * This is one safety layer, not target identity: a loopback address can
+ * be a forwarded tunnel to a real database. Identity comes from the
+ * harness marker checked in main(): the harness that creates a disposable
+ * target writes a per-run DISPOSABLE_TARGET_TOKEN into
+ * disposable_harness.marker, and bootstrap refuses unless the database it
+ * actually connected to holds that exact token.
  */
 export function isLocalHost(databaseUrl) {
   let host;
@@ -115,84 +111,68 @@ async function main(argv) {
     return;
   }
 
+  const expectedToken = process.env.DISPOSABLE_TARGET_TOKEN;
+  if (!expectedToken) {
+    console.error(
+      'Refusing to bootstrap receipts: DISPOSABLE_TARGET_TOKEN is not set. The harness that created this ' +
+        'disposable target must write the same token into disposable_harness.marker and pass it here.',
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   const client = new Client({ connectionString: databaseUrl });
   await client.connect();
   try {
-    // Part 2: app_migration_receipts' own SCHEMA (not its rows) must be
-    // exactly what 0044 creates -- table with the right columns, RLS
-    // enabled, no anon/authenticated grants. This checks the same three
-    // structural signals the classifier's p1 dimension checks, directly,
-    // without touching the fourth (a receipt for 0044 existing) since
-    // that's what this script is about to create.
-    const schemaCheck = await client.query(`
-      select
-        to_regclass('public.app_migration_receipts') is not null
-          and (select count(*) from information_schema.columns
-               where table_schema='public' and table_name='app_migration_receipts'
-                 and column_name in ('version','checksum_sha256','applied_at','applied_by')) = 4
-          as has_shape,
-        coalesce((select relrowsecurity from pg_class
-                  where oid = to_regclass('public.app_migration_receipts')), false)
-          as rls_enabled,
-        not exists(
-          select 1 from information_schema.role_table_grants
-          where table_schema='public' and table_name='app_migration_receipts'
-            and grantee in ('anon','authenticated')
-        ) as no_public_grants
-    `);
-    const { has_shape: hasShape, rls_enabled: rlsEnabled, no_public_grants: noPublicGrants } = schemaCheck.rows[0];
-    if (!hasShape || !rlsEnabled || !noPublicGrants) {
-      console.error(
-        `Refusing to bootstrap: app_migration_receipts does not have the expected schema yet ` +
-          `(shape=${hasShape}, rls=${rlsEnabled}, no-public-grants=${noPublicGrants}). Migration 0044 ` +
-          `must have actually run before this bootstrap backfills receipts for it.`,
-      );
-      process.exitCode = 1;
-      return;
-    }
-
-    // Real data-state check, not another caller-supplied claim: a
-    // genuinely disposable target (a fresh `supabase db reset` output) has
-    // no real tenant/shop rows yet. A live database, however similar its
-    // schema looks, would. This is the strongest identity signal available
-    // short of a dedicated marker table, and it's derived from actual
-    // database contents.
-    const dataCheck = await client.query(
-      `select (select count(*) from tenants) as tenant_count, (select count(*) from shops) as shop_count`,
-    );
-    const { tenant_count: tenantCount, shop_count: shopCount } = dataCheck.rows[0];
-    if (Number(tenantCount) > 0 || Number(shopCount) > 0) {
-      console.error(
-        `Refusing to bootstrap: this database has real tenant/shop data (${tenantCount} tenant(s), ` +
-          `${shopCount} shop(s)) -- not the empty state a genuinely disposable reset target has. ` +
-          `A live database needs the attended baseline-receipt initialization path instead.`,
-      );
-      process.exitCode = 1;
-      return;
-    }
-
     await client.query('begin');
     try {
+      // Target identity, read through the actual connection: only a
+      // database the CI/local harness itself created carries this marker
+      // with this run's token. A forwarded tunnel to a real database, or a
+      // real-but-empty database, has no such marker and is refused.
+      const markerPresent = (
+        await client.query(`select to_regclass('disposable_harness.marker') is not null as present`)
+      ).rows[0].present;
+      if (!markerPresent) {
+        throw new RefusalError('this database has no disposable_harness.marker -- it was not created by the disposable-target harness.');
+      }
+      const markerRows = await client.query('select token from disposable_harness.marker');
+      if (markerRows.rowCount !== 1 || markerRows.rows[0].token !== expectedToken) {
+        throw new RefusalError('disposable_harness.marker does not hold this run\'s DISPOSABLE_TARGET_TOKEN -- wrong target.');
+      }
+
+      const receiptsPresent = (
+        await client.query(`select to_regclass('public.app_migration_receipts') is not null as present`)
+      ).rows[0].present;
+      if (!receiptsPresent) throw new RefusalError('app_migration_receipts does not exist; migration 0044 must have run first.');
+      await client.query('lock table public.app_migration_receipts in access exclusive mode');
+
+      const problems = await verifyReceiptsSchema(client);
+      if (problems.length > 0) {
+        throw new RefusalError(`app_migration_receipts does not exactly match 0044:\n  - ${problems.join('\n  - ')}`);
+      }
+
+      // Defense in depth, not identity: a harness-created target has no
+      // business data yet.
+      const data = (
+        await client.query('select (select count(*) from tenants) as tenants, (select count(*) from shops) as shops')
+      ).rows[0];
+      if (Number(data.tenants) > 0 || Number(data.shops) > 0) {
+        throw new RefusalError(`target has real tenant/shop data (${data.tenants} tenant(s), ${data.shops} shop(s)).`);
+      }
+
       for (const entry of entries) {
-        const existing = await client.query(
-          'select checksum_sha256 from app_migration_receipts where version = $1',
-          [entry.version],
-        );
+        const existing = await client.query('select checksum_sha256 from app_migration_receipts where version = $1', [entry.version]);
         if (existing.rowCount > 0) {
           if (existing.rows[0].checksum_sha256 !== entry.checksumSha256) {
-            throw new Error(
-              `Refusing to bootstrap: an existing receipt for ${entry.version} does not match the ` +
-                `file on disk. A silent ON CONFLICT DO NOTHING would hide this mismatch instead of ` +
-                `surfacing it; bootstrapping never overwrites a conflicting receipt.`,
-            );
+            throw new RefusalError(`an existing receipt for ${entry.version} does not match the file on disk.`);
           }
           continue;
         }
-        await client.query(
-          `insert into app_migration_receipts (version, checksum_sha256)
-           values ($1, $2)`,
-          [entry.version, entry.checksumSha256],
-        );
+        await client.query('insert into app_migration_receipts (version, checksum_sha256) values ($1, $2)', [
+          entry.version,
+          entry.checksumSha256,
+        ]);
       }
       await client.query('commit');
     } catch (error) {
@@ -200,10 +180,19 @@ async function main(argv) {
       throw error;
     }
     console.log(`Bootstrapped ${entries.length} baseline receipt(s) on disposable target.`);
+  } catch (error) {
+    if (error instanceof RefusalError) {
+      console.error(`Refusing to bootstrap: ${error.message}`);
+      process.exitCode = 1;
+      return;
+    }
+    throw error;
   } finally {
     await client.end();
   }
 }
+
+class RefusalError extends Error {}
 
 // Guard CLI execution behind an isMain check (matching apply-migrations-
 // with-receipts.mjs's own pattern) -- without this, any import of this

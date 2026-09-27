@@ -79,11 +79,37 @@ jobs:
           sudo fuser -k 54321/tcp 54322/tcp 54323/tcp 54324/tcp 54325/tcp 54326/tcp 54327/tcp 54328/tcp 54329/tcp || true
       - run: supabase start
       - run: supabase db reset
+      - name: Mark this reset target as harness-created (disposable identity)
+        run: |
+          set -euo pipefail
+          token=$(node -e 'console.log(require("node:crypto").randomUUID())')
+          psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -X -v ON_ERROR_STOP=1 \
+            -c "create schema disposable_harness" \
+            -c "create table disposable_harness.marker (token text not null)" \
+            -c "insert into disposable_harness.marker (token) values ('$token')"
+          echo "DISPOSABLE_TARGET_TOKEN=$token" >> "$GITHUB_ENV"
       - name: Bootstrap disposable baseline receipts (Packet P1, mechanism point 5)
         env:
           DISPOSABLE_RECEIPTS_BOOTSTRAP: '1'
         run: node scripts/bootstrap-disposable-receipts.mjs postgresql://postgres:postgres@127.0.0.1:54322/postgres --disposable-target-only
       - run: supabase test db
+      - name: Prove exact receipts-schema verification refuses every drift (P1-FOLLOWUP)
+        run: node scripts/test-receipts-schema-verifier.mjs postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      - name: Prove bootstrap refuses wrong, unmarked and non-empty targets (P1-FOLLOWUP)
+        run: node scripts/test-bootstrap-refusals.mjs postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      - name: Generate database types from the migrated schema (P1-FOLLOWUP)
+        run: |
+          set -euo pipefail
+          supabase gen types typescript --local > "$RUNNER_TEMP/generated-types.ts"
+          grep -q 'app_migration_receipts' "$RUNNER_TEMP/generated-types.ts" \
+            || { echo 'Generated types are missing app_migration_receipts' >&2; exit 1; }
+          echo "Generated $(wc -l < "$RUNNER_TEMP/generated-types.ts") lines of database types"
+      - name: Upload generated database types
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-database-types
+          path: ${{ runner.temp }}/generated-types.ts
+          retention-days: 14
       - name: Prove invite single-use under concurrent redemption
         run: node scripts/test-invite-concurrency.mjs
       - name: Prove sale stock locking and idempotency under concurrency
@@ -128,6 +154,15 @@ jobs:
           echo "PROOF_ROOT=$PROOF_ROOT" >> "$GITHUB_ENV"
       - name: Start the disposable Phase 5 target
         run: supabase start --workdir "$PROOF_ROOT"
+      - name: Mark the disposable target as harness-created
+        run: |
+          set -euo pipefail
+          token=$(node -e 'console.log(require("node:crypto").randomUUID())')
+          psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -X -v ON_ERROR_STOP=1 \
+            -c "create schema disposable_harness" \
+            -c "create table disposable_harness.marker (token text not null)" \
+            -c "insert into disposable_harness.marker (token) values ('$token')"
+          echo "DISPOSABLE_TARGET_TOKEN=$token" >> "$GITHUB_ENV"
       - name: Prove the staged attended upgrade path through Batch B
         env:
           PROOF_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
@@ -146,6 +181,24 @@ jobs:
           assert_state '5:2:0:0:0:0'
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" phase65
           assert_state '5:2:5:0:0:0'
+
+          # Out-of-order object (P1-FOLLOWUP): a Batch B object present
+          # while Batch A has not been applied must be refused by both the
+          # classifier and the runner -- distinct from partial-schema, which
+          # removes an object from an already-complete group.
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 \
+            -c 'create function phase65_assert_quantity_lines(jsonb) returns void language sql as $$ select $$'
+          set +e
+          ooo_state=$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL" 2>&1); ooo_classifier_exit=$?
+          ooo_apply=$(scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" batcha 2>&1); ooo_apply_exit=$?
+          set -e
+          echo "$ooo_state"; echo "$ooo_apply"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c 'drop function phase65_assert_quantity_lines(jsonb)'
+          [[ "$ooo_classifier_exit" -ne 0 ]] || { echo 'Classifier accepted an out-of-order Batch B object' >&2; exit 1; }
+          [[ "$ooo_apply_exit" -ne 0 ]] || { echo 'Runner applied Batch A over an out-of-order Batch B object' >&2; exit 1; }
+          grep -qF '0/2 Batch A, 1/3 Batch B' <<<"$ooo_state" || { echo 'Refused for an unexpected reason' >&2; exit 1; }
+          assert_state '5:2:5:0:0:0'
+
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" batcha
           assert_state '5:2:5:2:0:0'
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" batchb
@@ -295,6 +348,21 @@ jobs:
             echo "Classifier refused, but not for the expected reason (schema/grant drift):" >&2
             exit 1
           fi
+          assert_state '5:2:5:2:3:4'
+
+          # Scenario (P1-FOLLOWUP): a MISSING required grant -- distinct
+          # from the stray (excess) grant above. 0044 grants SELECT to
+          # backup_ro when that role exists; a backup_ro without it must be
+          # refused by the classifier. The disposable target has no
+          # backup_ro, so create one lacking the grant, then remove it.
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c 'create role backup_ro nologin'
+          set +e
+          grant_state=$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL" 2>&1); grant_exit=$?
+          set -e
+          echo "$grant_state"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c 'drop role backup_ro'
+          [[ "$grant_exit" -ne 0 ]] || { echo 'Classifier accepted a backup_ro missing its required SELECT' >&2; exit 1; }
+          grep -qF 'required grant missing' <<<"$grant_state" || { echo 'Refused for an unexpected reason' >&2; exit 1; }
           assert_state '5:2:5:2:3:4'
 
           # Scenario (P1-FOLLOWUP): rerunning an already-complete LEGACY
