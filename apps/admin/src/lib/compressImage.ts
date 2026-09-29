@@ -14,7 +14,9 @@ export async function compressItemImage(file: File): Promise<Blob> {
   bitmap.close();
 
   for (const quality of [0.82, 0.7, 0.58, 0.46, 0.34]) {
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', quality));
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/webp', quality),
+    );
     if (blob && blob.size <= MAX_BYTES) return blob;
   }
   throw new Error('Image cannot be compressed below 150 KB. Please crop it first.');

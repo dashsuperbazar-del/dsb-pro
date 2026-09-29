@@ -57,10 +57,16 @@ function setupPageMocks(
 
   p.route('**/rest/v1/rpc/register_device', async (route: Route) => {
     const body = route.request().postDataJSON();
-    const existing = state.devices.find((d: DeviceRow) => d.user_id === userId && d.device_id === body.p_device_id);
+    const existing = state.devices.find(
+      (d: DeviceRow) => d.user_id === userId && d.device_id === body.p_device_id,
+    );
     if (existing) {
       existing.last_seen = new Date().toISOString();
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(existing.id) });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(existing.id),
+      });
       return;
     }
     const id = `device-${state.devices.length + 1}`;
@@ -84,19 +90,32 @@ function setupPageMocks(
   });
 
   p.route('**/rest/v1/rpc/current_membership', async (route: Route) => {
-    const members = state.tenantCreated && state.loggedIn
-      ? [{ tenant_id: tenantId, role: 'owner', shop_ids: [shopId] }]
-      : [];
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(members) });
+    const members =
+      state.tenantCreated && state.loggedIn
+        ? [{ tenant_id: tenantId, role: 'owner', shop_ids: [shopId] }]
+        : [];
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(members),
+    });
   });
 
   p.route('**/rest/v1/rpc/create_tenant', async (route: Route) => {
     state.tenantCreated = true;
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(tenantId) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(tenantId),
+    });
   });
 
   p.route('**/rest/v1/shops**', async (route: Route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ id: shopId, is_default: true }]) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{ id: shopId, is_default: true }]),
+    });
   });
 
   p.route('**/rest/v1/devices**', async (route: Route) => {
@@ -107,14 +126,24 @@ function setupPageMocks(
       const wantedId = userFilter.replace(/^eq\./, '');
       rows = rows.filter((d) => d.user_id === wantedId);
     }
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(rows),
+    });
   });
 }
 
 test('an owner sees their own device, auto-labeled, and can rename it', async ({ page }) => {
   const email = uniqueEmail();
   const state = { loggedIn: false, tenantCreated: false, devices: [] as DeviceRow[] };
-  setupPageMocks(page, { email, userId: 'owner-devices-1', tenantId: 'tenant-devices-1', shopId: 'shop-devices-1', state });
+  setupPageMocks(page, {
+    email,
+    userId: 'owner-devices-1',
+    tenantId: 'tenant-devices-1',
+    shopId: 'shop-devices-1',
+    state,
+  });
 
   await page.goto('/signup');
   await fillSignup(page, email);
@@ -132,10 +161,18 @@ test('an owner sees their own device, auto-labeled, and can rename it', async ({
   await expect(page.getByTestId('my-devices')).toContainText('My laptop');
 });
 
-test('device screen states that Phase 5 revocation blocks sync on the next request', async ({ page }) => {
+test('device screen states that Phase 5 revocation blocks sync on the next request', async ({
+  page,
+}) => {
   const email = uniqueEmail();
   const state = { loggedIn: false, tenantCreated: false, devices: [] as DeviceRow[] };
-  setupPageMocks(page, { email, userId: 'owner-devices-2', tenantId: 'tenant-devices-2', shopId: 'shop-devices-2', state });
+  setupPageMocks(page, {
+    email,
+    userId: 'owner-devices-2',
+    tenantId: 'tenant-devices-2',
+    shopId: 'shop-devices-2',
+    state,
+  });
 
   await page.goto('/signup');
   await fillSignup(page, email);
@@ -145,5 +182,7 @@ test('device screen states that Phase 5 revocation blocks sync on the next reque
   await page.getByText(/DSB Pro — Admin/i).waitFor({ timeout: 5000 });
 
   await page.goto('/devices');
-  await expect(page.getByText(/blocks that browser from pulling or pushing queued Phase 5 sync work/i)).toBeVisible();
+  await expect(
+    page.getByText(/blocks that browser from pulling or pushing queued Phase 5 sync work/i),
+  ).toBeVisible();
 });

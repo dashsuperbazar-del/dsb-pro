@@ -18,7 +18,9 @@ import { test, expect } from '@playwright/test';
 // Supabase are mocked, standing in for "email confirmation disabled"
 // (CI's actual config) without needing a live backend or spending any of
 // dsb-pro-dev's (rate-limited) email quota.
-test('an immediate-session signup inside the join flow calls accept_invite, not a bare navigation away', async ({ page }) => {
+test('an immediate-session signup inside the join flow calls accept_invite, not a bare navigation away', async ({
+  page,
+}) => {
   const token = 'mock-invite-token';
   let acceptInviteCallCount = 0;
   let acceptInviteToken: string | null = null;
@@ -48,7 +50,11 @@ test('an immediate-session signup inside the join flow calls accept_invite, not 
   });
 
   await page.route('**/rest/v1/rpc/register_device', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify('fake-device-id') });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify('fake-device-id'),
+    });
   });
   await page.route('**/rest/v1/rpc/set_device_label', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: 'null' });
@@ -62,7 +68,11 @@ test('an immediate-session signup inside the join flow calls accept_invite, not 
     acceptInviteCallCount += 1;
     acceptInviteToken = route.request().postDataJSON()?.p_token ?? null;
     if (acceptInviteCallCount === 1) {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify('fake-tenant-id') });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify('fake-tenant-id'),
+      });
     } else {
       await route.fulfill({
         status: 400,

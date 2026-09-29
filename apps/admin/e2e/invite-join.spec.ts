@@ -23,7 +23,10 @@ test('create your shop takes an owner straight into the app', async ({ page }) =
   await expect(page.getByText(/role owner/i)).toBeVisible();
 });
 
-test('owner creates a real invite and a new user accepts it through the deep link', async ({ page, browser }) => {
+test('owner creates a real invite and a new user accepts it through the deep link', async ({
+  page,
+  browser,
+}) => {
   const ownerEmail = uniqueEmail();
   await page.goto('/signup');
   await fillSignup(page, ownerEmail);

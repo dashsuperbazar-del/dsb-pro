@@ -70,23 +70,23 @@ function DeviceRow({
   return (
     <li>
       {device.label ?? 'Unlabeled device'}
-      {isCurrentBrowser && ' (this device)'} — last seen {new Date(device.lastSeen).toLocaleString()}
+      {isCurrentBrowser && ' (this device)'} — last seen{' '}
+      {new Date(device.lastSeen).toLocaleString()}
       {renaming ? (
         <>
           <label>
             New name
-            <input value={newLabel} onInput={(e) => setNewLabel((e.target as HTMLInputElement).value)} />
+            <input
+              value={newLabel}
+              onInput={(e) => setNewLabel((e.target as HTMLInputElement).value)}
+            />
           </label>
           <button onClick={save}>Save</button>
         </>
       ) : (
         <button onClick={() => setRenaming(true)}>Rename</button>
       )}
-      {device.revokedAt ? (
-        <span> (revoked)</span>
-      ) : (
-        <button onClick={revoke}>Revoke</button>
-      )}
+      {device.revokedAt ? <span> (revoked)</span> : <button onClick={revoke}>Revoke</button>}
       {error && <p role="alert">{error}</p>}
     </li>
   );
@@ -107,7 +107,11 @@ function MyDevices({ userId }: { userId: string }) {
     setDevices((prev) => (prev ? prev.map((d) => (d.id === id ? { ...d, label } : d)) : prev));
   }
   function onRevoked(id: string) {
-    setDevices((prev) => (prev ? prev.map((d) => (d.id === id ? { ...d, revokedAt: new Date().toISOString() } : d)) : prev));
+    setDevices((prev) =>
+      prev
+        ? prev.map((d) => (d.id === id ? { ...d, revokedAt: new Date().toISOString() } : d))
+        : prev,
+    );
   }
 
   return (
@@ -150,14 +154,19 @@ function AllDevices({ selfUserId }: { selfUserId: string }) {
     setDevices((prev) => (prev ? prev.map((d) => (d.id === id ? { ...d, label } : d)) : prev));
   }
   function onRevoked(id: string) {
-    setDevices((prev) => (prev ? prev.map((d) => (d.id === id ? { ...d, revokedAt: new Date().toISOString() } : d)) : prev));
+    setDevices((prev) =>
+      prev
+        ? prev.map((d) => (d.id === id ? { ...d, revokedAt: new Date().toISOString() } : d))
+        : prev,
+    );
   }
 
   return (
     <section aria-label="All devices">
       <h2>All devices</h2>
       <p>
-        Revoking someone else's device blocks that browser from pulling or pushing queued Phase 5 sync work on its next sync request.
+        Revoking someone else's device blocks that browser from pulling or pushing queued Phase 5
+        sync work on its next sync request.
       </p>
       {error && <p role="alert">{error}</p>}
       {devices === null ? (

@@ -6,7 +6,11 @@ function uniqueEmail() {
 
 const TEST_PASSWORD = 'TestOnly-2026!pw';
 
-async function fillSignup(page: import('@playwright/test').Page, email: string, password = TEST_PASSWORD) {
+async function fillSignup(
+  page: import('@playwright/test').Page,
+  email: string,
+  password = TEST_PASSWORD,
+) {
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByLabel('Confirm password').fill(password);
