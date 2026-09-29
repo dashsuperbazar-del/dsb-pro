@@ -24,7 +24,7 @@ Ask the user only for: merge, live migration approval, legacy export (F0), money
   PAT (`pnpm gen:types`, see script). No Docker daemon in the cloud builder session → M0 could NOT regenerate.
   Do it on a machine with Docker/local Supabase; until then RPC typing is not schema-checked.
 - No supplier-payment RPC/screen yet (C1/C2). Expenses live in Reports; no stock-adjust screen (U1).
-- Every gate H1–H9 from Phase 3 on is NOT GO; needs dated real-shop evidence.
+- Every gate H1–H9 from Phase 3 on is NOT GO; needs dated real-shop evidence. H3 needs an explicit offline→restart→reconnect device test, not just the shadow run.
 - P1 deferred follow-ups 1–6 (see ledger P1 row) are moved to M2.
 - Legacy old-DSB JSON export needed from the user when F0 starts.
 

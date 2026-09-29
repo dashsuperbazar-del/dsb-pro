@@ -23,7 +23,7 @@
 
 | Milestone | Goal | Exit gate |
 |---|---|---|
-| **M1 — Daily-usable** | Everything old DSB does day-to-day: items/stock, purchase bills, supplier (party) ledger + payments, sales/POS, customer ledger + receipts, expenses, stock adjust, returns, day book, backup. Old data imported. | 7-day **shadow run**: same entries in old DSB and DSB Pro; balances and stock match (covers H1, H2, H3). |
+| **M1 — Daily-usable** | Everything old DSB does day-to-day: items/stock, purchase bills, supplier (party) ledger + payments, sales/POS, customer ledger + receipts, expenses, stock adjust, returns, day book, backup. Old data imported. | 7-day **shadow run**: same entries in old DSB and DSB Pro; balances and stock match (covers H1, H2). **H3 also requires** one dated device exercise: offline entry → app restart → reconnect; every entry present exactly once (no loss, no duplicate). |
 | **M2 — Hardened + cutover** | Health/readiness, export v5, receipt snapshots, i18n/a11y, cutover | H4, H5, H6, H7 |
 | **M3 — Storefront + SaaS (parallel to M2)** | G0–G6, S1–S4 | H8, H9; no public launch before H7 |
 
@@ -48,7 +48,7 @@ Each row = one PR. Migration numbers re-checked against `main` before use.
 | 11 | **D1-lite** Aging + dated ledgers | As-of outstanding and aging for suppliers and customers. | 0052 | Sonnet |
 | 12 | **R1 Shadow-run kit** | A one-page "compare" report: per-party balance, per-item stock, day totals, exportable as CSV to tick against old DSB. | — | Sonnet |
 
-**M1 gate:** user runs both apps for 7 days, taps the compare report daily; zero unexplained differences. Estimated **12–16 sessions** [Guessing].
+**M1 gate:** user runs both apps for 7 days, taps the compare report daily; zero unexplained differences, plus the H3 offline/restart/reconnect exercise. Estimated **12–16 sessions** [Guessing].
 
 **Moved out of M1 → M2:** D2 (receipt snapshots), D3 (export v5), D4 (health v2), E0/E1 (Hindi, full i18n, role nav), E2 (theme, a11y, axe), E3 (perf rehearsal), F4/F5 (formal rehearsal + cutover), P1 follow-ups 1–5, C0 benchmark.
 
