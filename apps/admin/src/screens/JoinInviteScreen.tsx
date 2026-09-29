@@ -39,13 +39,20 @@ export function JoinInviteScreen({ token }: { token?: string }) {
     return mode === 'signup' ? (
       <div>
         <p>Sign up or log in to accept this invite.</p>
-        <SignupScreen onSignedUp={() => void acceptCurrentInvite()} onLogIn={() => setMode('login')} />
+        <SignupScreen
+          onSignedUp={() => void acceptCurrentInvite()}
+          onLogIn={() => setMode('login')}
+        />
       </div>
     ) : (
       <div>
         <p>Log in to accept this invite.</p>
         <LoginScreen onSignedIn={() => void acceptCurrentInvite()} />
-        <p><button type="button" onClick={() => setMode('signup')}>Create a new account</button></p>
+        <p>
+          <button type="button" onClick={() => setMode('signup')}>
+            Create a new account
+          </button>
+        </p>
       </div>
     );
   }

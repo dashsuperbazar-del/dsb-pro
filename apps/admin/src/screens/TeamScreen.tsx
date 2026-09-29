@@ -26,19 +26,29 @@ export function TeamScreen() {
 
   if (session.status === 'loading') return <p>Loading…</p>;
   if (session.status !== 'active') return <p>Sign in to view your team.</p>;
-  if (session.membership.role !== 'owner') return <p role="alert">Only the owner can manage the team.</p>;
+  if (session.membership.role !== 'owner')
+    return <p role="alert">Only the owner can manage the team.</p>;
 
   return (
     <main>
       <h1>Team</h1>
-      <InviteForm session={session.session} onInviteCreated={() => setRefreshInvites((n) => n + 1)} />
+      <InviteForm
+        session={session.session}
+        onInviteCreated={() => setRefreshInvites((n) => n + 1)}
+      />
       <PendingInvites key={refreshInvites} />
       <MembersList />
     </main>
   );
 }
 
-function InviteForm({ session, onInviteCreated }: { session: Session; onInviteCreated: () => void }) {
+function InviteForm({
+  session,
+  onInviteCreated,
+}: {
+  session: Session;
+  onInviteCreated: () => void;
+}) {
   const [role, setRole] = useState<Role>('cashier');
   const [link, setLink] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -75,19 +85,36 @@ function InviteForm({ session, onInviteCreated }: { session: Session; onInviteCr
       <form onSubmit={onSubmit}>
         <label>
           Role
-          <select value={role} onChange={(e) => setRole((e.target as HTMLSelectElement).value as Role)}>
-            {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+          <select
+            value={role}
+            onChange={(e) => setRole((e.target as HTMLSelectElement).value as Role)}
+          >
+            {ROLES.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
           </select>
         </label>
-        <button type="submit" disabled={!verified}>Create invite</button>
+        <button type="submit" disabled={!verified}>
+          Create invite
+        </button>
       </form>
       {!verified && <p>Verify your email to send invites.</p>}
       {error && <p role="alert">{error}</p>}
       {link && (
         <p>
           Share this link: <span data-testid="invite-link">{link}</span>{' '}
-          <button type="button" onClick={() => void copyLink()}>Copy link</button>{' '}
-          <a href={`https://wa.me/?text=${encodeURIComponent(link)}`} target="_blank" rel="noreferrer">Share on WhatsApp</a>
+          <button type="button" onClick={() => void copyLink()}>
+            Copy link
+          </button>{' '}
+          <a
+            href={`https://wa.me/?text=${encodeURIComponent(link)}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Share on WhatsApp
+          </a>
           {copied && <span role="status"> Copied.</span>}
         </p>
       )}
@@ -100,7 +127,9 @@ function PendingInvites() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    listInvites().then(setInvites).catch((err) => setError(errorMessage(classifyError(err), err)));
+    listInvites()
+      .then(setInvites)
+      .catch((err) => setError(errorMessage(classifyError(err), err)));
   }, []);
 
   async function onRevoke(id: string) {
@@ -123,7 +152,8 @@ function PendingInvites() {
         {pending.length === 0 && <li>No pending invites.</li>}
         {pending.map((invite) => (
           <li key={invite.id}>
-            Code {invite.token} — {invite.role} — created {new Date(invite.createdAt).toLocaleDateString()} — expires{' '}
+            Code {invite.token} — {invite.role} — created{' '}
+            {new Date(invite.createdAt).toLocaleDateString()} — expires{' '}
             {new Date(invite.expiresAt).toLocaleDateString()}{' '}
             <button onClick={() => onRevoke(invite.id)}>Revoke</button>
           </li>
@@ -138,14 +168,18 @@ function MembersList() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    listTenantUsers().then(setMembers).catch((err) => setError(errorMessage(classifyError(err), err)));
+    listTenantUsers()
+      .then(setMembers)
+      .catch((err) => setError(errorMessage(classifyError(err), err)));
   }, []);
 
   async function onRoleChange(userId: string, role: Role) {
     setError(null);
     try {
       await setUserRole(userId, role);
-      setMembers((prev) => (prev ? prev.map((m) => (m.userId === userId ? { ...m, role } : m)) : prev));
+      setMembers((prev) =>
+        prev ? prev.map((m) => (m.userId === userId ? { ...m, role } : m)) : prev,
+      );
     } catch (err) {
       setError(errorMessage(classifyError(err), err));
     }
@@ -156,7 +190,9 @@ function MembersList() {
     setError(null);
     try {
       await setUserStatus(member.userId, status);
-      setMembers((prev) => (prev ? prev.map((m) => (m.userId === member.userId ? { ...m, status } : m)) : prev));
+      setMembers((prev) =>
+        prev ? prev.map((m) => (m.userId === member.userId ? { ...m, status } : m)) : prev,
+      );
     } catch (err) {
       setError(errorMessage(classifyError(err), err));
     }
@@ -176,7 +212,9 @@ function MembersList() {
     <section aria-label="Team members" data-testid="members-list">
       <h2>Members</h2>
       {error && <p role="alert">{error}</p>}
-      {members === null ? <p>Loading…</p> : (
+      {members === null ? (
+        <p>Loading…</p>
+      ) : (
         <ul>
           {members.length === 0 && <li>No members yet.</li>}
           {members.map((member) => (
@@ -184,15 +222,32 @@ function MembersList() {
               {member.displayName ?? member.email ?? member.userId} — {member.status}{' '}
               {member.role !== 'owner' ? (
                 <>
-                  <select aria-label={`Role for ${member.email ?? member.userId}`} value={member.role} onChange={(e) => void onRoleChange(member.userId, (e.target as HTMLSelectElement).value as Role)}>
-                    {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                  <select
+                    aria-label={`Role for ${member.email ?? member.userId}`}
+                    value={member.role}
+                    onChange={(e) =>
+                      void onRoleChange(
+                        member.userId,
+                        (e.target as HTMLSelectElement).value as Role,
+                      )
+                    }
+                  >
+                    {ROLES.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
                   </select>{' '}
                   <button type="button" onClick={() => void onStatusChange(member)}>
                     {member.status === 'active' ? 'Disable' : 'Reactivate'}
                   </button>{' '}
-                  <button type="button" onClick={() => void onRemove(member.userId)}>Remove</button>
+                  <button type="button" onClick={() => void onRemove(member.userId)}>
+                    Remove
+                  </button>
                 </>
-              ) : <span> ({member.role})</span>}
+              ) : (
+                <span> ({member.role})</span>
+              )}
             </li>
           ))}
         </ul>

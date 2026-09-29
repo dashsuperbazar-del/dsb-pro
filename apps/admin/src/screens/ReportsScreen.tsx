@@ -1,45 +1,599 @@
 import { useEffect, useState } from 'preact/hooks';
 import {
-  checkInvariants, createStockCount, exportTenant, getDayBook, getDefaultShopId, getGstSummary,getShopBusinessDate,
-  getPartyLedger, getStockValuation, listItems, listParties, listStock, postExpense, postStockCount,voidExpense,
-  getLowStockReport, getItemSalesReport, getPurchaseRegister, getCustomerAgingReport,
-  type DayBookRow, type GstRow, type Item, type Party, type PartyLedgerRow, type StockValueRow,
-  type LowStockRow, type ItemSalesRow, type PurchaseRegisterRow, type CustomerAgingRow,
+  checkInvariants,
+  createStockCount,
+  exportTenant,
+  getDayBook,
+  getDefaultShopId,
+  getGstSummary,
+  getShopBusinessDate,
+  getPartyLedger,
+  getStockValuation,
+  listItems,
+  listParties,
+  listStock,
+  postExpense,
+  postStockCount,
+  voidExpense,
+  getLowStockReport,
+  getItemSalesReport,
+  getPurchaseRegister,
+  getCustomerAgingReport,
+  type DayBookRow,
+  type GstRow,
+  type Item,
+  type Party,
+  type PartyLedgerRow,
+  type StockValueRow,
+  type LowStockRow,
+  type ItemSalesRow,
+  type PurchaseRegisterRow,
+  type CustomerAgingRow,
 } from '@dsb-pro/adapters';
 import { appRoute } from '../lib/paths';
 import { exportOfflineBillingSnapshot } from '../lib/offlineSync';
-import { buildBusinessExportArchive,parseRupeesToPaise } from '@dsb-pro/core';
+import { buildBusinessExportArchive, parseRupeesToPaise } from '@dsb-pro/core';
 
-const rupee=(p:number)=>new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR'}).format(p/100);
-function download(name:string,content:string|Uint8Array,type:string){const part:BlobPart=typeof content==='string'?content:(content.slice().buffer as ArrayBuffer);const blob=new Blob([part],{type});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();URL.revokeObjectURL(a.href);}
+const rupee = (p: number) =>
+  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(p / 100);
+function download(name: string, content: string | Uint8Array, type: string) {
+  const part: BlobPart =
+    typeof content === 'string' ? content : (content.slice().buffer as ArrayBuffer);
+  const blob = new Blob([part], { type });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
 
-export function ReportsScreen(){
- const [shop,setShop]=useState(''); const [businessDate,setBusinessDate]=useState(''); const [from,setFrom]=useState(''); const [to,setTo]=useState('');
- const [day,setDay]=useState<DayBookRow[]>([]); const [stock,setStock]=useState<StockValueRow[]>([]); const [gst,setGst]=useState<GstRow[]>([]);
- const [lowStock,setLowStock]=useState<LowStockRow[]>([]); const [itemSales,setItemSales]=useState<ItemSalesRow[]>([]);
- const [purchaseRegister,setPurchaseRegister]=useState<PurchaseRegisterRow[]>([]); const [aging,setAging]=useState<CustomerAgingRow[]>([]);
- const [parties,setParties]=useState<Party[]>([]); const [partyId,setPartyId]=useState(''); const [partyLedger,setPartyLedger]=useState<PartyLedgerRow[]>([]);
- const [items,setItems]=useState<Item[]>([]); const [stockQty,setStockQty]=useState<Record<string,number>>({});
- const [countItem,setCountItem]=useState(''); const [counted,setCounted]=useState(''); const [msg,setMsg]=useState(''); const [expenseDate,setExpenseDate]=useState(''); const [expenseClientId,setExpenseClientId]=useState(()=>crypto.randomUUID()); const [lastExpenseId,setLastExpenseId]=useState(''); const [expenseBusy,setExpenseBusy]=useState(false);
- useEffect(()=>{void (async()=>{try{const s=await getDefaultShopId();setShop(s);const [ps,is,ss,d]=await Promise.all([listParties(),listItems(),listStock(s),getShopBusinessDate(s)]);setParties(ps);setItems(is);setStockQty(Object.fromEntries(ss.map(x=>[x.item_id,Number(x.qty_base)])));setBusinessDate(d);setExpenseDate(d);setFrom(d.slice(0,8)+'01');setTo(d);}catch(e){setMsg(String(e));}})();},[]);
- async function load(){if(!shop)return;setMsg('Loading…');try{const [d,s,g,i,ls,is,pr,ag]=await Promise.all([getDayBook(shop,from,to),getStockValuation(shop),getGstSummary(shop,from,to),checkInvariants(),getLowStockReport(shop),getItemSalesReport(shop,from,to),getPurchaseRegister(shop,from,to),getCustomerAgingReport(shop,to)]);setDay(d);setStock(s);setGst(g);setLowStock(ls);setItemSales(is);setPurchaseRegister(pr);setAging(ag);if(partyId)setPartyLedger(await getPartyLedger(partyId,from,to));setMsg(i.ok?'Invariant check: PASS':'Invariant check: FAIL — stop and investigate');}catch(e){setMsg(String(e));}}
- async function expense(e:Event){e.preventDefault();if(!shop||expenseBusy)return;const form=e.currentTarget as HTMLFormElement;const f=new FormData(form);setExpenseBusy(true);try{const id=await postExpense(shop,String(f.get('date')),String(f.get('category')),String(f.get('description')),parseRupeesToPaise(String(f.get('amount'))),String(f.get('mode')),null,expenseClientId);setLastExpenseId(id);setExpenseClientId(crypto.randomUUID());setMsg('Expense posted.');form.reset();await load();}catch(err){setMsg(String(err));}finally{setExpenseBusy(false);}}
- async function undoExpense(){if(!lastExpenseId||expenseBusy)return;setExpenseBusy(true);try{await voidExpense(lastExpenseId);setLastExpenseId('');setMsg('Expense voided; the audit record was preserved.');await load();}catch(err){setMsg(String(err));}finally{setExpenseBusy(false);}}
- async function saveBackup(){if(!shop||!businessDate)return;try{const data=await exportTenant(shop);const archive=buildBusinessExportArchive(data);download('dsb-pro-full-device-backup-'+businessDate+'.zip',archive,'application/zip');setMsg('Full device backup saved as one ZIP: portable JSON, every exported table as CSV, and one PDF per invoice. Keep an encrypted copy off-device too.');}catch(e){setMsg(String(e));}}
- async function saveOfflineSnapshot(){try{const data=await exportOfflineBillingSnapshot();download('dsb-pro-offline-billing-'+(businessDate||'snapshot')+'.json',JSON.stringify(data,null,2),'application/json');setMsg('Offline billing-continuity snapshot saved. It includes the local catalog, stock, queued sales and conflicts—not full accounting history.');}catch(e){setMsg(String(e));}}
- async function countStock(e:Event){e.preventDefault();if(!shop||!businessDate||!countItem||counted==='')return;try{const id=await createStockCount(shop,businessDate,[{item_id:countItem,counted_qty:Number(counted),reason:'manual physical count'}],'Phase 6 physical count',crypto.randomUUID());await postStockCount(id);setMsg('Stock count posted through the adjustment ledger.');setStockQty(v=>({...v,[countItem]:Number(counted)}));setCounted('');await load();}catch(err){setMsg(String(err));}}
- return <main class="wide"><h1>Reports & recovery</h1><p><a href={appRoute.home}>← Home</a></p>
- <div class="row"><label>From<input type="date" value={from} onInput={e=>setFrom((e.target as HTMLInputElement).value)}/></label><label>To<input type="date" value={to} onInput={e=>setTo((e.target as HTMLInputElement).value)}/></label><button class="primary" disabled={!shop||!from||!to} onClick={()=>void load()}>Refresh</button><button onClick={()=>void saveBackup()}>Save full device backup ZIP</button><button onClick={()=>void saveOfflineSnapshot()}>Save offline billing snapshot</button></div>
- {msg&&<p role="status" class={msg.includes('FAIL')?'alert':''}>{msg}</p>}
- <section class="card"><h2>Post expense</h2><form class="grid-form" onSubmit={e=>void expense(e)}><label>Date<input name="date" type="date" required value={expenseDate} onInput={e=>setExpenseDate((e.currentTarget as HTMLInputElement).value)}/></label><label>Category<input name="category" required/></label><label>Description<input name="description" required/></label><label>Amount ₹<input name="amount" type="number" min="0.01" step="0.01" required/></label><label>Mode<select name="mode"><option>cash</option><option>upi</option><option>card</option><option>bank</option><option>other</option></select></label><button class="primary" disabled={expenseBusy}>{expenseBusy?'Posting…':'Post expense'}</button></form>{lastExpenseId&&<button type="button" disabled={expenseBusy} onClick={()=>void undoExpense()}>Void last posted expense</button>}</section>
- <section class="card"><h2>Physical stock count</h2><form class="grid-form" onSubmit={e=>void countStock(e)}><label>Item<select value={countItem} onInput={e=>setCountItem((e.target as HTMLSelectElement).value)} required><option value="">Choose…</option>{items.map(i=><option key={i.id} value={i.id}>{i.name} — expected {stockQty[i.id]??0} {i.unit1}</option>)}</select></label><label>Counted base quantity<input type="number" min="0" step="0.000001" value={counted} onInput={e=>setCounted((e.target as HTMLInputElement).value)} required/></label><button class="primary">Post stock count</button></form><p class="muted">Posting is refused if stock changed after the count snapshot, preventing a stale count from overwriting live movements.</p></section>
- <section class="card"><h2>Party ledger</h2><div class="row"><select value={partyId} onInput={e=>setPartyId((e.target as HTMLSelectElement).value)}><option value="">Choose supplier…</option>{parties.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select><button onClick={()=>void load()}>Load ledger</button></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Document</th><th>Debit</th><th>Credit</th><th>Balance</th></tr></thead><tbody>{partyLedger.map(r=><tr><td>{r.business_date}</td><td>{r.entry_type}</td><td>{r.document}</td><td>{rupee(r.debit_paise)}</td><td>{rupee(r.credit_paise)}</td><td>{rupee(r.running_balance_paise)}</td></tr>)}</tbody></table></div></section>
- <section class="card"><h2>Day book</h2><div class="table-wrap"><table><thead><tr><th>Date</th><th>Sales</th><th>Purchases</th><th>Receipts</th><th>Payments</th><th>Expenses</th><th>Net cash flow</th></tr></thead><tbody>{day.map(r=><tr><td>{r.business_date}</td><td>{rupee(r.sales_paise)}</td><td>{rupee(r.purchases_paise)}</td><td>{rupee(r.receipts_paise)}</td><td>{rupee(r.payments_paise)}</td><td>{rupee(r.expenses_paise)}</td><td>{rupee(r.net_cashflow_paise)}</td></tr>)}</tbody></table></div></section>
- <section class="card"><h2>Stock valuation</h2><div class="table-wrap"><table><thead><tr><th>Item</th><th>Qty base</th><th>Last cost</th><th>Value</th></tr></thead><tbody>{stock.map(r=><tr><td>{r.item_name}</td><td>{r.qty_base}</td><td>{rupee(r.cost_paise)}</td><td>{rupee(r.value_paise)}</td></tr>)}</tbody></table></div></section>
- <section class="card"><h2>GST summary</h2><p class="muted">Derived from immutable tax-rate snapshots. This is a bookkeeping summary, not filing advice.</p><div class="table-wrap"><table><thead><tr><th>Rate</th><th>Taxable sales</th><th>Gross sales</th><th>Taxable purchases</th><th>Gross purchases</th></tr></thead><tbody>{gst.map(r=><tr><td>{(r.tax_rate_bp/100).toFixed(2)}%</td><td>{rupee(r.taxable_sales_paise)}</td><td>{rupee(r.gross_sales_paise)}</td><td>{rupee(r.taxable_purchases_paise)}</td><td>{rupee(r.gross_purchases_paise)}</td></tr>)}</tbody></table></div></section>
- <section class="card"><h2>Low stock / reorder</h2><p class="muted">Items at or below their configured minimum stock, right now — not limited to the date range above.</p>{!lowStock.length?<p class="muted">Nothing is at or below its minimum stock.</p>:<div class="table-wrap"><table><thead><tr><th>Item</th><th>On hand</th><th>Min stock</th><th>Shortfall</th></tr></thead><tbody>{lowStock.map(r=><tr><td>{r.item_name}</td><td>{r.on_hand} {r.unit_name}</td><td>{r.min_stock} {r.unit_name}</td><td>{r.shortfall} {r.unit_name}</td></tr>)}</tbody></table></div>}</section>
- <section class="card"><h2>Item-wise sales</h2><div class="table-wrap"><table><thead><tr><th>Item</th><th>Sold</th><th>Returned</th><th>Net qty</th><th>Gross sales</th><th>Net sales</th></tr></thead><tbody>{itemSales.map(r=><tr><td>{r.item_name}</td><td>{r.qty_sold}</td><td>{r.qty_returned}</td><td>{r.net_qty}</td><td>{rupee(r.gross_sales_paise)}</td><td>{rupee(r.net_sales_paise)}</td></tr>)}</tbody></table></div></section>
- <section class="card"><h2>Purchase register</h2><div class="table-wrap"><table><thead><tr><th>Bill</th><th>Date</th><th>Supplier</th><th>Subtotal</th><th>Discount</th><th>Extra</th><th>Total</th><th>Status</th></tr></thead><tbody>{purchaseRegister.map(r=><tr><td>{r.doc_no}</td><td>{r.business_date}</td><td>{r.party_name??'—'}</td><td>{rupee(r.subtotal_paise)}</td><td>{rupee(r.discount_paise)}</td><td>{rupee(r.extra_charges_paise)}</td><td>{rupee(r.total_paise)}</td><td>{r.status}</td></tr>)}</tbody></table></div></section>
- <section class="card"><h2>Customer aging</h2><p class="muted">As of the "To" date above. Fully settled invoices carry no balance and do not appear.</p>{!aging.length?<p class="muted">No outstanding customer balances.</p>:<div class="table-wrap"><table><thead><tr><th>Customer</th><th>Not due</th><th>1–30 days</th><th>31–60 days</th><th>61–90 days</th><th>90+ days</th><th>Total</th></tr></thead><tbody>{aging.map(r=><tr><td>{r.customer_name}</td><td>{rupee(r.not_due_paise)}</td><td>{rupee(r.days_1_30_paise)}</td><td>{rupee(r.days_31_60_paise)}</td><td>{rupee(r.days_61_90_paise)}</td><td>{rupee(r.days_90_plus_paise)}</td><td>{rupee(r.total_outstanding_paise)}</td></tr>)}</tbody></table></div>}</section>
- </main>;
+export function ReportsScreen() {
+  const [shop, setShop] = useState('');
+  const [businessDate, setBusinessDate] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [day, setDay] = useState<DayBookRow[]>([]);
+  const [stock, setStock] = useState<StockValueRow[]>([]);
+  const [gst, setGst] = useState<GstRow[]>([]);
+  const [lowStock, setLowStock] = useState<LowStockRow[]>([]);
+  const [itemSales, setItemSales] = useState<ItemSalesRow[]>([]);
+  const [purchaseRegister, setPurchaseRegister] = useState<PurchaseRegisterRow[]>([]);
+  const [aging, setAging] = useState<CustomerAgingRow[]>([]);
+  const [parties, setParties] = useState<Party[]>([]);
+  const [partyId, setPartyId] = useState('');
+  const [partyLedger, setPartyLedger] = useState<PartyLedgerRow[]>([]);
+  const [items, setItems] = useState<Item[]>([]);
+  const [stockQty, setStockQty] = useState<Record<string, number>>({});
+  const [countItem, setCountItem] = useState('');
+  const [counted, setCounted] = useState('');
+  const [msg, setMsg] = useState('');
+  const [expenseDate, setExpenseDate] = useState('');
+  const [expenseClientId, setExpenseClientId] = useState(() => crypto.randomUUID());
+  const [lastExpenseId, setLastExpenseId] = useState('');
+  const [expenseBusy, setExpenseBusy] = useState(false);
+  useEffect(() => {
+    void (async () => {
+      try {
+        const s = await getDefaultShopId();
+        setShop(s);
+        const [ps, is, ss, d] = await Promise.all([
+          listParties(),
+          listItems(),
+          listStock(s),
+          getShopBusinessDate(s),
+        ]);
+        setParties(ps);
+        setItems(is);
+        setStockQty(Object.fromEntries(ss.map((x) => [x.item_id, Number(x.qty_base)])));
+        setBusinessDate(d);
+        setExpenseDate(d);
+        setFrom(d.slice(0, 8) + '01');
+        setTo(d);
+      } catch (e) {
+        setMsg(String(e));
+      }
+    })();
+  }, []);
+  async function load() {
+    if (!shop) return;
+    setMsg('Loading…');
+    try {
+      const [d, s, g, i, ls, is, pr, ag] = await Promise.all([
+        getDayBook(shop, from, to),
+        getStockValuation(shop),
+        getGstSummary(shop, from, to),
+        checkInvariants(),
+        getLowStockReport(shop),
+        getItemSalesReport(shop, from, to),
+        getPurchaseRegister(shop, from, to),
+        getCustomerAgingReport(shop, to),
+      ]);
+      setDay(d);
+      setStock(s);
+      setGst(g);
+      setLowStock(ls);
+      setItemSales(is);
+      setPurchaseRegister(pr);
+      setAging(ag);
+      if (partyId) setPartyLedger(await getPartyLedger(partyId, from, to));
+      setMsg(i.ok ? 'Invariant check: PASS' : 'Invariant check: FAIL — stop and investigate');
+    } catch (e) {
+      setMsg(String(e));
+    }
+  }
+  async function expense(e: Event) {
+    e.preventDefault();
+    if (!shop || expenseBusy) return;
+    const form = e.currentTarget as HTMLFormElement;
+    const f = new FormData(form);
+    setExpenseBusy(true);
+    try {
+      const id = await postExpense(
+        shop,
+        String(f.get('date')),
+        String(f.get('category')),
+        String(f.get('description')),
+        parseRupeesToPaise(String(f.get('amount'))),
+        String(f.get('mode')),
+        null,
+        expenseClientId,
+      );
+      setLastExpenseId(id);
+      setExpenseClientId(crypto.randomUUID());
+      setMsg('Expense posted.');
+      form.reset();
+      await load();
+    } catch (err) {
+      setMsg(String(err));
+    } finally {
+      setExpenseBusy(false);
+    }
+  }
+  async function undoExpense() {
+    if (!lastExpenseId || expenseBusy) return;
+    setExpenseBusy(true);
+    try {
+      await voidExpense(lastExpenseId);
+      setLastExpenseId('');
+      setMsg('Expense voided; the audit record was preserved.');
+      await load();
+    } catch (err) {
+      setMsg(String(err));
+    } finally {
+      setExpenseBusy(false);
+    }
+  }
+  async function saveBackup() {
+    if (!shop || !businessDate) return;
+    try {
+      const data = await exportTenant(shop);
+      const archive = buildBusinessExportArchive(data);
+      download('dsb-pro-full-device-backup-' + businessDate + '.zip', archive, 'application/zip');
+      setMsg(
+        'Full device backup saved as one ZIP: portable JSON, every exported table as CSV, and one PDF per invoice. Keep an encrypted copy off-device too.',
+      );
+    } catch (e) {
+      setMsg(String(e));
+    }
+  }
+  async function saveOfflineSnapshot() {
+    try {
+      const data = await exportOfflineBillingSnapshot();
+      download(
+        'dsb-pro-offline-billing-' + (businessDate || 'snapshot') + '.json',
+        JSON.stringify(data, null, 2),
+        'application/json',
+      );
+      setMsg(
+        'Offline billing-continuity snapshot saved. It includes the local catalog, stock, queued sales and conflicts—not full accounting history.',
+      );
+    } catch (e) {
+      setMsg(String(e));
+    }
+  }
+  async function countStock(e: Event) {
+    e.preventDefault();
+    if (!shop || !businessDate || !countItem || counted === '') return;
+    try {
+      const id = await createStockCount(
+        shop,
+        businessDate,
+        [{ item_id: countItem, counted_qty: Number(counted), reason: 'manual physical count' }],
+        'Phase 6 physical count',
+        crypto.randomUUID(),
+      );
+      await postStockCount(id);
+      setMsg('Stock count posted through the adjustment ledger.');
+      setStockQty((v) => ({ ...v, [countItem]: Number(counted) }));
+      setCounted('');
+      await load();
+    } catch (err) {
+      setMsg(String(err));
+    }
+  }
+  return (
+    <main class="wide">
+      <h1>Reports & recovery</h1>
+      <p>
+        <a href={appRoute.home}>← Home</a>
+      </p>
+      <div class="row">
+        <label>
+          From
+          <input
+            type="date"
+            value={from}
+            onInput={(e) => setFrom((e.target as HTMLInputElement).value)}
+          />
+        </label>
+        <label>
+          To
+          <input
+            type="date"
+            value={to}
+            onInput={(e) => setTo((e.target as HTMLInputElement).value)}
+          />
+        </label>
+        <button class="primary" disabled={!shop || !from || !to} onClick={() => void load()}>
+          Refresh
+        </button>
+        <button onClick={() => void saveBackup()}>Save full device backup ZIP</button>
+        <button onClick={() => void saveOfflineSnapshot()}>Save offline billing snapshot</button>
+      </div>
+      {msg && (
+        <p role="status" class={msg.includes('FAIL') ? 'alert' : ''}>
+          {msg}
+        </p>
+      )}
+      <section class="card">
+        <h2>Post expense</h2>
+        <form class="grid-form" onSubmit={(e) => void expense(e)}>
+          <label>
+            Date
+            <input
+              name="date"
+              type="date"
+              required
+              value={expenseDate}
+              onInput={(e) => setExpenseDate((e.currentTarget as HTMLInputElement).value)}
+            />
+          </label>
+          <label>
+            Category
+            <input name="category" required />
+          </label>
+          <label>
+            Description
+            <input name="description" required />
+          </label>
+          <label>
+            Amount ₹<input name="amount" type="number" min="0.01" step="0.01" required />
+          </label>
+          <label>
+            Mode
+            <select name="mode">
+              <option>cash</option>
+              <option>upi</option>
+              <option>card</option>
+              <option>bank</option>
+              <option>other</option>
+            </select>
+          </label>
+          <button class="primary" disabled={expenseBusy}>
+            {expenseBusy ? 'Posting…' : 'Post expense'}
+          </button>
+        </form>
+        {lastExpenseId && (
+          <button type="button" disabled={expenseBusy} onClick={() => void undoExpense()}>
+            Void last posted expense
+          </button>
+        )}
+      </section>
+      <section class="card">
+        <h2>Physical stock count</h2>
+        <form class="grid-form" onSubmit={(e) => void countStock(e)}>
+          <label>
+            Item
+            <select
+              value={countItem}
+              onInput={(e) => setCountItem((e.target as HTMLSelectElement).value)}
+              required
+            >
+              <option value="">Choose…</option>
+              {items.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.name} — expected {stockQty[i.id] ?? 0} {i.unit1}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Counted base quantity
+            <input
+              type="number"
+              min="0"
+              step="0.000001"
+              value={counted}
+              onInput={(e) => setCounted((e.target as HTMLInputElement).value)}
+              required
+            />
+          </label>
+          <button class="primary">Post stock count</button>
+        </form>
+        <p class="muted">
+          Posting is refused if stock changed after the count snapshot, preventing a stale count
+          from overwriting live movements.
+        </p>
+      </section>
+      <section class="card">
+        <h2>Party ledger</h2>
+        <div class="row">
+          <select
+            value={partyId}
+            onInput={(e) => setPartyId((e.target as HTMLSelectElement).value)}
+          >
+            <option value="">Choose supplier…</option>
+            {parties.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          <button onClick={() => void load()}>Load ledger</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Document</th>
+                <th>Debit</th>
+                <th>Credit</th>
+                <th>Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {partyLedger.map((r) => (
+                <tr>
+                  <td>{r.business_date}</td>
+                  <td>{r.entry_type}</td>
+                  <td>{r.document}</td>
+                  <td>{rupee(r.debit_paise)}</td>
+                  <td>{rupee(r.credit_paise)}</td>
+                  <td>{rupee(r.running_balance_paise)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section class="card">
+        <h2>Day book</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Sales</th>
+                <th>Purchases</th>
+                <th>Receipts</th>
+                <th>Payments</th>
+                <th>Expenses</th>
+                <th>Net cash flow</th>
+              </tr>
+            </thead>
+            <tbody>
+              {day.map((r) => (
+                <tr>
+                  <td>{r.business_date}</td>
+                  <td>{rupee(r.sales_paise)}</td>
+                  <td>{rupee(r.purchases_paise)}</td>
+                  <td>{rupee(r.receipts_paise)}</td>
+                  <td>{rupee(r.payments_paise)}</td>
+                  <td>{rupee(r.expenses_paise)}</td>
+                  <td>{rupee(r.net_cashflow_paise)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section class="card">
+        <h2>Stock valuation</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Qty base</th>
+                <th>Last cost</th>
+                <th>Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stock.map((r) => (
+                <tr>
+                  <td>{r.item_name}</td>
+                  <td>{r.qty_base}</td>
+                  <td>{rupee(r.cost_paise)}</td>
+                  <td>{rupee(r.value_paise)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section class="card">
+        <h2>GST summary</h2>
+        <p class="muted">
+          Derived from immutable tax-rate snapshots. This is a bookkeeping summary, not filing
+          advice.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Rate</th>
+                <th>Taxable sales</th>
+                <th>Gross sales</th>
+                <th>Taxable purchases</th>
+                <th>Gross purchases</th>
+              </tr>
+            </thead>
+            <tbody>
+              {gst.map((r) => (
+                <tr>
+                  <td>{(r.tax_rate_bp / 100).toFixed(2)}%</td>
+                  <td>{rupee(r.taxable_sales_paise)}</td>
+                  <td>{rupee(r.gross_sales_paise)}</td>
+                  <td>{rupee(r.taxable_purchases_paise)}</td>
+                  <td>{rupee(r.gross_purchases_paise)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section class="card">
+        <h2>Low stock / reorder</h2>
+        <p class="muted">
+          Items at or below their configured minimum stock, right now — not limited to the date
+          range above.
+        </p>
+        {!lowStock.length ? (
+          <p class="muted">Nothing is at or below its minimum stock.</p>
+        ) : (
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>On hand</th>
+                  <th>Min stock</th>
+                  <th>Shortfall</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lowStock.map((r) => (
+                  <tr>
+                    <td>{r.item_name}</td>
+                    <td>
+                      {r.on_hand} {r.unit_name}
+                    </td>
+                    <td>
+                      {r.min_stock} {r.unit_name}
+                    </td>
+                    <td>
+                      {r.shortfall} {r.unit_name}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+      <section class="card">
+        <h2>Item-wise sales</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Sold</th>
+                <th>Returned</th>
+                <th>Net qty</th>
+                <th>Gross sales</th>
+                <th>Net sales</th>
+              </tr>
+            </thead>
+            <tbody>
+              {itemSales.map((r) => (
+                <tr>
+                  <td>{r.item_name}</td>
+                  <td>{r.qty_sold}</td>
+                  <td>{r.qty_returned}</td>
+                  <td>{r.net_qty}</td>
+                  <td>{rupee(r.gross_sales_paise)}</td>
+                  <td>{rupee(r.net_sales_paise)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section class="card">
+        <h2>Purchase register</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Bill</th>
+                <th>Date</th>
+                <th>Supplier</th>
+                <th>Subtotal</th>
+                <th>Discount</th>
+                <th>Extra</th>
+                <th>Total</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {purchaseRegister.map((r) => (
+                <tr>
+                  <td>{r.doc_no}</td>
+                  <td>{r.business_date}</td>
+                  <td>{r.party_name ?? '—'}</td>
+                  <td>{rupee(r.subtotal_paise)}</td>
+                  <td>{rupee(r.discount_paise)}</td>
+                  <td>{rupee(r.extra_charges_paise)}</td>
+                  <td>{rupee(r.total_paise)}</td>
+                  <td>{r.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section class="card">
+        <h2>Customer aging</h2>
+        <p class="muted">
+          As of the "To" date above. Fully settled invoices carry no balance and do not appear.
+        </p>
+        {!aging.length ? (
+          <p class="muted">No outstanding customer balances.</p>
+        ) : (
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Customer</th>
+                  <th>Not due</th>
+                  <th>1–30 days</th>
+                  <th>31–60 days</th>
+                  <th>61–90 days</th>
+                  <th>90+ days</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {aging.map((r) => (
+                  <tr>
+                    <td>{r.customer_name}</td>
+                    <td>{rupee(r.not_due_paise)}</td>
+                    <td>{rupee(r.days_1_30_paise)}</td>
+                    <td>{rupee(r.days_31_60_paise)}</td>
+                    <td>{rupee(r.days_61_90_paise)}</td>
+                    <td>{rupee(r.days_90_plus_paise)}</td>
+                    <td>{rupee(r.total_outstanding_paise)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </main>
+  );
 }

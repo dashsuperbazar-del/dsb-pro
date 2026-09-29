@@ -32,7 +32,11 @@ test('unverified email shows a dismissible reminder banner, not a block', async 
   });
 
   await page.route('**/rest/v1/rpc/register_device', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify('fake-device-id') });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify('fake-device-id'),
+    });
   });
   await page.route('**/rest/v1/rpc/set_device_label', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: 'null' });

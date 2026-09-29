@@ -1,6 +1,11 @@
 import { useState } from 'preact/hooks';
 import type { Session } from '@dsb-pro/adapters';
-import { isEmailVerified, resendVerificationEmail, classifyError, errorMessage } from '@dsb-pro/adapters';
+import {
+  isEmailVerified,
+  resendVerificationEmail,
+  classifyError,
+  errorMessage,
+} from '@dsb-pro/adapters';
 
 // Soft gate only (spec §7): shown app-wide, dismissible per browser tab,
 // never blocks anything except the two actions that check

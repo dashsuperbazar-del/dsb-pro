@@ -50,7 +50,12 @@ export function LoginScreen({ onSignedIn }: { onSignedIn?: () => void } = {}) {
       <form onSubmit={onSubmit}>
         <label>
           Email
-          <input type="email" value={email} onInput={(e) => setEmail((e.target as HTMLInputElement).value)} required />
+          <input
+            type="email"
+            value={email}
+            onInput={(e) => setEmail((e.target as HTMLInputElement).value)}
+            required
+          />
         </label>
         <label>
           Password

@@ -33,12 +33,19 @@ function setupMocks(page: Page, state: State, suffix: string) {
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        access_token: 'token', token_type: 'bearer', expires_in: 3600,
-        expires_at: Math.floor(Date.now() / 1000) + 3600, refresh_token: 'refresh',
+        access_token: 'token',
+        token_type: 'bearer',
+        expires_in: 3600,
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+        refresh_token: 'refresh',
         user: {
           id: isOwner ? ownerUserId : joinerUserId,
-          aud: 'authenticated', role: 'authenticated', email: body.email,
-          email_confirmed_at: new Date().toISOString(), app_metadata: {}, user_metadata: {},
+          aud: 'authenticated',
+          role: 'authenticated',
+          email: body.email,
+          email_confirmed_at: new Date().toISOString(),
+          app_metadata: {},
+          user_metadata: {},
           created_at: new Date().toISOString(),
         },
       }),
@@ -46,7 +53,11 @@ function setupMocks(page: Page, state: State, suffix: string) {
   });
 
   page.route('**/rpc/register_device', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(`device-${suffix}`) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(`device-${suffix}`),
+    });
   });
   page.route('**/rpc/set_device_label', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: 'null' });
@@ -54,47 +65,101 @@ function setupMocks(page: Page, state: State, suffix: string) {
   page.route('**/rpc/current_membership', async (route) => {
     const rows = [];
     if (state.tenantCreated) {
-      if (state.ownerLoggedIn) rows.push({ tenant_id: tenantId, role: 'owner', shop_ids: [shopId] });
+      if (state.ownerLoggedIn)
+        rows.push({ tenant_id: tenantId, role: 'owner', shop_ids: [shopId] });
       else if (state.joinerLoggedIn && !state.joinerRemoved && state.joinerStatus === 'active') {
         rows.push({ tenant_id: tenantId, role: state.joinerRole, shop_ids: [shopId] });
       }
     }
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(rows),
+    });
   });
   page.route('**/rpc/create_tenant', async (route) => {
     state.tenantCreated = true;
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(tenantId) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(tenantId),
+    });
   });
   page.route('**/shops**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ id: shopId, is_default: true }]) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{ id: shopId, is_default: true }]),
+    });
   });
   page.route('**/rpc/create_invite', async (route) => {
     state.inviteExists = true;
     await route.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify([{ id: `invite-${suffix}`, token: `token-${suffix}`, expires_at: new Date(Date.now() + 604800000).toISOString() }]),
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([
+        {
+          id: `invite-${suffix}`,
+          token: `token-${suffix}`,
+          expires_at: new Date(Date.now() + 604800000).toISOString(),
+        },
+      ]),
     });
   });
   page.route('**/invites**', async (route) => {
-    const rows = state.inviteExists ? [{
-      id: `invite-${suffix}`, token: `token-${suffix}`, role: state.joinerRole, shop_ids: [shopId],
-      expires_at: new Date(Date.now() + 604800000).toISOString(), created_at: new Date().toISOString(),
-    }] : [];
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) });
+    const rows = state.inviteExists
+      ? [
+          {
+            id: `invite-${suffix}`,
+            token: `token-${suffix}`,
+            role: state.joinerRole,
+            shop_ids: [shopId],
+            expires_at: new Date(Date.now() + 604800000).toISOString(),
+            created_at: new Date().toISOString(),
+          },
+        ]
+      : [];
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(rows),
+    });
   });
   page.route('**/rpc/list_tenant_users_admin', async (route) => {
-    const rows = [{ user_id: ownerUserId, email: state.ownerEmail, display_name: null, role: 'owner', status: 'active' }];
+    const rows = [
+      {
+        user_id: ownerUserId,
+        email: state.ownerEmail,
+        display_name: null,
+        role: 'owner',
+        status: 'active',
+      },
+    ];
     if (state.joinerLoggedIn && !state.joinerRemoved) {
-      rows.push({ user_id: joinerUserId, email: state.joinerEmail ?? 'joiner@example.com', display_name: null, role: state.joinerRole, status: state.joinerStatus });
+      rows.push({
+        user_id: joinerUserId,
+        email: state.joinerEmail ?? 'joiner@example.com',
+        display_name: null,
+        role: state.joinerRole,
+        status: state.joinerStatus,
+      });
     }
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(rows),
+    });
   });
   page.route('**/rpc/accept_invite', async (route) => {
     state.joinerLoggedIn = true;
     state.joinerRemoved = false;
     state.joinerStatus = 'active';
     state.inviteExists = false;
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(tenantId) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(tenantId),
+    });
   });
   page.route('**/rpc/revoke_invite', async (route) => {
     state.inviteExists = false;
@@ -116,8 +181,15 @@ function setupMocks(page: Page, state: State, suffix: string) {
 
 function baseState(overrides: Partial<State> = {}): State {
   return {
-    ownerEmail: uniqueEmail(), joinerEmail: uniqueEmail(), ownerLoggedIn: false, joinerLoggedIn: false,
-    tenantCreated: false, inviteExists: false, joinerRole: 'cashier', joinerStatus: 'active', joinerRemoved: false,
+    ownerEmail: uniqueEmail(),
+    joinerEmail: uniqueEmail(),
+    ownerLoggedIn: false,
+    joinerLoggedIn: false,
+    tenantCreated: false,
+    inviteExists: false,
+    joinerRole: 'cashier',
+    joinerStatus: 'active',
+    joinerRemoved: false,
     ...overrides,
   };
 }
@@ -137,7 +209,10 @@ async function createOwnerShop(page: Page, state: State, name: string) {
   await page.getByText(/DSB Pro — Admin/i).waitFor({ timeout: 5000 });
 }
 
-test('owner creates an invite and a new user accepts the shared deep link', async ({ page, browser }) => {
+test('owner creates an invite and a new user accepts the shared deep link', async ({
+  page,
+  browser,
+}) => {
   const state = baseState();
   setupMocks(page, state, '1');
   await createOwnerShop(page, state, 'Team Test Shop');

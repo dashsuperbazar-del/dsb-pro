@@ -1,11 +1,21 @@
 import { useState } from 'preact/hooks';
-import { createTenant, acceptInvite, classifyError, errorMessage, signOut } from '@dsb-pro/adapters';
+import {
+  createTenant,
+  acceptInvite,
+  classifyError,
+  errorMessage,
+  signOut,
+} from '@dsb-pro/adapters';
 
 export function NoTenantScreen() {
   return (
     <main>
       <h1>Welcome</h1>
-      <p><button type="button" onClick={() => void signOut()}>Sign out</button></p>
+      <p>
+        <button type="button" onClick={() => void signOut()}>
+          Sign out
+        </button>
+      </p>
       <CreateShopCard />
       <JoinCodeCard />
     </main>
@@ -37,10 +47,16 @@ function CreateShopCard() {
       <form onSubmit={onSubmit}>
         <label>
           Shop name
-          <input value={shopName} onInput={(e) => setShopName((e.target as HTMLInputElement).value)} required />
+          <input
+            value={shopName}
+            onInput={(e) => setShopName((e.target as HTMLInputElement).value)}
+            required
+          />
         </label>
         {error && <p role="alert">{error}</p>}
-        <button type="submit" disabled={busy}>Create your shop</button>
+        <button type="submit" disabled={busy}>
+          Create your shop
+        </button>
       </form>
     </section>
   );
@@ -71,10 +87,16 @@ function JoinCodeCard() {
       <form onSubmit={onSubmit}>
         <label>
           Invite code
-          <input value={code} onInput={(e) => setCode((e.target as HTMLInputElement).value)} required />
+          <input
+            value={code}
+            onInput={(e) => setCode((e.target as HTMLInputElement).value)}
+            required
+          />
         </label>
         {error && <p role="alert">{error}</p>}
-        <button type="submit" disabled={busy}>Join</button>
+        <button type="submit" disabled={busy}>
+          Join
+        </button>
       </form>
     </section>
   );
