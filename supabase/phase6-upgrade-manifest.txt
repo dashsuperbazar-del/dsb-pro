@@ -14,3 +14,4 @@
 0042 batcha supabase/migrations/0042_phase65_negative_stock_recovery.sql
 0043 batchb supabase/migrations/0043_phase65_fixed_point_sale_ack.sql
 0044 p1 supabase/migrations/0044_upgrade_receipts.sql
+0045 p2 supabase/migrations/0045_item_sales_fix.sql

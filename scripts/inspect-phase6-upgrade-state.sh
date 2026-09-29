@@ -30,11 +30,18 @@ do $$
 begin
   create temp table if not exists _p1_receipt_check (present boolean);
   delete from _p1_receipt_check;
+  -- Packet P2 (0045) replaces a function body only, so it has no schema
+  -- signal; its receipt is the sole authoritative marker.
+  create temp table if not exists _p2_receipt_check (present boolean);
+  delete from _p2_receipt_check;
   if to_regclass('public.app_migration_receipts') is not null then
     insert into _p1_receipt_check
       select exists(select 1 from public.app_migration_receipts where version = '0044');
+    insert into _p2_receipt_check
+      select exists(select 1 from public.app_migration_receipts where version = '0045');
   else
     insert into _p1_receipt_check values (false);
+    insert into _p2_receipt_check values (false);
   end if;
 end
 $$;
@@ -100,10 +107,12 @@ select
       where table_schema='public' and table_name='app_migration_receipts'
         and grantee in ('anon','authenticated')
     )) as p1_no_grants,
-  (coalesce((select present from _p1_receipt_check), false)) as p1_receipt;
+  (coalesce((select present from _p1_receipt_check), false)) as p1_receipt,
+  (coalesce((select present from _p2_receipt_check), false)) as p2_receipt,
+  coalesce(pg_get_functiondef(to_regprocedure('public.get_item_sales_report(uuid,date,date)')) like '%phase65_sale_line_cap%', false) as p2_body;
 SQL
 )
-read -r foundation hardening phase65 batcha batchb p1_shape p1_rls p1_no_grants p1_receipt \
+read -r foundation hardening phase65 batcha batchb p1_shape p1_rls p1_no_grants p1_receipt p2_receipt p2_body \
   <<<"$(tail -n1 <<<"$psql_state_output")"
 
 # Validate the raw p1 4-tuple against the only three legitimate
@@ -123,14 +132,25 @@ case "$p1_shape:$p1_rls:$p1_no_grants:$p1_receipt" in
     exit 1
     ;;
 esac
+# P2 needs both its receipt and the fixed function body. A receipt with the
+# old body means the function was overwritten after P2 (e.g. an older dump
+# restored over it): refuse rather than report P2 as done.
+case "$p2_receipt:$p2_body" in
+  f:f|f:t) p2=0 ;;   # f:t = body already fixed but no receipt; applying p2 is idempotent
+  t:t) p2=1 ;;
+  *)
+    echo "get_item_sales_report body drift: 0045 receipt present but fixed body missing. Refusing migration." >&2
+    exit 1
+    ;;
+esac
 
 emit_state() {
-  local needs_foundation=$1 needs_hardening=$2 needs_phase65=$3 needs_batcha=$4 needs_batchb=$5 needs_p1=$6
+  local needs_foundation=$1 needs_hardening=$2 needs_phase65=$3 needs_batcha=$4 needs_batchb=$5 needs_p1=$6 needs_p2=$7
   local needs_upgrade=true
-  if [[ "$needs_foundation:$needs_hardening:$needs_phase65:$needs_batcha:$needs_batchb:$needs_p1" == "false:false:false:false:false:false" ]]; then
+  if [[ "$needs_foundation:$needs_hardening:$needs_phase65:$needs_batcha:$needs_batchb:$needs_p1:$needs_p2" == "false:false:false:false:false:false:false" ]]; then
     needs_upgrade=false
   fi
-  printf 'observed_state=%s:%s:%s:%s:%s:%s\n' "$foundation" "$hardening" "$phase65" "$batcha" "$batchb" "$p1"
+  printf 'observed_state=%s:%s:%s:%s:%s:%s:%s\n' "$foundation" "$hardening" "$phase65" "$batcha" "$batchb" "$p1" "$p2"
   printf 'needs_upgrade=%s\n' "$needs_upgrade"
   printf 'needs_foundation=%s\n' "$needs_foundation"
   printf 'needs_hardening=%s\n' "$needs_hardening"
@@ -138,6 +158,7 @@ emit_state() {
   printf 'needs_batcha=%s\n' "$needs_batcha"
   printf 'needs_batchb=%s\n' "$needs_batchb"
   printf 'needs_p1=%s\n' "$needs_p1"
+  printf 'needs_p2=%s\n' "$needs_p2"
 }
 
 # Legacy (0030-0043) classification is unchanged from before Packet P1: the
@@ -148,17 +169,18 @@ emit_state() {
 # generic-iteration form (mechanism point 8) because that rewrite could not
 # be verified here to preserve the exact existing legacy behavior without a
 # live database to test against (see final report for this deviation).
-case "$foundation:$hardening:$phase65:$batcha:$batchb:$p1" in
-  0:0:0:0:0:0) emit_state true true true true true true ;;
-  5:0:0:0:0:0) emit_state false true true true true true ;;
-  5:2:0:0:0:0) emit_state false false true true true true ;;
-  5:2:5:0:0:0) emit_state false false false true true true ;;
-  5:2:5:2:0:0) emit_state false false false false true true ;;
-  5:2:5:2:3:0) emit_state false false false false false true ;;
-  5:2:5:2:3:3) emit_state false false false false false true ;;
-  5:2:5:2:3:4) emit_state false false false false false false ;;
+case "$foundation:$hardening:$phase65:$batcha:$batchb:$p1:$p2" in
+  0:0:0:0:0:0:0) emit_state true true true true true true true ;;
+  5:0:0:0:0:0:0) emit_state false true true true true true true ;;
+  5:2:0:0:0:0:0) emit_state false false true true true true true ;;
+  5:2:5:0:0:0:0) emit_state false false false true true true true ;;
+  5:2:5:2:0:0:0) emit_state false false false false true true true ;;
+  5:2:5:2:3:0:0) emit_state false false false false false true true ;;
+  5:2:5:2:3:3:0) emit_state false false false false false true true ;;
+  5:2:5:2:3:4:0) emit_state false false false false false false true ;;
+  5:2:5:2:3:4:1) emit_state false false false false false false false ;;
   *)
-    echo "Partial or out-of-order Phase 6 schema detected ($foundation/5 foundation, $hardening/2 hardening, $phase65/5 Phase 6.5, $batcha/2 Batch A, $batchb/3 Batch B, $p1/4 P1). Refusing migration." >&2
+    echo "Partial or out-of-order Phase 6 schema detected ($foundation/5 foundation, $hardening/2 hardening, $phase65/5 Phase 6.5, $batcha/2 Batch A, $batchb/3 Batch B, $p1/4 P1, $p2/1 P2). Refusing migration." >&2
     exit 1
     ;;
 esac
