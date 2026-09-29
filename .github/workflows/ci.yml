@@ -233,6 +233,12 @@ jobs:
           # Restore the receipt (via the disposable bootstrap, the correct
           # tool for this) so subsequent scenarios see the expected state.
           DISPOSABLE_RECEIPTS_BOOTSTRAP=1 node scripts/bootstrap-disposable-receipts.mjs "$PROOF_DB_URL" --disposable-target-only
+          # The bootstrap writes a receipt for EVERY manifest entry, but this
+          # target has only been migrated through p1. Drop the receipts it
+          # over-claimed for later groups (0045+), or the classifier rightly
+          # refuses "receipt present, fixed body missing" as drift.
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c \
+            "delete from app_migration_receipts where version > '0044'"
           assert_state '5:2:5:2:3:4:0'
 
           # Scenario: a deliberately corrupted historical checksum is
