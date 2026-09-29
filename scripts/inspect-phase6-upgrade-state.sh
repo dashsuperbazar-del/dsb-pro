@@ -143,6 +143,18 @@ case "$p2_receipt:$p2_body" in
     exit 1
     ;;
 esac
+# A present receipt must also match the file bytes, or a tampered/stale
+# receipt would make needs_p2=false and skip the checksum-checking runner.
+if [[ "$p2" == "1" ]]; then
+  repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+  p2_expected=$(sha256sum "$repo_root/supabase/migrations/0045_item_sales_fix.sql" | cut -d' ' -f1)
+  p2_recorded=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -c \
+    "select checksum_sha256 from public.app_migration_receipts where version='0045'")
+  if [[ "$p2_recorded" != "$p2_expected" ]]; then
+    echo "0045 receipt checksum does not match supabase/migrations/0045_item_sales_fix.sql. Refusing migration." >&2
+    exit 1
+  fi
+fi
 
 emit_state() {
   local needs_foundation=$1 needs_hardening=$2 needs_phase65=$3 needs_batcha=$4 needs_batchb=$5 needs_p1=$6 needs_p2=$7

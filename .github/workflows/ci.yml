@@ -304,6 +304,15 @@ jobs:
             || { echo "get_item_sales_report does not use the allocated line cap after p2" >&2; exit 1; }
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" p2
           assert_state '5:2:5:2:3:4:1'
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c \
+            "update app_migration_receipts set checksum_sha256 = repeat('0', 64) where version = '0045'"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then
+            echo "Classifier accepted a tampered 0045 receipt checksum" >&2
+            exit 1
+          fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c \
+            "update app_migration_receipts set checksum_sha256 = '$expected_checksum' where version = '0045'"
+          assert_state '5:2:5:2:3:4:1'
           echo 'DISPOSABLE PACKET P2 ITEM-SALES FIX UPGRADE: PASS'
       - name: Stop and erase the disposable target
         if: always()
