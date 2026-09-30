@@ -138,6 +138,27 @@ export function PosScreen() {
   const [heldCleanup, setHeldCleanup] = useState<{ id: string; token: string } | null>(null);
   const resumeLock = useRef(false);
 
+  // The business date loads asynchronously; a sale or payment submitted before it arrives
+  // (e.g. straight after an offline app restart) must not be queued with an empty date,
+  // which the server rejects on sync. Resolve it the same way refresh() does.
+  async function resolveBusinessDate(): Promise<string> {
+    if (businessDate) return businessDate;
+    const offlineFallback = async () =>
+      (await getOfflineBusinessDate()) ?? new Date().toISOString().slice(0, 10);
+    let d: string;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      d = await offlineFallback();
+    } else {
+      try {
+        d = await getShopBusinessDate(shopId);
+      } catch {
+        d = await offlineFallback();
+      }
+    }
+    setBusinessDate(d);
+    return d;
+  }
+
   async function refresh() {
     await waitForOfflineRuntime();
     const identity = getOfflineRuntimeIdentity();
@@ -444,7 +465,7 @@ export function PosScreen() {
       const result = await finalizeSaleResilient({
         shopId,
         customerId: customerId || undefined,
-        businessDate,
+        businessDate: await resolveBusinessDate(),
         discountPaise: paise(globalDiscount),
         extraChargesPaise: paise(extra),
         clientId: saleClientId,
@@ -533,7 +554,7 @@ export function PosScreen() {
       await recordCustomerPayment({
         shopId,
         customerId: paymentCustomer,
-        businessDate,
+        businessDate: await resolveBusinessDate(),
         amountPaise: paise(paymentAmount),
         mode: paymentMode,
         clientId: paymentClientId,
