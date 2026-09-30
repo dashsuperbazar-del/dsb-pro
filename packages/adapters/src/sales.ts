@@ -45,7 +45,7 @@ export async function postSale(input:{shopId:string;customerId?:string;businessD
 }
 
 export async function voidSale(saleId:string,clientId:string):Promise<string>{
-  const {data,error}=await getSupabaseClient().rpc('void_sale',{p_sale_invoice_id:saleId,p_client_id:clientId});
+  const {data,error}=await getSupabaseClient().rpc('void_sale',{p_sale_id:saleId,p_client_id:clientId});
   return must(data,error) as string;
 }
 

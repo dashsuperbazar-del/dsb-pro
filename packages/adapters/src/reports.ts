@@ -10,7 +10,7 @@ export async function getGstSummary(shopId:string,from:string,to:string){const {
 export async function postExpense(shopId:string,businessDate:string,category:string,description:string,amountPaise:number,mode:string,reference:string|null,clientId:string){const {data,error}=await getSupabaseClient().rpc('post_expense',{p_shop_id:shopId,p_business_date:businessDate,p_category:category,p_description:description,p_amount_paise:amountPaise,p_mode:mode,p_reference:reference,p_client_id:clientId});if(error)fail(error);return data as string;}
 export async function exportTenant(shopId:string){const {data,error}=await getSupabaseClient().rpc('phase6_export_tenant',{p_shop_id:shopId});if(error)fail(error);return data as Record<string,unknown>;}
 export type InvariantHealth={ok:boolean;saleTotalViolations:number;purchaseTotalViolations:number;negativeStock:number;allocationViolations:number;stockProjectionViolations:number;voidReversalViolations:number};
-export async function checkInvariants(){const {data,error}=await getSupabaseClient().rpc('check_invariants');if(error)fail(error);return data as InvariantHealth;}
+export async function checkInvariants(){const {data,error}=await getSupabaseClient().rpc('check_invariants');if(error)fail(error);return data as unknown as InvariantHealth;}
 
 export type PartyLedgerRow={business_date:string;entry_type:string;document:string;debit_paise:number;credit_paise:number;running_balance_paise:number};
 export async function getPartyLedger(partyId:string,from:string,to:string){const {data,error}=await getSupabaseClient().rpc('get_party_ledger',{p_party_id:partyId,p_from:from,p_to:to});if(error)fail(error);return (data??[]) as PartyLedgerRow[];}

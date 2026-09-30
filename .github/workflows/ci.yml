@@ -79,6 +79,11 @@ jobs:
           sudo fuser -k 54321/tcp 54322/tcp 54323/tcp 54324/tcp 54325/tcp 54326/tcp 54327/tcp 54328/tcp 54329/tcp || true
       - run: supabase start
       - run: supabase db reset
+      - name: Generated DB types match the migrations (VF-001)
+        run: |
+          supabase gen types typescript --local > "$RUNNER_TEMP/types.ts"
+          diff -u packages/db/src/types.ts "$RUNNER_TEMP/types.ts" \
+            || { echo 'packages/db/src/types.ts is stale: run `supabase gen types typescript --local > packages/db/src/types.ts` after db reset' >&2; exit 1; }
       - name: Bootstrap disposable baseline receipts (Packet P1, mechanism point 5)
         env:
           DISPOSABLE_RECEIPTS_BOOTSTRAP: '1'
@@ -299,9 +304,6 @@ jobs:
           recorded_checksum=$(psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -At -c \
             "select checksum_sha256 from app_migration_receipts where version='0045'")
           [[ "$recorded_checksum" == "$expected_checksum" ]] || { echo "0045 receipt checksum mismatch" >&2; exit 1; }
-          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -At -c \
-            "select pg_get_functiondef('public.get_item_sales_report(uuid,date,date)'::regprocedure)" | grep -q 'phase65_sale_line_cap' \
-            || { echo "get_item_sales_report does not use the allocated line cap after p2" >&2; exit 1; }
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" p2
           assert_state '5:2:5:2:3:4:1'
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c \
@@ -312,6 +314,27 @@ jobs:
           fi
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c \
             "update app_migration_receipts set checksum_sha256 = '$expected_checksum' where version = '0045'"
+          assert_state '5:2:5:2:3:4:1'
+
+          # VF-002 regression: restore the pre-fix 0040 arithmetic but keep
+          # the helper's name in a comment inside the body. The classifier
+          # compares the installed body bytes with 0045, so it must refuse.
+          sed -n '/^create function get_item_sales_report/,/^end \$\$;/p' supabase/migrations/0040_phase65_missing_reports.sql \
+            | sed 's/^create function/create or replace function/; s/^begin$/begin -- phase65_sale_line_cap/' > "$RUNNER_TEMP/p2-drift.sql"
+          grep -q phase65_sale_line_cap "$RUNNER_TEMP/p2-drift.sql"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -f "$RUNNER_TEMP/p2-drift.sql"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then
+            echo "Classifier accepted wrong get_item_sales_report arithmetic hidden behind a comment" >&2
+            exit 1
+          fi
+          # Missing index is drift too.
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/migrations/0045_item_sales_fix.sql
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "drop index sale_invoice_items_sale_invoice_idx"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then
+            echo "Classifier accepted a missing sale_invoice_items_sale_invoice_idx" >&2
+            exit 1
+          fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/migrations/0045_item_sales_fix.sql
           assert_state '5:2:5:2:3:4:1'
           echo 'DISPOSABLE PACKET P2 ITEM-SALES FIX UPGRADE: PASS'
       - name: Stop and erase the disposable target
@@ -943,13 +966,20 @@ jobs:
                or not exists(select 1 from app_migration_receipts where version='0044') then
               raise exception 'Packet P1 upgrade receipts contract failed';
             end if;
-            if not exists(select 1 from app_migration_receipts where version='0045')
-               or pg_get_functiondef('public.get_item_sales_report(uuid,date,date)'::regprocedure) not like '%phase65_sale_line_cap%' then
-              raise exception 'Packet P2 item-sales fix contract failed';
-            end if;
           end
           $verify$;
           SQL
+      - name: Verify live database is fully upgraded (receipts, checksums, P2 body contract)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Same classifier as the preflight: it refuses on any receipt
+          # checksum mismatch or P2 body/index/grant drift, and must now
+          # report nothing left to apply.
+          state=$(scripts/inspect-phase6-upgrade-state.sh "$SUPABASE_DB_URL")
+          grep -Fx 'needs_upgrade=false' <<<"$state" >/dev/null || { echo "$state"; echo 'Live database not fully upgraded after apply' >&2; exit 1; }
       - name: Verify backup role covers Phase 6.5 tables
         env:
           BACKUP_RO_DATABASE_URL: ${{ secrets.BACKUP_RO_DATABASE_URL }}

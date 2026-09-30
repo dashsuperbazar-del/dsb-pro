@@ -1,3 +1,4 @@
+import type { Json } from '@dsb-pro/db';
 import { getSupabaseClient } from './client';
 import { classifyError,errorMessage } from './errors';
 import type { SaleLineInput,SalePaymentInput } from './sales';
@@ -121,7 +122,7 @@ export async function recordServerSyncConflict(input:{
 }):Promise<string>{
   const {data,error}=await getSupabaseClient().rpc('phase5_record_sync_conflict',{
     p_device_id:input.deviceId,p_schema_version:SYNC_SCHEMA_VERSION,p_op_client_id:input.opClientId??null,
-    p_kind:input.kind,p_target:input.target,p_reason:input.reason,p_payload:input.payload,p_server_ref:input.serverRef,p_client_id:input.clientId,
+    p_kind:input.kind,p_target:input.target,p_reason:input.reason,p_payload:input.payload as Json,p_server_ref:input.serverRef as Json,p_client_id:input.clientId,
   });
   if(error)throw new Error(friendly(error));
   if(typeof data!=='string')throw new Error('Conflict record id was not returned.');

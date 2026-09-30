@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@dsb-pro/core": "workspace:*",
+    "@dsb-pro/db": "workspace:*",
     "@supabase/supabase-js": "^2.58.0"
   },
   "devDependencies": {
