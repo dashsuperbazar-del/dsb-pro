@@ -49,6 +49,7 @@ Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it
 ## Decisions log
 - 2026-09-30: GPT verification log V001 findings VF-001..004 accepted; fixed in PR #42 (VF-002 rated MINOR by builder).
 - 2026-09-30: undici pinned `^7.29.1` via pnpm override (GHSA-rfgv-xxqx-mfg5, GHSA-w293-vg96-wgc3).
+- 2026-09-30: brace-expansion pinned `^5.0.11` via pnpm override (GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p).
 - 2026-09-29: scheduled builder routine (every 6h, this session) builds packets up to PR; never merges.
 - 2026-09-29: dual-builder (GPT+Claude) retired; sub-agent review replaces it. GPT optional for C0, C1, F2, F3.
 - 2026-09-29: C0a+C0b merged into C0; 20-session benchmark dropped for M1.
