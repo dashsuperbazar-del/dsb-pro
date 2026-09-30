@@ -84,6 +84,9 @@ importers:
       '@dsb-pro/core':
         specifier: workspace:*
         version: link:../core
+      '@dsb-pro/db':
+        specifier: workspace:*
+        version: link:../db
       '@supabase/supabase-js':
         specifier: ^2.58.0
         version: 2.115.0

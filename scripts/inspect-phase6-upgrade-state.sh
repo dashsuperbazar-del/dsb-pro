@@ -20,7 +20,15 @@ base_ok=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -c \
 # here-string, so without this fix `foundation` would be bound to the
 # literal string "DO" and every other field would come out empty. Take the
 # LAST line of psql's output instead, which is always the actual tuple row.
-psql_state_output=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -F' ' <<'SQL'
+# P2 body contract (VF-002): the installed get_item_sales_report body must be
+# byte-identical to the body in the immutable 0045 migration. md5(prosrc) is
+# the md5 of exactly the text between the function's $$ delimiters, so a
+# comment, whitespace or arithmetic change all fail it -- unlike the earlier
+# substring check, which a comment naming the helper could satisfy.
+repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+p2_body_md5=$(node "$repo_root/scripts/p2-body-md5.mjs")
+
+psql_state_output=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -v p2_body_md5="$p2_body_md5" -At -F' ' <<'SQL'
 -- PL/pgSQL embeds each command as a separately-prepared SPI statement,
 -- resolved only when control flow actually reaches it. That lets the IF
 -- branch below reference app_migration_receipts's rows without erroring on
@@ -109,7 +117,14 @@ select
     )) as p1_no_grants,
   (coalesce((select present from _p1_receipt_check), false)) as p1_receipt,
   (coalesce((select present from _p2_receipt_check), false)) as p2_receipt,
-  coalesce(pg_get_functiondef(to_regprocedure('public.get_item_sales_report(uuid,date,date)')) like '%phase65_sale_line_cap%', false) as p2_body;
+  (coalesce((select md5(prosrc) from pg_proc
+              where oid = to_regprocedure('public.get_item_sales_report(uuid,date,date)')) = :'p2_body_md5', false)
+    and exists(select 1 from pg_index
+               where indexrelid = to_regclass('public.sale_invoice_items_sale_invoice_idx')
+                 and indrelid = 'public.sale_invoice_items'::regclass and indisvalid
+                 and pg_get_indexdef(indexrelid) like '%(sale_invoice_id)')
+    and coalesce(has_function_privilege('authenticated', to_regprocedure('public.get_item_sales_report(uuid,date,date)'), 'EXECUTE'), false)
+    and not coalesce(has_function_privilege('anon', to_regprocedure('public.get_item_sales_report(uuid,date,date)'), 'EXECUTE'), true)) as p2_body;
 SQL
 )
 read -r foundation hardening phase65 batcha batchb p1_shape p1_rls p1_no_grants p1_receipt p2_receipt p2_body \
@@ -132,21 +147,21 @@ case "$p1_shape:$p1_rls:$p1_no_grants:$p1_receipt" in
     exit 1
     ;;
 esac
-# P2 needs both its receipt and the fixed function body. A receipt with the
-# old body means the function was overwritten after P2 (e.g. an older dump
-# restored over it): refuse rather than report P2 as done.
+# P2 needs both its receipt and the exact 0045 contract (body bytes, index,
+# grants). A receipt without it means the function or its index/grants were
+# changed after P2 (e.g. an older dump restored over it, or a hand edit):
+# refuse rather than report P2 as done.
 case "$p2_receipt:$p2_body" in
   f:f|f:t) p2=0 ;;   # f:t = body already fixed but no receipt; applying p2 is idempotent
   t:t) p2=1 ;;
   *)
-    echo "get_item_sales_report body drift: 0045 receipt present but fixed body missing. Refusing migration." >&2
+    echo "get_item_sales_report drift: 0045 receipt present but installed body/index/grants do not match 0045. Refusing migration." >&2
     exit 1
     ;;
 esac
 # A present receipt must also match the file bytes, or a tampered/stale
 # receipt would make needs_p2=false and skip the checksum-checking runner.
 if [[ "$p2" == "1" ]]; then
-  repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
   p2_expected=$(sha256sum "$repo_root/supabase/migrations/0045_item_sales_fix.sql" | cut -d' ' -f1)
   p2_recorded=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -c \
     "select checksum_sha256 from public.app_migration_receipts where version='0045'")

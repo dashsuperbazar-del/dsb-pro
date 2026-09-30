@@ -3,10 +3,13 @@
 // import @supabase/supabase-js directly — DSB_PRO_BUILD_PLAN.md §4's adapter
 // rule: "no provider name appears outside packages/adapters."
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { AppDatabase } from '@dsb-pro/db';
 
-let client: SupabaseClient | undefined;
+export type DsbSupabaseClient = SupabaseClient<AppDatabase>;
 
-export function getSupabaseClient(): SupabaseClient {
+let client: DsbSupabaseClient | undefined;
+
+export function getSupabaseClient(): DsbSupabaseClient {
   if (client) return client;
 
   const url = import.meta.env.VITE_SUPABASE_URL;
@@ -15,12 +18,12 @@ export function getSupabaseClient(): SupabaseClient {
     throw new Error('VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY are not set.');
   }
 
-  client = createClient(url, anonKey);
+  client = createClient<AppDatabase>(url, anonKey);
   return client;
 }
 
 // Test-only escape hatch: vitest specs inject a mock client instead of
 // hitting the network. Never called from apps/admin.
-export function __setSupabaseClientForTest(mock: SupabaseClient): void {
+export function __setSupabaseClientForTest(mock: DsbSupabaseClient): void {
   client = mock;
 }

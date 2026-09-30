@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseClient } from './client';
 import { classifyError, errorMessage } from './errors';
 
@@ -37,7 +38,10 @@ export async function listReturnSources(type:ReturnType,shopId:string):Promise<R
 }
 
 export async function listReturnableLines(type:ReturnType,sourceId:string):Promise<ReturnableLine[]>{
-  const client=getSupabaseClient();
+  // Table and column names are chosen at runtime (SALE vs PURCHASE), which
+  // the generated schema types cannot narrow; every name below exists on its
+  // own table. Use the untyped client for this one lookup.
+  const client=getSupabaseClient() as unknown as SupabaseClient;
   const sourceTable=type==='SALE'?'sale_invoice_items':'purchase_bill_items';
   const sourceColumn=type==='SALE'?'sale_invoice_id':'purchase_bill_id';
   const returnTable=type==='SALE'?'sale_returns':'purchase_returns';
