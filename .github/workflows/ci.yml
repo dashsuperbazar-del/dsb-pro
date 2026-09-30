@@ -301,7 +301,6 @@ jobs:
           }
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" p2
           assert_state '5:2:5:2:3:4:1:0'
-          grep -Fx 'needs_upgrade=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
           expected_checksum=$(sha256sum supabase/migrations/0045_item_sales_fix.sql | cut -d' ' -f1)
           recorded_checksum=$(psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -At -c \
             "select checksum_sha256 from app_migration_receipts where version='0045'")
@@ -385,6 +384,8 @@ jobs:
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c \
             "update app_migration_receipts set checksum_sha256 = '$expected_checksum' where version = '0046'"
           assert_state '5:2:5:2:3:4:1:2'
+          # Last receipt-tracked group: nothing may be left to apply.
+          grep -Fx 'needs_upgrade=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
           echo 'DISPOSABLE PACKET C0 FINANCE LOCKING UPGRADE: PASS'
       - name: Stop and erase the disposable target
         if: always()
