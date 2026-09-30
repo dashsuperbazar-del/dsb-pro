@@ -33,6 +33,7 @@ export const ALLOWED_GROUPS = Object.freeze([
   'batchb',
   'p1',
   'p2',
+  'c0',
 ]);
 
 const VERSION_RE = /^[0-9]{4}$/;
@@ -81,6 +82,7 @@ const EXPECTED_LEGACY_ENTRIES = Object.freeze({
 // omitted. Move an entry here into EXPECTED_LEGACY_ENTRIES (with its
 // checksum) once it has actually merged to `main`.
 const EXPECTED_IN_FLIGHT_GROUP_AND_PATH = Object.freeze({
+  '0046': ['c0', 'supabase/migrations/0046_finance_requests_and_locking.sql'],
 });
 
 /**

@@ -95,6 +95,8 @@ jobs:
         run: node scripts/test-sale-concurrency.mjs
       - name: Prove negative-stock recovery serialization
         run: node scripts/test-stock-recovery-concurrency.mjs
+      - name: Prove C0 finance lock (no double allocation across 5 sessions; per-shop serialization)
+        run: node scripts/test-finance-lock-concurrency.mjs
       - name: Prove fixed-point TypeScript/PostgreSQL parity
         run: node scripts/test-fixed-point-parity.mjs
 
@@ -144,17 +146,17 @@ jobs:
             echo "$state"
             grep -Fx "observed_state=$expected" <<<"$state" >/dev/null
           }
-          assert_state '0:0:0:0:0:0:0'
+          assert_state '0:0:0:0:0:0:0:0'
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" foundation
-          assert_state '5:0:0:0:0:0:0'
+          assert_state '5:0:0:0:0:0:0:0'
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" hardening
-          assert_state '5:2:0:0:0:0:0'
+          assert_state '5:2:0:0:0:0:0:0'
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" phase65
-          assert_state '5:2:5:0:0:0:0'
+          assert_state '5:2:5:0:0:0:0:0'
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" batcha
-          assert_state '5:2:5:2:0:0:0'
+          assert_state '5:2:5:2:0:0:0:0'
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" batchb
-          assert_state '5:2:5:2:3:0:0'
+          assert_state '5:2:5:2:3:0:0:0'
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
           do $proof$
           begin
@@ -197,7 +199,7 @@ jobs:
           # Scenario: apply the p1 group; assert its receipt is recorded
           # with the checksum matching the actual file on disk.
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" p1
-          assert_state '5:2:5:2:3:4:0'
+          assert_state '5:2:5:2:3:4:0:0'
           expected_checksum=$(sha256sum supabase/migrations/0044_upgrade_receipts.sql | cut -d' ' -f1)
           recorded_checksum=$(psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -At -c \
             "select checksum_sha256 from app_migration_receipts where version='0044'")
@@ -210,7 +212,7 @@ jobs:
           # because the receipt and schema already match; it must not error
           # and must not duplicate the receipt row.
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" p1
-          assert_state '5:2:5:2:3:4:0'
+          assert_state '5:2:5:2:3:4:0:0'
           receipt_count=$(psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -At -c \
             "select count(*) from app_migration_receipts where version='0044'")
           [[ "$receipt_count" == "1" ]] || { echo "Rerun duplicated the 0044 receipt" >&2; exit 1; }
@@ -227,7 +229,7 @@ jobs:
           # this gap; ordinary apply must not.
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c \
             "delete from app_migration_receipts where version = '0044'"
-          assert_state '5:2:5:2:3:3:0'
+          assert_state '5:2:5:2:3:3:0:0'
           if scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" p1; then
             echo "Ordinary apply silently backfilled a receipt for schema it didn't create -- must refuse" >&2
             exit 1
@@ -244,7 +246,7 @@ jobs:
           # refuses "receipt present, fixed body missing" as drift.
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c \
             "delete from app_migration_receipts where version > '0044'"
-          assert_state '5:2:5:2:3:4:0'
+          assert_state '5:2:5:2:3:4:0:0'
 
           # Scenario: a deliberately corrupted historical checksum is
           # refused, not silently accepted or "repaired".
@@ -284,7 +286,7 @@ jobs:
             echo "Classifier refused, but not for the expected reason (schema/grant drift):" >&2
             exit 1
           fi
-          assert_state '5:2:5:2:3:4:0'
+          assert_state '5:2:5:2:3:4:0:0'
           echo 'DISPOSABLE PACKET P1 GUARDED UPGRADE RECEIPTS: PASS'
       - name: Prove Packet P2 item-sales fix upgrade (apply, receipt, no-op rerun)
         env:
@@ -298,14 +300,14 @@ jobs:
             grep -Fx "observed_state=$expected" <<<"$state" >/dev/null
           }
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" p2
-          assert_state '5:2:5:2:3:4:1'
+          assert_state '5:2:5:2:3:4:1:0'
           grep -Fx 'needs_upgrade=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
           expected_checksum=$(sha256sum supabase/migrations/0045_item_sales_fix.sql | cut -d' ' -f1)
           recorded_checksum=$(psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -At -c \
             "select checksum_sha256 from app_migration_receipts where version='0045'")
           [[ "$recorded_checksum" == "$expected_checksum" ]] || { echo "0045 receipt checksum mismatch" >&2; exit 1; }
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" p2
-          assert_state '5:2:5:2:3:4:1'
+          assert_state '5:2:5:2:3:4:1:0'
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c \
             "update app_migration_receipts set checksum_sha256 = repeat('0', 64) where version = '0045'"
           if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then
@@ -314,7 +316,7 @@ jobs:
           fi
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c \
             "update app_migration_receipts set checksum_sha256 = '$expected_checksum' where version = '0045'"
-          assert_state '5:2:5:2:3:4:1'
+          assert_state '5:2:5:2:3:4:1:0'
 
           # VF-002 regression: restore the pre-fix 0040 arithmetic but keep
           # the helper's name in a comment inside the body. The classifier
@@ -335,8 +337,55 @@ jobs:
             exit 1
           fi
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/migrations/0045_item_sales_fix.sql
-          assert_state '5:2:5:2:3:4:1'
+          assert_state '5:2:5:2:3:4:1:0'
           echo 'DISPOSABLE PACKET P2 ITEM-SALES FIX UPGRADE: PASS'
+      - name: Prove Packet C0 finance requests + locking upgrade (apply, receipt, no-op rerun, tamper refusal)
+        env:
+          PROOF_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          assert_state() {
+            expected=$1
+            state=$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")
+            echo "$state"
+            grep -Fx "observed_state=$expected" <<<"$state" >/dev/null
+          }
+          assert_state '5:2:5:2:3:4:1:0'
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" c0
+          assert_state '5:2:5:2:3:4:1:2'
+          expected_checksum=$(sha256sum supabase/migrations/0046_finance_requests_and_locking.sql | cut -d' ' -f1)
+          recorded_checksum=$(psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -At -c \
+            "select checksum_sha256 from app_migration_receipts where version='0046'")
+          [[ "$recorded_checksum" == "$expected_checksum" ]] || { echo "0046 receipt checksum mismatch" >&2; exit 1; }
+          # Every money writer is now a locking wrapper over a client-revoked body.
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          do $c0$
+          declare f text;
+          begin
+            foreach f in array array['post_sale(uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text)',
+              'record_customer_payment(uuid,uuid,date,bigint,text,text,jsonb,text)',
+              'post_purchase(uuid,uuid,text,date,bigint,bigint,text,jsonb,text)','post_return(text,uuid,date,text,jsonb,text)',
+              'void_sale(uuid,text)','void_payment(uuid)','void_purchase(uuid,text)','void_return(text,uuid,text)'] loop
+              if (select prosrc from pg_proc where oid=('public.'||f)::regprocedure) not like '%dsb_lock_shop_finance%'
+                 or has_function_privilege('authenticated',('public.c0_'||split_part(f,'(',1)||'_body('||split_part(f,'(',2))::regprocedure,'EXECUTE') then
+                raise exception 'C0 wrapper contract failed for %', f;
+              end if;
+            end loop;
+          end
+          $c0$;
+          SQL
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" c0
+          assert_state '5:2:5:2:3:4:1:2'
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c \
+            "update app_migration_receipts set checksum_sha256 = repeat('0', 64) where version = '0046'"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then
+            echo "Classifier accepted a tampered 0046 receipt checksum" >&2
+            exit 1
+          fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c \
+            "update app_migration_receipts set checksum_sha256 = '$expected_checksum' where version = '0046'"
+          assert_state '5:2:5:2:3:4:1:2'
+          echo 'DISPOSABLE PACKET C0 FINANCE LOCKING UPGRADE: PASS'
       - name: Stop and erase the disposable target
         if: always()
         run: supabase stop --workdir "$PROOF_ROOT" --no-backup
@@ -914,6 +963,11 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" p2
+      - name: Apply Packet C0 finance requests and locking atomically
+        if: steps.preflight.outputs.needs_c0 == 'true'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" c0
       - name: Verify live Batch B contract
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
