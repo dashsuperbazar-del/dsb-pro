@@ -32,6 +32,7 @@ export const ALLOWED_GROUPS = Object.freeze([
   'batcha',
   'batchb',
   'p1',
+  'p2',
 ]);
 
 const VERSION_RE = /^[0-9]{4}$/;
@@ -66,6 +67,8 @@ const EXPECTED_LEGACY_ENTRIES = Object.freeze({
   '0041': ['batcha', 'supabase/migrations/0041_phase65_sync_cost_confidentiality.sql', '0cde20371bd91d9b1ed5f25483fa941232778f8acbf38c1fc199624b34e2ed24'],
   '0042': ['batcha', 'supabase/migrations/0042_phase65_negative_stock_recovery.sql', 'a0935d9405eb4af10d20fdf6bb90d6238b1d89a8ea60cec6470913f06c25ee65'],
   '0043': ['batchb', 'supabase/migrations/0043_phase65_fixed_point_sale_ack.sql', 'cb191c062c3ed9edcfdd1a4ffcb330f969fa647031176c287f95f63511d4730e'],
+  // Merged after P1: frozen here per the in-flight rule below.
+  '0044': ['p1', 'supabase/migrations/0044_upgrade_receipts.sql', 'd08731a7a96e88da8042a1769e0e871726dfea72fee0634d5dd4364a7666716c'],
 });
 
 // Group/path can be frozen for an in-flight (not yet merged) entry the
@@ -77,7 +80,7 @@ const EXPECTED_LEGACY_ENTRIES = Object.freeze({
 // omitted. Move an entry here into EXPECTED_LEGACY_ENTRIES (with its
 // checksum) once it has actually merged to `main`.
 const EXPECTED_IN_FLIGHT_GROUP_AND_PATH = Object.freeze({
-  '0044': ['p1', 'supabase/migrations/0044_upgrade_receipts.sql'],
+  '0045': ['p2', 'supabase/migrations/0045_item_sales_fix.sql'],
 });
 
 /**
@@ -141,7 +144,7 @@ export function loadManifest({ manifestPath = MANIFEST_PATH, repoRoot = REPO_ROO
         throw new ManifestError(
           `Manifest line ${index + 1}: entry "${version}" does not match its frozen historical record ` +
             `(expected group "${expectedGroup}", path "${expectedPath}", checksum "${expectedChecksum}"). ` +
-            `Migrations 0030-0043 are immutable; this is either manifest tampering or a historical file ` +
+            `Merged migrations are immutable; this is either manifest tampering or a historical file ` +
             `was edited in place, neither of which is a repairable local change.`,
         );
       }
@@ -172,7 +175,7 @@ export function loadManifest({ manifestPath = MANIFEST_PATH, repoRoot = REPO_ROO
   for (const version of Object.keys(EXPECTED_LEGACY_ENTRIES)) {
     if (!seenVersions.has(version)) {
       throw new ManifestError(
-        `Manifest is missing required historical entry "${version}". Migrations 0030-0043 are ` +
+        `Manifest is missing required historical entry "${version}". Merged migrations are ` +
           `immutable and required in every valid manifest; an entry cannot be silently dropped.`,
       );
     }

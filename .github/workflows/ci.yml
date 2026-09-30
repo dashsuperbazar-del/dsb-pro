@@ -139,17 +139,17 @@ jobs:
             echo "$state"
             grep -Fx "observed_state=$expected" <<<"$state" >/dev/null
           }
-          assert_state '0:0:0:0:0:0'
+          assert_state '0:0:0:0:0:0:0'
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" foundation
-          assert_state '5:0:0:0:0:0'
+          assert_state '5:0:0:0:0:0:0'
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" hardening
-          assert_state '5:2:0:0:0:0'
+          assert_state '5:2:0:0:0:0:0'
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" phase65
-          assert_state '5:2:5:0:0:0'
+          assert_state '5:2:5:0:0:0:0'
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" batcha
-          assert_state '5:2:5:2:0:0'
+          assert_state '5:2:5:2:0:0:0'
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" batchb
-          assert_state '5:2:5:2:3:0'
+          assert_state '5:2:5:2:3:0:0'
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
           do $proof$
           begin
@@ -192,7 +192,7 @@ jobs:
           # Scenario: apply the p1 group; assert its receipt is recorded
           # with the checksum matching the actual file on disk.
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" p1
-          assert_state '5:2:5:2:3:4'
+          assert_state '5:2:5:2:3:4:0'
           expected_checksum=$(sha256sum supabase/migrations/0044_upgrade_receipts.sql | cut -d' ' -f1)
           recorded_checksum=$(psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -At -c \
             "select checksum_sha256 from app_migration_receipts where version='0044'")
@@ -205,7 +205,7 @@ jobs:
           # because the receipt and schema already match; it must not error
           # and must not duplicate the receipt row.
           scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" p1
-          assert_state '5:2:5:2:3:4'
+          assert_state '5:2:5:2:3:4:0'
           receipt_count=$(psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -At -c \
             "select count(*) from app_migration_receipts where version='0044'")
           [[ "$receipt_count" == "1" ]] || { echo "Rerun duplicated the 0044 receipt" >&2; exit 1; }
@@ -222,7 +222,7 @@ jobs:
           # this gap; ordinary apply must not.
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c \
             "delete from app_migration_receipts where version = '0044'"
-          assert_state '5:2:5:2:3:3'
+          assert_state '5:2:5:2:3:3:0'
           if scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" p1; then
             echo "Ordinary apply silently backfilled a receipt for schema it didn't create -- must refuse" >&2
             exit 1
@@ -233,7 +233,13 @@ jobs:
           # Restore the receipt (via the disposable bootstrap, the correct
           # tool for this) so subsequent scenarios see the expected state.
           DISPOSABLE_RECEIPTS_BOOTSTRAP=1 node scripts/bootstrap-disposable-receipts.mjs "$PROOF_DB_URL" --disposable-target-only
-          assert_state '5:2:5:2:3:4'
+          # The bootstrap writes a receipt for EVERY manifest entry, but this
+          # target has only been migrated through p1. Drop the receipts it
+          # over-claimed for later groups (0045+), or the classifier rightly
+          # refuses "receipt present, fixed body missing" as drift.
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c \
+            "delete from app_migration_receipts where version > '0044'"
+          assert_state '5:2:5:2:3:4:0'
 
           # Scenario: a deliberately corrupted historical checksum is
           # refused, not silently accepted or "repaired".
@@ -273,8 +279,41 @@ jobs:
             echo "Classifier refused, but not for the expected reason (schema/grant drift):" >&2
             exit 1
           fi
-          assert_state '5:2:5:2:3:4'
+          assert_state '5:2:5:2:3:4:0'
           echo 'DISPOSABLE PACKET P1 GUARDED UPGRADE RECEIPTS: PASS'
+      - name: Prove Packet P2 item-sales fix upgrade (apply, receipt, no-op rerun)
+        env:
+          PROOF_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          assert_state() {
+            expected=$1
+            state=$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")
+            echo "$state"
+            grep -Fx "observed_state=$expected" <<<"$state" >/dev/null
+          }
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" p2
+          assert_state '5:2:5:2:3:4:1'
+          grep -Fx 'needs_upgrade=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          expected_checksum=$(sha256sum supabase/migrations/0045_item_sales_fix.sql | cut -d' ' -f1)
+          recorded_checksum=$(psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -At -c \
+            "select checksum_sha256 from app_migration_receipts where version='0045'")
+          [[ "$recorded_checksum" == "$expected_checksum" ]] || { echo "0045 receipt checksum mismatch" >&2; exit 1; }
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -At -c \
+            "select pg_get_functiondef('public.get_item_sales_report(uuid,date,date)'::regprocedure)" | grep -q 'phase65_sale_line_cap' \
+            || { echo "get_item_sales_report does not use the allocated line cap after p2" >&2; exit 1; }
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" p2
+          assert_state '5:2:5:2:3:4:1'
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c \
+            "update app_migration_receipts set checksum_sha256 = repeat('0', 64) where version = '0045'"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then
+            echo "Classifier accepted a tampered 0045 receipt checksum" >&2
+            exit 1
+          fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c \
+            "update app_migration_receipts set checksum_sha256 = '$expected_checksum' where version = '0045'"
+          assert_state '5:2:5:2:3:4:1'
+          echo 'DISPOSABLE PACKET P2 ITEM-SALES FIX UPGRADE: PASS'
       - name: Stop and erase the disposable target
         if: always()
         run: supabase stop --workdir "$PROOF_ROOT" --no-backup
@@ -847,6 +886,11 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" p1
+      - name: Apply Packet P2 item-sales fix atomically
+        if: steps.preflight.outputs.needs_p2 == 'true'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" p2
       - name: Verify live Batch B contract
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
@@ -898,6 +942,10 @@ jobs:
                )
                or not exists(select 1 from app_migration_receipts where version='0044') then
               raise exception 'Packet P1 upgrade receipts contract failed';
+            end if;
+            if not exists(select 1 from app_migration_receipts where version='0045')
+               or pg_get_functiondef('public.get_item_sales_report(uuid,date,date)'::regprocedure) not like '%phase65_sale_line_cap%' then
+              raise exception 'Packet P2 item-sales fix contract failed';
             end if;
           end
           $verify$;

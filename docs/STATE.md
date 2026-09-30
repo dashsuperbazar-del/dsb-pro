@@ -4,9 +4,10 @@ Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/CO
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
-- `main` at last update: `81ac0d1` (P1 merged, PR #38). Migrations 0001–0044 (immutable).
-- Last packet: **M0 Hygiene** (this PR) — Prettier on `apps/**`, STATE.md, ledger fix, CI policy.
-- Next packet: **P2** item-sales discount fix (mig 0045), then C0, C1, C2, C3, U1, F0–F3, D1-lite, R1.
+- `main` at last update: `eeeb6a1` (M0 merged, PR #40). Migrations 0001–0044 (immutable).
+- Last merged packet: **M0 Hygiene** (PR #40, `eeeb6a1`).
+- In review: **P2** item-sales discount fix (mig 0045, group `p2`) — PR open, awaiting CI + user `merge`.
+- Next packet after P2 merges: C0, then C1, C2, C3, U1, F0–F3, D1-lite, R1.
 - Milestone in progress: **M1 Daily-usable** (exit = 7-day shadow run vs old DSB).
 
 ## Workflow (single builder)
@@ -23,11 +24,16 @@ Ask the user only for: merge, live migration approval, legacy export (F0), money
 - `packages/db/src/types.ts` is HAND-WRITTEN (106 lines), not generated. Regeneration needs Docker or a Supabase
   PAT (`pnpm gen:types`, see script). No Docker daemon in the cloud builder session → M0 could NOT regenerate.
   Do it on a machine with Docker/local Supabase; until then RPC typing is not schema-checked.
+  UPDATE 2026-09-29: the cloud session CAN run Docker — start the daemon with `dockerd &` first, then
+  `pnpm exec supabase start`. P2 was verified this way (full pgTAP run locally). Types still not regenerated.
+- Every new migration packet must add its own group to the upgrade machinery (manifest, ALLOWED_GROUPS,
+  GROUP_ORDER, apply wrapper, classifier state + CI proof/apply/verify) — see P2 as the template.
 - No supplier-payment RPC/screen yet (C1/C2). Expenses live in Reports; no stock-adjust screen (U1).
 - Every gate H1–H9 from Phase 3 on is NOT GO; needs dated real-shop evidence. H3 needs an explicit offline→restart→reconnect device test, not just the shadow run.
 - P1 deferred follow-ups 1–6 (see ledger P1 row) are moved to M2.
 - Legacy old-DSB JSON export needed from the user when F0 starts.
 
 ## Decisions log
+- 2026-09-29: scheduled builder routine (every 6h, this session) builds packets up to PR; never merges.
 - 2026-09-29: dual-builder (GPT+Claude) retired; sub-agent review replaces it. GPT optional for C0, C1, F2, F3.
 - 2026-09-29: C0a+C0b merged into C0; 20-session benchmark dropped for M1.
