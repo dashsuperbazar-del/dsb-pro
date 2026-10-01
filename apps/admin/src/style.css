@@ -234,3 +234,10 @@ td small {
   background: var(--surface-2);
   border-radius: var(--radius);
 }
+
+fieldset.plain {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}

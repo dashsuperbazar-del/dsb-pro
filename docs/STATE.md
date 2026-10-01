@@ -4,12 +4,11 @@ Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/CO
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
-- `main` at last update: `dd37ae5` (C2 merged, PR #45). Migrations 0001–0048 (immutable).
-- Last merged: **C2** (mig 0048). In review: **C3** customer requests (mig 0049, group `c3`); C3b next.
-- Live DB: C2 applied 2026-10-01 (run 36804657756, only group `c2` pending); live state
-  `5:2:5:2:3:4:1:2:2:2` (fully upgraded). App deployed from `dd37ae5` (run 36805399708).
-- Next after C3: **C3b** (request-aware post_sale/post_purchase direct callers; outbox UNKNOWN metadata +
-  reconcile-by-id for sale/return; POS receipts to v2), then U1, F0–F3, D1-lite, R1.
+- `main` at last update: `5e3d518` (C3 merged, PR #46). Migrations 0001–0049 (immutable).
+- Last merged: **C3** (mig 0049). In review: **C3b** purchase retry verification (mig 0050, group `c3b`).
+- Live DB: C3 applied 2026-10-01 (run 36843143208, only group `c3` pending); live state `5:2:5:2:3:4:1:2:2:2:2`
+  (classifier 12 fields; live reads `...:2:2:0` until `c3b` applies). C3 deploy dispatched 2026-10-01.
+- Next after C3b: U1, then F0–F3, D1-lite, R1.
 - Milestone in progress: **M1 Daily-usable** (exit = 7-day shadow run vs old DSB).
 
 ## Workflow (single builder)
@@ -61,6 +60,11 @@ Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it
 - Legacy old-DSB JSON export needed from the user when F0 starts.
 
 ## Decisions log
+- 2026-10-01: C3b scope. POS sales never call post_sale directly (outbox -> Batch B fingerprinted sync), so the only
+  direct UI money writer was post_purchase: 0050 verifies every retry against the stored bill (PAYLOAD_MISMATCH on
+  any difference; covers pre-0050 bills). Direct post_sale (API-only) and outbox UNKNOWN labels deferred: Batch B
+  fingerprints already make sale/return replays exact. POS customer receipts stay on the request-recorded old
+  endpoint (C3). Future migrations rewriting post_purchase must keep the 0050 marker text (c3b classifier signal).
 - 2026-10-01: C3 split. C3 = customer v2 writers + request-recorded old endpoint (legacy retry verified field
   by field before any validation; mismatch -> DSB_LEGACY_REQUEST_UNVERIFIABLE). C3b = direct post_sale/post_purchase
   wrappers + outbox UNKNOWN (touches the live offline sale/return path; kept separate to limit money-path risk).

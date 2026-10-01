@@ -72,3 +72,36 @@ test('a single supplier bill can carry more than one purchase line', async ({ pa
   await page.getByLabel('Peek item').selectOption({ label: 'Purchase Line Item B' });
   await expect(page.getByLabel('item peek')).toContainText('Stock 6 piece');
 });
+
+test('a purchase whose answer is lost is retried as the same bill, never posted twice', async ({
+  page,
+}) => {
+  await createOwnerShop(page);
+  await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await createItem(page, 'Retry Item');
+  const purchase = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
+  await purchase.locator('select[name="itemId"]').selectOption({ label: 'Retry Item' });
+  await purchase.locator('input[name="qty"]').fill('3');
+  await purchase.locator('input[name="price"]').fill('10');
+  await purchase.getByRole('button', { name: 'Add line' }).click();
+  let calls = 0;
+  await page.route('**/rpc/post_purchase', async (route) => {
+    if (calls++ === 0) {
+      await route.fetch(); // committed on the server ...
+      await route.abort('connectionreset'); // ... answer lost
+    } else await route.continue();
+  });
+  await purchase.getByRole('button', { name: 'Post purchase' }).click();
+  await expect(purchase.getByRole('alert')).toContainText('may already be saved');
+  await expect(purchase.locator('input[name="qty"]')).toBeDisabled();
+  // A reload keeps the frozen request: the screen still offers only the safe retry.
+  await page.reload();
+  await expect(purchase.getByRole('button', { name: 'Retry same purchase' })).toBeVisible();
+  await purchase.getByRole('button', { name: 'Retry same purchase' }).click();
+  await expect(page.getByRole('status')).toContainText('Purchase posted (1 line)');
+  await page.getByLabel('Peek item').selectOption({ label: 'Retry Item' });
+  await expect(page.getByLabel('item peek')).toContainText('Stock 3 piece');
+  expect(calls).toBe(2);
+});

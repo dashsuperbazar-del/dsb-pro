@@ -19,3 +19,4 @@
 0047 c1 supabase/migrations/0047_supplier_payments.sql
 0048 c2 supabase/migrations/0048_supplier_ledger_fix.sql
 0049 c3 supabase/migrations/0049_customer_requests.sql
+0050 c3b supabase/migrations/0050_purchase_retry_verification.sql

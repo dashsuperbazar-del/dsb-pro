@@ -19,6 +19,7 @@ import {
   type ItemPrice,
   type Party,
   type StockRow,
+  classifyError,
 } from '@dsb-pro/adapters';
 import {
   buildLegacyDsbImportPlan,
@@ -49,6 +50,25 @@ export function InventoryScreen() {
     { item: Item; unitLevel: 1 | 2 | 3; qty: string; unitPricePaise: number }[]
   >([]);
   const [purchaseClientId, setPurchaseClientId] = useState(() => crypto.randomUUID());
+  // After a failure whose outcome is unknown (offline/server), the bill may already be posted. The
+  // form stays frozen so a retry resends the SAME request id and payload; the server returns the
+  // stored bill if it was committed (and refuses a changed payload).
+  const [purchaseLocked, setPurchaseLocked] = useState(false);
+  const lockedPurchase = useRef<Parameters<typeof postPurchase>[0] | null>(null);
+  // Survives a reload: an unknown-outcome purchase must be retried as the same request, never re-entered.
+  const pendingKey = (shop: string) => `dsb-pending-purchase:${shop}`;
+  useEffect(() => {
+    if (!shopId) return;
+    try {
+      const raw = localStorage.getItem(pendingKey(shopId));
+      if (raw) {
+        lockedPurchase.current = JSON.parse(raw) as Parameters<typeof postPurchase>[0];
+        setPurchaseLocked(true);
+      }
+    } catch {
+      /* storage unavailable: the in-memory lock still applies */
+    }
+  }, [shopId]);
   const [purchaseBusy, setPurchaseBusy] = useState(false);
   const [legacyPlan, setLegacyPlan] = useState<LegacyDsbImportPlan | null>(null);
   const [legacyFileName, setLegacyFileName] = useState('');
@@ -270,36 +290,63 @@ export function InventoryScreen() {
       setError('Shop data is still loading.');
       return;
     }
-    if (!purchaseCart.length) {
+    if (!purchaseCart.length && !(purchaseLocked && lockedPurchase.current)) {
       setError('Add at least one purchase line.');
       return;
     }
     const f = new FormData(ev.currentTarget as HTMLFormElement);
-    const lineCount = purchaseCart.length;
+    const lineCount =
+      purchaseLocked && lockedPurchase.current
+        ? lockedPurchase.current.lines.length
+        : purchaseCart.length;
+    // A retry after an unknown outcome resends the frozen request byte for byte.
+    const request = (purchaseLocked && lockedPurchase.current) || {
+      shopId,
+      partyId: String(f.get('partyId') || '') || undefined,
+      billNo: String(f.get('billNo') || '') || undefined,
+      businessDate: String(f.get('date')),
+      discountPaise: paise(String(f.get('discount'))),
+      extraChargesPaise: paise(String(f.get('extra'))),
+      clientId: purchaseClientId,
+      lines: purchaseCart.map((l) => ({
+        itemId: l.item.id,
+        unitLevel: l.unitLevel,
+        qty: l.qty,
+        unitPricePaise: l.unitPricePaise,
+      })),
+    };
     setPurchaseBusy(true);
     try {
-      await postPurchase({
-        shopId,
-        partyId: String(f.get('partyId') || '') || undefined,
-        billNo: String(f.get('billNo') || '') || undefined,
-        businessDate: String(f.get('date')),
-        discountPaise: paise(String(f.get('discount'))),
-        extraChargesPaise: paise(String(f.get('extra'))),
-        clientId: purchaseClientId,
-        lines: purchaseCart.map((l) => ({
-          itemId: l.item.id,
-          unitLevel: l.unitLevel,
-          qty: l.qty,
-          unitPricePaise: l.unitPricePaise,
-        })),
-      });
+      await postPurchase(request);
       setPurchaseClientId(crypto.randomUUID());
+      setPurchaseLocked(false);
+      lockedPurchase.current = null;
+      try {
+        localStorage.removeItem(pendingKey(request.shopId));
+      } catch {
+        /* ignore */
+      }
       setPurchaseCart([]);
       await refresh();
       setMessage(
         `Purchase posted (${lineCount} line${lineCount === 1 ? '' : 's'}) and stock updated.`,
       );
     } catch (e) {
+      // The adapter already mapped network/server/auth failures to these class messages; any of
+      // them means the outcome is unknown. Database rejections (validation) keep the form editable.
+      const text = e instanceof Error ? e.message : String(e);
+      const unknown =
+        classifyError(e) !== 'user' ||
+        /Something didn't save|You're offline|session expired/i.test(text);
+      if (unknown) {
+        lockedPurchase.current = request;
+        try {
+          localStorage.setItem(pendingKey(request.shopId), JSON.stringify(request));
+        } catch {
+          /* ignore */
+        }
+      }
+      setPurchaseLocked(unknown || (purchaseLocked && lockedPurchase.current !== null));
       setError(String(e));
     } finally {
       setPurchaseBusy(false);
@@ -522,117 +569,129 @@ export function InventoryScreen() {
       <section>
         <h2>Post purchase</h2>
         <form onSubmit={addPurchase}>
-          <input name="billNo" placeholder="Bill no." />{' '}
-          <input
-            name="date"
-            type="date"
-            value={businessDate}
-            onInput={(e) => setBusinessDate((e.currentTarget as HTMLInputElement).value)}
-            required
-          />{' '}
-          <select name="partyId">
-            <option value="">No supplier</option>
-            {parties.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>{' '}
-          <input name="discount" type="number" min="0" step="0.01" placeholder="Discount ₹" />{' '}
-          <input name="extra" type="number" min="0" step="0.01" placeholder="Extra ₹" />
-          <fieldset>
-            <legend>Add purchase line</legend>
-            <select
-              name="itemId"
-              value={purchaseLineItemId}
-              onChange={(e) => {
-                setPurchaseLineItemId((e.currentTarget as HTMLSelectElement).value);
-                setPurchaseLineUnitLevel(1);
-              }}
-            >
-              <option value="">Item…</option>
-              {items.map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.name}
+          {purchaseLocked && (
+            <p class="alert" role="alert">
+              The last purchase may already be saved. Editing is locked: press “Retry same purchase”
+              — it never posts the bill twice.
+            </p>
+          )}
+          <fieldset disabled={purchaseLocked} class="plain">
+            <input name="billNo" placeholder="Bill no." />{' '}
+            <input
+              name="date"
+              type="date"
+              value={businessDate}
+              onInput={(e) => setBusinessDate((e.currentTarget as HTMLInputElement).value)}
+              required
+            />{' '}
+            <select name="partyId">
+              <option value="">No supplier</option>
+              {parties.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
                 </option>
               ))}
             </select>{' '}
-            <select
-              name="unitLevel"
-              disabled={!purchaseLineItem}
-              value={purchaseLineUnitLevel}
-              onChange={(e) =>
-                setPurchaseLineUnitLevel(
-                  Number((e.currentTarget as HTMLSelectElement).value) as 1 | 2 | 3,
-                )
-              }
-            >
-              <option value="1">{purchaseLineItem?.unit1 || 'Big unit'}</option>
-              {purchaseLineItem?.unit2 && <option value="2">{purchaseLineItem.unit2}</option>}
-              {purchaseLineItem?.unit3 && <option value="3">{purchaseLineItem.unit3}</option>}
-            </select>{' '}
-            <input
-              name="qty"
-              type="number"
-              min="0.000001"
-              step="any"
-              placeholder="Qty"
-              value={purchaseLineQty}
-              onInput={(e) => setPurchaseLineQty((e.currentTarget as HTMLInputElement).value)}
-            />{' '}
-            <input
-              name="price"
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="Unit cost ₹"
-              value={purchaseLinePrice}
-              onInput={(e) => setPurchaseLinePrice((e.currentTarget as HTMLInputElement).value)}
-            />{' '}
-            <button type="button" onClick={addPurchaseLine}>
-              Add line
-            </button>
-          </fieldset>
-          {purchaseCart.length > 0 && (
-            <div class="table-wrap" aria-label="Purchase cart">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Item</th>
-                    <th>Qty</th>
-                    <th>Unit cost</th>
-                    <th>Line total</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {purchaseCart.map((l, n) => (
-                    <tr key={n}>
-                      <td>
-                        {l.item.name}
-                        <small> {unitLabel(l.item, l.unitLevel)}</small>
-                      </td>
-                      <td>{l.qty}</td>
-                      <td>₹{(l.unitPricePaise / 100).toFixed(2)}</td>
-                      <td>₹{(quantityTimesPaise(l.qty, l.unitPricePaise) / 100).toFixed(2)}</td>
-                      <td>
-                        <button
-                          type="button"
-                          aria-label={`Remove purchase line ${n + 1}`}
-                          onClick={() => removePurchaseLine(n)}
-                        >
-                          Remove
-                        </button>
-                      </td>
+            <input name="discount" type="number" min="0" step="0.01" placeholder="Discount ₹" />{' '}
+            <input name="extra" type="number" min="0" step="0.01" placeholder="Extra ₹" />
+            <fieldset>
+              <legend>Add purchase line</legend>
+              <select
+                name="itemId"
+                value={purchaseLineItemId}
+                onChange={(e) => {
+                  setPurchaseLineItemId((e.currentTarget as HTMLSelectElement).value);
+                  setPurchaseLineUnitLevel(1);
+                }}
+              >
+                <option value="">Item…</option>
+                {items.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.name}
+                  </option>
+                ))}
+              </select>{' '}
+              <select
+                name="unitLevel"
+                disabled={!purchaseLineItem}
+                value={purchaseLineUnitLevel}
+                onChange={(e) =>
+                  setPurchaseLineUnitLevel(
+                    Number((e.currentTarget as HTMLSelectElement).value) as 1 | 2 | 3,
+                  )
+                }
+              >
+                <option value="1">{purchaseLineItem?.unit1 || 'Big unit'}</option>
+                {purchaseLineItem?.unit2 && <option value="2">{purchaseLineItem.unit2}</option>}
+                {purchaseLineItem?.unit3 && <option value="3">{purchaseLineItem.unit3}</option>}
+              </select>{' '}
+              <input
+                name="qty"
+                type="number"
+                min="0.000001"
+                step="any"
+                placeholder="Qty"
+                value={purchaseLineQty}
+                onInput={(e) => setPurchaseLineQty((e.currentTarget as HTMLInputElement).value)}
+              />{' '}
+              <input
+                name="price"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Unit cost ₹"
+                value={purchaseLinePrice}
+                onInput={(e) => setPurchaseLinePrice((e.currentTarget as HTMLInputElement).value)}
+              />{' '}
+              <button type="button" onClick={addPurchaseLine}>
+                Add line
+              </button>
+            </fieldset>
+            {purchaseCart.length > 0 && (
+              <div class="table-wrap" aria-label="Purchase cart">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Item</th>
+                      <th>Qty</th>
+                      <th>Unit cost</th>
+                      <th>Line total</th>
+                      <th />
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-              <p>Lines total: ₹{(purchaseTotalPaise / 100).toFixed(2)}</p>
-            </div>
-          )}
-          <button disabled={purchaseBusy || !shopId || !businessDate || !purchaseCart.length}>
-            {purchaseBusy ? 'Posting…' : 'Post purchase'}
+                  </thead>
+                  <tbody>
+                    {purchaseCart.map((l, n) => (
+                      <tr key={n}>
+                        <td>
+                          {l.item.name}
+                          <small> {unitLabel(l.item, l.unitLevel)}</small>
+                        </td>
+                        <td>{l.qty}</td>
+                        <td>₹{(l.unitPricePaise / 100).toFixed(2)}</td>
+                        <td>₹{(quantityTimesPaise(l.qty, l.unitPricePaise) / 100).toFixed(2)}</td>
+                        <td>
+                          <button
+                            type="button"
+                            aria-label={`Remove purchase line ${n + 1}`}
+                            onClick={() => removePurchaseLine(n)}
+                          >
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p>Lines total: ₹{(purchaseTotalPaise / 100).toFixed(2)}</p>
+              </div>
+            )}
+          </fieldset>
+          <button
+            disabled={
+              purchaseBusy || !shopId || !businessDate || (!purchaseCart.length && !purchaseLocked)
+            }
+          >
+            {purchaseBusy ? 'Posting…' : purchaseLocked ? 'Retry same purchase' : 'Post purchase'}
           </button>
         </form>
       </section>

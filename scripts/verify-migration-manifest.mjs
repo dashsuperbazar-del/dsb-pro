@@ -37,6 +37,7 @@ export const ALLOWED_GROUPS = Object.freeze([
   'c1',
   'c2',
   'c3',
+  'c3b',
 ]);
 
 const VERSION_RE = /^[0-9]{4}$/;
@@ -75,6 +76,7 @@ const EXPECTED_LEGACY_ENTRIES = Object.freeze({
   '0044': ['p1', 'supabase/migrations/0044_upgrade_receipts.sql', 'd08731a7a96e88da8042a1769e0e871726dfea72fee0634d5dd4364a7666716c'],
   '0045': ['p2', 'supabase/migrations/0045_item_sales_fix.sql', '666465b6ec8c06e975da4a933f19c515f3fc690e2a2d2ba2c71b6c9529235946'],
   '0046': ['c0', 'supabase/migrations/0046_finance_requests_and_locking.sql', 'd65404f14b6cc9d0a32407adad0605072dcbe13bc599153059dead4685748b08'],
+  '0049': ['c3', 'supabase/migrations/0049_customer_requests.sql', '076dd3ec1fbaa1ed8cdfc8e87229b58f6b0441d83164129ef9536e3042e471f8'],
   '0048': ['c2', 'supabase/migrations/0048_supplier_ledger_fix.sql', '82f20464b0d1a4c9391b52bbdb132a776161894f05045729f8c6d32208cb338b'],
   '0047': ['c1', 'supabase/migrations/0047_supplier_payments.sql', '16f1d50f8157194926229561126741e74881cc5f41124e5a929fab466c368d09'],
 });
@@ -88,7 +90,7 @@ const EXPECTED_LEGACY_ENTRIES = Object.freeze({
 // omitted. Move an entry here into EXPECTED_LEGACY_ENTRIES (with its
 // checksum) once it has actually merged to `main`.
 const EXPECTED_IN_FLIGHT_GROUP_AND_PATH = Object.freeze({
-  '0049': ['c3', 'supabase/migrations/0049_customer_requests.sql'],
+  '0050': ['c3b', 'supabase/migrations/0050_purchase_retry_verification.sql'],
 });
 
 /**
