@@ -5,6 +5,7 @@ import {
   recordSupplierPayment,
   releaseSupplierAllocation,
 } from './supplierPayments';
+import { recordCustomerPaymentV2 } from './supplierPayments';
 const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }));
 vi.mock('./client', () => ({ getSupabaseClient: () => ({ rpc }) }));
 const U = '11111111-1111-4111-8111-111111111111',
@@ -101,6 +102,31 @@ describe('supplier payment adapter', () => {
     await expect(lookupSupplierRequest(U, 'supplier.record.v1', U)).resolves.toMatchObject({
       kind: 'unavailable',
     });
+  });
+  it('sends customer v2 receipts with the request id and checks the ack', async () => {
+    rpc.mockResolvedValue({ data: U, error: null });
+    const input = {
+      requestId: U,
+      shopId: U,
+      customerId: U,
+      businessDate: null,
+      amountPaise: '500',
+      mode: 'upi' as const,
+      allocations: [{ saleInvoiceId: B, amountPaise: '200' }],
+    };
+    await expect(recordCustomerPaymentV2(input)).resolves.toEqual({
+      kind: 'committed',
+      result: { paymentId: U },
+    });
+    expect(rpc).toHaveBeenCalledWith(
+      'record_customer_payment_v2',
+      expect.objectContaining({
+        p_client_id: U,
+        p_allocations: [{ sale_invoice_id: B, amount_paise: 200 }],
+      }),
+    );
+    rpc.mockResolvedValue({ data: 'x', error: null });
+    await expect(recordCustomerPaymentV2(input)).resolves.toMatchObject({ kind: 'unknown' });
   });
   it('refuses a non-integer-text outstanding report', async () => {
     rpc.mockResolvedValue({

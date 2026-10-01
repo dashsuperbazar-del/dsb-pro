@@ -2786,6 +2786,10 @@ export type Database = {
         Args: { p_client_id: string; p_token: string }
         Returns: string
       }
+      allocate_customer_payment_v2: {
+        Args: { p_allocations: Json; p_client_id: string; p_payment_id: string }
+        Returns: Json
+      }
       allocate_supplier_payment: {
         Args: { p_allocations: Json; p_client_id: string; p_payment_id: string }
         Returns: Json
@@ -2876,6 +2880,36 @@ export type Database = {
         Returns: number
       }
       c1_shop_visible: { Args: { p_shop: string }; Returns: boolean }
+      c3_assert_receipt_input: {
+        Args: { p_amount: number; p_mode: string; p_reference: string }
+        Returns: undefined
+      }
+      c3_check_invoice_targets: {
+        Args: {
+          p_allocations: Json
+          p_customer: string
+          p_floor_date: string
+          p_shop: string
+          p_tenant: string
+        }
+        Returns: number
+      }
+      c3_insert_customer_payment: {
+        Args: {
+          p_allocs: Json
+          p_amount: number
+          p_customer: string
+          p_date: string
+          p_floor_date: string
+          p_legacy_input: Json
+          p_mode: string
+          p_payment_client_id: string
+          p_reference: string
+          p_shop: string
+          p_tenant: string
+        }
+        Returns: Json
+      }
       check_invariants: { Args: never; Returns: Json }
       create_invite: {
         Args: { p_role: string; p_shop_ids: string[] }
@@ -3324,6 +3358,19 @@ export type Database = {
         Returns: undefined
       }
       record_customer_payment: {
+        Args: {
+          p_allocations: Json
+          p_amount_paise: number
+          p_business_date: string
+          p_client_id: string
+          p_customer_id: string
+          p_mode: string
+          p_reference: string
+          p_shop_id: string
+        }
+        Returns: string
+      }
+      record_customer_payment_v2: {
         Args: {
           p_allocations: Json
           p_amount_paise: number

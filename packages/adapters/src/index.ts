@@ -37,5 +37,5 @@ export { listReturnSources, listReturnableLines, postReturn, listRecentReturns, 
 export type { PrinterWidth, ShopSettings, ShopSettingsInput } from './shopSettings';
 export { getShopSettings, updateShopSettings } from './shopSettings';
 
-export type { SupplierOperation, PaymentMode, SupplierAllocation, SupplierWriteOutcome, SupplierRequestLookup, SupplierOutstandingRow, SupplierBill, SupplierPayment, SupplierLedger, SupplierLedgerEntry } from './supplierPayments';
-export { recordSupplierPayment, allocateSupplierPayment, voidSupplierPayment, releaseSupplierAllocation, lookupSupplierRequest, getSupplierOutstanding, listSupplierBills, listSupplierPayments, listSupplierAllocations, getSupplierLedger } from './supplierPayments';
+export type { SupplierOperation, CustomerOperation, FinancialOperation, SaleAllocation, PaymentMode, SupplierAllocation, SupplierWriteOutcome, SupplierRequestLookup, SupplierOutstandingRow, SupplierBill, SupplierPayment, SupplierLedger, SupplierLedgerEntry } from './supplierPayments';
+export { recordCustomerPaymentV2, allocateCustomerPaymentV2, lookupFinancialRequest, recordSupplierPayment, allocateSupplierPayment, voidSupplierPayment, releaseSupplierAllocation, lookupSupplierRequest, getSupplierOutstanding, listSupplierBills, listSupplierPayments, listSupplierAllocations, getSupplierLedger } from './supplierPayments';

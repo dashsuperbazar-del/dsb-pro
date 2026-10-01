@@ -82,6 +82,9 @@ function sender(attempt: FinancialAttempt): Promise<SupplierWriteOutcome> {
         allocationId: String(p.allocationId),
         reason: String(p.reason),
       });
+    default:
+      // Customer attempts belong to the Customers screen; never send them from here.
+      return Promise.resolve({ kind: 'unknown', message: 'Not a supplier request.' });
   }
 }
 const lookup = (a: FinancialAttempt) =>

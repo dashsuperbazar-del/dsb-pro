@@ -18,3 +18,4 @@
 0046 c0 supabase/migrations/0046_finance_requests_and_locking.sql
 0047 c1 supabase/migrations/0047_supplier_payments.sql
 0048 c2 supabase/migrations/0048_supplier_ledger_fix.sql
+0049 c3 supabase/migrations/0049_customer_requests.sql

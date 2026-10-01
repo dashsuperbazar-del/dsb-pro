@@ -30,3 +30,29 @@ test('owner can open customer ledger and allocation workflow', async ({ page }) 
   ).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Customer ledger' })).toBeVisible();
 });
+
+test('a receipt whose answer is lost after commit is reconciled, never recorded twice', async ({
+  page,
+}) => {
+  await createOwnerShop(page);
+  await page.getByRole('link', { name: 'Customers & ledger' }).click();
+  await page.getByLabel('Name').fill('Receipt Customer');
+  await page.getByRole('button', { name: 'Create customer' }).click();
+  await expect(page.getByText(/Balance ₹0.00/)).toBeVisible();
+  let calls = 0;
+  await page.route('**/rpc/record_customer_payment_v2', async (route) => {
+    if (calls++ === 0) {
+      await route.fetch(); // the server commits ...
+      await route.abort('connectionreset'); // ... but the answer is lost
+    } else await route.continue();
+  });
+  await page.getByLabel('Amount ₹').fill('25');
+  await page.getByRole('button', { name: 'Record payment' }).click();
+  await expect(page.getByRole('alert', { name: 'Unresolved receipts' })).toContainText('UNKNOWN');
+  await page.getByRole('button', { name: 'Record payment' }).click();
+  await expect(page.getByText(/Resolve the receipt awaiting server confirmation/)).toBeVisible();
+  await page.getByRole('button', { name: 'Check status' }).click();
+  await expect(page.getByText('Receipt confirmed by the server.')).toBeVisible();
+  await expect(page.getByText(/Balance -₹25.00|Balance ₹-25.00/)).toBeVisible();
+  expect(calls).toBe(1);
+});
