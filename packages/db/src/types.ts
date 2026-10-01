@@ -2953,6 +2953,19 @@ export type Database = {
       current_shop_ids: { Args: never; Returns: string[] }
       current_tenant_id: { Args: never; Returns: string }
       custom_access_token_hook: { Args: { event: Json }; Returns: Json }
+      d1_aging_json: {
+        Args: {
+          p_accounts: Json
+          p_as_of: string
+          p_docs: Json
+          p_shop: string
+        }
+        Returns: Json
+      }
+      d1_assert_as_of: {
+        Args: { p_as_of: string; p_shop_id: string }
+        Returns: undefined
+      }
       dsb_assert_safe_paise: {
         Args: { p_signed?: boolean; p_value: number }
         Returns: undefined
@@ -2991,6 +3004,10 @@ export type Database = {
           not_due_paise: number
           total_outstanding_paise: number
         }[]
+      }
+      get_customer_aging_report_v2: {
+        Args: { p_as_of: string; p_shop_id: string }
+        Returns: Json
       }
       get_day_book: {
         Args: { p_from: string; p_shop_id: string; p_to: string }
@@ -3098,6 +3115,10 @@ export type Database = {
           qty_base: number
           value_paise: number
         }[]
+      }
+      get_supplier_aging_report_v2: {
+        Args: { p_as_of: string; p_shop_id: string }
+        Returns: Json
       }
       get_supplier_outstanding: { Args: { p_shop_id: string }; Returns: Json }
       has_perm: { Args: { p_code: string }; Returns: boolean }
