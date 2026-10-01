@@ -41,7 +41,8 @@ Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it
   UI no longer calls it. 100k-invoice EXPLAIN not done (one shop; revisit at S1). Cash counts as assigned only
   when allocated/linked to a document in the same as-of set, so stranded allocations show as unassigned cash.
 - R0: a walk-in bill under ₹0.50 rounds to ₹0.00 (no payment possible) — consistent both sides; product edge.
-- Watch: suppliers 'lost response' e2e failed once in a full local run (not reproduced in 4 reruns; trace lost).
+- Watch: suppliers 'lost response' e2e failed again on main (run 36904189128, form never shown). Hypothesis:
+  waitForOfflineRuntime timed out at 5 s under load; raised to 30 s in V3. Close after 5 clean main runs.
 - Every new migration packet adds its own upgrade group (manifest, ALLOWED_GROUPS, GROUP_ORDER, apply wrapper,
   classifier state + CI proof/apply/verify) — P2 is the template; freeze its checksum in the manifest once merged.
 - C0 lock protocol: every money writer is a wrapper (shop finance advisory lock) over a client-revoked

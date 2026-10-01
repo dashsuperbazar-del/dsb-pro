@@ -138,7 +138,9 @@ function resolveWaiters() {
   }
 }
 
-export async function waitForOfflineRuntime(timeoutMs = 5000): Promise<void> {
+// 30 s, not 5 s: on a loaded device (or CI runner) opening the local database can take longer, and a
+// timeout here leaves the Suppliers/Customers screens without their payment form.
+export async function waitForOfflineRuntime(timeoutMs = 30000): Promise<void> {
   if (runtime) return;
   await new Promise<void>((resolve, reject) => {
     const timer = window.setTimeout(() => {
