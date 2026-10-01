@@ -3,13 +3,13 @@ import {
   getDayBook,
   getDefaultShopId,
   getShopBusinessDate,
-  postExpense,
+  postExpenseOutcome,
   voidExpense,
-  classifyError,
   type DayBookRow,
 } from '@dsb-pro/adapters';
 import { parseRupeesToPaise } from '@dsb-pro/core';
 import { appRoute } from '../lib/paths';
+import { clearPendingIntent, loadPendingIntent, savePendingIntent } from '../lib/pendingIntent';
 
 const rupee = (p: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(p / 100);
@@ -40,19 +40,10 @@ export function ExpensesScreen() {
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  // Set when this device's saved entries cannot be read: new entries stay blocked.
+  const [storageBlocked, setStorageBlocked] = useState(false);
 
   const pendingKey = (s: string) => `dsb-pending-expense:${s}`;
-  const savePending = (
-    s: string,
-    value: { req: NonNullable<typeof pending>; clientId: string } | null,
-  ) => {
-    try {
-      if (value) localStorage.setItem(pendingKey(s), JSON.stringify(value));
-      else localStorage.removeItem(pendingKey(s));
-    } catch {
-      /* ignore */
-    }
-  };
   async function load(shopId = shop, d = date) {
     if (!shopId || !d) return;
     const rows = await getDayBook(shopId, d, d);
@@ -65,16 +56,16 @@ export function ExpensesScreen() {
       setShop(s);
       setDate(d);
       // An expense whose outcome was never confirmed survives a reload with its request id.
-      try {
-        const raw = localStorage.getItem(pendingKey(s));
-        if (raw) {
-          const saved = JSON.parse(raw) as { req: NonNullable<typeof pending>; clientId: string };
-          setPending(saved.req);
-          setClientId(saved.clientId);
-          setMsg('An earlier expense was not confirmed. Press "Retry same expense" to finish it.');
-        }
-      } catch {
-        /* storage unavailable: in-memory lock still applies */
+      const saved = loadPendingIntent<{ req: NonNullable<typeof pending>; clientId: string }>(
+        pendingKey(s),
+      );
+      if (!saved.ok) {
+        setStorageBlocked(true);
+        setMsg(saved.message);
+      } else if (saved.value) {
+        setPending(saved.value.req);
+        setClientId(saved.value.clientId);
+        setMsg('An earlier expense was not confirmed. Press "Retry same expense" to finish it.');
       }
       await load(s, d);
     })().catch((e) => setMsg(String(e)));
@@ -82,7 +73,7 @@ export function ExpensesScreen() {
 
   async function submit(e: Event) {
     e.preventDefault();
-    if (!shop || busy) return;
+    if (!shop || busy || storageBlocked) return;
     const form = e.currentTarget as HTMLFormElement;
     const f = new FormData(form);
     let req = pending;
@@ -98,45 +89,47 @@ export function ExpensesScreen() {
       setMsg(String(err));
       return;
     }
+    // Durable before dispatch, or not sent at all.
+    try {
+      savePendingIntent(pendingKey(shop), { req, clientId });
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : String(err));
+      return;
+    }
     setBusy(true);
     setMsg('');
     setPending(req);
-    savePending(shop, { req, clientId });
-    let id: string;
-    try {
-      id = await postExpense(
-        shop,
-        req.date,
-        req.category,
-        req.description,
-        req.amountPaise,
-        req.mode,
-        null,
-        clientId,
+    const outcome = await postExpenseOutcome({
+      shopId: shop,
+      businessDate: req.date,
+      category: req.category,
+      description: req.description,
+      amountPaise: req.amountPaise,
+      mode: req.mode,
+      reference: null,
+      clientId,
+    });
+    if (outcome.kind === 'unknown') {
+      setMsg(
+        `Not confirmed: ${outcome.message}. The form is locked: press "Retry same expense" — it never posts twice.`,
       );
-    } catch (err) {
-      const text = err instanceof Error ? err.message : String(err);
-      const unknown =
-        classifyError(err) !== 'user' ||
-        /Something didn't save|You're offline|session expired/i.test(text);
-      if (unknown) {
-        setMsg(
-          `Not confirmed: ${text}. The form is locked: press "Retry same expense" — it never posts twice.`,
-        );
-      } else {
-        // The server definitively refused it: nothing was posted, so the entry can be corrected.
-        setPending(null);
-        savePending(shop, null);
-        setClientId(crypto.randomUUID());
-        setMsg(`Not posted: ${text}`);
-      }
       setBusy(false);
       return;
     }
+    if (outcome.kind === 'rejected') {
+      // The database refused it and rolled back: nothing was posted, so the entry can be corrected.
+      setPending(null);
+      clearPendingIntent(pendingKey(shop));
+      setClientId(crypto.randomUUID());
+      setMsg(`Not posted: ${outcome.message}`);
+      setBusy(false);
+      return;
+    }
+    const id = outcome.value;
     // Confirmed: finish the state transition before anything else can fail.
     setLastId(id);
     setPending(null);
-    savePending(shop, null);
+    clearPendingIntent(pendingKey(shop));
     setClientId(crypto.randomUUID());
     setMsg('Expense posted.');
     form.reset();
@@ -211,7 +204,7 @@ export function ExpensesScreen() {
               </select>
             </label>
           </fieldset>
-          <button class="primary" disabled={busy || !shop}>
+          <button class="primary" disabled={busy || !shop || storageBlocked}>
             {busy ? 'Posting…' : pending ? 'Retry same expense' : 'Post expense'}
           </button>
         </form>

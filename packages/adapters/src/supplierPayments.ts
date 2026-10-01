@@ -1,5 +1,6 @@
 import { getSupabaseClient } from './client';
 import { classifyError, errorMessage } from './errors';
+import { definitiveCode } from './outcomes';
 
 // C2 supplier-payment adapter. Writes return a three-way outcome instead of throwing, so the caller's
 // durable attempt store can tell a definitive rejection (rolled back) from an unknown outcome (the
@@ -66,20 +67,6 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const INT_TEXT = /^-?\d+$/;
 const isUuid = (v: unknown): v is string => typeof v === 'string' && UUID.test(v);
 const friendly = (error: unknown) => errorMessage(classifyError(error), error);
-
-// SQLSTATE classes that prove the transaction rolled back with a definitive answer: raised business
-// errors (P0001), constraint and privilege errors. Anything else -- network loss, timeouts, gateway
-// errors, deadlock/serialization aborts -- is treated as an unknown outcome and reconciled by ID.
-function definitiveCode(error: { code?: string; message?: string }): string | null {
-  const code = error.code ?? '';
-  const dsb = /^(DSB_[A-Z_]+)/.exec(error.message ?? '')?.[1];
-  // PAYLOAD_MISMATCH means a request with this id already exists server-side (possibly committed):
-  // never a rejection, or the user could re-record the same money under a new id.
-  if (dsb === 'DSB_PAYLOAD_MISMATCH') return null;
-  if (code === 'P0001' || code === '42501' || /^(22|23)/.test(code))
-    return dsb ?? (code || 'REJECTED');
-  return null;
-}
 
 function validateAck(operation: FinancialOperation, data: unknown): Record<string, unknown> | null {
   if (

@@ -11,7 +11,7 @@ import {
   listItems,
   listParties,
   listStock,
-  postPurchase,
+  postPurchaseOutcome,
   replaceItemImage,
   setItemPrice,
   setItemMinStock,
@@ -19,7 +19,7 @@ import {
   type ItemPrice,
   type Party,
   type StockRow,
-  classifyError,
+  type PurchaseRequest,
 } from '@dsb-pro/adapters';
 import {
   buildLegacyDsbImportPlan,
@@ -30,6 +30,7 @@ import {
 } from '@dsb-pro/core';
 import { compressItemImage } from '../lib/compressImage';
 import { appRoute } from '../lib/paths';
+import { clearPendingIntent, loadPendingIntent, savePendingIntent } from '../lib/pendingIntent';
 
 const paise = (rupees: string) => parseRupeesToPaise(rupees || '0');
 
@@ -54,19 +55,19 @@ export function InventoryScreen() {
   // form stays frozen so a retry resends the SAME request id and payload; the server returns the
   // stored bill if it was committed (and refuses a changed payload).
   const [purchaseLocked, setPurchaseLocked] = useState(false);
-  const lockedPurchase = useRef<Parameters<typeof postPurchase>[0] | null>(null);
-  // Survives a reload: an unknown-outcome purchase must be retried as the same request, never re-entered.
+  const lockedPurchase = useRef<PurchaseRequest | null>(null);
+  // Survives a reload: stored BEFORE the first send (V002 VF-005), so an unconfirmed purchase is
+  // retried as the same request, never re-entered. Unreadable storage blocks new purchases.
   const pendingKey = (shop: string) => `dsb-pending-purchase:${shop}`;
+  const [purchaseStorageBlocked, setPurchaseStorageBlocked] = useState('');
   useEffect(() => {
     if (!shopId) return;
-    try {
-      const raw = localStorage.getItem(pendingKey(shopId));
-      if (raw) {
-        lockedPurchase.current = JSON.parse(raw) as Parameters<typeof postPurchase>[0];
-        setPurchaseLocked(true);
-      }
-    } catch {
-      /* storage unavailable: the in-memory lock still applies */
+    const saved = loadPendingIntent<PurchaseRequest>(pendingKey(shopId));
+    if (!saved.ok) {
+      setPurchaseStorageBlocked(saved.message);
+    } else if (saved.value) {
+      lockedPurchase.current = saved.value;
+      setPurchaseLocked(true);
     }
   }, [shopId]);
   const [purchaseBusy, setPurchaseBusy] = useState(false);
@@ -315,39 +316,43 @@ export function InventoryScreen() {
         unitPricePaise: l.unitPricePaise,
       })),
     };
+    if (purchaseStorageBlocked) {
+      setError(purchaseStorageBlocked);
+      return;
+    }
+    // Durable before dispatch, or not sent at all.
+    try {
+      savePendingIntent(pendingKey(request.shopId), request);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      return;
+    }
+    lockedPurchase.current = request;
+    setPurchaseLocked(true);
     setPurchaseBusy(true);
     try {
-      await postPurchase(request);
-      setPurchaseClientId(crypto.randomUUID());
-      setPurchaseLocked(false);
+      const outcome = await postPurchaseOutcome(request);
+      if (outcome.kind === 'unknown') {
+        // May have committed: the form stays frozen and a retry resends this exact request.
+        setError(
+          `Not confirmed: ${outcome.message}. The bill is locked — retry sends the same bill and never posts it twice.`,
+        );
+        return;
+      }
       lockedPurchase.current = null;
-      try {
-        localStorage.removeItem(pendingKey(request.shopId));
-      } catch {
-        /* ignore */
+      setPurchaseLocked(false);
+      clearPendingIntent(pendingKey(request.shopId));
+      setPurchaseClientId(crypto.randomUUID());
+      if (outcome.kind === 'rejected') {
+        // The database refused and rolled back: nothing posted; the cart stays for correction.
+        setError(`Not posted: ${outcome.message}`);
+        return;
       }
       setPurchaseCart([]);
-      await refresh();
       setMessage(
         `Purchase posted (${lineCount} line${lineCount === 1 ? '' : 's'}) and stock updated.`,
       );
-    } catch (e) {
-      // The adapter already mapped network/server/auth failures to these class messages; any of
-      // them means the outcome is unknown. Database rejections (validation) keep the form editable.
-      const text = e instanceof Error ? e.message : String(e);
-      const unknown =
-        classifyError(e) !== 'user' ||
-        /Something didn't save|You're offline|session expired/i.test(text);
-      if (unknown) {
-        lockedPurchase.current = request;
-        try {
-          localStorage.setItem(pendingKey(request.shopId), JSON.stringify(request));
-        } catch {
-          /* ignore */
-        }
-      }
-      setPurchaseLocked(unknown || (purchaseLocked && lockedPurchase.current !== null));
-      setError(String(e));
+      await refresh().catch((e) => setError(`Purchase posted. (Refresh failed: ${String(e)})`));
     } finally {
       setPurchaseBusy(false);
     }
