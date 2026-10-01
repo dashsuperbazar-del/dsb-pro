@@ -4,6 +4,7 @@ import {
   exportTenant,
   getDayBook,
   getDefaultShopId,
+  getCurrentMembership,
   getGstSummary,
   getShopBusinessDate,
   getPartyLedger,
@@ -56,11 +57,14 @@ export function ReportsScreen() {
   const [partyId, setPartyId] = useState('');
   const [partyLedger, setPartyLedger] = useState<PartyLedgerRow[]>([]);
   const [msg, setMsg] = useState('');
+  const [canCount, setCanCount] = useState(false);
   useEffect(() => {
     void (async () => {
       try {
         const s = await getDefaultShopId();
         setShop(s);
+        const m = await getCurrentMembership();
+        setCanCount(m?.role === 'owner' || m?.role === 'manager');
         const [ps, d] = await Promise.all([listParties(), getShopBusinessDate(s)]);
         setParties(ps);
         setBusinessDate(d);
@@ -166,7 +170,13 @@ export function ReportsScreen() {
         <h2>Daily entry</h2>
         <p>
           Expenses and stock adjustments have their own screens:{' '}
-          <a href={appRoute.expenses}>Expenses</a> · <a href={appRoute.stockAdjust}>Stock adjust</a>
+          <a href={appRoute.expenses}>Expenses</a>
+          {canCount && (
+            <>
+              {' '}
+              · <a href={appRoute.stockAdjust}>Stock adjust</a>
+            </>
+          )}
         </p>
       </section>
       <section class="card">

@@ -5,6 +5,7 @@ import {
   getShopBusinessDate,
   postExpense,
   voidExpense,
+  classifyError,
   type DayBookRow,
 } from '@dsb-pro/adapters';
 import { parseRupeesToPaise } from '@dsb-pro/core';
@@ -27,7 +28,7 @@ export function ExpensesScreen() {
   const [date, setDate] = useState('');
   const [today, setToday] = useState<DayBookRow | null>(null);
   // One request id per expense: a retry after a lost answer reuses it, so it is never posted twice.
-  const [clientId, setClientId] = useState(() => crypto.randomUUID());
+  const [clientId, setClientId] = useState<string>(() => crypto.randomUUID());
   const [lastId, setLastId] = useState('');
   // After an unconfirmed attempt the exact request is frozen; Post retries it with the same id.
   const [pending, setPending] = useState<{
@@ -40,6 +41,18 @@ export function ExpensesScreen() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
 
+  const pendingKey = (s: string) => `dsb-pending-expense:${s}`;
+  const savePending = (
+    s: string,
+    value: { req: NonNullable<typeof pending>; clientId: string } | null,
+  ) => {
+    try {
+      if (value) localStorage.setItem(pendingKey(s), JSON.stringify(value));
+      else localStorage.removeItem(pendingKey(s));
+    } catch {
+      /* ignore */
+    }
+  };
   async function load(shopId = shop, d = date) {
     if (!shopId || !d) return;
     const rows = await getDayBook(shopId, d, d);
@@ -51,6 +64,18 @@ export function ExpensesScreen() {
       const d = await getShopBusinessDate(s);
       setShop(s);
       setDate(d);
+      // An expense whose outcome was never confirmed survives a reload with its request id.
+      try {
+        const raw = localStorage.getItem(pendingKey(s));
+        if (raw) {
+          const saved = JSON.parse(raw) as { req: NonNullable<typeof pending>; clientId: string };
+          setPending(saved.req);
+          setClientId(saved.clientId);
+          setMsg('An earlier expense was not confirmed. Press "Retry same expense" to finish it.');
+        }
+      } catch {
+        /* storage unavailable: in-memory lock still applies */
+      }
       await load(s, d);
     })().catch((e) => setMsg(String(e)));
   }, []);
@@ -76,8 +101,10 @@ export function ExpensesScreen() {
     setBusy(true);
     setMsg('');
     setPending(req);
+    savePending(shop, { req, clientId });
+    let id: string;
     try {
-      const id = await postExpense(
+      id = await postExpense(
         shop,
         req.date,
         req.category,
@@ -87,18 +114,37 @@ export function ExpensesScreen() {
         null,
         clientId,
       );
-      setLastId(id);
-      setPending(null);
-      setClientId(crypto.randomUUID());
-      setMsg('Expense posted.');
-      form.reset();
+    } catch (err) {
+      const text = err instanceof Error ? err.message : String(err);
+      const unknown =
+        classifyError(err) !== 'user' ||
+        /Something didn't save|You're offline|session expired/i.test(text);
+      if (unknown) {
+        setMsg(
+          `Not confirmed: ${text}. The form is locked: press "Retry same expense" — it never posts twice.`,
+        );
+      } else {
+        // The server definitively refused it: nothing was posted, so the entry can be corrected.
+        setPending(null);
+        savePending(shop, null);
+        setClientId(crypto.randomUUID());
+        setMsg(`Not posted: ${text}`);
+      }
+      setBusy(false);
+      return;
+    }
+    // Confirmed: finish the state transition before anything else can fail.
+    setLastId(id);
+    setPending(null);
+    savePending(shop, null);
+    setClientId(crypto.randomUUID());
+    setMsg('Expense posted.');
+    form.reset();
+    setBusy(false);
+    try {
       await load();
     } catch (err) {
-      setMsg(
-        `Not confirmed: ${String(err)}. The form is locked: press "Retry same expense" — it never posts twice.`,
-      );
-    } finally {
-      setBusy(false);
+      setMsg(`Expense posted. (Totals could not refresh: ${String(err)})`);
     }
   }
   async function undo() {

@@ -79,3 +79,31 @@ test('an expense whose answer is lost is retried as the same expense, never post
   await expect(page.getByRole('region', { name: 'Expenses today' })).toContainText('1,000.00');
   expect(calls).toBe(2);
 });
+
+test('a pending expense survives a reload; a definitive rejection unlocks the form', async ({
+  page,
+}) => {
+  await createOwnerShop(page);
+  await page.goto('/expenses');
+  await page.getByLabel('Category').fill('Rent');
+  await page.getByLabel('Amount ₹').fill('0');
+  await page.getByRole('button', { name: 'Post expense' }).click();
+  await expect(page.getByRole('status')).toContainText('Not posted');
+  await expect(page.getByLabel('Amount ₹')).toBeEnabled();
+
+  let calls = 0;
+  await page.route('**/rpc/post_expense', async (route) => {
+    if (calls++ === 0) {
+      await route.fetch();
+      await route.abort('connectionreset');
+    } else await route.continue();
+  });
+  await page.getByLabel('Amount ₹').fill('250');
+  await page.getByRole('button', { name: 'Post expense' }).click();
+  await expect(page.getByRole('status')).toContainText('Not confirmed');
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Retry same expense' })).toBeVisible();
+  await page.getByRole('button', { name: 'Retry same expense' }).click();
+  await expect(page.getByRole('status')).toContainText('Expense posted.');
+  await expect(page.getByRole('region', { name: 'Expenses today' })).toContainText('250.00');
+});

@@ -8,7 +8,8 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
 - Last merged: **C3b** (mig 0050). In review: **U1** daily-entry UX (UI only, no migration).
 - Live DB: C3b applied 2026-10-01 (run 36846504793, only group `c3b` pending); live state
   `5:2:5:2:3:4:1:2:2:2:2:2` (fully upgraded). C3b deploy dispatched 2026-10-01.
-- Next after U1: F0 (needs the user's legacy DSB export), F1–F3, D1-lite, R1.
+- Next after U1: **R0** bill round-off (user decision B1), then F0 (needs the user's legacy DSB export), F1–F3,
+  D1-lite, R1.
 - Milestone in progress: **M1 Daily-usable** (exit = 7-day shadow run vs old DSB).
 
 ## Workflow (single builder)
@@ -61,8 +62,8 @@ Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it
 - Legacy old-DSB JSON export needed from the user when F0 starts.
 
 ## Decisions log
-- 2026-10-01: OPEN USER DECISION — final bill rounding. Old DSB Math.round()s the grand total to a whole rupee;
-  DSB Pro keeps exact paise (±50 paise per bill). Parity pinned by core test 'bill-level discount parity'.
+- 2026-10-01: USER DECISION (B1) — item values stay in exact paise; the BILL total rounds to the nearest rupee
+  (half-up, as old DSB) with a separate round-off amount. New packet R0 (migration). Old/queued sales stay exact.
 - 2026-10-01: U1 daily-entry forms (expense, stock adjust, purchase) freeze the request after an unconfirmed
   attempt and only offer a same-id retry; start-over only on a definitive server answer.
 - 2026-10-01: C3b scope. POS sales never call post_sale directly (outbox -> Batch B fingerprinted sync), so the only

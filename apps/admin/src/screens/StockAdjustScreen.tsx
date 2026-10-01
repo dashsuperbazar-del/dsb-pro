@@ -6,6 +6,7 @@ import {
   listItems,
   listStock,
   postStockCount,
+  classifyError,
   type Item,
 } from '@dsb-pro/adapters';
 import { appRoute } from '../lib/paths';
@@ -53,8 +54,12 @@ export function StockAdjustScreen() {
   }
   async function submit(e: Event) {
     e.preventDefault();
-    const req = frozen ?? { item, counted, reason };
+    const req = frozen ?? { item, counted: counted.trim(), reason };
     if (!shop || !date || !req.item || req.counted === '' || busy) return;
+    if (!/^\d+(\.\d{1,6})?$/.test(req.counted)) {
+      setMsg('Enter a counted quantity of 0 or more, with at most 6 decimals.');
+      return;
+    }
     setBusy(true);
     setMsg('');
     setFrozen(req);
@@ -88,6 +93,14 @@ export function StockAdjustScreen() {
           'This count was already posted by an earlier attempt. Check the expected stock above before entering anything again.',
         );
         startOver();
+      } else if (
+        classifyError(err) === 'user' &&
+        !/Something didn't save|You're offline|session expired/i.test(text) &&
+        !id
+      ) {
+        // Definitive refusal before any count document existed: nothing to protect.
+        startOver();
+        setMsg(`Not posted: ${text}`);
       } else {
         setMsg(`Not confirmed: ${text}. Press Retry — it resends this same count safely.`);
       }
