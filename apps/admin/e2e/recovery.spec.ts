@@ -274,8 +274,45 @@ test('customer receipt: a second window waits for the first and then refuses to 
   await other.getByRole('button', { name: 'Record payment' }).click();
   release();
   await expect(page.getByRole('alert', { name: 'Unresolved receipts' })).toContainText('UNKNOWN');
-  await expect(
-    other.getByText(/Resolve the receipt awaiting server confirmation first/),
-  ).toBeVisible();
+  await expect(other.getByText(/Another window just recorded a payment/)).toBeVisible();
+  expect(calls).toBe(1);
+});
+
+test('customer receipt: when the first window succeeds, the waiting window does not send a second payment', async ({
+  page,
+}) => {
+  await createOwnerShop(page);
+  await page.getByRole('link', { name: 'Customers & ledger' }).click();
+  await page.getByLabel('Name').fill('Success Window Customer');
+  await page.getByRole('button', { name: 'Create customer' }).click();
+  await expect(page.getByText(/Balance ₹0.00/)).toBeVisible();
+  const other = await page.context().newPage();
+  await other.goto('/customers');
+  await other
+    .locator('select')
+    .filter({ has: other.locator('option', { hasText: 'Success Window Customer' }) })
+    .first()
+    .selectOption({ label: 'Success Window Customer' });
+  await expect(other.getByRole('button', { name: 'Record payment' })).toBeEnabled();
+
+  let calls = 0;
+  let inFlight = false;
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((r) => (release = r));
+  await page.context().route('**/rpc/record_customer_payment_v2', async (route) => {
+    calls++;
+    const response = await route.fetch();
+    inFlight = true;
+    await gate;
+    await route.fulfill({ response }); // the first payment is confirmed normally
+  });
+  await page.getByLabel('Amount ₹').fill('40');
+  await page.getByRole('button', { name: 'Record payment' }).click();
+  await expect.poll(() => inFlight).toBe(true);
+  await other.getByLabel('Amount ₹').fill('40');
+  await other.getByRole('button', { name: 'Record payment' }).click();
+  release();
+  await expect(page.getByText(/Payment recorded/)).toBeVisible();
+  await expect(other.getByText(/Another window just recorded a payment/)).toBeVisible();
   expect(calls).toBe(1);
 });
