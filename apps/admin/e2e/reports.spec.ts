@@ -111,21 +111,17 @@ test('the missing reports show real low stock, item-wise sales, purchase registe
   await expect(purchaseRegister).toContainText('₹50.00');
   await expect(purchaseRegister).toContainText('POSTED');
 
-  const aging = page
-    .locator('section')
-    .filter({
-      has: page.getByRole('heading', { name: 'Customer outstanding (as of the To date)' }),
-    });
+  const aging = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'Customer outstanding (as of the To date)' }),
+  });
   await expect(aging).toContainText('Aging E2E Customer');
   // 0 days, open bills and net balance all equal the unpaid ₹10.00 bill (D1-lite as-of report).
   await expect(aging.locator('tr').filter({ hasText: 'Aging E2E Customer' })).toContainText(
     '₹10.00',
   );
   // The supplier report loads through PostgREST too (the purchase had no supplier, so no rows).
-  const supplierAging = page
-    .locator('section')
-    .filter({
-      has: page.getByRole('heading', { name: 'Supplier outstanding (as of the To date)' }),
-    });
+  const supplierAging = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'Supplier outstanding (as of the To date)' }),
+  });
   await expect(supplierAging).toContainText('No balances.');
 });
