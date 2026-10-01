@@ -4,6 +4,7 @@ import {
   getCurrentMembership,
   getDefaultShopId,
   getShopBusinessDate,
+  listParties,
   getSupplierLedger,
   getSupplierOutstanding,
   listSupplierAllocations,
@@ -107,6 +108,9 @@ export function SuppliersScreen() {
   const [message, setMessage] = useState('');
   const [loadedParty, setLoadedParty] = useState('');
   const restoredFor = useRef('');
+  // The shop:party the screen currently shows; late results for any other selection are dropped.
+  const current = useRef('');
+  const [allParties, setAllParties] = useState<{ id: string; name: string }[]>([]);
 
   const canPost = role === 'owner' || role === 'manager';
   const isOwner = role === 'owner';
@@ -118,11 +122,18 @@ export function SuppliersScreen() {
     if (m.role === 'cashier') return;
     const shop = m.shopIds[0] ?? (await getDefaultShopId());
     setShopId(shop);
-    const [s, d] = await Promise.all([getSupplierOutstanding(shop), getShopBusinessDate(shop)]);
+    const [s, d, parties] = await Promise.all([
+      getSupplierOutstanding(shop),
+      getShopBusinessDate(shop),
+      listParties(),
+    ]);
     setSummary(s);
+    setAllParties(parties);
     setBusinessDate(d);
   }
   async function refreshParty(shop = shopId, party = partyId) {
+    const key = `${shop}:${party}`;
+    current.current = key;
     if (!shop || !party) {
       setBills([]);
       setPayments([]);
@@ -139,6 +150,7 @@ export function SuppliersScreen() {
       listOpenFinancialAttempts(shop, party),
       listFinancialDrafts(shop, party),
     ]);
+    if (current.current !== key) return; // a newer selection owns the screen
     setBills(b);
     setPayments(p);
     setLedger(l);
@@ -200,6 +212,8 @@ export function SuppliersScreen() {
       )
     ) {
       await discardFinancialDraft(draft.id);
+    } else if (draft) {
+      await editFinancialDraft(draft.id, payload()); // keep the latest edits, not the older save
     } else if (!draft && (amount || Object.keys(alloc).length)) {
       if (confirm('Save this payment as a draft for this supplier?')) await saveDraft();
     }
@@ -208,6 +222,12 @@ export function SuppliersScreen() {
     setReference('');
     setAlloc({});
     setLoadedParty('');
+    setBills([]);
+    setPayments([]);
+    setLedger(null);
+    setOpen([]);
+    setDraft(null);
+    current.current = '';
     restoredFor.current = '';
     setPartyId(next);
     setConfirming(false);
@@ -348,7 +368,13 @@ export function SuppliersScreen() {
             aria-label="Supplier"
           >
             <option value="">Select…</option>
-            {summary.map((s) => (
+            {[
+              ...summary.map((s) => ({ partyId: s.partyId, partyName: s.partyName })),
+              // Suppliers with no bills or payments yet can still receive an advance.
+              ...allParties
+                .filter((p) => !summary.some((s) => s.partyId === p.id))
+                .map((p) => ({ partyId: p.id, partyName: p.name })),
+            ].map((s) => (
               <option key={s.partyId} value={s.partyId}>
                 {s.partyName}
               </option>
