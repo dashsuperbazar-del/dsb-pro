@@ -4,11 +4,11 @@ Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/CO
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
-- `main` at last update: `80a9247` (VF fixes merged, PR #42; deployed 2026-09-30). Migrations 0001–0045 (immutable).
-- Last merged: **VF fixes** (PR #42) after **P2** (PR #41). In review: **C0** (mig 0046, group `c0`).
-- Live DB (2026-09-30, run 36650456557): 0036–0045 applied (Phase 6.5, Batch A, Batch B, P1, P2) after an
-  encrypted B2+R2 backup; live state `5:2:5:2:3:4:1`. App redeployed from `80a9247` (run 36656319852).
-- Next packet after C0 merges: **C1** supplier payments (mig 0047), then C2, C3, U1, F0–F3, D1-lite, R1.
+- `main` at last update: `ed04da7` (C0 merged). Migrations 0001–0046 (immutable).
+- Last merged: **C0** (mig 0046). In review: **C1** supplier payments (mig 0047, group `c1`).
+- Live DB: C0 applied 2026-09-30 (run 36796971685, only group `c0` pending); live state `5:2:5:2:3:4:1:2`
+  (classifier now has 9 fields; live reads `...:2:0` until `c1` applies). App deployed from `ed04da7` (run 36796983942).
+- Next packet after C1 merges: **C2**, then C3, U1, F0–F3, D1-lite, R1.
 - Milestone in progress: **M1 Daily-usable** (exit = 7-day shadow run vs old DSB).
 
 ## Workflow (single builder)
@@ -35,7 +35,13 @@ Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it
 - Allocation `effective_date_source`: `EXPLICIT` = set by the server at insert (default = later of payment/doc
   date), `LEGACY_INFERRED` = pre-C0 backfill (latest of payment date, doc date, shop-local created date).
 - Pre-C0 `void_purchase` never checked allocations: live may hold VOID bills with POSTED allocations (stranded
-  money). C1 must add an invariant/report for them before supplier payments go live.
+  money). C1 reports them in `get_supplier_outstanding().strandedAllocationsOnVoidBills`; owner releases them
+  via `release_supplier_allocation`. Check that field on live right after the `c1` apply.
+- C1 tightens `payments`/`payment_allocations` read RLS: party (supplier) rows need POST_PURCHASES or VIEW_REPORTS,
+  and rows are scoped to the caller's shops. Generic `void_payment` refuses party payments (use supplier void).
+- C1 review MINORs (open): c1 classifier probes only 2 schema anchors; `get_party_ledger_v2` uses a temp table
+  (make it a CTE); customer writers accept `supplier.`-prefixed client_ids (DoS-only squatting).
+- C1 has no cutover-date floor on supplier allocations (no cutover date exists yet); add it in F-packets.
 - Classifier c0 state 1 (schema without receipt) is a fresh-reset/bootstrap state; on a live DB it needs the
   attended baseline-receipt init (P1 debt #5), not `apply`.
 - `AppDatabase` widens every RPC arg to `T|null` (generator limitation); names/types are checked, nullability is not.
@@ -47,6 +53,7 @@ Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it
 - Legacy old-DSB JSON export needed from the user when F0 starts.
 
 ## Decisions log
+- 2026-10-01: C1 cutover-date restriction deferred (no cutover date defined); supplier read RLS tightened.
 - 2026-09-30: GPT verification log V001 findings VF-001..004 accepted; fixed in PR #42 (VF-002 rated MINOR by builder).
 - 2026-09-30: undici pinned `^7.29.1` via pnpm override (GHSA-rfgv-xxqx-mfg5, GHSA-w293-vg96-wgc3).
 - 2026-09-30: brace-expansion pinned `^5.0.11` via pnpm override (GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p).
