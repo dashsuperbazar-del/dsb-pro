@@ -4,17 +4,17 @@ Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/CO
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
-- `main` at last update: `04df545` (V2 merged, PR #51; deploy run 36901510335). Migrations 0001–0052.
-- Last merged: **V2** (verifier V002 fixes). In review: **R1** shadow-run compare page (no migration).
+- `main` at last update: `a6cd057` (R1 merged, PR #52; deploy dispatched). V2 deployed (run 36901510335).
+  Migrations 0001–0052.
+- Last merged: **R1** compare page. In review: **V3** cross-window receipt lock (no migration).
 - Live DB: D1 applied 2026-10-01 (run 36894777286, only group `d1` pending; verify green). Fully upgraded.
   D1 deployed after the apply (run 36897126086, green).
 - Verifier (GPT) log V002 (2026-10-01): CHANGES REQUIRED for VF-005 (intent not durable before dispatch),
   VF-006 (transport errors treated as refusals), VF-007 (customer receipt guard race). V2 (PR #51) fixes all three; awaiting verifier recheck.
 - Decision 2026-10-01: D1-lite built before F0 (F0 blocked on the user's export; D1-lite has no F dependency).
   F2 must extend both aging reports with opening rows (remainingPositiveOpenings / remainingOpeningCredits).
-- V2 residual (MINOR, open): two windows on the Customers/Suppliers screen can still race between the
-  durable-store recheck and creating a receipt (no cross-tab lock). Each attempt is durable and
-  reconcilable by id, so nothing is lost; a Web Locks guard is the follow-up.
+- V2 residual closed by V3: receipt/payment check+create+send is serialized per account across windows
+  (Web Locks). Browsers without Web Locks keep the unserialized check.
 - Rule (V2): every money/stock write stores its exact request on the device BEFORE sending (fail
   closed) and only a definitive DB rejection unlocks it; use `rpcOutcome`/`*Outcome` adapters, never
   `classifyError` to decide an outcome.

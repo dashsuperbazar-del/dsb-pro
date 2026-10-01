@@ -236,3 +236,46 @@ test('expense: a second window cannot overwrite the first window’s unconfirmed
   await expect(page.getByRole('status')).toContainText('Expense posted.');
   await expect(page.getByRole('region', { name: 'Expenses today' })).toContainText('1,000.00');
 });
+
+test('customer receipt: a second window waits for the first and then refuses to record it again', async ({
+  page,
+}) => {
+  await createOwnerShop(page);
+  await page.getByRole('link', { name: 'Customers & ledger' }).click();
+  await page.getByLabel('Name').fill('Two Window Customer');
+  await page.getByRole('button', { name: 'Create customer' }).click();
+  await expect(page.getByText(/Balance ₹0.00/)).toBeVisible();
+  const other = await page.context().newPage();
+  await other.goto('/customers');
+  await other
+    .locator('select')
+    .filter({ has: other.locator('option', { hasText: 'Two Window Customer' }) })
+    .first()
+    .selectOption({ label: 'Two Window Customer' });
+  await expect(other.getByRole('button', { name: 'Record payment' })).toBeEnabled();
+
+  let calls = 0;
+  let committed = false;
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((r) => (release = r));
+  await page.context().route('**/rpc/record_customer_payment_v2', async (route) => {
+    calls++;
+    await route.fetch();
+    committed = true;
+    await gate;
+    await route.abort('connectionreset');
+  });
+  await page.getByLabel('Amount ₹').fill('40');
+  await page.getByRole('button', { name: 'Record payment' }).click();
+  await expect.poll(() => committed).toBe(true);
+
+  // Both windows passed their screen checks; the second must wait for the first's send to settle.
+  await other.getByLabel('Amount ₹').fill('40');
+  await other.getByRole('button', { name: 'Record payment' }).click();
+  release();
+  await expect(page.getByRole('alert', { name: 'Unresolved receipts' })).toContainText('UNKNOWN');
+  await expect(
+    other.getByText(/Resolve the receipt awaiting server confirmation first/),
+  ).toBeVisible();
+  expect(calls).toBe(1);
+});
