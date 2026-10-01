@@ -16,6 +16,8 @@ import { SyncScreen } from './screens/SyncScreen';
 import { ReportsScreen } from './screens/ReportsScreen';
 import { ReturnsScreen } from './screens/ReturnsScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
+import { SuppliersScreen } from './screens/SuppliersScreen';
+import { t } from './lib/i18n';
 import { VerificationBanner } from './components/VerificationBanner';
 import { LanguageToggle } from './components/LanguageToggle';
 import { SyncRuntime } from './components/SyncRuntime';
@@ -47,6 +49,7 @@ export function App() {
         <Route path={appRoute.reports} component={ReportsScreen} />
         <Route path={appRoute.returns} component={ReturnsScreen} />
         <Route path={appRoute.settings} component={SettingsScreen} />
+        <Route path={appRoute.suppliers} component={SuppliersScreen} />
         <Route default component={() => <Home session={session} />} />
       </Router>
     </>
@@ -92,6 +95,11 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
           <a href={appRoute.salesHistory}>Sales history</a> ·{' '}
           <a href={appRoute.customers}>Customers & ledger</a> ·{' '}
           <a href={appRoute.inventory}>Inventory & purchases</a> ·{' '}
+          {session.membership.role !== 'cashier' && (
+            <>
+              <a href={appRoute.suppliers}>{t('suppliers')}</a> ·{' '}
+            </>
+          )}
           <a href={appRoute.reports}>Reports & recovery</a> ·{' '}
           <a href={appRoute.sync}>Sync & offline</a> · <a href={appRoute.team}>Team</a> ·{' '}
           <a href={appRoute.devices}>Devices</a> · <a href={appRoute.settings}>Settings</a> ·{' '}

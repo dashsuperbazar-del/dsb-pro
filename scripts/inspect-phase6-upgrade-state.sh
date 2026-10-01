@@ -46,6 +46,8 @@ begin
   delete from _c0_receipt_check;
   create temp table if not exists _c1_receipt_check (present boolean);
   delete from _c1_receipt_check;
+  create temp table if not exists _c2_receipt_check (present boolean);
+  delete from _c2_receipt_check;
   if to_regclass('public.app_migration_receipts') is not null then
     insert into _p1_receipt_check
       select exists(select 1 from public.app_migration_receipts where version = '0044');
@@ -55,11 +57,14 @@ begin
       select exists(select 1 from public.app_migration_receipts where version = '0046');
     insert into _c1_receipt_check
       select exists(select 1 from public.app_migration_receipts where version = '0047');
+    insert into _c2_receipt_check
+      select exists(select 1 from public.app_migration_receipts where version = '0048');
   else
     insert into _p1_receipt_check values (false);
     insert into _p2_receipt_check values (false);
     insert into _c0_receipt_check values (false);
     insert into _c1_receipt_check values (false);
+    insert into _c2_receipt_check values (false);
   end if;
 end
 $$;
@@ -143,10 +148,13 @@ select
                   where attrelid = 'public.payment_allocations'::regclass and attname = 'effective_date' and not attisdropped), false)) as c0_schema,
   (coalesce((select present from _c1_receipt_check), false)) as c1_receipt,
   (to_regprocedure('public.record_supplier_payment(uuid,uuid,date,bigint,text,text,jsonb,text)') is not null
-    and to_regclass('public.purchase_bill_outstanding') is not null) as c1_schema;
+    and to_regclass('public.purchase_bill_outstanding') is not null) as c1_schema,
+  (coalesce((select present from _c2_receipt_check), false)) as c2_receipt,
+  coalesce((select provolatile = 's' and prosrc not like '%_c1_ledger%' from pg_proc
+            where oid = to_regprocedure('public.get_party_ledger_v2(uuid,uuid,date,date)')), false) as c2_schema;
 SQL
 )
-read -r foundation hardening phase65 batcha batchb p1_shape p1_rls p1_no_grants p1_receipt p2_receipt p2_body c0_receipt c0_schema c1_receipt c1_schema \
+read -r foundation hardening phase65 batcha batchb p1_shape p1_rls p1_no_grants p1_receipt p2_receipt p2_body c0_receipt c0_schema c1_receipt c1_schema c2_receipt c2_schema \
   <<<"$(tail -n1 <<<"$psql_state_output")"
 
 # Validate the raw p1 4-tuple against the only three legitimate
@@ -232,13 +240,33 @@ if [[ "$c1" == "2" ]]; then
   fi
 fi
 
+# C2 (0048): same 0/1/2 states as C0.
+case "$c2_receipt:$c2_schema" in
+  f:f) c2=0 ;;
+  f:t) c2=1 ;;
+  t:t) c2=2 ;;
+  *)
+    echo "C2 drift: 0048 receipt=$c2_receipt but schema present=$c2_schema. Refusing migration." >&2
+    exit 1
+    ;;
+esac
+if [[ "$c2" == "2" ]]; then
+  c2_expected=$(sha256sum "$repo_root/supabase/migrations/0048_supplier_ledger_fix.sql" | cut -d' ' -f1)
+  c2_recorded=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -c \
+    "select checksum_sha256 from public.app_migration_receipts where version='0048'")
+  if [[ "$c2_recorded" != "$c2_expected" ]]; then
+    echo "0048 receipt checksum does not match supabase/migrations/0048_supplier_ledger_fix.sql. Refusing migration." >&2
+    exit 1
+  fi
+fi
+
 emit_state() {
-  local needs_foundation=$1 needs_hardening=$2 needs_phase65=$3 needs_batcha=$4 needs_batchb=$5 needs_p1=$6 needs_p2=$7 needs_c0=$8 needs_c1=$9
+  local needs_foundation=$1 needs_hardening=$2 needs_phase65=$3 needs_batcha=$4 needs_batchb=$5 needs_p1=$6 needs_p2=$7 needs_c0=$8 needs_c1=$9 needs_c2=${10}
   local needs_upgrade=true
-  if [[ "$needs_foundation:$needs_hardening:$needs_phase65:$needs_batcha:$needs_batchb:$needs_p1:$needs_p2:$needs_c0:$needs_c1" == "false:false:false:false:false:false:false:false:false" ]]; then
+  if [[ "$needs_foundation:$needs_hardening:$needs_phase65:$needs_batcha:$needs_batchb:$needs_p1:$needs_p2:$needs_c0:$needs_c1:$needs_c2" == "false:false:false:false:false:false:false:false:false:false" ]]; then
     needs_upgrade=false
   fi
-  printf 'observed_state=%s:%s:%s:%s:%s:%s:%s:%s:%s\n' "$foundation" "$hardening" "$phase65" "$batcha" "$batchb" "$p1" "$p2" "$c0" "$c1"
+  printf 'observed_state=%s:%s:%s:%s:%s:%s:%s:%s:%s:%s\n' "$foundation" "$hardening" "$phase65" "$batcha" "$batchb" "$p1" "$p2" "$c0" "$c1" "$c2"
   printf 'needs_upgrade=%s\n' "$needs_upgrade"
   printf 'needs_foundation=%s\n' "$needs_foundation"
   printf 'needs_hardening=%s\n' "$needs_hardening"
@@ -249,6 +277,7 @@ emit_state() {
   printf 'needs_p2=%s\n' "$needs_p2"
   printf 'needs_c0=%s\n' "$needs_c0"
   printf 'needs_c1=%s\n' "$needs_c1"
+  printf 'needs_c2=%s\n' "$needs_c2"
 }
 
 # Legacy (0030-0043) classification is unchanged from before Packet P1: the
@@ -259,25 +288,27 @@ emit_state() {
 # generic-iteration form (mechanism point 8) because that rewrite could not
 # be verified here to preserve the exact existing legacy behavior without a
 # live database to test against (see final report for this deviation).
-case "$foundation:$hardening:$phase65:$batcha:$batchb:$p1:$p2:$c0:$c1" in
-  0:0:0:0:0:0:0:0:0) emit_state true true true true true true true true true ;;
-  5:0:0:0:0:0:0:0:0) emit_state false true true true true true true true true ;;
-  5:2:0:0:0:0:0:0:0) emit_state false false true true true true true true true ;;
-  5:2:5:0:0:0:0:0:0) emit_state false false false true true true true true true ;;
-  5:2:5:2:0:0:0:0:0) emit_state false false false false true true true true true ;;
-  5:2:5:2:3:0:0:0:0) emit_state false false false false false true true true true ;;
-  5:2:5:2:3:3:0:0:0) emit_state false false false false false true true true true ;;
+case "$foundation:$hardening:$phase65:$batcha:$batchb:$p1:$p2:$c0:$c1:$c2" in
+  0:0:0:0:0:0:0:0:0:0) emit_state true true true true true true true true true true ;;
+  5:0:0:0:0:0:0:0:0:0) emit_state false true true true true true true true true true ;;
+  5:2:0:0:0:0:0:0:0:0) emit_state false false true true true true true true true true ;;
+  5:2:5:0:0:0:0:0:0:0) emit_state false false false true true true true true true true ;;
+  5:2:5:2:0:0:0:0:0:0) emit_state false false false false true true true true true true ;;
+  5:2:5:2:3:0:0:0:0:0) emit_state false false false false false true true true true true ;;
+  5:2:5:2:3:3:0:0:0:0) emit_state false false false false false true true true true true ;;
   # Fresh disposable reset before the receipt bootstrap: every receipt-tracked
   # group's schema exists, no receipts yet.
-  5:2:5:2:3:3:0:1:1) emit_state false false false false false true true true true ;;
-  5:2:5:2:3:4:0:0:0) emit_state false false false false false false true true true ;;
-  5:2:5:2:3:4:1:0:0) emit_state false false false false false false false true true ;;
-  5:2:5:2:3:4:1:1:0) emit_state false false false false false false false true true ;;
-  5:2:5:2:3:4:1:2:0) emit_state false false false false false false false false true ;;
-  5:2:5:2:3:4:1:2:1) emit_state false false false false false false false false true ;;
-  5:2:5:2:3:4:1:2:2) emit_state false false false false false false false false false ;;
+  5:2:5:2:3:3:0:1:1:1) emit_state false false false false false true true true true true ;;
+  5:2:5:2:3:4:0:0:0:0) emit_state false false false false false false true true true true ;;
+  5:2:5:2:3:4:1:0:0:0) emit_state false false false false false false false true true true ;;
+  5:2:5:2:3:4:1:1:0:0) emit_state false false false false false false false true true true ;;
+  5:2:5:2:3:4:1:2:0:0) emit_state false false false false false false false false true true ;;
+  5:2:5:2:3:4:1:2:1:0) emit_state false false false false false false false false true true ;;
+  5:2:5:2:3:4:1:2:2:0) emit_state false false false false false false false false false true ;;
+  5:2:5:2:3:4:1:2:2:1) emit_state false false false false false false false false false true ;;
+  5:2:5:2:3:4:1:2:2:2) emit_state false false false false false false false false false false ;;
   *)
-    echo "Partial or out-of-order Phase 6 schema detected ($foundation/5 foundation, $hardening/2 hardening, $phase65/5 Phase 6.5, $batcha/2 Batch A, $batchb/3 Batch B, $p1/4 P1, $p2/1 P2, $c0/2 C0, $c1/2 C1). Refusing migration." >&2
+    echo "Partial or out-of-order Phase 6 schema detected ($foundation/5 foundation, $hardening/2 hardening, $phase65/5 Phase 6.5, $batcha/2 Batch A, $batchb/3 Batch B, $p1/4 P1, $p2/1 P2, $c0/2 C0, $c1/2 C1, $c2/2 C2). Refusing migration." >&2
     exit 1
     ;;
 esac

@@ -8,7 +8,9 @@ export type MessageKey =
   | 'printA4'
   | 'printThermal'
   | 'voidSale'
-  | 'language';
+  | 'language'
+  | 'suppliers'
+  | 'recordPaymentMade';
 
 const messages: Record<Locale, Record<MessageKey, string>> = {
   en: {
@@ -21,6 +23,8 @@ const messages: Record<Locale, Record<MessageKey, string>> = {
     printThermal: 'Print thermal',
     voidSale: 'Void sale',
     language: 'Language',
+    suppliers: 'Suppliers & payments',
+    recordPaymentMade: 'Record payment already made',
   },
   hi: {
     salesPos: 'बिक्री POS',
@@ -32,6 +36,8 @@ const messages: Record<Locale, Record<MessageKey, string>> = {
     printThermal: 'थर्मल प्रिंट',
     voidSale: 'बिक्री रद्द करें',
     language: 'भाषा',
+    suppliers: 'सप्लायर और भुगतान',
+    recordPaymentMade: 'पहले से किया गया भुगतान दर्ज करें',
   },
 };
 
