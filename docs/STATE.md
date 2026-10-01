@@ -4,12 +4,12 @@ Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/CO
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
-- `main` at last update: `3e04068` (D1-lite merged, PR #50). Migrations 0001–0052 (immutable).
-- Last merged: **D1-lite**. In review: **V2** fixes for verifier log V002 (VF-005–008; no migration).
+- `main` at last update: `04df545` (V2 merged, PR #51; deploy run 36901510335). Migrations 0001–0052.
+- Last merged: **V2** (verifier V002 fixes). In review: **R1** shadow-run compare page (no migration).
 - Live DB: D1 applied 2026-10-01 (run 36894777286, only group `d1` pending; verify green). Fully upgraded.
   D1 deployed after the apply (run 36897126086, green).
 - Verifier (GPT) log V002 (2026-10-01): CHANGES REQUIRED for VF-005 (intent not durable before dispatch),
-  VF-006 (transport errors treated as refusals), VF-007 (customer receipt guard race). V2 fixes all three.
+  VF-006 (transport errors treated as refusals), VF-007 (customer receipt guard race). V2 (PR #51) fixes all three; awaiting verifier recheck.
 - Decision 2026-10-01: D1-lite built before F0 (F0 blocked on the user's export; D1-lite has no F dependency).
   F2 must extend both aging reports with opening rows (remainingPositiveOpenings / remainingOpeningCredits).
 - V2 residual (MINOR, open): two windows on the Customers/Suppliers screen can still race between the
