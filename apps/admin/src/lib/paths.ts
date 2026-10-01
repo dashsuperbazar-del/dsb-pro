@@ -20,4 +20,6 @@ export const appRoute = {
   returns: appPath('/returns'),
   settings: appPath('/settings'),
   suppliers: appPath('/suppliers'),
+  expenses: appPath('/expenses'),
+  stockAdjust: appPath('/stock-adjust'),
 };

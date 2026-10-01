@@ -1,27 +1,21 @@
 import { useEffect, useState } from 'preact/hooks';
 import {
   checkInvariants,
-  createStockCount,
   exportTenant,
   getDayBook,
   getDefaultShopId,
+  getCurrentMembership,
   getGstSummary,
   getShopBusinessDate,
   getPartyLedger,
   getStockValuation,
-  listItems,
   listParties,
-  listStock,
-  postExpense,
-  postStockCount,
-  voidExpense,
   getLowStockReport,
   getItemSalesReport,
   getPurchaseRegister,
   getCustomerAgingReport,
   type DayBookRow,
   type GstRow,
-  type Item,
   type Party,
   type PartyLedgerRow,
   type StockValueRow,
@@ -32,7 +26,7 @@ import {
 } from '@dsb-pro/adapters';
 import { appRoute } from '../lib/paths';
 import { exportOfflineBillingSnapshot } from '../lib/offlineSync';
-import { buildBusinessExportArchive, parseRupeesToPaise } from '@dsb-pro/core';
+import { buildBusinessExportArchive } from '@dsb-pro/core';
 
 const rupee = (p: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(p / 100);
@@ -62,31 +56,18 @@ export function ReportsScreen() {
   const [parties, setParties] = useState<Party[]>([]);
   const [partyId, setPartyId] = useState('');
   const [partyLedger, setPartyLedger] = useState<PartyLedgerRow[]>([]);
-  const [items, setItems] = useState<Item[]>([]);
-  const [stockQty, setStockQty] = useState<Record<string, number>>({});
-  const [countItem, setCountItem] = useState('');
-  const [counted, setCounted] = useState('');
   const [msg, setMsg] = useState('');
-  const [expenseDate, setExpenseDate] = useState('');
-  const [expenseClientId, setExpenseClientId] = useState(() => crypto.randomUUID());
-  const [lastExpenseId, setLastExpenseId] = useState('');
-  const [expenseBusy, setExpenseBusy] = useState(false);
+  const [canCount, setCanCount] = useState(false);
   useEffect(() => {
     void (async () => {
       try {
         const s = await getDefaultShopId();
         setShop(s);
-        const [ps, is, ss, d] = await Promise.all([
-          listParties(),
-          listItems(),
-          listStock(s),
-          getShopBusinessDate(s),
-        ]);
+        const m = await getCurrentMembership();
+        setCanCount(m?.role === 'owner' || m?.role === 'manager');
+        const [ps, d] = await Promise.all([listParties(), getShopBusinessDate(s)]);
         setParties(ps);
-        setItems(is);
-        setStockQty(Object.fromEntries(ss.map((x) => [x.item_id, Number(x.qty_base)])));
         setBusinessDate(d);
-        setExpenseDate(d);
         setFrom(d.slice(0, 8) + '01');
         setTo(d);
       } catch (e) {
@@ -121,48 +102,7 @@ export function ReportsScreen() {
       setMsg(String(e));
     }
   }
-  async function expense(e: Event) {
-    e.preventDefault();
-    if (!shop || expenseBusy) return;
-    const form = e.currentTarget as HTMLFormElement;
-    const f = new FormData(form);
-    setExpenseBusy(true);
-    try {
-      const id = await postExpense(
-        shop,
-        String(f.get('date')),
-        String(f.get('category')),
-        String(f.get('description')),
-        parseRupeesToPaise(String(f.get('amount'))),
-        String(f.get('mode')),
-        null,
-        expenseClientId,
-      );
-      setLastExpenseId(id);
-      setExpenseClientId(crypto.randomUUID());
-      setMsg('Expense posted.');
-      form.reset();
-      await load();
-    } catch (err) {
-      setMsg(String(err));
-    } finally {
-      setExpenseBusy(false);
-    }
-  }
-  async function undoExpense() {
-    if (!lastExpenseId || expenseBusy) return;
-    setExpenseBusy(true);
-    try {
-      await voidExpense(lastExpenseId);
-      setLastExpenseId('');
-      setMsg('Expense voided; the audit record was preserved.');
-      await load();
-    } catch (err) {
-      setMsg(String(err));
-    } finally {
-      setExpenseBusy(false);
-    }
-  }
+
   async function saveBackup() {
     if (!shop || !businessDate) return;
     try {
@@ -191,26 +131,7 @@ export function ReportsScreen() {
       setMsg(String(e));
     }
   }
-  async function countStock(e: Event) {
-    e.preventDefault();
-    if (!shop || !businessDate || !countItem || counted === '') return;
-    try {
-      const id = await createStockCount(
-        shop,
-        businessDate,
-        [{ item_id: countItem, counted_qty: Number(counted), reason: 'manual physical count' }],
-        'Phase 6 physical count',
-        crypto.randomUUID(),
-      );
-      await postStockCount(id);
-      setMsg('Stock count posted through the adjustment ledger.');
-      setStockQty((v) => ({ ...v, [countItem]: Number(counted) }));
-      setCounted('');
-      await load();
-    } catch (err) {
-      setMsg(String(err));
-    }
-  }
+
   return (
     <main class="wide">
       <h1>Reports & recovery</h1>
@@ -246,83 +167,16 @@ export function ReportsScreen() {
         </p>
       )}
       <section class="card">
-        <h2>Post expense</h2>
-        <form class="grid-form" onSubmit={(e) => void expense(e)}>
-          <label>
-            Date
-            <input
-              name="date"
-              type="date"
-              required
-              value={expenseDate}
-              onInput={(e) => setExpenseDate((e.currentTarget as HTMLInputElement).value)}
-            />
-          </label>
-          <label>
-            Category
-            <input name="category" required />
-          </label>
-          <label>
-            Description
-            <input name="description" required />
-          </label>
-          <label>
-            Amount ₹<input name="amount" type="number" min="0.01" step="0.01" required />
-          </label>
-          <label>
-            Mode
-            <select name="mode">
-              <option>cash</option>
-              <option>upi</option>
-              <option>card</option>
-              <option>bank</option>
-              <option>other</option>
-            </select>
-          </label>
-          <button class="primary" disabled={expenseBusy}>
-            {expenseBusy ? 'Posting…' : 'Post expense'}
-          </button>
-        </form>
-        {lastExpenseId && (
-          <button type="button" disabled={expenseBusy} onClick={() => void undoExpense()}>
-            Void last posted expense
-          </button>
-        )}
-      </section>
-      <section class="card">
-        <h2>Physical stock count</h2>
-        <form class="grid-form" onSubmit={(e) => void countStock(e)}>
-          <label>
-            Item
-            <select
-              value={countItem}
-              onInput={(e) => setCountItem((e.target as HTMLSelectElement).value)}
-              required
-            >
-              <option value="">Choose…</option>
-              {items.map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.name} — expected {stockQty[i.id] ?? 0} {i.unit1}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Counted base quantity
-            <input
-              type="number"
-              min="0"
-              step="0.000001"
-              value={counted}
-              onInput={(e) => setCounted((e.target as HTMLInputElement).value)}
-              required
-            />
-          </label>
-          <button class="primary">Post stock count</button>
-        </form>
-        <p class="muted">
-          Posting is refused if stock changed after the count snapshot, preventing a stale count
-          from overwriting live movements.
+        <h2>Daily entry</h2>
+        <p>
+          Expenses and stock adjustments have their own screens:{' '}
+          <a href={appRoute.expenses}>Expenses</a>
+          {canCount && (
+            <>
+              {' '}
+              · <a href={appRoute.stockAdjust}>Stock adjust</a>
+            </>
+          )}
         </p>
       </section>
       <section class="card">

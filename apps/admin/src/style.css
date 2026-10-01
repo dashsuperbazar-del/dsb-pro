@@ -241,3 +241,43 @@ fieldset.plain {
   padding: 0;
   min-width: 0;
 }
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: 0.5rem;
+  margin: 0 0 0.5rem;
+}
+.tiles dt {
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+.tiles dd {
+  margin: 0;
+  font-weight: 600;
+}
+.bottom-nav {
+  display: none;
+}
+@media (max-width: 640px) {
+  body {
+    padding-bottom: 3.5rem;
+  }
+  .bottom-nav {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    justify-content: space-around;
+    background: var(--bg, #fff);
+    border-top: 1px solid #ccc;
+    padding: 0.5rem 0;
+    z-index: 10;
+  }
+  .bottom-nav a {
+    min-width: 3rem;
+    text-align: center;
+    padding: 0.25rem 0.5rem;
+  }
+}

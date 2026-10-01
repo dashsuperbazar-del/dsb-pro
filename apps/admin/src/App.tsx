@@ -17,6 +17,10 @@ import { ReportsScreen } from './screens/ReportsScreen';
 import { ReturnsScreen } from './screens/ReturnsScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { SuppliersScreen } from './screens/SuppliersScreen';
+import { ExpensesScreen } from './screens/ExpensesScreen';
+import { StockAdjustScreen } from './screens/StockAdjustScreen';
+import { DayBookTile } from './components/DayBookTile';
+import { BottomNav } from './components/BottomNav';
 import { t } from './lib/i18n';
 import { VerificationBanner } from './components/VerificationBanner';
 import { LanguageToggle } from './components/LanguageToggle';
@@ -50,8 +54,11 @@ export function App() {
         <Route path={appRoute.returns} component={ReturnsScreen} />
         <Route path={appRoute.settings} component={SettingsScreen} />
         <Route path={appRoute.suppliers} component={SuppliersScreen} />
+        <Route path={appRoute.expenses} component={ExpensesScreen} />
+        <Route path={appRoute.stockAdjust} component={StockAdjustScreen} />
         <Route default component={() => <Home session={session} />} />
       </Router>
+      {session.status === 'active' && <BottomNav role={session.membership.role} />}
     </>
   );
 }
@@ -87,6 +94,7 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
             safely for sync.
           </p>
         )}
+        {session.membership.role !== 'cashier' && <DayBookTile />}
         <p>
           Signed in as tenant {session.membership.tenantId}, role {session.membership.role}.
         </p>
@@ -98,6 +106,16 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
           {session.membership.role !== 'cashier' && (
             <>
               <a href={appRoute.suppliers}>{t('suppliers')}</a> ·{' '}
+            </>
+          )}
+          {session.membership.role !== 'cashier' && (
+            <>
+              <a href={appRoute.expenses}>Expenses</a> ·{' '}
+              {['owner', 'manager'].includes(session.membership.role) && (
+                <>
+                  <a href={appRoute.stockAdjust}>Stock adjust</a> ·{' '}
+                </>
+              )}
             </>
           )}
           <a href={appRoute.reports}>Reports & recovery</a> ·{' '}

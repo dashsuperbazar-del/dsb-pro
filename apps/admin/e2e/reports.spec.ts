@@ -21,8 +21,7 @@ test('Phase 6 reports and recovery surface loads and invariant check passes', as
   await createOwnerShop(page);
   await page.getByRole('link', { name: 'Reports & recovery' }).click();
   await expect(page.getByRole('heading', { name: 'Reports & recovery' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Post expense' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Physical stock count' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Daily entry' })).toBeVisible();
   await page.getByRole('button', { name: 'Refresh' }).click();
   await expect(page.getByText('Invariant check: PASS')).toBeVisible();
   const downloadPromise = page.waitForEvent('download');
