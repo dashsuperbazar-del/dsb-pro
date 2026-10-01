@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { withAccountLock } from '../lib/accountLock';
 import {
   allocateSupplierPayment,
   getCurrentMembership,
@@ -261,15 +262,18 @@ export function SuppliersScreen() {
       if (total > Number(pl.amountPaise))
         throw new Error('Bill allocations exceed the payment amount.');
       // Recheck the durable store for this supplier right before sending (V002 VF-007).
-      const unresolvedNow = (await listOpenFinancialAttempts(shopId, partyId)).filter(
-        (a) => a.state !== 'READY' || a.id !== draft?.id,
-      );
-      if (unresolvedNow.length) {
-        setOpen(unresolvedNow);
-        throw new Error('Resolve the payment awaiting server confirmation first.');
-      }
-      const d = await saveDraft();
-      const result = await sendFinancialAttempt(d.id, sender);
+      // Held across windows from the check until the send settles.
+      const result = await withAccountLock(shopId, partyId, async () => {
+        const unresolvedNow = (await listOpenFinancialAttempts(shopId, partyId)).filter(
+          (a) => a.state !== 'READY' || a.id !== draft?.id,
+        );
+        if (unresolvedNow.length) {
+          setOpen(unresolvedNow);
+          throw new Error('Resolve the payment awaiting server confirmation first.');
+        }
+        const d = await saveDraft();
+        return sendFinancialAttempt(d.id, sender);
+      });
       report(result);
       setConfirming(false);
       // A final attempt is never edited again. After a rejection the fields stay, so the next

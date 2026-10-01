@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { withAccountLock } from '../lib/accountLock';
 import {
   createCustomer,
   getCurrentMembership,
@@ -189,20 +190,23 @@ export function CustomersScreen() {
       await waitForOfflineRuntime();
       // Recheck the durable store for THIS account right before creating a new request: an
       // unresolved earlier receipt must be settled first, never bypassed by a fresh id.
-      const unresolved = await listOpenFinancialAttempts(shopId, selected);
-      if (unresolved.length) {
-        setOpenAttempts(unresolved);
-        throw new Error(
-          'Resolve the receipt awaiting server confirmation first (Check status below).',
-        );
-      }
-      const draft = await newFinancialDraft({
-        operation: 'record_customer_payment_v2',
-        shopId,
-        accountId: selected,
-        payload,
+      // Held across windows from the check until the send settles.
+      const result = await withAccountLock(shopId, selected, async () => {
+        const unresolved = await listOpenFinancialAttempts(shopId, selected);
+        if (unresolved.length) {
+          setOpenAttempts(unresolved);
+          throw new Error(
+            'Resolve the receipt awaiting server confirmation first (Check status below).',
+          );
+        }
+        const draft = await newFinancialDraft({
+          operation: 'record_customer_payment_v2',
+          shopId,
+          accountId: selected,
+          payload,
+        });
+        return sendFinancialAttempt(draft.id, sendReceipt);
       });
-      const result = await sendFinancialAttempt(draft.id, sendReceipt);
       if (result.state === 'UNKNOWN') {
         setError(
           'The server answer was lost. Do NOT record this payment again — use “Check status”.',
