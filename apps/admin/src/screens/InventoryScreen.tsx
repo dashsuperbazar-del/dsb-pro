@@ -350,10 +350,12 @@ export function InventoryScreen() {
         return;
       }
       setPurchaseCart([]);
+      // Refresh before announcing, as before: the screen is settled when the message appears.
+      let refreshNote = '';
+      await refresh().catch((e) => (refreshNote = ` (Refresh failed: ${String(e)})`));
       setMessage(
-        `Purchase posted (${lineCount} line${lineCount === 1 ? '' : 's'}) and stock updated.`,
+        `Purchase posted (${lineCount} line${lineCount === 1 ? '' : 's'}) and stock updated.${refreshNote}`,
       );
-      await refresh().catch((e) => setError(`Purchase posted. (Refresh failed: ${String(e)})`));
     } finally {
       setPurchaseBusy(false);
     }
