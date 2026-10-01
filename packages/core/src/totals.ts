@@ -133,3 +133,14 @@ export function calculateLegacyDsbInvoiceTotals(lines: LegacyDsbLine[], charges:
     grandTotalPaise: grandTotalRupees * 100,
   };
 }
+
+/**
+ * R0 (user decision B1): bill total rounded to the nearest rupee, half up. Returns the signed
+ * paise adjustment to add (-49..+50). Mirrors SQL r0_round_off exactly; item values stay exact.
+ */
+export function billRoundOff(totalPaise: number): number {
+  assertMoney(totalPaise, 'totalPaise');
+  const remainder = totalPaise % 100;
+  if (remainder === 0) return 0;
+  return remainder >= 50 ? 100 - remainder : -remainder;
+}

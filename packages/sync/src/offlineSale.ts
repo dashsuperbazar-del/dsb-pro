@@ -1,5 +1,5 @@
 import {provisionalDocNo} from './outbox';
-import {canonicalQuantity,parseQuantityMicros,quantityTimesPaise} from '@dsb-pro/core';
+import {billRoundOff,canonicalQuantity,parseQuantityMicros,quantityTimesPaise} from '@dsb-pro/core';
 import {rebuildReservations} from './projections';
 import {saleIntentFingerprint} from './saleIntent';
 import {getMeta,setMeta,stockKey,type DsbSyncDb} from './db';
@@ -96,7 +96,10 @@ export async function queueOfflineSale(
 
     const totalDiscount=addMoney(lineDiscounts,input.discountPaise,'discount');
     if(totalDiscount>subtotal)throw new Error('Discount exceeds subtotal.');
-    const total=addMoney(subtotal-totalDiscount,input.extraChargesPaise,'sale total');
+    const exactTotal=addMoney(subtotal-totalDiscount,input.extraChargesPaise,'sale total');
+    const roundOff=input.roundTotal?billRoundOff(exactTotal):0;
+    const total=exactTotal+roundOff;
+    if(!Number.isSafeInteger(total))throw new Error('sale total exceeds safe integer range');
     const paymentTotal=input.payments.reduce((sum,p)=>addMoney(sum,p.amountPaise,'payment total'),0);
     if(paymentTotal>total)throw new Error('Payments exceed sale total.');
     if(!input.customerId&&paymentTotal!==total)throw new Error('Walk-in sale must be fully paid.');
@@ -121,7 +124,7 @@ export async function queueOfflineSale(
     const record:OfflineSaleRecord={
       clientId:input.clientId,provisionalDocNo:provisional,officialSaleId:null,officialDocNo:null,
       shopId:input.shopId,customerId:input.customerId??null,businessDate:input.businessDate,
-      subtotalPaise:subtotal,discountPaise:totalDiscount,extraChargesPaise:input.extraChargesPaise,totalPaise:total,
+      subtotalPaise:subtotal,discountPaise:totalDiscount,extraChargesPaise:input.extraChargesPaise,totalPaise:total,roundOffPaise:roundOff,
       payments:input.payments,lines:snapshots,status:'QUEUED',createdAt:now,syncedAt:null,rejectionReason:null,
       intentFingerprint,reconciliationWarning:null,reconciliationReviewedAt:null,
     };
@@ -161,6 +164,7 @@ export async function completeOfflineSale(db:DsbSyncDb,clientId:string,result:Sy
     const provisionalTotals={subtotalPaise:sale.subtotalPaise,discountPaise:sale.discountPaise,extraChargesPaise:sale.extraChargesPaise,totalPaise:sale.totalPaise};
     const mismatch=provisionalTotals.subtotalPaise!==result.subtotalPaise||provisionalTotals.discountPaise!==result.discountPaise||
       provisionalTotals.extraChargesPaise!==result.extraChargesPaise||provisionalTotals.totalPaise!==result.totalPaise||
+      (sale.roundOffPaise??0)!==(result.roundOffPaise??0)||
       sale.lines.some((line,index)=>line.lineTotalPaise!==result.lines[index].lineTotalPaise||line.unitPricePaise!==result.lines[index].unitPricePaise||
         line.discountPaise!==result.lines[index].discountPaise||line.priceKind!==result.lines[index].priceKind)||
       sale.payments.length!==result.payments.length||sale.payments.some((payment,index)=>{
@@ -170,7 +174,7 @@ export async function completeOfflineSale(db:DsbSyncDb,clientId:string,result:Sy
       });
     for(const raw of result.stock)await db.stock.put({...raw,key:stockKey(raw.shop_id,raw.item_id)});
     await db.offlineSales.put({...sale,status:'SYNCED',officialSaleId:result.saleId,officialDocNo:result.docNo,syncedAt:Date.now(),rejectionReason:null,
-      subtotalPaise:result.subtotalPaise,discountPaise:result.discountPaise,extraChargesPaise:result.extraChargesPaise,totalPaise:result.totalPaise,
+      subtotalPaise:result.subtotalPaise,discountPaise:result.discountPaise,extraChargesPaise:result.extraChargesPaise,totalPaise:result.totalPaise,roundOffPaise:result.roundOffPaise??0,
       payments:result.payments,lines:authoritativeLines,provisionalTotals:mismatch?provisionalTotals:undefined,
       reconciliationWarning:mismatch?'Server totals replaced this device’s provisional totals. Review before relying on the local receipt.':null,
       reconciliationReviewedAt:null,intentFingerprint:expectedFingerprint??result.intentFingerprint});

@@ -26,6 +26,7 @@ export { priceForUnitFromAnchorPaise, priceForUnitPaise } from './pricing';
 export type { PricedItem, PriceType } from './pricing';
 
 export {
+  billRoundOff,
   calculateInvoiceTotals,
   calculateLegacyDsbInvoiceTotals,
   calculateLineTotals,

@@ -24,7 +24,7 @@ const { Client } = pg;
 // emits its needs_<group> flags in. This is the one place that ordering is
 // duplicated as data (not logic) -- the actual state determination stays in
 // the shell classifier; this file only reads its output.
-const GROUP_ORDER = ['foundation', 'hardening', 'phase65', 'batcha', 'batchb', 'p1', 'p2', 'c0', 'c1', 'c2', 'c3', 'c3b'];
+const GROUP_ORDER = ['foundation', 'hardening', 'phase65', 'batcha', 'batchb', 'p1', 'p2', 'c0', 'c1', 'c2', 'c3', 'c3b', 'r0'];
 
 /**
  * Shells out to the same classifier the live CI/attended-upgrade path uses,

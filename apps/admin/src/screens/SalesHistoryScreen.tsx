@@ -478,6 +478,15 @@ export function SalesHistoryScreen() {
                 <dd>{money(receipt.invoice.extra_charges_paise)}</dd>
               </div>
             )}
+            {(receipt.invoice.round_off_paise ?? 0) !== 0 && (
+              <div>
+                <dt>Round off</dt>
+                <dd>
+                  {(receipt.invoice.round_off_paise ?? 0) > 0 ? '+' : '−'}
+                  {money(Math.abs(receipt.invoice.round_off_paise ?? 0))}
+                </dd>
+              </div>
+            )}
             <div>
               <dt>Total</dt>
               <dd>

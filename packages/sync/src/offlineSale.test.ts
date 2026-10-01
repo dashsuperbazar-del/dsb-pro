@@ -65,6 +65,22 @@ describe('authoritative offline-sale acknowledgement',()=>{
     expect(await db.outbox.count()).toBe(0);
   });
 
+  it('rounds an opted-in bill total and requires the rounded payment (R0)',async()=>{
+    const db=new DsbSyncDb(`sale-round-${crypto.randomUUID()}`); open.push(db); await db.open();
+    await db.items.put({id:'item',tenant_id:'tenant',name:'Round item',sku:null,unit1:'Each',unit2:null,unit3:null,
+      conv1:null,conv2:null,tax_rate_bp:0,min_stock:0,image_path:null,is_active:true,updated_at:1,deleted_at:null});
+    await db.prices.put({id:'price',tenant_id:'tenant',item_id:'item',shop_id:'shop',kind:'retail',unit_level:1,price_paise:1049,
+      effective_from:'2026-01-01T00:00:00Z',effective_to:null,updated_at:1,deleted_at:null});
+    await db.stock.put({id:'shop:item',key:'shop:item',tenant_id:'tenant',shop_id:'shop',item_id:'item',on_hand:5,reserved:0,available:5,qty_base:5,updated_at:1,deleted_at:null});
+    const ctx={deviceId:'device',role:'owner' as const,policy:{allowCashierOfflineFinalization:false,allowNegativeStock:false,canViewCostPrices:true},onlineInitiated:false};
+    const base={shopId:'shop',businessDate:'2026-09-20',discountPaise:0,extraChargesPaise:0,lines:[{itemId:'item',unitLevel:1 as const,qty:'1',priceKind:'retail' as const,discountPaise:0}]};
+    await expect(queueOfflineSale(db,{...base,clientId:'r-exact',roundTotal:true,payments:[{amountPaise:1049,mode:'cash'}]},ctx)).rejects.toThrow(/exceed/);
+    const queued=await queueOfflineSale(db,{...base,clientId:'r-ok',roundTotal:true,payments:[{amountPaise:1000,mode:'cash'}]},ctx);
+    expect(queued).toMatchObject({subtotalPaise:1049,roundOffPaise:-49,totalPaise:1000});
+    const legacy=await queueOfflineSale(db,{...base,clientId:'r-old',payments:[{amountPaise:1049,mode:'cash'}]},ctx);
+    expect(legacy).toMatchObject({totalPaise:1049,roundOffPaise:0});
+  });
+
   it('does not mutate or acknowledge a response for another intent',async()=>{
     const db=await seeded(14);
     await expect(completeOfflineSale(db,'client-145',{...result(),intentFingerprint:'intent-v1:wrong'})).rejects.toThrow(/fingerprint mismatch/);

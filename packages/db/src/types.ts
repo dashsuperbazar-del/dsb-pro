@@ -1734,6 +1734,7 @@ export type Database = {
           finalized_at: string | null
           id: string
           notes: string | null
+          round_off_paise: number
           shop_id: string
           status: string
           subtotal_paise: number
@@ -1756,6 +1757,7 @@ export type Database = {
           finalized_at?: string | null
           id?: string
           notes?: string | null
+          round_off_paise?: number
           shop_id: string
           status?: string
           subtotal_paise: number
@@ -1778,6 +1780,7 @@ export type Database = {
           finalized_at?: string | null
           id?: string
           notes?: string | null
+          round_off_paise?: number
           shop_id?: string
           status?: string
           subtotal_paise?: number
@@ -3356,6 +3359,23 @@ export type Database = {
       post_stock_count: {
         Args: { p_stock_count_id: string }
         Returns: undefined
+      }
+      r0_round_off: { Args: { p_total: number }; Returns: number }
+      r0_sync_post_sale: {
+        Args: {
+          p_business_date: string
+          p_client_id: string
+          p_customer_id: string
+          p_device_id: string
+          p_discount_paise: number
+          p_extra_charges_paise: number
+          p_lines: Json
+          p_notes: string
+          p_payments: Json
+          p_schema_version: number
+          p_shop_id: string
+        }
+        Returns: Json
       }
       record_customer_payment: {
         Args: {

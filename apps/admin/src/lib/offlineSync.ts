@@ -290,6 +290,7 @@ async function processOutbox(rt: Runtime) {
         extraChargesPaise: payload.extraChargesPaise,
         clientId: payload.clientId,
         intentFingerprint: payload.intentFingerprint ?? '',
+        roundTotal: payload.roundTotal === true,
         lines: payload.lines as Array<SaleLineInput & { expectedUnitPricePaise?: number }>,
         payments: payload.payments as SalePaymentInput[],
         notes: payload.notes,
@@ -434,6 +435,8 @@ export async function finalizeSaleResilient(input: {
   const onlineInitiated = typeof navigator !== 'undefined' && navigator.onLine && !state.lastError;
   const payload = {
     ...input,
+    // R0 (user decision B1): every new sale rounds its bill total to the nearest rupee.
+    roundTotal: true,
     lines: input.lines.map((l) => ({ ...l, discountPaise: l.discountPaise ?? 0 })),
     payments: input.payments,
   };
