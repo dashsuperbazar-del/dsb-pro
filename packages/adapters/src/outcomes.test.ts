@@ -89,12 +89,10 @@ describe('stock count resumes by client id (V002 VF-005)', () => {
     });
   });
   it('a rejection raced by an earlier attempt that posted it is committed', async () => {
-    rpc
-      .mockResolvedValueOnce({ data: U, error: null })
-      .mockResolvedValueOnce({
-        data: null,
-        error: { code: 'P0001', message: 'stock count unavailable' },
-      });
+    rpc.mockResolvedValueOnce({ data: U, error: null }).mockResolvedValueOnce({
+      data: null,
+      error: { code: 'P0001', message: 'stock count unavailable' },
+    });
     status('DRAFT');
     status('POSTED');
     await expect(count()).resolves.toMatchObject({
@@ -110,5 +108,52 @@ describe('stock count resumes by client id (V002 VF-005)', () => {
     status('DRAFT');
     status('DRAFT');
     await expect(count()).resolves.toMatchObject({ kind: 'rejected' });
+  });
+});
+
+describe('a rejected RETRY is verified by client id (V2 review M2)', () => {
+  const lookup = (id: string | null, error: unknown = null) =>
+    from.mockReturnValueOnce({
+      select: () => ({
+        eq: () => ({ maybeSingle: () => Promise.resolve({ data: id ? { id } : null, error }) }),
+      }),
+    });
+  const retry = () =>
+    postExpenseOutcome({
+      isRetry: true,
+      shopId: U,
+      businessDate: '2026-10-01',
+      category: 'Rent',
+      description: 'Rent',
+      amountPaise: 1000,
+      mode: 'cash',
+      reference: null,
+      clientId: U,
+    });
+  it('an existing row means the first send committed', async () => {
+    rpc.mockResolvedValue({ data: null, error: { code: 'P0001', message: 'not permitted' } });
+    lookup(U);
+    await expect(retry()).resolves.toEqual({ kind: 'committed', value: U });
+  });
+  it('an access refusal with no visible row stays unknown', async () => {
+    rpc.mockResolvedValue({ data: null, error: { code: 'P0001', message: 'not permitted' } });
+    lookup(null);
+    await expect(retry()).resolves.toMatchObject({ kind: 'unknown' });
+  });
+  it('a validation refusal with no row is a rejection', async () => {
+    rpc.mockResolvedValue({
+      data: null,
+      error: { code: 'P0001', message: 'amount must be positive' },
+    });
+    lookup(null);
+    await expect(retry()).resolves.toMatchObject({ kind: 'rejected' });
+  });
+  it('a failed lookup stays unknown', async () => {
+    rpc.mockResolvedValue({
+      data: null,
+      error: { code: 'P0001', message: 'amount must be positive' },
+    });
+    lookup(null, { message: 'network' });
+    await expect(retry()).resolves.toMatchObject({ kind: 'unknown' });
   });
 });

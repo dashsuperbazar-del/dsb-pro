@@ -52,7 +52,39 @@ export async function rpcOutcome<T>(
 
 export const uuidAck = (data: unknown): string | null => (isUuid(data) ? data : null);
 
-export function postExpenseOutcome(input: {
+// A rejection of a RETRY is not proof that nothing was written: the first send may have committed
+// and the retry been refused by a check that runs before the server's idempotency lookup (e.g. a
+// revoked permission). Unlock only when a lookup by client id finds no row and the refusal is not an
+// access error (row-level security hides rows from a user without access, so absence is unprovable).
+const ACCESS = /not permitted|permission|access|tenant|shop (is )?(not|un)/i;
+export async function verifyRetryRejection(
+  table: 'expenses' | 'purchase_bills' | 'stock_counts',
+  clientId: string,
+  rejected: { kind: 'rejected'; code: string; message: string },
+): Promise<WriteOutcome<string>> {
+  let found: string | null;
+  try {
+    const { data, error } = await getSupabaseClient()
+      .from(table as never)
+      .select('id')
+      .eq('client_id', clientId)
+      .maybeSingle();
+    if (error) return { kind: 'unknown', message: `${rejected.message} (could not verify)` };
+    found = ((data as { id?: string } | null)?.id as string | undefined) ?? null;
+  } catch {
+    return { kind: 'unknown', message: `${rejected.message} (could not verify)` };
+  }
+  if (found) return { kind: 'committed', value: found };
+  if (rejected.code === '42501' || ACCESS.test(rejected.message))
+    return {
+      kind: 'unknown',
+      message: `${rejected.message} (the earlier attempt cannot be verified)`,
+    };
+  return rejected;
+}
+
+export async function postExpenseOutcome(input: {
+  isRetry?: boolean;
   shopId: string;
   businessDate: string;
   category: string;
@@ -62,7 +94,7 @@ export function postExpenseOutcome(input: {
   reference: string | null;
   clientId: string;
 }): Promise<WriteOutcome<string>> {
-  return rpcOutcome(
+  const outcome = await rpcOutcome(
     'post_expense',
     {
       p_shop_id: input.shopId,
@@ -76,6 +108,9 @@ export function postExpenseOutcome(input: {
     },
     uuidAck,
   );
+  return outcome.kind === 'rejected' && input.isRetry
+    ? verifyRetryRejection('expenses', input.clientId, outcome)
+    : outcome;
 }
 
 export type PurchaseRequest = {
@@ -90,8 +125,11 @@ export type PurchaseRequest = {
   billImagePath?: string;
 };
 // post_purchase verifies a same-id retry against the stored bill (C3b), so resending is safe.
-export function postPurchaseOutcome(input: PurchaseRequest): Promise<WriteOutcome<string>> {
-  return rpcOutcome(
+export async function postPurchaseOutcome(
+  input: PurchaseRequest,
+  isRetry = false,
+): Promise<WriteOutcome<string>> {
+  const outcome = await rpcOutcome(
     'post_purchase',
     {
       p_shop_id: input.shopId,
@@ -111,6 +149,9 @@ export function postPurchaseOutcome(input: PurchaseRequest): Promise<WriteOutcom
     },
     uuidAck,
   );
+  return outcome.kind === 'rejected' && isRetry
+    ? verifyRetryRejection('purchase_bills', input.clientId, outcome)
+    : outcome;
 }
 
 export type StockCountRequest = {
@@ -124,6 +165,7 @@ export type StockCountRequest = {
 // known id, and the count's own status (read, not inferred from error text) decides whether to post.
 export async function postStockCountOutcome(
   input: StockCountRequest,
+  isRetry = false,
 ): Promise<WriteOutcome<{ countId: string; alreadyPosted: boolean }>> {
   const created = await rpcOutcome(
     'create_stock_count',
@@ -136,8 +178,15 @@ export async function postStockCountOutcome(
     },
     uuidAck,
   );
-  if (created.kind !== 'committed') return created;
-  const countId = created.value;
+  if (created.kind === 'unknown') return created;
+  let countId: string;
+  if (created.kind === 'rejected') {
+    if (!isRetry) return created;
+    // A count with this id may already exist: if so, resume it by its status below.
+    const checked = await verifyRetryRejection('stock_counts', input.clientId, created);
+    if (checked.kind !== 'committed') return checked;
+    countId = checked.value;
+  } else countId = created.value;
   const first = await readStockCountStatus(countId);
   if (first.kind !== 'committed') return first;
   if (first.value === 'POSTED')

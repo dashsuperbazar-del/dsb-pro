@@ -77,6 +77,7 @@ export function ExpensesScreen() {
     const form = e.currentTarget as HTMLFormElement;
     const f = new FormData(form);
     let req = pending;
+    const isRetry = pending !== null;
     try {
       req ??= {
         date: String(f.get('date')),
@@ -100,6 +101,7 @@ export function ExpensesScreen() {
     setMsg('');
     setPending(req);
     const outcome = await postExpenseOutcome({
+      isRetry,
       shopId: shop,
       businessDate: req.date,
       category: req.category,
@@ -119,7 +121,7 @@ export function ExpensesScreen() {
     if (outcome.kind === 'rejected') {
       // The database refused it and rolled back: nothing was posted, so the entry can be corrected.
       setPending(null);
-      clearPendingIntent(pendingKey(shop));
+      clearPendingIntent(pendingKey(shop), clientId);
       setClientId(crypto.randomUUID());
       setMsg(`Not posted: ${outcome.message}`);
       setBusy(false);
@@ -129,7 +131,7 @@ export function ExpensesScreen() {
     // Confirmed: finish the state transition before anything else can fail.
     setLastId(id);
     setPending(null);
-    clearPendingIntent(pendingKey(shop));
+    clearPendingIntent(pendingKey(shop), clientId);
     setClientId(crypto.randomUUID());
     setMsg('Expense posted.');
     form.reset();

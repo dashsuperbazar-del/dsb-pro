@@ -12,6 +12,9 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
   VF-006 (transport errors treated as refusals), VF-007 (customer receipt guard race). V2 fixes all three.
 - Decision 2026-10-01: D1-lite built before F0 (F0 blocked on the user's export; D1-lite has no F dependency).
   F2 must extend both aging reports with opening rows (remainingPositiveOpenings / remainingOpeningCredits).
+- V2 residual (MINOR, open): two windows on the Customers/Suppliers screen can still race between the
+  durable-store recheck and creating a receipt (no cross-tab lock). Each attempt is durable and
+  reconcilable by id, so nothing is lost; a Web Locks guard is the follow-up.
 - Rule (V2): every money/stock write stores its exact request on the device BEFORE sending (fail
   closed) and only a definitive DB rejection unlocks it; use `rpcOutcome`/`*Outcome` adapters, never
   `classifyError` to decide an outcome.

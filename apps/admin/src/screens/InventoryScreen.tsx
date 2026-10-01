@@ -320,6 +320,7 @@ export function InventoryScreen() {
       setError(purchaseStorageBlocked);
       return;
     }
+    const isRetry = Boolean(purchaseLocked && lockedPurchase.current);
     // Durable before dispatch, or not sent at all.
     try {
       savePendingIntent(pendingKey(request.shopId), request);
@@ -331,7 +332,7 @@ export function InventoryScreen() {
     setPurchaseLocked(true);
     setPurchaseBusy(true);
     try {
-      const outcome = await postPurchaseOutcome(request);
+      const outcome = await postPurchaseOutcome(request, isRetry);
       if (outcome.kind === 'unknown') {
         // May have committed: the form stays frozen and a retry resends this exact request.
         setError(
@@ -341,7 +342,7 @@ export function InventoryScreen() {
       }
       lockedPurchase.current = null;
       setPurchaseLocked(false);
-      clearPendingIntent(pendingKey(request.shopId));
+      clearPendingIntent(pendingKey(request.shopId), request.clientId);
       setPurchaseClientId(crypto.randomUUID());
       if (outcome.kind === 'rejected') {
         // The database refused and rolled back: nothing posted; the cart stays for correction.

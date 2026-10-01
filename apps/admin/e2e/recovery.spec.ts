@@ -205,3 +205,34 @@ test('customer receipt: switching to a customer with an unresolved receipt canno
   await expect(submit).toBeDisabled();
   expect(calls).toBe(1);
 });
+
+test('expense: a second window cannot overwrite the first window’s unconfirmed expense', async ({
+  page,
+}) => {
+  await createOwnerShop(page);
+  await page.goto('/expenses');
+  const other = await page.context().newPage();
+  await other.goto('/expenses'); // mounted before the first window stores its entry
+  await expect(other.getByRole('button', { name: 'Post expense' })).toBeEnabled();
+  let calls = 0;
+  await page.context().route('**/rpc/post_expense', async (route) => {
+    if (calls++ === 0) {
+      await route.fetch();
+      await route.fulfill({ status: 502, contentType: 'text/plain', body: 'Bad Gateway' });
+    } else await route.continue();
+  });
+  await page.getByLabel('Category').fill('Rent');
+  await page.getByLabel('Amount ₹').fill('1000');
+  await page.getByRole('button', { name: 'Post expense' }).click();
+  await expect(page.getByRole('status')).toContainText('Not confirmed');
+
+  await other.getByLabel('Category').fill('Tea & snacks');
+  await other.getByLabel('Amount ₹').fill('20');
+  await other.getByRole('button', { name: 'Post expense' }).click();
+  await expect(other.getByRole('status')).toContainText('Another window');
+  expect(calls).toBe(1);
+
+  await page.getByRole('button', { name: 'Retry same expense' }).click();
+  await expect(page.getByRole('status')).toContainText('Expense posted.');
+  await expect(page.getByRole('region', { name: 'Expenses today' })).toContainText('1,000.00');
+});

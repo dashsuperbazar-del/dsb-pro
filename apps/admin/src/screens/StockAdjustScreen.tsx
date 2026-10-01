@@ -63,11 +63,12 @@ export function StockAdjustScreen() {
 
   function startOver() {
     setFrozen(null);
-    clearPendingIntent(pendingKey(shop));
+    clearPendingIntent(pendingKey(shop), clientId);
     setClientId(crypto.randomUUID());
   }
   async function submit(e: Event) {
     e.preventDefault();
+    const isRetry = frozen !== null;
     const req: Frozen = frozen ?? { item, counted: counted.trim(), reason, date };
     if (!shop || !req.date || !req.item || req.counted === '' || busy || storageBlocked) return;
     if (!/^\d+(\.\d{1,6})?$/.test(req.counted)) {
@@ -85,13 +86,16 @@ export function StockAdjustScreen() {
     setMsg('');
     setFrozen(req);
     try {
-      const outcome = await postStockCountOutcome({
-        shopId: shop,
-        businessDate: req.date,
-        lines: [{ item_id: req.item, counted_qty: Number(req.counted), reason: req.reason }],
-        notes: `Stock adjustment: ${req.reason}`,
-        clientId,
-      });
+      const outcome = await postStockCountOutcome(
+        {
+          shopId: shop,
+          businessDate: req.date,
+          lines: [{ item_id: req.item, counted_qty: Number(req.counted), reason: req.reason }],
+          notes: `Stock adjustment: ${req.reason}`,
+          clientId,
+        },
+        isRetry,
+      );
       if (outcome.kind === 'committed') {
         startOver();
         setCounted('');
@@ -147,6 +151,11 @@ export function StockAdjustScreen() {
               ))}
             </select>
           </label>
+          {frozen && frozen.date !== date && (
+            <p class="muted">
+              This unconfirmed count is dated {frozen.date}; the retry keeps that date.
+            </p>
+          )}
           {selected && (
             <p aria-label="expected stock">Expected {qty[selected.id] ?? 0} (smallest unit)</p>
           )}

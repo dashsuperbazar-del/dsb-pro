@@ -113,7 +113,9 @@ export function CustomersScreen() {
     void refreshBase().catch((e) => setError(String(e)));
   }, []);
   useEffect(() => {
-    void refreshCustomer(selected, shopId).catch((e) => setError(String(e)));
+    void refreshCustomer(selected, shopId).catch((e) =>
+      setError(`Could not load this customer (${String(e)}). Choose the customer again to retry.`),
+    );
   }, [selected, shopId]);
   const allocated = useMemo(
     () => allocations.filter((a) => a.checked).reduce((sum, a) => sum + toPaise(a.amount), 0),
