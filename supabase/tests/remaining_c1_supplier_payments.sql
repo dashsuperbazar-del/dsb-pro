@@ -2,7 +2,7 @@
 -- (C27-C30 concurrency vectors live in scripts/test-supplier-payment-concurrency.mjs).
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(54);
+select plan(56);
 
 insert into auth.users(id) values
  ('c1c00000-0000-0000-0000-000000000001'),  -- owner
@@ -144,6 +144,8 @@ select is(void_supplier_payment(pg_temp.id('p3'),'entered twice','11111111-0000-
 select is((get_party_ledger_v2(pg_temp.id('shop'),pg_temp.id('pa'),null,null)->>'closingBalancePaise'),
  (select e->>'netLedgerBalance' from jsonb_array_elements(get_supplier_outstanding(pg_temp.id('shop'))->'parties') e where e->>'partyId'=current_setting('c1.pa')),
  'C23 ledger closing balance equals the outstanding report''s net balance');
+select is((check_invariants()->>'paymentDirectionViolations')::int,0,'C23 supplier allocations are not payment-direction violations');
+select is((check_invariants()->>'ok')::boolean,true,'C23 invariants ok with supplier allocations present');
 -- C32 deleted supplier: no new payments, history still readable.
 reset role;
 update parties set deleted_at=1 where id=pg_temp.id('pb');
