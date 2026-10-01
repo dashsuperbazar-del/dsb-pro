@@ -5,9 +5,11 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
 - `main` at last update: `609de41` (R0 merged, PR #49). Migrations 0001–0051 (immutable).
-- Last merged: **R0** bill round-off. No packet in review.
+- Last merged: **R0** bill round-off. In review: **D1-lite** as-of aging (mig 0052, group `d1`).
 - Live DB: R0 applied 2026-10-01 (run 36882980791, only group `r0` pending; verify green). Fully upgraded.
   R0 deploy dispatched after the apply (run 36885026810).
+- Decision 2026-10-01: D1-lite built before F0 (F0 blocked on the user's export; D1-lite has no F dependency).
+  F2 must extend both aging reports with opening rows (remainingPositiveOpenings / remainingOpeningCredits).
 - Next: F0 (needs the user's legacy DSB export), F1–F3,
   D1-lite, R1.
 - Milestone in progress: **M1 Daily-usable** (exit = 7-day shadow run vs old DSB).
@@ -27,6 +29,9 @@ Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it
 - `pnpm exec prettier --check "apps/**/*.{ts,tsx,css,json,html}"` (config `.prettierrc.json`).
 
 ## Open risks / debts
+- D1-lite: old `get_customer_aging_report` (current-state balances labelled as-of) stays for compatibility but the
+  UI no longer calls it. 100k-invoice EXPLAIN not done (one shop; revisit at S1). Cash counts as assigned only
+  when allocated/linked to a document in the same as-of set, so stranded allocations show as unassigned cash.
 - R0: a walk-in bill under ₹0.50 rounds to ₹0.00 (no payment possible) — consistent both sides; product edge.
 - Watch: suppliers 'lost response' e2e failed once in a full local run (not reproduced in 4 reruns; trace lost).
 - Every new migration packet adds its own upgrade group (manifest, ALLOWED_GROUPS, GROUP_ORDER, apply wrapper,

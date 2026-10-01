@@ -444,7 +444,11 @@ function AgingSection(props: {
         <p class="muted">
           As of {r.asOf}; {r.signConvention}. Ages count days since the bill date ("0 days" = billed
           that day). Voided entries are removed from every date. Advances and credits are shown
-          separately and are not inside the age columns.
+          separately and are not inside the age columns: Net balance = Open bills − Bill credits −{' '}
+          {r.kind === 'customer'
+            ? 'Advances received + Refunds not linked'
+            : 'Advances paid + Received from supplier'}
+          .
         </p>
       )}
       {!r || !r.accounts.length ? (

@@ -1,7 +1,7 @@
 -- Packet D1-lite (mig 0052): as-of outstanding and aging, customers and suppliers (v1.1 §9.2, §9.4).
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(31);
+select plan(33);
 insert into auth.users(id) values ('d1d00000-0000-0000-0000-000000000001'),('d1d00000-0000-0000-0000-000000000004');
 create function pg_temp.act(p_user text) returns void language sql as
  $$ select set_config('request.jwt.claims',json_build_object('sub',p_user,'role','authenticated')::text,true) $$;
@@ -114,6 +114,18 @@ set local session_replication_role=origin;
 set role authenticated;
 select pg_temp.act('d1d00000-0000-0000-0000-000000000001');
 select is(pg_temp.s('2026-09-15')->>'legacyInferredAllocation','true','legacy-inferred allocation flagged');
+
+-- Stranded allocation (pre-C0 shape): 500 of P1 allocated to the VOID sale S2. It must show as
+-- unassigned cash, not vanish, and the bridge must still hold.
+reset role;
+set local session_replication_role=replica;
+insert into payment_allocations(tenant_id,payment_id,doc_type,sale_invoice_id,amount_paise,client_id,effective_date,effective_date_source)
+ values(pg_temp.id('tenant'),pg_temp.id('p1'),'SALE',pg_temp.id('s2'),500,'d1-alloc-void','2026-09-16','LEGACY_INFERRED');
+set local session_replication_role=origin;
+set role authenticated;
+select pg_temp.act('d1d00000-0000-0000-0000-000000000001');
+select is(pg_temp.c('2026-09-20')->>'unassignedInPaise','1000','allocation on a VOID sale stays unassigned cash');
+select ok(pg_temp.bridge(pg_temp.c('2026-09-20'),true),'bridge holds with a stranded allocation');
 
 -- Private helpers are not callable by browser roles.
 select ok(not has_function_privilege('authenticated','d1_aging_json(uuid,date,jsonb,jsonb)','execute'),'d1_aging_json revoked');
