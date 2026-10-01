@@ -99,6 +99,7 @@ export async function queueOfflineSale(
     const exactTotal=addMoney(subtotal-totalDiscount,input.extraChargesPaise,'sale total');
     const roundOff=input.roundTotal?billRoundOff(exactTotal):0;
     const total=exactTotal+roundOff;
+    if(!Number.isSafeInteger(total))throw new Error('sale total exceeds safe integer range');
     const paymentTotal=input.payments.reduce((sum,p)=>addMoney(sum,p.amountPaise,'payment total'),0);
     if(paymentTotal>total)throw new Error('Payments exceed sale total.');
     if(!input.customerId&&paymentTotal!==total)throw new Error('Walk-in sale must be fully paid.');
