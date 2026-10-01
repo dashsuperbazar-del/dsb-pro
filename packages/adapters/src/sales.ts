@@ -9,7 +9,7 @@ export type SaleLineInput = { itemId:string; unitLevel:1|2|3; qty:string|number;
 export type SalePaymentInput = { amountPaise:number; mode:'cash'|'upi'|'card'|'bank'|'other'; reference?:string };
 export type SaleInvoice = {
   id:string; customer_id:string|null; doc_no:string; business_date:string; status:'DRAFT'|'FINALIZED'|'VOID';
-  subtotal_paise:number; discount_paise:number; extra_charges_paise:number; total_paise:number; notes:string|null; created_at:string;
+  subtotal_paise:number; discount_paise:number; extra_charges_paise:number; round_off_paise?:number; total_paise:number; notes:string|null; created_at:string;
 };
 export type CustomerBalance = { customer_id:string; balance_paise:number };
 export type PaymentAllocationInput = { saleInvoiceId:string; amountPaise:number };
@@ -85,7 +85,7 @@ export async function listOpenCustomerSales(customerId:string):Promise<SaleInvoi
 export async function getSaleReceipt(saleId:string):Promise<SaleReceipt>{
   const client=getSupabaseClient();
   const [invoiceResult,lineResult,paymentResult]=await Promise.all([
-    client.from('sale_invoices').select('id,customer_id,doc_no,business_date,status,subtotal_paise,discount_paise,extra_charges_paise,total_paise,notes,created_at').eq('id',saleId).single(),
+    client.from('sale_invoices').select('id,customer_id,doc_no,business_date,status,subtotal_paise,discount_paise,extra_charges_paise,round_off_paise,total_paise,notes,created_at').eq('id',saleId).single(),
     client.from('sale_invoice_items').select('item_name_snapshot,unit_name_snapshot,qty,unit_price_paise,discount_paise,line_total_paise').eq('sale_invoice_id',saleId).order('line_no'),
     client.from('payments').select('id,amount_paise,direction,mode,reference,status').eq('source_sale_invoice_id',saleId).order('created_at'),
   ]);

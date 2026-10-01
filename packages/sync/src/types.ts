@@ -102,6 +102,8 @@ export type OfflineSalePaymentInput=Readonly<{
 export type OfflineSalePayload=Readonly<{
   shopId:string; customerId?:string; businessDate:string; discountPaise:number; extraChargesPaise:number;
   clientId:string; lines:OfflineSaleLineInput[]; payments:OfflineSalePaymentInput[]; notes?:string; intentFingerprint?:string;
+  /** R0: the bill total is rounded to the nearest rupee (server path r0_sync_post_sale). */
+  roundTotal?:boolean;
 }>;
 export type OfflineSaleLineSnapshot=OfflineSaleLineInput&Readonly<{
   itemName:string; unitName:string; unitPricePaise:number; baseQty:number; lineTotalPaise:number;
@@ -110,7 +112,7 @@ export type OfflineSaleStatus='QUEUED'|'SYNCED'|'REJECTED';
 export type OfflineSaleRecord=Readonly<{
   clientId:string; provisionalDocNo:string; officialSaleId:string|null; officialDocNo:string|null;
   shopId:string; customerId:string|null; businessDate:string; subtotalPaise:number; discountPaise:number;
-  extraChargesPaise:number; totalPaise:number; payments:OfflineSalePaymentInput[]; lines:OfflineSaleLineSnapshot[];
+  extraChargesPaise:number; totalPaise:number; roundOffPaise?:number; payments:OfflineSalePaymentInput[]; lines:OfflineSaleLineSnapshot[];
   status:OfflineSaleStatus; createdAt:number; syncedAt:number|null; rejectionReason:string|null;
   intentFingerprint?:string; provisionalTotals?:Readonly<{subtotalPaise:number;discountPaise:number;extraChargesPaise:number;totalPaise:number}>;
   reconciliationWarning?:string|null; reconciliationReviewedAt?:number|null;
@@ -135,7 +137,7 @@ export type SyncHealth=Readonly<{
 
 export type SyncedSaleResult=Readonly<{
   saleId:string; docNo:string; clientId:string; intentFingerprint:string; stock:SyncedStock[];
-  subtotalPaise:number; discountPaise:number; extraChargesPaise:number; totalPaise:number;
+  subtotalPaise:number; discountPaise:number; extraChargesPaise:number; totalPaise:number; roundOffPaise?:number;
   lines:ReadonlyArray<Readonly<{
     itemId:string;unitLevel:1|2|3;qty:string;priceKind:'retail'|'wholesale';unitPricePaise:number;discountPaise:number;lineTotalPaise:number;
   }>>;

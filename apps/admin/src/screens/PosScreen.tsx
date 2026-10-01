@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
+  billRoundOff,
   canonicalQuantity,
   parseRupeesToPaise,
   quantityTimesPaise,
@@ -261,6 +262,9 @@ export function PosScreen() {
       paise(extra),
     [cart, globalDiscount, extra],
   );
+  // R0: the bill total is rounded to the nearest rupee (half up); item values stay exact.
+  const previewRoundOff = preview > 0 ? billRoundOff(preview) : 0;
+  const previewTotal = Math.max(0, preview) + previewRoundOff;
   const tenderTotal = useMemo(
     () => tenders.reduce((sum, t) => sum + paise(t.amount), 0),
     [tenders],
@@ -796,7 +800,13 @@ export function PosScreen() {
               onInput={(e) => setExtra((e.currentTarget as HTMLInputElement).value)}
             />
           </label>
-          <strong>Preview {money(Math.max(0, preview))}</strong>
+          {previewRoundOff !== 0 && (
+            <span>
+              Round off {previewRoundOff > 0 ? '+' : '−'}
+              {money(Math.abs(previewRoundOff))} ·{' '}
+            </span>
+          )}
+          <strong>Preview {money(previewTotal)}</strong>
         </div>
         <div key="hold-actions" class="row">
           <label>
@@ -1105,6 +1115,15 @@ export function PosScreen() {
               <div>
                 <dt>Extra charges</dt>
                 <dd>{money(localReceipt.extraChargesPaise)}</dd>
+              </div>
+            )}
+            {(localReceipt.roundOffPaise ?? 0) !== 0 && (
+              <div>
+                <dt>Round off</dt>
+                <dd>
+                  {(localReceipt.roundOffPaise ?? 0) > 0 ? '+' : '−'}
+                  {money(Math.abs(localReceipt.roundOffPaise ?? 0))}
+                </dd>
               </div>
             )}
             <div>

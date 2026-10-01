@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calculateInvoiceTotals, calculateLegacyDsbInvoiceTotals, calculateLineTotals, percentToBasisPoints } from './totals';
+import { billRoundOff, calculateInvoiceTotals, calculateLegacyDsbInvoiceTotals, calculateLineTotals, percentToBasisPoints } from './totals';
 
 describe('DSB Pro invoice totals', () => {
   it('keeps all money as integer paise', () => {
@@ -116,5 +116,14 @@ describe('bill-level discount parity with old DSB (U1)', () => {
     expect(Math.abs(pro.grandTotalPaise - legacyUnroundedPaise)).toBeLessThanOrEqual(1);
     // Old DSB then rounds to the nearest rupee; DSB Pro keeps paise (policy: see STATE.md decision).
     expect(Math.abs(legacy.grandTotalPaise - pro.grandTotalPaise)).toBeLessThanOrEqual(50);
+  });
+});
+
+describe('bill round-off (R0, mirrors SQL r0_round_off)', () => {
+  it.each([
+    [1049, -49], [1050, 50], [1000, 0], [0, 0], [1, -1], [99, 1], [12345, -45], [12350, 50],
+  ])('%i paise -> %i', (total, expected) => {
+    expect(billRoundOff(total)).toBe(expected);
+    expect((total + billRoundOff(total)) % 100).toBe(0);
   });
 });

@@ -18,7 +18,7 @@ export type SyncPullWire={
 };
 export type SyncSaleResultWire={
   saleId:string;docNo:string;clientId:string;intentFingerprint:string;stock:Array<Record<string,unknown>>;
-  subtotalPaise:number;discountPaise:number;extraChargesPaise:number;totalPaise:number;
+  subtotalPaise:number;discountPaise:number;extraChargesPaise:number;totalPaise:number;roundOffPaise?:number;
   lines:Array<Record<string,unknown>>;payments:Array<Record<string,unknown>>;
 };
 export type ServerSyncConflict={
@@ -59,7 +59,8 @@ function requireSale(value:unknown):SyncSaleResultWire{
   if(!row||typeof row.saleId!=='string'||typeof row.docNo!=='string'||typeof row.clientId!=='string'||
     typeof row.intentFingerprint!=='string'||!money(row.subtotalPaise)||!money(row.discountPaise)||
     !money(row.extraChargesPaise)||!money(row.totalPaise)||!Array.isArray(row.lines)||!row.lines.every(validLine)||
-    !Array.isArray(row.payments)||!row.payments.every(validPayment)||!Array.isArray(row.stock)){
+    !Array.isArray(row.payments)||!row.payments.every(validPayment)||!Array.isArray(row.stock)||
+    (row.roundOffPaise!==undefined&&!(Number.isSafeInteger(row.roundOffPaise)&&Number(row.roundOffPaise)>=-49&&Number(row.roundOffPaise)<=50))){
     throw new Error('Server returned an invalid synced-sale result.');
   }
   return value as SyncSaleResultWire;
@@ -100,8 +101,10 @@ export async function pushSyncedSale(input:{
   deviceId:string;shopId:string;customerId?:string;businessDate:string;discountPaise:number;extraChargesPaise:number;
   clientId:string;lines:Array<SaleLineInput&{expectedUnitPricePaise?:number}>;payments:SalePaymentInput[];notes?:string;
   intentFingerprint:string;
+  /** R0: sales created with bill rounding go through the opt-in endpoint; queued older sales do not. */
+  roundTotal?:boolean;
 }):Promise<SyncSaleResultWire>{
-  const {data,error}=await getSupabaseClient().rpc('phase5_sync_post_sale',{
+  const {data,error}=await getSupabaseClient().rpc(input.roundTotal?'r0_sync_post_sale':'phase5_sync_post_sale',{
     p_device_id:input.deviceId,p_schema_version:SYNC_SCHEMA_VERSION,p_shop_id:input.shopId,p_customer_id:input.customerId??null,
     p_business_date:input.businessDate,p_discount_paise:input.discountPaise,p_extra_charges_paise:input.extraChargesPaise,
     p_client_id:input.clientId,

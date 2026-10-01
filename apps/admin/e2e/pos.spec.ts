@@ -349,3 +349,41 @@ test('real browser money path posts stock then finalizes a paid sale', async ({
   });
   expect(reversedStock).toEqual({ stock: 4, pending: false });
 });
+
+test('bill total rounds to the nearest rupee while the item keeps exact paise (R0)', async ({
+  page,
+}) => {
+  test.setTimeout(60000);
+  await createOwnerShop(page);
+  await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await page.getByPlaceholder('Item name').fill('Round Item');
+  await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
+  await page.getByRole('button', { name: 'Create item' }).click();
+  await expect(page.getByRole('status')).toContainText('Created Round Item');
+  await page.getByLabel('Peek item').selectOption({ label: 'Round Item' });
+  const priceForm = page.getByRole('button', { name: 'Set price' }).locator('xpath=..');
+  await priceForm.locator('input[name="price"]').fill('10.49');
+  await page.getByRole('button', { name: 'Set price' }).click();
+  await expect(page.getByRole('status')).toContainText('Price history updated');
+  const purchase = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
+  await purchase.locator('select[name="itemId"]').selectOption({ label: 'Round Item' });
+  await purchase.locator('input[name="qty"]').fill('5');
+  await purchase.locator('input[name="price"]').fill('5');
+  await purchase.getByRole('button', { name: 'Add line' }).click();
+  await purchase.getByRole('button', { name: 'Post purchase' }).click();
+  await expect(page.getByRole('status')).toContainText('Purchase posted');
+
+  await page.goto('/pos');
+  await page.getByLabel('Find product').fill('Round Item');
+  await page.getByLabel('Item').selectOption({ index: 1 });
+  await page.getByLabel('Quantity').fill('1');
+  await page.getByRole('button', { name: 'Add line' }).click();
+  await expect(page.getByText('Round off −₹0.49')).toBeVisible();
+  await expect(page.getByText('Preview ₹10.00')).toBeVisible();
+  await page.getByLabel('Amount ₹').first().fill('10');
+  await page.getByRole('button', { name: 'Finalize sale' }).click();
+  await expect(page.getByRole('status')).toContainText('Sale finalized');
+  await expect(page.locator('table').last()).toContainText('₹10.00');
+});
