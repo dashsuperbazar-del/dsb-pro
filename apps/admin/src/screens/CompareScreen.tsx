@@ -2,15 +2,14 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   getAgingReportV2,
   getCurrentMembership,
-  getDayBook,
+  getDayBookText,
   getDefaultShopId,
   getShopBusinessDate,
   listItems,
-  listStock,
+  listStockText,
   type AgingReportV2,
-  type DayBookRow,
+  type DayBookText,
   type Item,
-  type StockRow,
 } from '@dsb-pro/adapters';
 import { appRoute } from '../lib/paths';
 import { paiseToDecimal, rupees } from '../lib/money';
@@ -58,7 +57,7 @@ const balanceCsv = (r: AgingReportV2) =>
   );
 
 type StockLine = { id: string; name: string; qty: string };
-const DAY_FIELDS: [keyof DayBookRow, string][] = [
+const DAY_FIELDS: [keyof DayBookText, string][] = [
   ['sales_paise', 'Sales'],
   ['purchases_paise', 'Purchases'],
   ['receipts_paise', 'Receipts'],
@@ -73,7 +72,7 @@ export function CompareScreen() {
   const [customers, setCustomers] = useState<AgingReportV2 | null>(null);
   const [suppliers, setSuppliers] = useState<AgingReportV2 | null>(null);
   const [stock, setStock] = useState<StockLine[]>([]);
-  const [day, setDay] = useState<DayBookRow | null>(null);
+  const [day, setDay] = useState<DayBookText | null>(null);
   const [msg, setMsg] = useState('');
   // Every figure on the page and every file name comes from the date the data was loaded for, never
   // from the date input; a newer load supersedes older answers (R1 review).
@@ -96,11 +95,16 @@ export function CompareScreen() {
         getAgingReportV2('customer', s, d),
         getAgingReportV2('supplier', s, d),
         listItems(),
-        listStock(s),
-        getDayBook(s, d, d),
+        listStockText(s),
+        getDayBookText(s, d, d),
       ]);
       if (g !== generation.current) return;
-      const qty = new Map(st.map((r: StockRow) => [r.item_id, String(r.qty_base)]));
+      const qty = new Map(
+        st.map((r) => [
+          r.item_id,
+          r.qty_base.includes('.') ? r.qty_base.replace(/\.?0+$/, '') : r.qty_base,
+        ]),
+      );
       setCustomers(c);
       setSuppliers(p);
       setStock(
@@ -141,7 +145,7 @@ export function CompareScreen() {
       [
         [
           { text: loadedDate },
-          ...DAY_FIELDS.map(([k]): Cell => ({ num: paiseToDecimal(Number(day?.[k] ?? 0)) })),
+          ...DAY_FIELDS.map(([k]): Cell => ({ num: paiseToDecimal(day?.[k] ?? '0') })),
         ],
       ],
     );
@@ -207,7 +211,7 @@ export function CompareScreen() {
             {DAY_FIELDS.map(([k, label]) => (
               <tr key={k}>
                 <td>{label}</td>
-                <td>{rupees(Number(day?.[k] ?? 0))}</td>
+                <td>{rupees(day?.[k] ?? '0')}</td>
               </tr>
             ))}
           </tbody>
