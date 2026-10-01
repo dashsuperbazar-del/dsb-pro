@@ -8,13 +8,39 @@ import {
   listCustomerLedger,
   listCustomerOutstandingInvoices,
   listCustomers,
-  recordCustomerPayment,
+  recordCustomerPaymentV2,
+  lookupFinancialRequest,
+  type FinancialOperation,
+  type SupplierWriteOutcome,
   voidPayment,
   type Customer,
   type CustomerLedgerRow,
   type CustomerOutstandingInvoice,
 } from '@dsb-pro/adapters';
 import { appRoute } from '../lib/paths';
+import {
+  listOpenFinancialAttempts,
+  newFinancialDraft,
+  reconcileFinancialAttempt,
+  sendFinancialAttempt,
+  waitForOfflineRuntime,
+  type FinancialAttempt,
+} from '../lib/offlineSync';
+
+type ReceiptPayload = {
+  shopId: string;
+  customerId: string;
+  businessDate: string;
+  amountPaise: string;
+  mode: 'cash' | 'upi' | 'card' | 'bank' | 'other';
+  reference: string | null;
+  allocations: { saleInvoiceId: string; amountPaise: string }[];
+};
+// The attempt id is the request id: a lost answer is reconciled, never re-recorded under a new id.
+const sendReceipt = (a: FinancialAttempt): Promise<SupplierWriteOutcome> =>
+  recordCustomerPaymentV2({ requestId: a.id, ...(a.payload as ReceiptPayload) });
+const lookupReceipt = (a: FinancialAttempt) =>
+  lookupFinancialRequest(a.shopId, a.operation as FinancialOperation, a.id);
 import { parseRupeesToPaise } from '@dsb-pro/core';
 
 const money = (paise: number) => `₹${(paise / 100).toFixed(2)}`;
@@ -35,7 +61,7 @@ export function CustomersScreen() {
   const [amount, setAmount] = useState('');
   const [mode, setMode] = useState<'cash' | 'upi' | 'card' | 'bank' | 'other'>('cash');
   const [reference, setReference] = useState('');
-  const [paymentClientId, setPaymentClientId] = useState(() => crypto.randomUUID());
+  const [openAttempts, setOpenAttempts] = useState<FinancialAttempt[]>([]);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -66,6 +92,10 @@ export function CustomersScreen() {
       listCustomerLedger(customerId),
       listCustomerOutstandingInvoices(customerId),
     ]);
+    if (shopId) {
+      await waitForOfflineRuntime();
+      setOpenAttempts(await listOpenFinancialAttempts(shopId, customerId));
+    }
     setLedger(l);
     setOpenSales(s);
     setAllocations(
@@ -112,6 +142,10 @@ export function CustomersScreen() {
   async function receive(ev: Event) {
     ev.preventDefault();
     if (busy || !selected) return;
+    if (openAttempts.length) {
+      setError('Resolve the receipt awaiting server confirmation first (Check status below).');
+      return;
+    }
     if (!shopId || !businessDate) {
       setError('Shop data is still loading.');
       return;
@@ -128,22 +162,56 @@ export function CustomersScreen() {
         if (invoice && toPaise(draft.amount) > invoice.outstanding_paise)
           throw new Error(`Allocation for ${draft.docNo} exceeds its outstanding amount.`);
       }
-      await recordCustomerPayment({
+      const payload: ReceiptPayload = {
         shopId,
         customerId: selected,
         businessDate,
-        amountPaise: paymentPaise,
+        amountPaise: String(paymentPaise),
         mode,
-        reference: reference || undefined,
-        clientId: paymentClientId,
+        reference: reference || null,
         allocations: allocations
           .filter((a) => a.checked && toPaise(a.amount) > 0)
-          .map((a) => ({ saleInvoiceId: a.saleId, amountPaise: toPaise(a.amount) })),
+          .map((a) => ({ saleInvoiceId: a.saleId, amountPaise: String(toPaise(a.amount)) })),
+      };
+      await waitForOfflineRuntime();
+      const draft = await newFinancialDraft({
+        operation: 'record_customer_payment_v2',
+        shopId,
+        accountId: selected,
+        payload,
       });
-      setPaymentClientId(crypto.randomUUID());
+      const result = await sendFinancialAttempt(draft.id, sendReceipt);
+      if (result.state === 'UNKNOWN') {
+        setError(
+          'The server answer was lost. Do NOT record this payment again — use “Check status”.',
+        );
+        await refreshCustomer(selected);
+        return;
+      }
+      if (result.state === 'REJECTED')
+        throw new Error(`Not recorded: ${result.errorMessage ?? result.errorCode}`);
       setAmount('');
       setReference('');
       setMessage('Payment recorded. Any unallocated remainder is retained as customer advance.');
+      await refreshBase();
+      await refreshCustomer(selected);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function checkAttempt(a: FinancialAttempt) {
+    setBusy(true);
+    setError('');
+    try {
+      let r = await reconcileFinancialAttempt(a.id, lookupReceipt);
+      // Not found on the server: the same request id and payload may be sent again.
+      if (r.state === 'READY') r = await sendFinancialAttempt(r.id, sendReceipt);
+      if (r.state === 'COMMITTED') setMessage('Receipt confirmed by the server.');
+      else if (r.state === 'REJECTED') setError(`Not recorded: ${r.errorMessage ?? r.errorCode}`);
+      else setError(`Still unknown: ${r.errorMessage ?? 'no answer'}. Try again when online.`);
       await refreshBase();
       await refreshCustomer(selected);
     } catch (e) {
@@ -234,6 +302,22 @@ export function CustomersScreen() {
       {selected && (
         <section class="card">
           <h2>Receive payment / allocate invoices</h2>
+          {openAttempts.length > 0 && (
+            <div class="alert" role="alert" aria-label="Unresolved receipts">
+              <p>Receipt awaiting server confirmation. Do not record it again.</p>
+              <ul>
+                {openAttempts.map((a) => (
+                  <li key={a.id}>
+                    ₹{(Number((a.payload as ReceiptPayload).amountPaise) / 100).toFixed(2)} ·{' '}
+                    {a.state}{' '}
+                    <button type="button" disabled={busy} onClick={() => void checkAttempt(a)}>
+                      Check status
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <form onSubmit={receive}>
             <div class="grid-form">
               <label>

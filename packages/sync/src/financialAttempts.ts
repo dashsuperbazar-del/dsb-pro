@@ -4,7 +4,8 @@ import type {DsbSyncDb} from './db';
 // persisted READY before dispatch, so a lost response becomes UNKNOWN and is reconciled by the same
 // request ID -- never re-sent with a new ID or a changed payload.
 export type FinancialAttemptState='DRAFT'|'READY'|'SENDING'|'UNKNOWN'|'COMMITTED'|'REJECTED';
-export type FinancialAttemptOperation='supplier.record.v1'|'supplier.allocate.v1'|'supplier.void.v1'|'supplier.release.v1';
+export type FinancialAttemptOperation='supplier.record.v1'|'supplier.allocate.v1'|'supplier.void.v1'|'supplier.release.v1'
+  |'record_customer_payment_v2'|'allocate_customer_payment_v2';
 export type FinancialAttempt={
   id:string;operation:FinancialAttemptOperation;shopId:string;accountId:string;
   payload:Readonly<Record<string,unknown>>;state:FinancialAttemptState;createdAt:number;lastAttemptAt:number|null;

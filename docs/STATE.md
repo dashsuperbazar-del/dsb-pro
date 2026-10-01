@@ -4,11 +4,12 @@ Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/CO
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
-- `main` at last update: `e1d5f58` (C1 merged, PR #44). Migrations 0001–0047 (immutable).
-- Last merged: **C1** (mig 0047). In review: **C2** supplier screen + attempt store (mig 0048, group `c2`).
-- Live DB: C1 applied 2026-10-01 (run 36801167492, only group `c1` pending); live state `5:2:5:2:3:4:1:2:2`
-  (classifier now 10 fields; live reads `...:2:2:0` until `c2` applies). App deployed from `e1d5f58` (run 36801959224).
-- Next packet after C2 merges: **C3**, then U1, F0–F3, D1-lite, R1.
+- `main` at last update: `dd37ae5` (C2 merged, PR #45). Migrations 0001–0048 (immutable).
+- Last merged: **C2** (mig 0048). In review: **C3** customer requests (mig 0049, group `c3`); C3b next.
+- Live DB: C2 applied 2026-10-01 (run 36804657756, only group `c2` pending); live state
+  `5:2:5:2:3:4:1:2:2:2` (fully upgraded). App deployed from `dd37ae5` (run 36805399708).
+- Next after C3: **C3b** (request-aware post_sale/post_purchase direct callers; outbox UNKNOWN metadata +
+  reconcile-by-id for sale/return; POS receipts to v2), then U1, F0–F3, D1-lite, R1.
 - Milestone in progress: **M1 Daily-usable** (exit = 7-day shadow run vs old DSB).
 
 ## Workflow (single builder)
@@ -39,7 +40,7 @@ Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it
   via `release_supplier_allocation`. Check that field on live right after the `c1` apply.
 - C1 tightens `payments`/`payment_allocations` read RLS: party (supplier) rows need POST_PURCHASES or VIEW_REPORTS,
   and rows are scoped to the caller's shops. Generic `void_payment` refuses party payments (use supplier void).
-- LIVE BUG (fixed by C2/0048, not yet applied): C1 `get_party_ledger_v2` fails through PostgREST (temp-table
+- FIXED LIVE (C2/0048, 2026-10-01): C1 `get_party_ledger_v2` fails through PostgREST (temp-table
   DELETE without WHERE blocked by safeupdate). Read-only; no money affected. pgTAP/psql cannot see safeupdate —
   every new SQL read path needs an e2e (PostgREST) call, not only pgTAP.
 - C1 review MINORs (open): c1 classifier probes only 2 schema anchors; customer writers accept
@@ -60,6 +61,11 @@ Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it
 - Legacy old-DSB JSON export needed from the user when F0 starts.
 
 ## Decisions log
+- 2026-10-01: C3 split. C3 = customer v2 writers + request-recorded old endpoint (legacy retry verified field
+  by field before any validation; mismatch -> DSB_LEGACY_REQUEST_UNVERIFIABLE). C3b = direct post_sale/post_purchase
+  wrappers + outbox UNKNOWN (touches the live offline sale/return path; kept separate to limit money-path risk).
+- 2026-10-01: Old customer endpoint now rejects duplicate invoice targets and cross-shop invoices for NEW receipts
+  (retries of recorded receipts still return them).
 - 2026-10-01: C2 carries mig 0048 (ledger fix) so C3's planned customer-request migration becomes 0049 (unchanged).
 - 2026-10-01: Offline snapshot schemaVersion 4 adds `financialAttempts` + `onlineRequestsAwaitingConfirmation`.
 - 2026-10-01: C1 cutover-date restriction deferred (no cutover date defined); supplier read RLS tightened.

@@ -6,6 +6,10 @@ import { classifyError, errorMessage } from './errors';
 // request may have committed). Acknowledgments are validated before they are trusted.
 export type SupplierOperation =
   'supplier.record.v1' | 'supplier.allocate.v1' | 'supplier.void.v1' | 'supplier.release.v1';
+// C3: customer receipts use the same request ledger and outcome model.
+export type CustomerOperation = 'record_customer_payment_v2' | 'allocate_customer_payment_v2';
+export type FinancialOperation = SupplierOperation | CustomerOperation;
+export type SaleAllocation = { saleInvoiceId: string; amountPaise: string };
 export type PaymentMode = 'cash' | 'upi' | 'card' | 'bank' | 'other';
 export type SupplierAllocation = { purchaseBillId: string; amountPaise: string };
 export type SupplierWriteOutcome =
@@ -77,8 +81,12 @@ function definitiveCode(error: { code?: string; message?: string }): string | nu
   return null;
 }
 
-function validateAck(operation: SupplierOperation, data: unknown): Record<string, unknown> | null {
-  if (operation === 'supplier.record.v1' || operation === 'supplier.void.v1') {
+function validateAck(operation: FinancialOperation, data: unknown): Record<string, unknown> | null {
+  if (
+    operation === 'supplier.record.v1' ||
+    operation === 'supplier.void.v1' ||
+    operation === 'record_customer_payment_v2'
+  ) {
     // record/void return the payment id (record) or a jsonb result (void); normalize both.
     if (isUuid(data)) return { paymentId: data };
   }
@@ -95,7 +103,7 @@ function validateAck(operation: SupplierOperation, data: unknown): Record<string
 }
 
 async function write(
-  operation: SupplierOperation,
+  operation: FinancialOperation,
   fn: string,
   args: Record<string, unknown>,
 ): Promise<SupplierWriteOutcome> {
@@ -183,7 +191,7 @@ export function releaseSupplierAllocation(input: {
 
 export async function lookupSupplierRequest(
   shopId: string,
-  operation: SupplierOperation,
+  operation: FinancialOperation,
   requestId: string,
 ): Promise<SupplierRequestLookup> {
   try {
@@ -271,9 +279,7 @@ export async function listSupplierPayments(
   }));
 }
 
-export async function listSupplierAllocations(
-  paymentId: string,
-): Promise<
+export async function listSupplierAllocations(paymentId: string): Promise<
   Array<{
     id: string;
     purchase_bill_id: string;
@@ -312,3 +318,43 @@ export async function getSupplierLedger(
     throw new Error('Malformed supplier ledger.');
   return r;
 }
+
+const saleAllocs = (list: SaleAllocation[]) =>
+  list.map((a) => {
+    if (!isUuid(a.saleInvoiceId) || !/^\d+$/.test(a.amountPaise))
+      throw new Error('Invalid invoice allocation.');
+    return { sale_invoice_id: a.saleInvoiceId, amount_paise: Number(a.amountPaise) };
+  });
+export function recordCustomerPaymentV2(input: {
+  requestId: string;
+  shopId: string;
+  customerId: string;
+  businessDate: string | null;
+  amountPaise: string;
+  mode: PaymentMode;
+  reference?: string | null;
+  allocations: SaleAllocation[];
+}) {
+  return write('record_customer_payment_v2', 'record_customer_payment_v2', {
+    p_shop_id: input.shopId,
+    p_customer_id: input.customerId,
+    p_business_date: input.businessDate,
+    p_amount_paise: Number(input.amountPaise),
+    p_mode: input.mode,
+    p_reference: input.reference ?? null,
+    p_allocations: saleAllocs(input.allocations),
+    p_client_id: input.requestId,
+  });
+}
+export function allocateCustomerPaymentV2(input: {
+  requestId: string;
+  paymentId: string;
+  allocations: SaleAllocation[];
+}) {
+  return write('allocate_customer_payment_v2', 'allocate_customer_payment_v2', {
+    p_payment_id: input.paymentId,
+    p_allocations: saleAllocs(input.allocations),
+    p_client_id: input.requestId,
+  });
+}
+export const lookupFinancialRequest = lookupSupplierRequest;
