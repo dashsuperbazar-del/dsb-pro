@@ -4,11 +4,11 @@ Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/CO
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
-- `main` at last update: `5e3d518` (C3 merged, PR #46). Migrations 0001–0049 (immutable).
-- Last merged: **C3** (mig 0049). In review: **C3b** purchase retry verification (mig 0050, group `c3b`).
-- Live DB: C3 applied 2026-10-01 (run 36843143208, only group `c3` pending); live state `5:2:5:2:3:4:1:2:2:2:2`
-  (classifier 12 fields; live reads `...:2:2:0` until `c3b` applies). C3 deploy dispatched 2026-10-01.
-- Next after C3b: U1, then F0–F3, D1-lite, R1.
+- `main` at last update: `a0437e0` (C3b merged, PR #47). Migrations 0001–0050 (immutable).
+- Last merged: **C3b** (mig 0050). In review: **U1** daily-entry UX (UI only, no migration).
+- Live DB: C3b applied 2026-10-01 (run 36846504793, only group `c3b` pending); live state
+  `5:2:5:2:3:4:1:2:2:2:2:2` (fully upgraded). C3b deploy dispatched 2026-10-01.
+- Next after U1: F0 (needs the user's legacy DSB export), F1–F3, D1-lite, R1.
 - Milestone in progress: **M1 Daily-usable** (exit = 7-day shadow run vs old DSB).
 
 ## Workflow (single builder)
@@ -26,6 +26,7 @@ Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it
 - `pnpm exec prettier --check "apps/**/*.{ts,tsx,css,json,html}"` (config `.prettierrc.json`).
 
 ## Open risks / debts
+- Watch: suppliers 'lost response' e2e failed once in a full local run (not reproduced in 4 reruns; trace lost).
 - Every new migration packet adds its own upgrade group (manifest, ALLOWED_GROUPS, GROUP_ORDER, apply wrapper,
   classifier state + CI proof/apply/verify) — P2 is the template; freeze its checksum in the manifest once merged.
 - C0 lock protocol: every money writer is a wrapper (shop finance advisory lock) over a client-revoked
@@ -60,6 +61,10 @@ Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it
 - Legacy old-DSB JSON export needed from the user when F0 starts.
 
 ## Decisions log
+- 2026-10-01: OPEN USER DECISION — final bill rounding. Old DSB Math.round()s the grand total to a whole rupee;
+  DSB Pro keeps exact paise (±50 paise per bill). Parity pinned by core test 'bill-level discount parity'.
+- 2026-10-01: U1 daily-entry forms (expense, stock adjust, purchase) freeze the request after an unconfirmed
+  attempt and only offer a same-id retry; start-over only on a definitive server answer.
 - 2026-10-01: C3b scope. POS sales never call post_sale directly (outbox -> Batch B fingerprinted sync), so the only
   direct UI money writer was post_purchase: 0050 verifies every retry against the stored bill (PAYLOAD_MISMATCH on
   any difference; covers pre-0050 bills). Direct post_sale (API-only) and outbox UNKNOWN labels deferred: Batch B

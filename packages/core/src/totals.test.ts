@@ -95,3 +95,26 @@ describe('legacy DSB historical reconciliation', () => {
     expect(calculateLegacyDsbInvoiceTotals([{ qty: 1, rate: 10.5 }]).grandTotalRupees).toBe(11);
   });
 });
+
+// U1 parity check: old DSB percentage line discounts vs DSB Pro basis-point discounts. With GST
+// informational (prices all-inclusive), both compute subtotal - discount + extras the same way; the
+// only difference is old DSB's final Math.round to a whole rupee. This test pins that difference so
+// a rounding-policy change is a deliberate, reviewed decision.
+describe('bill-level discount parity with old DSB (U1)', () => {
+  const cases: { lines: { qty: number; rate: number; disc: number }[]; extra: number }[] = [
+    { lines: [{ qty: 2, rate: 100, disc: 10 }, { qty: 3, rate: 50, disc: 0 }], extra: 20 },
+    { lines: [{ qty: 1, rate: 99.99, disc: 5 }], extra: 0 },
+    { lines: [{ qty: 3, rate: 33.33, disc: 12.5 }, { qty: 1, rate: 10, disc: 100 }], extra: 1.5 },
+  ];
+  it.each(cases)('matches before old DSB final rounding (%#)', ({ lines, extra }) => {
+    const legacy = calculateLegacyDsbInvoiceTotals(lines.map((l) => ({ ...l, gst: 0 })), [{ amount: extra }]);
+    const pro = calculateInvoiceTotals(
+      lines.map((l) => ({ qty: String(l.qty), unitPricePaise: Math.round(l.rate * 100), discountBps: percentToBasisPoints(l.disc) })),
+      [{ amountPaise: Math.round(extra * 100) }],
+    );
+    const legacyUnroundedPaise = Math.round((legacy.subtotalRupees - legacy.discountRupees + legacy.extraRupees) * 100);
+    expect(Math.abs(pro.grandTotalPaise - legacyUnroundedPaise)).toBeLessThanOrEqual(1);
+    // Old DSB then rounds to the nearest rupee; DSB Pro keeps paise (policy: see STATE.md decision).
+    expect(Math.abs(legacy.grandTotalPaise - pro.grandTotalPaise)).toBeLessThanOrEqual(50);
+  });
+});
