@@ -1,7 +1,7 @@
 -- Packet C3b (mig 0050): a post_purchase retry returns the stored bill only for the same payload.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(11);
+select plan(12);
 insert into auth.users(id) values ('c3b00000-0000-0000-0000-000000000001');
 set role authenticated;
 select set_config('request.jwt.claims','{"sub":"c3b00000-0000-0000-0000-000000000001","role":"authenticated"}',true);
@@ -27,6 +27,9 @@ select throws_like($$select pg_temp.post('4',100,'B-1',0,false)$$,'DSB_PAYLOAD_M
 select is(post_purchase(current_setting('t.shop')::uuid,(select id from parties where client_id='c3b-party'),'B-1','2026-09-20',0,0,'c3b-buy',
   jsonb_build_array(jsonb_build_object('item_id',(select id from items where client_id='c3b-item'),'qty','4','unit_price_paise',100)),null),
   current_setting('t.bill')::uuid,'a line without unit_level matches the stored default level 1');
+select throws_like($$select post_purchase(current_setting('t.shop')::uuid,(select id from parties where client_id='c3b-party'),'B-1','2026-09-20',0,0,'c3b-buy',
+  jsonb_build_array(jsonb_build_object('item_id',(select id from items where client_id='c3b-item'),'unit_level',1,'qty','4','unit_price_paise',100)),'tenant/other.jpg')$$,
+  'DSB_PAYLOAD_MISMATCH%','a different bill image is rejected, not silently ignored');
 select is((select count(*) from purchase_bills where client_id='c3b-buy'),1::bigint,'exactly one bill exists');
 select * from finish();
 rollback;

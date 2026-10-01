@@ -31,6 +31,7 @@ begin
         or coalesce(nullif(btrim(v_bill.bill_no),''),'') is distinct from coalesce(nullif(btrim(p_bill_no),''),'')
         or (p_business_date is not null and v_bill.business_date<>p_business_date)
         or v_bill.discount_paise<>coalesce(p_discount_paise,0) or v_bill.extra_charges_paise<>coalesce(p_extra_charges_paise,0)
+        or (p_bill_image_path is not null and v_bill.bill_image_path is distinct from p_bill_image_path)
         or v_stored<>v_given then
        raise exception 'DSB_PAYLOAD_MISMATCH: client_id already used for a different purchase';
      end if;
