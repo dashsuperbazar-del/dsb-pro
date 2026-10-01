@@ -951,6 +951,13 @@ export type Database = {
             foreignKeyName: "payment_allocations_tenant_id_purchase_bill_id_fkey"
             columns: ["tenant_id", "purchase_bill_id"]
             isOneToOne: false
+            referencedRelation: "purchase_bill_outstanding"
+            referencedColumns: ["tenant_id", "purchase_bill_id"]
+          },
+          {
+            foreignKeyName: "payment_allocations_tenant_id_purchase_bill_id_fkey"
+            columns: ["tenant_id", "purchase_bill_id"]
+            isOneToOne: false
             referencedRelation: "purchase_bills"
             referencedColumns: ["tenant_id", "id"]
           },
@@ -1196,6 +1203,13 @@ export type Database = {
             foreignKeyName: "purchase_bill_items_purchase_bill_id_fkey"
             columns: ["purchase_bill_id"]
             isOneToOne: false
+            referencedRelation: "purchase_bill_outstanding"
+            referencedColumns: ["purchase_bill_id"]
+          },
+          {
+            foreignKeyName: "purchase_bill_items_purchase_bill_id_fkey"
+            columns: ["purchase_bill_id"]
+            isOneToOne: false
             referencedRelation: "purchase_bills"
             referencedColumns: ["id"]
           },
@@ -1212,6 +1226,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "tenants"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_items_bill_same_tenant_fk"
+            columns: ["tenant_id", "purchase_bill_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_bill_outstanding"
+            referencedColumns: ["tenant_id", "purchase_bill_id"]
           },
           {
             foreignKeyName: "purchase_items_bill_same_tenant_fk"
@@ -1521,6 +1542,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "parties"
             referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "purchase_returns_tenant_id_purchase_bill_id_fkey"
+            columns: ["tenant_id", "purchase_bill_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_bill_outstanding"
+            referencedColumns: ["tenant_id", "purchase_bill_id"]
           },
           {
             foreignKeyName: "purchase_returns_tenant_id_purchase_bill_id_fkey"
@@ -2700,11 +2728,67 @@ export type Database = {
         }
         Relationships: []
       }
+      purchase_bill_outstanding: {
+        Row: {
+          allocated_paise: number | null
+          bill_no: string | null
+          business_date: string | null
+          net_outstanding_paise: number | null
+          outstanding_paise: number | null
+          party_id: string | null
+          purchase_bill_id: string | null
+          returned_paise: number | null
+          shop_id: string | null
+          tenant_id: string | null
+          total_paise: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_bills_party_id_fkey"
+            columns: ["party_id"]
+            isOneToOne: false
+            referencedRelation: "parties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_bills_party_same_tenant_fk"
+            columns: ["tenant_id", "party_id"]
+            isOneToOne: false
+            referencedRelation: "parties"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "purchase_bills_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_bills_shop_same_tenant_fk"
+            columns: ["tenant_id", "shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "purchase_bills_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       accept_invite: {
         Args: { p_client_id: string; p_token: string }
         Returns: string
+      }
+      allocate_supplier_payment: {
+        Args: { p_allocations: Json; p_client_id: string; p_payment_id: string }
+        Returns: Json
       }
       archive_master: {
         Args: { p_id: string; p_table: string }
@@ -2779,6 +2863,19 @@ export type Database = {
         Args: { p_client_id: string; p_sale_id: string }
         Returns: string
       }
+      c1_assert_request_uuid: { Args: { p_client_id: string }; Returns: string }
+      c1_assert_supplier_read: { Args: { p_shop_id: string }; Returns: string }
+      c1_check_bill_targets: {
+        Args: {
+          p_allocations: Json
+          p_floor_date: string
+          p_party: string
+          p_shop: string
+          p_tenant: string
+        }
+        Returns: number
+      }
+      c1_shop_visible: { Args: { p_shop: string }; Returns: boolean }
       check_invariants: { Args: never; Returns: Json }
       create_invite: {
         Args: { p_role: string; p_shop_ids: string[] }
@@ -2928,6 +3025,15 @@ export type Database = {
           running_balance_paise: number
         }[]
       }
+      get_party_ledger_v2: {
+        Args: {
+          p_from: string
+          p_party_id: string
+          p_shop_id: string
+          p_to: string
+        }
+        Returns: Json
+      }
       get_purchase_register: {
         Args: { p_from: string; p_shop_id: string; p_to: string }
         Returns: {
@@ -2956,6 +3062,7 @@ export type Database = {
           value_paise: number
         }[]
       }
+      get_supplier_outstanding: { Args: { p_shop_id: string }; Returns: Json }
       has_perm: { Args: { p_code: string }; Returns: boolean }
       import_legacy_dsb_master: {
         Args: { p_client_id: string; p_plan: Json; p_shop_id: string }
@@ -3229,8 +3336,25 @@ export type Database = {
         }
         Returns: string
       }
+      record_supplier_payment: {
+        Args: {
+          p_allocations: Json
+          p_amount_paise: number
+          p_business_date: string
+          p_client_id: string
+          p_mode: string
+          p_party_id: string
+          p_reference: string
+          p_shop_id: string
+        }
+        Returns: string
+      }
       register_device: {
         Args: { p_app_version: string; p_device_id: string }
+        Returns: string
+      }
+      release_supplier_allocation: {
+        Args: { p_allocation_id: string; p_client_id: string; p_reason: string }
         Returns: string
       }
       remove_tenant_user: { Args: { p_user_id: string }; Returns: undefined }
@@ -3290,6 +3414,10 @@ export type Database = {
       }
       void_sale: {
         Args: { p_client_id: string; p_sale_id: string }
+        Returns: string
+      }
+      void_supplier_payment: {
+        Args: { p_client_id: string; p_payment_id: string; p_reason: string }
         Returns: string
       }
     }

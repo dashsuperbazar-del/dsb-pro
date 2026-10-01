@@ -116,8 +116,8 @@ select set_config('request.jwt.claims','{"sub":"c0c00000-0000-0000-0000-00000000
 select post_purchase(current_setting('c0.shop')::uuid,(select id from parties where client_id='c0-party'),'C0-BILL','2026-09-11',0,0,'c0-bill',
  jsonb_build_array(jsonb_build_object('item_id',current_setting('c0.item'),'unit_level',1,'qty',5,'unit_price_paise',50)),null);
 reset role;
-insert into payments(tenant_id,shop_id,kind,party_id,business_date,amount_paise,mode,client_id,created_by)
- values(current_setting('c0.tenant')::uuid,current_setting('c0.shop')::uuid,'party',(select id from parties where client_id='c0-party'),'2026-09-11',100,'cash','c0-party-pay','c0c00000-0000-0000-0000-000000000001');
+insert into payments(tenant_id,shop_id,kind,party_id,business_date,amount_paise,mode,client_id,created_by,direction)
+ values(current_setting('c0.tenant')::uuid,current_setting('c0.shop')::uuid,'party',(select id from parties where client_id='c0-party'),'2026-09-11',100,'cash','c0-party-pay','c0c00000-0000-0000-0000-000000000001','out');
 insert into payment_allocations(tenant_id,payment_id,doc_type,purchase_bill_id,amount_paise,client_id,created_by)
  values(current_setting('c0.tenant')::uuid,(select id from payments where client_id='c0-party-pay'),'PURCHASE',(select id from purchase_bills where client_id='c0-bill'),100,'c0-party-alloc','c0c00000-0000-0000-0000-000000000001');
 set role authenticated;
@@ -148,7 +148,7 @@ select is(dsb_request_result(current_setting('c0.tenant')::uuid,current_setting(
 select is(dsb_request_result(current_setting('c0.tenant')::uuid,current_setting('c0.shop')::uuid,'record_customer_payment_v2','c0-req-missing','{}'),
  null,'unknown request returns null');
 select throws_ok(format($$select dsb_request_result(%L,%L,'record_customer_payment_v2','c0-req-1','{"amount_paise":"201"}')$$,
- current_setting('c0.tenant'),current_setting('c0.shop')),'client_id already used for a different request','changed payload under the same key is rejected');
+ current_setting('c0.tenant'),current_setting('c0.shop')),'DSB_PAYLOAD_MISMATCH: client_id already used for a different request','changed payload under the same key is rejected');
 select throws_ok($$update financial_requests set result='{}' where client_id='c0-req-1'$$,'financial request is immutable','financial requests cannot be updated');
 select throws_ok($$insert into financial_requests(tenant_id,shop_id,operation,request,result,client_id,created_by)
   values(current_setting('c0.tenant')::uuid,current_setting('c0.shop')::uuid,'made_up_op','{}','{}','x','c0c00000-0000-0000-0000-000000000001')$$,
@@ -170,7 +170,7 @@ insert into tenant_users(tenant_id,user_id,role,shop_ids,status,client_id)
  values(current_setting('c0.tenant')::uuid,'c0c00000-0000-0000-0000-000000000002','cashier',array[current_setting('c0.shop')::uuid],'active','c0-cashier');
 set role authenticated;
 select set_config('request.jwt.claims','{"sub":"c0c00000-0000-0000-0000-000000000002","role":"authenticated"}',true);
-select throws_ok($$select get_financial_request(current_setting('c0.shop')::uuid,'record_supplier_payment','x')$$,'not permitted','cashier cannot look up supplier payment requests');
+select throws_ok($$select get_financial_request(current_setting('c0.shop')::uuid,'supplier.record.v1','x')$$,'not permitted','cashier cannot look up supplier payment requests');
 
 select * from finish();
 rollback;
