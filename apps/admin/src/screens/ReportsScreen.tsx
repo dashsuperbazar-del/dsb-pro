@@ -13,7 +13,7 @@ import {
   getLowStockReport,
   getItemSalesReport,
   getPurchaseRegister,
-  getCustomerAgingReport,
+  getAgingReportV2,
   type DayBookRow,
   type GstRow,
   type Party,
@@ -22,9 +22,10 @@ import {
   type LowStockRow,
   type ItemSalesRow,
   type PurchaseRegisterRow,
-  type CustomerAgingRow,
+  type AgingReportV2,
 } from '@dsb-pro/adapters';
 import { appRoute } from '../lib/paths';
+import { rupees } from '../lib/money';
 import { exportOfflineBillingSnapshot } from '../lib/offlineSync';
 import { buildBusinessExportArchive } from '@dsb-pro/core';
 
@@ -52,7 +53,8 @@ export function ReportsScreen() {
   const [lowStock, setLowStock] = useState<LowStockRow[]>([]);
   const [itemSales, setItemSales] = useState<ItemSalesRow[]>([]);
   const [purchaseRegister, setPurchaseRegister] = useState<PurchaseRegisterRow[]>([]);
-  const [aging, setAging] = useState<CustomerAgingRow[]>([]);
+  const [customerAging, setCustomerAging] = useState<AgingReportV2 | null>(null);
+  const [supplierAging, setSupplierAging] = useState<AgingReportV2 | null>(null);
   const [parties, setParties] = useState<Party[]>([]);
   const [partyId, setPartyId] = useState('');
   const [partyLedger, setPartyLedger] = useState<PartyLedgerRow[]>([]);
@@ -79,7 +81,7 @@ export function ReportsScreen() {
     if (!shop) return;
     setMsg('Loading…');
     try {
-      const [d, s, g, i, ls, is, pr, ag] = await Promise.all([
+      const [d, s, g, i, ls, is, pr, ca, sa] = await Promise.all([
         getDayBook(shop, from, to),
         getStockValuation(shop),
         getGstSummary(shop, from, to),
@@ -87,7 +89,8 @@ export function ReportsScreen() {
         getLowStockReport(shop),
         getItemSalesReport(shop, from, to),
         getPurchaseRegister(shop, from, to),
-        getCustomerAgingReport(shop, to),
+        getAgingReportV2('customer', shop, to),
+        getAgingReportV2('supplier', shop, to),
       ]);
       setDay(d);
       setStock(s);
@@ -95,7 +98,8 @@ export function ReportsScreen() {
       setLowStock(ls);
       setItemSales(is);
       setPurchaseRegister(pr);
-      setAging(ag);
+      setCustomerAging(ca);
+      setSupplierAging(sa);
       if (partyId) setPartyLedger(await getPartyLedger(partyId, from, to));
       setMsg(i.ok ? 'Invariant check: PASS' : 'Invariant check: FAIL — stop and investigate');
     } catch (e) {
@@ -410,44 +414,93 @@ export function ReportsScreen() {
           </table>
         </div>
       </section>
-      <section class="card">
-        <h2>Customer aging</h2>
-        <p class="muted">
-          As of the "To" date above. Fully settled invoices carry no balance and do not appear.
-        </p>
-        {!aging.length ? (
-          <p class="muted">No outstanding customer balances.</p>
-        ) : (
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Customer</th>
-                  <th>Not due</th>
-                  <th>1–30 days</th>
-                  <th>31–60 days</th>
-                  <th>61–90 days</th>
-                  <th>90+ days</th>
-                  <th>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {aging.map((r) => (
-                  <tr>
-                    <td>{r.customer_name}</td>
-                    <td>{rupee(r.not_due_paise)}</td>
-                    <td>{rupee(r.days_1_30_paise)}</td>
-                    <td>{rupee(r.days_31_60_paise)}</td>
-                    <td>{rupee(r.days_61_90_paise)}</td>
-                    <td>{rupee(r.days_90_plus_paise)}</td>
-                    <td>{rupee(r.total_outstanding_paise)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+      <AgingSection
+        title="Customer outstanding (as of the To date)"
+        report={customerAging}
+        outLabel="Refunds not linked"
+        inLabel="Advances received"
+      />
+      <AgingSection
+        title="Supplier outstanding (as of the To date)"
+        report={supplierAging}
+        outLabel="Advances paid"
+        inLabel="Received from supplier"
+      />
     </main>
+  );
+}
+
+function AgingSection(props: {
+  title: string;
+  report: AgingReportV2 | null;
+  outLabel: string;
+  inLabel: string;
+}) {
+  const r = props.report;
+  return (
+    <section class="card">
+      <h2>{props.title}</h2>
+      {r && (
+        <p class="muted">
+          As of {r.asOf}; {r.signConvention}. Ages count days since the bill date ("0 days" = billed
+          that day). Voided entries are removed from every date. Advances and credits are shown
+          separately and are not inside the age columns.
+        </p>
+      )}
+      {!r || !r.accounts.length ? (
+        <p class="muted">No balances.</p>
+      ) : (
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>0 days</th>
+                <th>1–30</th>
+                <th>31–60</th>
+                <th>61–90</th>
+                <th>Over 90</th>
+                <th>Open bills</th>
+                <th>Bill credits</th>
+                <th>{props.outLabel}</th>
+                <th>{props.inLabel}</th>
+                <th>Net balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {r.accounts.map((a) => (
+                <tr key={a.accountId}>
+                  <td>
+                    {a.name}
+                    {a.legacyInferredAllocation ? ' ⚠ old allocation dates estimated' : ''}
+                  </td>
+                  <td>{rupees(a.days0Paise)}</td>
+                  <td>{rupees(a.days1to30Paise)}</td>
+                  <td>{rupees(a.days31to60Paise)}</td>
+                  <td>{rupees(a.days61to90Paise)}</td>
+                  <td>{rupees(a.daysOver90Paise)}</td>
+                  <td>{rupees(a.grossOpenPaise)}</td>
+                  <td>{rupees(a.documentCreditsPaise)}</td>
+                  <td>{rupees(a.unassignedOutPaise)}</td>
+                  <td>{rupees(a.unassignedInPaise)}</td>
+                  <td>{rupees(a.netLedgerBalancePaise)}</td>
+                </tr>
+              ))}
+              <tr>
+                <td>
+                  <strong>Total</strong>
+                </td>
+                <td colSpan={5}></td>
+                <td>{rupees(r.totals.grossOpenPaise)}</td>
+                <td>{rupees(r.totals.documentCreditsPaise)}</td>
+                <td>{rupees(r.totals.unassignedOutPaise)}</td>
+                <td>{rupees(r.totals.unassignedInPaise)}</td>
+                <td>{rupees(r.totals.netLedgerBalancePaise)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }

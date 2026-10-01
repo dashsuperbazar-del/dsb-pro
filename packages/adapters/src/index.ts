@@ -26,8 +26,8 @@ export { getShopDayReconciliation } from './reconciliation';
 export type { SyncCursorWire, SyncPullWire, SyncPullTable, SyncSaleResultWire, ServerSyncConflict } from './sync';
 export { SYNC_SCHEMA_VERSION, SYNC_PULL_LIMITS, syncPullMayHaveMore, isolateSyncPullCursors, pullSync, pullSyncTable, ackSync, pushSyncedSale, setOfflineCashierFinalization, recordServerSyncConflict, listServerSyncConflicts, resolveServerSyncConflict, subscribeSyncWakeup } from './sync';
 
-export type { DayBookRow, StockValueRow, GstRow, PartyLedgerRow, InvariantHealth, LowStockRow, ItemSalesRow, PurchaseRegisterRow, CustomerAgingRow } from './reports';
-export { getDayBook, getStockValuation, getGstSummary, postExpense, voidExpense, exportTenant, checkInvariants, getPartyLedger, createStockCount, postStockCount, getLowStockReport, getItemSalesReport, getPurchaseRegister, getCustomerAgingReport } from './reports';
+export type { DayBookRow, StockValueRow, GstRow, PartyLedgerRow, InvariantHealth, LowStockRow, ItemSalesRow, PurchaseRegisterRow, CustomerAgingRow, AgingReportV2, AgingAccountV2, AgingDetailV2 } from './reports';
+export { getDayBook, getStockValuation, getGstSummary, postExpense, voidExpense, exportTenant, checkInvariants, getPartyLedger, createStockCount, postStockCount, getLowStockReport, getItemSalesReport, getPurchaseRegister, getCustomerAgingReport, getAgingReportV2 } from './reports';
 
 export type { BackupHealth } from './health';
 export { getLatestBackupHealth } from './health';
