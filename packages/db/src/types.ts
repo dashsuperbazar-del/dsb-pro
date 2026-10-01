@@ -412,6 +412,66 @@ export type Database = {
           },
         ]
       }
+      financial_requests: {
+        Row: {
+          client_id: string
+          created_at: string
+          created_by: string
+          deleted_at: number | null
+          id: string
+          operation: string
+          request: Json
+          request_version: number
+          result: Json
+          shop_id: string
+          tenant_id: string
+          updated_at: number
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          created_by?: string
+          deleted_at?: number | null
+          id?: string
+          operation: string
+          request: Json
+          request_version?: number
+          result: Json
+          shop_id: string
+          tenant_id: string
+          updated_at?: number
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          created_by?: string
+          deleted_at?: number | null
+          id?: string
+          operation?: string
+          request?: Json
+          request_version?: number
+          result?: Json
+          shop_id?: string
+          tenant_id?: string
+          updated_at?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_requests_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_requests_tenant_id_shop_id_fkey"
+            columns: ["tenant_id", "shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["tenant_id", "id"]
+          },
+        ]
+      }
       invites: {
         Row: {
           accepted_at: string | null
@@ -823,6 +883,8 @@ export type Database = {
           deleted_at: number | null
           doc_id: string | null
           doc_type: string
+          effective_date: string
+          effective_date_source: string
           id: string
           payment_id: string
           purchase_bill_id: string | null
@@ -830,6 +892,7 @@ export type Database = {
           status: string
           tenant_id: string
           updated_at: number
+          voided_at: string | null
         }
         Insert: {
           amount_paise: number
@@ -839,6 +902,8 @@ export type Database = {
           deleted_at?: number | null
           doc_id?: string | null
           doc_type: string
+          effective_date: string
+          effective_date_source: string
           id?: string
           payment_id: string
           purchase_bill_id?: string | null
@@ -846,6 +911,7 @@ export type Database = {
           status?: string
           tenant_id: string
           updated_at?: number
+          voided_at?: string | null
         }
         Update: {
           amount_paise?: number
@@ -855,6 +921,8 @@ export type Database = {
           deleted_at?: number | null
           doc_id?: string | null
           doc_type?: string
+          effective_date?: string
+          effective_date_source?: string
           id?: string
           payment_id?: string
           purchase_bill_id?: string | null
@@ -862,6 +930,7 @@ export type Database = {
           status?: string
           tenant_id?: string
           updated_at?: number
+          voided_at?: string | null
         }
         Relationships: [
           {
@@ -1964,6 +2033,57 @@ export type Database = {
         }
         Relationships: []
       }
+      shop_financial_history: {
+        Row: {
+          allocation_dates_trustworthy_from: string
+          client_id: string
+          created_at: string
+          created_by: string
+          deleted_at: number | null
+          id: string
+          shop_id: string
+          tenant_id: string
+          updated_at: number
+        }
+        Insert: {
+          allocation_dates_trustworthy_from: string
+          client_id: string
+          created_at?: string
+          created_by?: string
+          deleted_at?: number | null
+          id?: string
+          shop_id: string
+          tenant_id: string
+          updated_at?: number
+        }
+        Update: {
+          allocation_dates_trustworthy_from?: string
+          client_id?: string
+          created_at?: string
+          created_by?: string
+          deleted_at?: number | null
+          id?: string
+          shop_id?: string
+          tenant_id?: string
+          updated_at?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_financial_history_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_financial_history_tenant_id_shop_id_fkey"
+            columns: ["tenant_id", "shop_id"]
+            isOneToOne: true
+            referencedRelation: "shops"
+            referencedColumns: ["tenant_id", "id"]
+          },
+        ]
+      }
       shops: {
         Row: {
           address: string | null
@@ -2590,6 +2710,75 @@ export type Database = {
         Args: { p_id: string; p_table: string }
         Returns: string
       }
+      c0_post_purchase_body: {
+        Args: {
+          p_bill_image_path?: string
+          p_bill_no: string
+          p_business_date: string
+          p_client_id: string
+          p_discount_paise: number
+          p_extra_charges_paise: number
+          p_lines: Json
+          p_party_id: string
+          p_shop_id: string
+        }
+        Returns: string
+      }
+      c0_post_return_body: {
+        Args: {
+          p_business_date: string
+          p_client_id: string
+          p_lines: Json
+          p_notes?: string
+          p_return_type: string
+          p_source_id: string
+        }
+        Returns: string
+      }
+      c0_post_sale_body: {
+        Args: {
+          p_business_date: string
+          p_client_id: string
+          p_customer_id: string
+          p_discount_paise: number
+          p_extra_charges_paise: number
+          p_lines: Json
+          p_notes?: string
+          p_payments?: Json
+          p_shop_id: string
+        }
+        Returns: string
+      }
+      c0_record_customer_payment_body: {
+        Args: {
+          p_allocations: Json
+          p_amount_paise: number
+          p_business_date: string
+          p_client_id: string
+          p_customer_id: string
+          p_mode: string
+          p_reference: string
+          p_shop_id: string
+        }
+        Returns: string
+      }
+      c0_void_payment_body: { Args: { p_payment_id: string }; Returns: string }
+      c0_void_purchase_body: {
+        Args: { p_client_id: string; p_purchase_id: string }
+        Returns: string
+      }
+      c0_void_return_body: {
+        Args: {
+          p_client_id: string
+          p_return_id: string
+          p_return_type: string
+        }
+        Returns: string
+      }
+      c0_void_sale_body: {
+        Args: { p_client_id: string; p_sale_id: string }
+        Returns: string
+      }
       check_invariants: { Args: never; Returns: Json }
       create_invite: {
         Args: { p_role: string; p_shop_ids: string[] }
@@ -2630,6 +2819,32 @@ export type Database = {
       current_shop_ids: { Args: never; Returns: string[] }
       current_tenant_id: { Args: never; Returns: string }
       custom_access_token_hook: { Args: { event: Json }; Returns: Json }
+      dsb_assert_safe_paise: {
+        Args: { p_signed?: boolean; p_value: number }
+        Returns: undefined
+      }
+      dsb_lock_request: {
+        Args: { p_client_id: string; p_operation: string; p_tenant: string }
+        Returns: undefined
+      }
+      dsb_lock_shop_finance: {
+        Args: { p_shop: string; p_tenant: string }
+        Returns: undefined
+      }
+      dsb_normalize_allocations: {
+        Args: { p_allocations: Json; p_target_field: string }
+        Returns: Json
+      }
+      dsb_request_result: {
+        Args: {
+          p_client_id: string
+          p_operation: string
+          p_request: Json
+          p_shop: string
+          p_tenant: string
+        }
+        Returns: Json
+      }
       get_customer_aging_report: {
         Args: { p_as_of: string; p_shop_id: string }
         Returns: {
@@ -2654,6 +2869,10 @@ export type Database = {
           receipts_paise: number
           sales_paise: number
         }[]
+      }
+      get_financial_request: {
+        Args: { p_client_id: string; p_operation: string; p_shop_id: string }
+        Returns: Json
       }
       get_gst_summary: {
         Args: { p_from: string; p_shop_id: string; p_to: string }
