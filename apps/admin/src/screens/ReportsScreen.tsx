@@ -184,6 +184,13 @@ export function ReportsScreen() {
         </p>
       </section>
       <section class="card">
+        <h2>Shadow run</h2>
+        <p>
+          <a href={appRoute.compare}>Compare with old DSB</a> — balances, stock and day totals on
+          one page, each exportable as CSV.
+        </p>
+      </section>
+      <section class="card">
         <h2>Party ledger</h2>
         <div class="row">
           <select
