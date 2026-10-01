@@ -49,8 +49,8 @@ test('a receipt whose answer is lost after commit is reconciled, never recorded 
   await page.getByLabel('Amount ₹').fill('25');
   await page.getByRole('button', { name: 'Record payment' }).click();
   await expect(page.getByRole('alert', { name: 'Unresolved receipts' })).toContainText('UNKNOWN');
-  await page.getByRole('button', { name: 'Record payment' }).click();
-  await expect(page.getByText(/Resolve the receipt awaiting server confirmation/)).toBeVisible();
+  // A second receipt cannot be started while the first is unresolved.
+  await expect(page.getByRole('button', { name: 'Record payment' })).toBeDisabled();
   await page.getByRole('button', { name: 'Check status' }).click();
   await expect(page.getByText('Receipt confirmed by the server.')).toBeVisible();
   await expect(page.getByText(/Balance -₹25.00|Balance ₹-25.00/)).toBeVisible();

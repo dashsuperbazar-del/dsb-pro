@@ -47,7 +47,14 @@ export function classifyError(error: unknown): ErrorClass {
   if (
     message.includes('fetch failed') ||
     message.includes('network') ||
-    message.includes('failed to fetch')
+    message.includes('failed to fetch') ||
+    // Transport outcomes, never a user mistake (V002 VF-006).
+    message.includes('abort') ||
+    message.includes('timed out') ||
+    message.includes('timeout') ||
+    message.includes('bad gateway') ||
+    message.includes('gateway') ||
+    message.includes('service unavailable')
   ) {
     return 'server';
   }

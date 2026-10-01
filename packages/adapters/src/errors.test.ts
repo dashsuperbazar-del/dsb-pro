@@ -41,3 +41,15 @@ describe('errorMessage', () => {
     expect(errorMessage('server', new Error('x'))).toMatch(/try again/i);
   });
 });
+
+describe('transport failures are never user errors (V002 VF-006)', () => {
+  it.each([
+    'AbortError: The operation was aborted.',
+    'Request timed out',
+    'Bad Gateway',
+    'Gateway Timeout',
+    'Service Unavailable',
+  ])('%s classifies as server', (m) => {
+    expect(classifyError(new Error(m))).toBe('server');
+  });
+});

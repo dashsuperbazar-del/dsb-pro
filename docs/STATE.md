@@ -4,12 +4,20 @@ Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/CO
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
-- `main` at last update: `609de41` (R0 merged, PR #49). Migrations 0001–0051 (immutable).
-- Last merged: **R0** bill round-off. In review: **D1-lite** as-of aging (mig 0052, group `d1`).
-- Live DB: R0 applied 2026-10-01 (run 36882980791, only group `r0` pending; verify green). Fully upgraded.
-  R0 deploy dispatched after the apply (run 36885026810).
+- `main` at last update: `3e04068` (D1-lite merged, PR #50). Migrations 0001–0052 (immutable).
+- Last merged: **D1-lite**. In review: **V2** fixes for verifier log V002 (VF-005–008; no migration).
+- Live DB: D1 applied 2026-10-01 (run 36894777286, only group `d1` pending; verify green). Fully upgraded.
+  D1 deployed after the apply (run 36897126086, green).
+- Verifier (GPT) log V002 (2026-10-01): CHANGES REQUIRED for VF-005 (intent not durable before dispatch),
+  VF-006 (transport errors treated as refusals), VF-007 (customer receipt guard race). V2 fixes all three.
 - Decision 2026-10-01: D1-lite built before F0 (F0 blocked on the user's export; D1-lite has no F dependency).
   F2 must extend both aging reports with opening rows (remainingPositiveOpenings / remainingOpeningCredits).
+- V2 residual (MINOR, open): two windows on the Customers/Suppliers screen can still race between the
+  durable-store recheck and creating a receipt (no cross-tab lock). Each attempt is durable and
+  reconcilable by id, so nothing is lost; a Web Locks guard is the follow-up.
+- Rule (V2): every money/stock write stores its exact request on the device BEFORE sending (fail
+  closed) and only a definitive DB rejection unlocks it; use `rpcOutcome`/`*Outcome` adapters, never
+  `classifyError` to decide an outcome.
 - Next: F0 (needs the user's legacy DSB export), F1–F3,
   D1-lite, R1.
 - Milestone in progress: **M1 Daily-usable** (exit = 7-day shadow run vs old DSB).
@@ -61,7 +69,6 @@ Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it
   attended baseline-receipt init (P1 debt #5), not `apply`.
 - `AppDatabase` widens every RPC arg to `T|null` (generator limitation); names/types are checked, nullability is not.
 - `bootstrap-disposable-receipts.mjs` writes receipts for every manifest entry, even groups not applied (P1 debt #4).
-- No supplier-payment RPC/screen yet (C1/C2). Expenses live in Reports; no stock-adjust screen (U1).
 - Every gate H1–H9 from Phase 3 on is NOT GO; needs dated real-shop evidence. H3 needs an explicit
   offline→restart→reconnect device test. Returns/offline returns/Batch B are now live on the DB, so these matter.
 - P1 deferred follow-ups 1–6 (see ledger P1 row) are moved to M2.

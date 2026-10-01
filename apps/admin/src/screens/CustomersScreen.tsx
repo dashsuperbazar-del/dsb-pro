@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   createCustomer,
   getCurrentMembership,
@@ -62,6 +62,11 @@ export function CustomersScreen() {
   const [mode, setMode] = useState<'cash' | 'upi' | 'card' | 'bank' | 'other'>('cash');
   const [reference, setReference] = useState('');
   const [openAttempts, setOpenAttempts] = useState<FinancialAttempt[]>([]);
+  // Account-specific data (ledger, invoices, the unresolved-receipt guard) belongs to one
+  // (shop, customer) load. Receiving is disabled until that load finishes, and late answers for a
+  // previous selection are discarded (V002 VF-007).
+  const [readyFor, setReadyFor] = useState('');
+  const loadGeneration = useRef(0);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -81,33 +86,37 @@ export function CustomersScreen() {
     setBalances(Object.fromEntries(b.map((x) => [x.customer_id, x.balance_paise])));
     setBusinessDate(d);
   }
-  async function refreshCustomer(customerId = selected) {
-    if (!customerId) {
-      setLedger([]);
-      setOpenSales([]);
-      setAllocations([]);
-      return;
-    }
+  async function refreshCustomer(customerId = selected, shop = shopId) {
+    const generation = ++loadGeneration.current;
+    setReadyFor('');
+    setLedger([]);
+    setOpenSales([]);
+    setAllocations([]);
+    setOpenAttempts([]);
+    if (!customerId || !shop) return;
     const [l, s] = await Promise.all([
       listCustomerLedger(customerId),
       listCustomerOutstandingInvoices(customerId),
     ]);
-    if (shopId) {
-      await waitForOfflineRuntime();
-      setOpenAttempts(await listOpenFinancialAttempts(shopId, customerId));
-    }
+    await waitForOfflineRuntime();
+    const attempts = await listOpenFinancialAttempts(shop, customerId);
+    if (generation !== loadGeneration.current) return;
+    setOpenAttempts(attempts);
     setLedger(l);
     setOpenSales(s);
     setAllocations(
       s.map((x) => ({ saleId: x.sale_invoice_id, docNo: x.doc_no, checked: false, amount: '' })),
     );
+    setReadyFor(`${shop}:${customerId}`);
   }
   useEffect(() => {
     void refreshBase().catch((e) => setError(String(e)));
   }, []);
   useEffect(() => {
-    void refreshCustomer(selected).catch((e) => setError(String(e)));
-  }, [selected]);
+    void refreshCustomer(selected, shopId).catch((e) =>
+      setError(`Could not load this customer (${String(e)}). Choose the customer again to retry.`),
+    );
+  }, [selected, shopId]);
   const allocated = useMemo(
     () => allocations.filter((a) => a.checked).reduce((sum, a) => sum + toPaise(a.amount), 0),
     [allocations],
@@ -142,6 +151,10 @@ export function CustomersScreen() {
   async function receive(ev: Event) {
     ev.preventDefault();
     if (busy || !selected) return;
+    if (readyFor !== `${shopId}:${selected}`) {
+      setError('This customer is still loading. Try again in a moment.');
+      return;
+    }
     if (openAttempts.length) {
       setError('Resolve the receipt awaiting server confirmation first (Check status below).');
       return;
@@ -174,6 +187,15 @@ export function CustomersScreen() {
           .map((a) => ({ saleInvoiceId: a.saleId, amountPaise: String(toPaise(a.amount)) })),
       };
       await waitForOfflineRuntime();
+      // Recheck the durable store for THIS account right before creating a new request: an
+      // unresolved earlier receipt must be settled first, never bypassed by a fresh id.
+      const unresolved = await listOpenFinancialAttempts(shopId, selected);
+      if (unresolved.length) {
+        setOpenAttempts(unresolved);
+        throw new Error(
+          'Resolve the receipt awaiting server confirmation first (Check status below).',
+        );
+      }
       const draft = await newFinancialDraft({
         operation: 'record_customer_payment_v2',
         shopId,
@@ -441,8 +463,21 @@ export function CustomersScreen() {
               Allocated {money(allocated)} · Unallocated advance{' '}
               {money(Math.max(0, toPaise(amount) - allocated))}
             </p>
-            <button class="primary" disabled={busy || !shopId || !businessDate}>
-              {busy ? 'Saving…' : 'Record payment'}
+            <button
+              class="primary"
+              disabled={
+                busy ||
+                !shopId ||
+                !businessDate ||
+                readyFor !== `${shopId}:${selected}` ||
+                openAttempts.length > 0
+              }
+            >
+              {busy
+                ? 'Saving…'
+                : readyFor !== `${shopId}:${selected}`
+                  ? 'Loading…'
+                  : 'Record payment'}
             </button>
           </form>
         </section>

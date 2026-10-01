@@ -260,6 +260,14 @@ export function SuppliersScreen() {
       const total = pl.allocations.reduce((s, a) => s + Number(a.amountPaise), 0);
       if (total > Number(pl.amountPaise))
         throw new Error('Bill allocations exceed the payment amount.');
+      // Recheck the durable store for this supplier right before sending (V002 VF-007).
+      const unresolvedNow = (await listOpenFinancialAttempts(shopId, partyId)).filter(
+        (a) => a.state !== 'READY' || a.id !== draft?.id,
+      );
+      if (unresolvedNow.length) {
+        setOpen(unresolvedNow);
+        throw new Error('Resolve the payment awaiting server confirmation first.');
+      }
       const d = await saveDraft();
       const result = await sendFinancialAttempt(d.id, sender);
       report(result);
