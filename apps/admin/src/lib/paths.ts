@@ -19,4 +19,5 @@ export const appRoute = {
   reports: appPath('/reports'),
   returns: appPath('/returns'),
   settings: appPath('/settings'),
+  suppliers: appPath('/suppliers'),
 };

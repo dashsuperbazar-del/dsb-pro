@@ -38,6 +38,19 @@ import {
   openSyncDb,
   queueOfflineSale,
   recoverInterruptedOutbox,
+  recoverInterruptedAttempts,
+  createAttemptDraft,
+  updateAttemptDraft,
+  cancelAttemptDraft,
+  freezeAttempt,
+  submitAttempt,
+  reconcileAttempt,
+  copyRejectedToDraft,
+  listOpenAttempts,
+  type FinancialAttempt,
+  type FinancialAttemptOperation,
+  type AttemptSendOutcome,
+  type AttemptLookup,
   rejectOfflineSale,
   retryDelayMs,
   resolveLocalConflict,
@@ -163,6 +176,7 @@ export async function startOfflineSync(input: {
   // this device starts offline and cannot yet receive the server capability.
   if (identity.role === 'cashier') await restrictCachedCostPrices(db);
   await recoverInterruptedOutbox(db);
+  await recoverInterruptedAttempts(db);
   runtime = { identity, db, timer: 0, unsubscribeRealtime: null, running: null };
   runtime.timer = window.setInterval(() => {
     void runSyncNow();
@@ -618,6 +632,7 @@ export async function exportOfflineBillingSnapshot() {
     returnSources,
     offlineReturns,
     heldCarts,
+    financialAttempts,
   ] = await Promise.all([
     rt.db.items.toArray(),
     rt.db.barcodes.toArray(),
@@ -632,9 +647,10 @@ export async function exportOfflineBillingSnapshot() {
     rt.db.returnSources.toArray(),
     rt.db.offlineReturns.toArray(),
     rt.db.heldCarts.toArray(),
+    rt.db.financialAttempts.toArray(),
   ]);
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     exportKind: 'offline-billing-continuity',
     exportedAt: new Date().toISOString(),
     identity: rt.identity,
@@ -651,6 +667,11 @@ export async function exportOfflineBillingSnapshot() {
     returnSources,
     offlineReturns,
     heldCarts,
+    // Online money requests whose server outcome is not yet confirmed (C2).
+    onlineRequestsAwaitingConfirmation: financialAttempts.filter((a) =>
+      ['READY', 'SENDING', 'UNKNOWN'].includes(a.state),
+    ),
+    financialAttempts,
   };
 }
 export async function getSyncDashboard() {
@@ -711,4 +732,46 @@ export async function resolveConflictOnServer(id: string): Promise<void> {
   const rt = requireRuntime();
   await resolveServerSyncConflict({ deviceId: rt.identity.deviceId, id });
   emit();
+}
+
+// C2 durable online money attempts, scoped to the runtime identity (tenant/user/device DB).
+export type { FinancialAttempt, FinancialAttemptOperation, AttemptSendOutcome, AttemptLookup };
+export async function newFinancialDraft(input: {
+  operation: FinancialAttemptOperation;
+  shopId: string;
+  accountId: string;
+  payload: Record<string, unknown>;
+}): Promise<FinancialAttempt> {
+  return createAttemptDraft(requireRuntime().db, input);
+}
+export async function editFinancialDraft(id: string, payload: Record<string, unknown>) {
+  return updateAttemptDraft(requireRuntime().db, id, payload);
+}
+export async function discardFinancialDraft(id: string) {
+  return cancelAttemptDraft(requireRuntime().db, id);
+}
+export async function sendFinancialAttempt(
+  id: string,
+  send: (attempt: FinancialAttempt) => Promise<AttemptSendOutcome>,
+): Promise<FinancialAttempt> {
+  const db = requireRuntime().db;
+  await freezeAttempt(db, id); // durable READY before any network call
+  return submitAttempt(db, id, send);
+}
+export async function reconcileFinancialAttempt(
+  id: string,
+  lookup: (attempt: FinancialAttempt) => Promise<AttemptLookup>,
+): Promise<FinancialAttempt> {
+  return reconcileAttempt(requireRuntime().db, id, lookup);
+}
+export async function copyRejectedFinancialAttempt(id: string) {
+  return copyRejectedToDraft(requireRuntime().db, id);
+}
+export async function listOpenFinancialAttempts(shopId: string, accountId?: string) {
+  return listOpenAttempts(requireRuntime().db, shopId, accountId);
+}
+export async function listFinancialDrafts(shopId: string, accountId: string) {
+  return (
+    await requireRuntime().db.financialAttempts.where('state').equals('DRAFT').toArray()
+  ).filter((a) => a.shopId === shopId && a.accountId === accountId);
 }

@@ -4,11 +4,11 @@ Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/CO
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
-- `main` at last update: `ed04da7` (C0 merged). Migrations 0001–0046 (immutable).
-- Last merged: **C0** (mig 0046). In review: **C1** supplier payments (mig 0047, group `c1`).
-- Live DB: C0 applied 2026-09-30 (run 36796971685, only group `c0` pending); live state `5:2:5:2:3:4:1:2`
-  (classifier now has 9 fields; live reads `...:2:0` until `c1` applies). App deployed from `ed04da7` (run 36796983942).
-- Next packet after C1 merges: **C2**, then C3, U1, F0–F3, D1-lite, R1.
+- `main` at last update: `e1d5f58` (C1 merged, PR #44). Migrations 0001–0047 (immutable).
+- Last merged: **C1** (mig 0047). In review: **C2** supplier screen + attempt store (mig 0048, group `c2`).
+- Live DB: C1 applied 2026-10-01 (run 36801167492, only group `c1` pending); live state `5:2:5:2:3:4:1:2:2`
+  (classifier now 10 fields; live reads `...:2:2:0` until `c2` applies). App deployed from `e1d5f58` (run 36801959224).
+- Next packet after C2 merges: **C3**, then U1, F0–F3, D1-lite, R1.
 - Milestone in progress: **M1 Daily-usable** (exit = 7-day shadow run vs old DSB).
 
 ## Workflow (single builder)
@@ -39,8 +39,15 @@ Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it
   via `release_supplier_allocation`. Check that field on live right after the `c1` apply.
 - C1 tightens `payments`/`payment_allocations` read RLS: party (supplier) rows need POST_PURCHASES or VIEW_REPORTS,
   and rows are scoped to the caller's shops. Generic `void_payment` refuses party payments (use supplier void).
-- C1 review MINORs (open): c1 classifier probes only 2 schema anchors; `get_party_ledger_v2` uses a temp table
-  (make it a CTE); customer writers accept `supplier.`-prefixed client_ids (DoS-only squatting).
+- LIVE BUG (fixed by C2/0048, not yet applied): C1 `get_party_ledger_v2` fails through PostgREST (temp-table
+  DELETE without WHERE blocked by safeupdate). Read-only; no money affected. pgTAP/psql cannot see safeupdate —
+  every new SQL read path needs an e2e (PostgREST) call, not only pgTAP.
+- C1 review MINORs (open): c1 classifier probes only 2 schema anchors; customer writers accept
+  `supplier.`-prefixed client_ids (DoS-only squatting).
+- Stranded allocations on VOID bills: not yet checked on live. After C2 deploys, the Suppliers summary shows ⚠ per
+  supplier; owner releases each with a reason.
+- C2 deferred e2e vectors (to C3/U1): same supplier two shops, another tab, switch user, auth expiry. Covered at
+  unit level (attempt store) and pgTAP (RLS); browser proof pending.
 - C1 has no cutover-date floor on supplier allocations (no cutover date exists yet); add it in F-packets.
 - Classifier c0 state 1 (schema without receipt) is a fresh-reset/bootstrap state; on a live DB it needs the
   attended baseline-receipt init (P1 debt #5), not `apply`.
@@ -53,6 +60,8 @@ Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it
 - Legacy old-DSB JSON export needed from the user when F0 starts.
 
 ## Decisions log
+- 2026-10-01: C2 carries mig 0048 (ledger fix) so C3's planned customer-request migration becomes 0049 (unchanged).
+- 2026-10-01: Offline snapshot schemaVersion 4 adds `financialAttempts` + `onlineRequestsAwaitingConfirmation`.
 - 2026-10-01: C1 cutover-date restriction deferred (no cutover date defined); supplier read RLS tightened.
 - 2026-09-30: GPT verification log V001 findings VF-001..004 accepted; fixed in PR #42 (VF-002 rated MINOR by builder).
 - 2026-09-30: undici pinned `^7.29.1` via pnpm override (GHSA-rfgv-xxqx-mfg5, GHSA-w293-vg96-wgc3).

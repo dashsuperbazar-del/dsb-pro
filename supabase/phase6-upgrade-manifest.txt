@@ -17,3 +17,4 @@
 0045 p2 supabase/migrations/0045_item_sales_fix.sql
 0046 c0 supabase/migrations/0046_finance_requests_and_locking.sql
 0047 c1 supabase/migrations/0047_supplier_payments.sql
+0048 c2 supabase/migrations/0048_supplier_ledger_fix.sql

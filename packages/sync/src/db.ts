@@ -3,6 +3,7 @@ import type {
   LocalMeta,LocalReservation,LocalSyncConflict,OfflineSaleRecord,OutboxEntry,
   SyncedBarcode,SyncedCustomer,SyncedItem,SyncedPrice,SyncedStock,SyncIdentity,CachedReturnSource,OfflineReturnRecord,HeldCartRecord,
 } from './types';
+import type {FinancialAttempt} from './financialAttempts';
 
 function safePart(value:string){return value.replace(/[^A-Za-z0-9_-]/g,'_');}
 export function syncDatabaseName(identity:SyncIdentity):string{
@@ -24,6 +25,7 @@ export class DsbSyncDb extends Dexie{
   returnSources!:Table<CachedReturnSource,string>;
   offlineReturns!:Table<OfflineReturnRecord,string>;
   heldCarts!:Table<HeldCartRecord,string>;
+  financialAttempts!:Table<FinancialAttempt,string>;
 
   constructor(name:string){
     super(name);
@@ -44,6 +46,8 @@ export class DsbSyncDb extends Dexie{
     // Claim fields added in v4 are not indexed: carts are coordinated by id.
     // Existing v3 records remain valid and are treated as unclaimed.
     this.version(4).stores({heldCarts:'&id,shopId,createdAt'});
+    // C2: durable online money attempts. Additive: v4 tables are kept untouched.
+    this.version(5).stores({financialAttempts:'&id,[shopId+operation],state,createdAt'});
   }
 }
 
