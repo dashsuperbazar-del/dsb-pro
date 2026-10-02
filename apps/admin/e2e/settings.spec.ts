@@ -32,7 +32,9 @@ test('owner can edit shop profile and it survives a reload, and the invoice pref
   await page.getByLabel('GSTIN').fill('27ABCDE1234F1Z5');
   await page.getByLabel('Invoice prefix').fill('RCS');
   await page.getByLabel('Printer width').selectOption('58mm');
-  await page.getByLabel('Fiscal year starts').selectOption('4');
+  // D2b: frozen until fiscal numbering (F1); the default April start is shown, not editable.
+  await expect(page.getByLabel('Fiscal year starts')).toBeDisabled();
+  await expect(page.getByLabel('Fiscal year starts')).toHaveValue('4');
   await page.getByLabel('Allow selling below zero stock').check();
   await page.getByRole('button', { name: 'Save shop profile' }).click();
   await expect(page.getByRole('status')).toContainText('Shop settings saved');

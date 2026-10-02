@@ -4,8 +4,8 @@ Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/CO
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
-- `main` at last update: `143c11e` (O3 merged, PR #58; O2+O3 deploy dispatched 2026-10-02).
-  Migrations 0001–0055 (immutable). In review: **D2a** receipt header from the shop profile (UI only).
+- `main` at last update: `50b77ab` (D2a merged, PR #59; deploy dispatched 2026-10-02).
+  Migrations 0001–0055 (immutable). In review: **D2b** (0056 settings guard, group `d2b`).
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
   partial returns carry item value, capped so a bill's returns never exceed what was billed for its
   items (total - extra charges). Extra charges still stay with the shop.
@@ -36,8 +36,9 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
 - Watch (2026-10-02, local parallel e2e): recovery 'expense crash after commit' and suppliers 'lost
   response' timed out at 30 s under load, both passed alone. Not O2 code; check CI runs.
 - Decision 2026-10-02 (user): build, merge, apply and deploy the next 5 packets, each only on green CI.
-  Plan (each D/F packet split to keep one PR small): O3 ✓ → D2a receipt header (shop name/address/
-  GSTIN, cached for offline, 58mm layout) → D2b settings server validation → D4a readiness panel → F1
+  Plan (each D/F packet split to keep one PR small): O3 ✓ (deployed run 745) → D2a ✓ receipt header (shop name/address/
+  GSTIN, cached for offline, 58mm layout) → D2b settings guard (row lock, IANA timezone, owner-only
+  negative stock, fiscal month frozen until F1) → D4a readiness panel → F1
   or D2c snapshots (decide on risk). Receipts no longer print "DSB Store".
 - M1 gate (daily-usable): O1 ✓ + H3 (user, offline→restart→reconnect, each entry once) + first clean
   real-data week (Compare page + invariants). Waiting on the user for H3 and the cutover date.
@@ -60,7 +61,6 @@ Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it
 - D1-lite: old `get_customer_aging_report` (current-state balances labelled as-of) stays for compatibility but the
   UI no longer calls it. 100k-invoice EXPLAIN not done (one shop; revisit at S1). Cash counts as assigned only
   when allocated/linked to a document in the same as-of set, so stranded allocations show as unassigned cash.
-- R0: a walk-in bill under ₹0.50 rounds to ₹0.00 (no payment possible) — consistent both sides; product edge.
 - Watch: suppliers 'lost response' e2e failed again on main (run 36904189128, form never shown). Hypothesis:
   waitForOfflineRuntime timed out at 5 s under load; raised to 30 s in V3. Close after 5 clean main runs.
 - Every new migration packet adds its own upgrade group (manifest, ALLOWED_GROUPS, GROUP_ORDER, apply wrapper,
@@ -104,9 +104,6 @@ Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it
   any difference; covers pre-0050 bills). Direct post_sale (API-only) and outbox UNKNOWN labels deferred: Batch B
   fingerprints already make sale/return replays exact. POS customer receipts stay on the request-recorded old
   endpoint (C3). Future migrations rewriting post_purchase must keep the 0050 marker text (c3b classifier signal).
-- 2026-10-01: C3 split. C3 = customer v2 writers + request-recorded old endpoint (legacy retry verified field
-  by field before any validation; mismatch -> DSB_LEGACY_REQUEST_UNVERIFIABLE). C3b = direct post_sale/post_purchase
-  wrappers + outbox UNKNOWN (touches the live offline sale/return path; kept separate to limit money-path risk).
 - 2026-10-01: Old customer endpoint now rejects duplicate invoice targets and cross-shop invoices for NEW receipts
   (retries of recorded receipts still return them).
 - 2026-10-01: C2 carries mig 0048 (ledger fix) so C3's planned customer-request migration becomes 0049 (unchanged).

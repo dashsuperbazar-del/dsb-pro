@@ -23,6 +23,19 @@ const MONTHS = [
   'December',
 ];
 
+// D2b: suggestions for the timezone field (the server accepts only known IANA names). Browsers
+// without Intl.supportedValuesOf get a short list of common zones.
+const FALLBACK_TIMEZONES = ['Asia/Kolkata', 'Asia/Dubai', 'Asia/Kathmandu', 'Asia/Dhaka', 'UTC'];
+const TIMEZONES: string[] = (() => {
+  const intl = Intl as unknown as { supportedValuesOf?: (key: string) => string[] };
+  try {
+    const all = intl.supportedValuesOf?.('timeZone');
+    return all && all.length ? all : FALLBACK_TIMEZONES;
+  } catch {
+    return FALLBACK_TIMEZONES;
+  }
+})();
+
 export function SettingsScreen() {
   const [shopId, setShopId] = useState('');
   const [loaded, setLoaded] = useState(false);
@@ -34,6 +47,7 @@ export function SettingsScreen() {
   const [printerWidth, setPrinterWidth] = useState<PrinterWidth>('80mm');
   const [fiscalYearStartMonth, setFiscalYearStartMonth] = useState(4);
   const [allowNegativeStock, setAllowNegativeStock] = useState(false);
+  const [isOwner, setIsOwner] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -41,6 +55,7 @@ export function SettingsScreen() {
   async function refresh() {
     const membership = await getCurrentMembership();
     if (!membership) throw new Error('No tenant membership.');
+    setIsOwner(membership.role === 'owner');
     const shop = await getDefaultShopId();
     setShopId(shop);
     const s = await getShopSettings(shop);
@@ -141,9 +156,15 @@ export function SettingsScreen() {
             Timezone{' '}
             <input
               value={timezone}
+              list="timezone-options"
               onInput={(e) => setTimezone((e.currentTarget as HTMLInputElement).value)}
               required
             />
+            <datalist id="timezone-options">
+              {TIMEZONES.map((tz) => (
+                <option key={tz} value={tz} />
+              ))}
+            </datalist>
           </label>
           <label>
             Printer width{' '}
@@ -161,6 +182,8 @@ export function SettingsScreen() {
             Fiscal year starts{' '}
             <select
               value={String(fiscalYearStartMonth)}
+              disabled
+              title="Fixed until fiscal-year invoice numbering is added"
               onChange={(e) =>
                 setFiscalYearStartMonth(Number((e.currentTarget as HTMLSelectElement).value))
               }
@@ -177,12 +200,14 @@ export function SettingsScreen() {
               <input
                 type="checkbox"
                 checked={allowNegativeStock}
+                disabled={!isOwner}
                 onChange={(e) =>
                   setAllowNegativeStock((e.currentTarget as HTMLInputElement).checked)
                 }
               />{' '}
               Allow selling below zero stock
             </label>
+            {!isOwner && <span class="muted"> (owner only)</span>}
           </p>
           <p class="muted">
             On: a sale never blocks on stock — it posts, the item's stock can go negative, and you
