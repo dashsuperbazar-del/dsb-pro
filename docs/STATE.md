@@ -4,9 +4,11 @@ Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/CO
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
-- `main` at last update: `a6cd057` (R1 merged, PR #52; deploy dispatched). V2 deployed (run 36901510335).
-  Migrations 0001–0052.
-- Last merged: **R1** compare page. In review: **V3** cross-window receipt lock (no migration).
+- `main` at last update: `57413c3` (V3 merged, PR #53; deploy run 36909385797 green; R1 + V3 live).
+  Migrations 0001–0052 (immutable). In review: **R0b** return round-off (mig 0053, group `r0b`).
+- Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
+  partial returns carry item value, capped so a bill's returns never exceed what was billed for its
+  items (total - extra charges). Extra charges still stay with the shop.
 - Live DB: D1 applied 2026-10-01 (run 36894777286, only group `d1` pending; verify green). Fully upgraded.
   D1 deployed after the apply (run 36897126086, green).
 - Verifier (GPT) log V002 (2026-10-01): CHANGES REQUIRED for VF-005 (intent not durable before dispatch),
@@ -18,16 +20,21 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
 - Rule (V2): every money/stock write stores its exact request on the device BEFORE sending (fail
   closed) and only a definitive DB rejection unlocks it; use `rpcOutcome`/`*Outcome` adapters, never
   `classifyError` to decide an outcome.
-- Next: F0 (needs the user's legacy DSB export), F1–F3,
-  D1-lite, R1.
-- Milestone in progress: **M1 Daily-usable** (exit = 7-day shadow run vs old DSB).
+- Decision 2026-10-02 (user): old DSB is retired; no legacy import, no shadow run. DSB Pro goes live
+  with real data once daily-usable, then is patched in use. F0/F3 dropped; F1 (fiscal numbering) later.
+- Next: **O1 opening balances** (manual customer/supplier dues as of a cutover date, immutable ledger
+  entries; opening stock via existing stock count) → **H3** dated device exercise with the user
+  (offline entry → restart → reconnect, each entry exactly once).
+- New M1 (daily-usable) gate: O1 merged + H3 passed + first real-data week with clean Compare page and
+  invariant check.
+- Milestone in progress: **M1 Daily-usable** (exit = O1 + H3 + first clean real-data week).
 
 ## Workflow (single builder)
 failing tests → migration → adapters/UI → `pnpm lint && pnpm typecheck && pnpm test` (+pgTAP) →
 fresh sub-agent review (BLOCKER/MAJOR fixed, max 2 rounds) → PR → CI → 5-line summary → user says `merge`.
 CI gate: UI/no-migration packet = one green full run on final head. Migration packet = PR run +
 `workflow_dispatch operation=validate`, both on the unchanged final head. Squash-merge is the ratified practice.
-Ask the user only for: merge, live migration/deploy approval, legacy export (F0), money/data-loss trade-off.
+Ask the user only for: merge, live migration/deploy approval, money/data-loss trade-off.
 Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it applies all pending groups).
 
 ## Local environment
@@ -73,7 +80,6 @@ Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it
 - Every gate H1–H9 from Phase 3 on is NOT GO; needs dated real-shop evidence. H3 needs an explicit
   offline→restart→reconnect device test. Returns/offline returns/Batch B are now live on the DB, so these matter.
 - P1 deferred follow-ups 1–6 (see ledger P1 row) are moved to M2.
-- Legacy old-DSB JSON export needed from the user when F0 starts.
 
 ## Decisions log
 - 2026-10-01: USER DECISION (B1) — item values stay in exact paise; the BILL total rounds to the nearest rupee
