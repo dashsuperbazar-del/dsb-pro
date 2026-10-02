@@ -23,6 +23,19 @@ const MONTHS = [
   'December',
 ];
 
+// D2b: suggestions for the timezone field (the server accepts only known IANA names). Browsers
+// without Intl.supportedValuesOf get a short list of common zones.
+const FALLBACK_TIMEZONES = ['Asia/Kolkata', 'Asia/Dubai', 'Asia/Kathmandu', 'Asia/Dhaka', 'UTC'];
+const TIMEZONES: string[] = (() => {
+  const intl = Intl as unknown as { supportedValuesOf?: (key: string) => string[] };
+  try {
+    const all = intl.supportedValuesOf?.('timeZone');
+    return all && all.length ? all : FALLBACK_TIMEZONES;
+  } catch {
+    return FALLBACK_TIMEZONES;
+  }
+})();
+
 export function SettingsScreen() {
   const [shopId, setShopId] = useState('');
   const [loaded, setLoaded] = useState(false);
@@ -143,9 +156,15 @@ export function SettingsScreen() {
             Timezone{' '}
             <input
               value={timezone}
+              list="timezone-options"
               onInput={(e) => setTimezone((e.currentTarget as HTMLInputElement).value)}
               required
             />
+            <datalist id="timezone-options">
+              {TIMEZONES.map((tz) => (
+                <option key={tz} value={tz} />
+              ))}
+            </datalist>
           </label>
           <label>
             Printer width{' '}
