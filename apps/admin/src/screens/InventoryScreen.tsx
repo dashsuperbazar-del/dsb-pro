@@ -346,13 +346,17 @@ export function InventoryScreen() {
       setPurchaseClientId(crypto.randomUUID());
       // Another window's unconfirmed purchase may still be stored: lock onto it next, same id (VF-009).
       const next = loadPendingIntent<PurchaseRequest>(pendingKey(request.shopId));
+      const another = Boolean(next.ok && next.value);
       if (next.ok && next.value) {
         lockedPurchase.current = next.value;
         setPurchaseLocked(true);
       }
+      const anotherNote = another
+        ? ' Another unconfirmed purchase from this device is locked in the form now — retry it first; your cart is kept.'
+        : '';
       if (outcome.kind === 'rejected') {
         // The database refused and rolled back: nothing posted; the cart stays for correction.
-        setError(`Not posted: ${outcome.message}`);
+        setError(`Not posted: ${outcome.message}.${anotherNote}`);
         return;
       }
       setPurchaseCart([]);

@@ -53,7 +53,8 @@ export function savePendingIntent<T extends { clientId: string }>(
   }
   const own = all.find((e) => e.value.clientId === value.clientId);
   if (own) {
-    if (canonical(own.value) !== canonical(value))
+    // Compare what would be stored (JSON drops undefined fields) with what is stored.
+    if (canonical(own.value) !== canonical(JSON.parse(JSON.stringify(value))))
       throw new IntentStorageError(
         'The saved entry for this request differs from what would be sent. Nothing was sent.',
       );

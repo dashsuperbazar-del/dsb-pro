@@ -93,4 +93,14 @@ describe('pending intent slot', () => {
     ).not.toThrow();
     expect(store.has('k:a')).toBe(true);
   });
+  it('a retry whose in-memory request has undefined fields matches its stored copy (V4 review)', () => {
+    savePendingIntent('k', { clientId: 'p', partyId: undefined, billNo: undefined, lines: [1] });
+    expect(() =>
+      savePendingIntent(
+        'k',
+        { clientId: 'p', partyId: undefined, billNo: undefined, lines: [1] },
+        { retry: true },
+      ),
+    ).not.toThrow();
+  });
 });

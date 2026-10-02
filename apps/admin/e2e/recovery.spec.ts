@@ -397,3 +397,36 @@ test('customer receipt: finishing customer A’s receipt after switching to B ne
   await expect(ledger.getByRole('button', { name: 'Void payment' })).toHaveCount(0);
   await expect(ledger).not.toContainText('PAYMENT');
 });
+
+test('purchase without a supplier: a 502 after commit is retried in the same window and posts once (V4 review)', async ({
+  page,
+}) => {
+  await createOwnerShop(page);
+  await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await page.getByPlaceholder('Item name').fill('Loose item');
+  await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
+  await page.getByRole('button', { name: 'Create item' }).click();
+  await expect(page.getByRole('status')).toContainText('Created Loose item');
+  let calls = 0;
+  await page.route('**/rpc/post_purchase', async (route) => {
+    if (calls++ === 0) {
+      await route.fetch();
+      await route.fulfill({ status: 502, contentType: 'text/plain', body: 'Bad Gateway' });
+    } else await route.continue();
+  });
+  const purchase = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
+  await purchase.locator('select[name="itemId"]').selectOption({ label: 'Loose item' });
+  await purchase.locator('input[name="qty"]').fill('4');
+  await purchase.locator('input[name="price"]').fill('5');
+  await purchase.getByRole('button', { name: 'Add line' }).click();
+  await purchase.getByRole('button', { name: 'Post purchase' }).click(); // no supplier, no bill no
+  await expect(purchase.getByRole('button', { name: 'Retry same purchase' })).toBeVisible();
+  await purchase.getByRole('button', { name: 'Retry same purchase' }).click();
+  await expect(page.getByRole('status')).toContainText('Purchase posted');
+  await page.goto('/stock-adjust');
+  await page.getByLabel('Item').selectOption({ label: 'Loose item' });
+  await expect(page.getByLabel('expected stock')).toContainText('Expected 4');
+  expect(calls).toBe(2);
+});

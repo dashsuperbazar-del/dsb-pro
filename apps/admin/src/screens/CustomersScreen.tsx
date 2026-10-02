@@ -123,7 +123,7 @@ export function CustomersScreen() {
     void refreshBase().catch((e) => setError(String(e)));
   }, []);
   useEffect(() => {
-    void refreshCustomer(selected, shopId).catch((e) =>
+    void refreshCustomer(selectedRef.current, shopId).catch((e) =>
       setError(`Could not load this customer (${String(e)}). Choose the customer again to retry.`),
     );
   }, [selected, shopId]);
