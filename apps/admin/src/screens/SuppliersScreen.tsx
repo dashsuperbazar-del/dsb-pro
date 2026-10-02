@@ -584,7 +584,7 @@ export function SuppliersScreen() {
                 <tr>
                   <th>Date</th>
                   <th>Amount</th>
-                  <th>Allocated</th>
+                  <th>Assigned</th>
                   <th>Advance left</th>
                   <th>Mode</th>
                   <th>Status</th>
