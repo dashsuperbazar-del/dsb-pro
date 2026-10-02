@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   getDayBook,
   getDefaultShopId,
@@ -39,6 +39,9 @@ export function ExpensesScreen() {
     mode: string;
   } | null>(null);
   const [busy, setBusy] = useState(false);
+  // True while the pending expense is the one typed into this form. A restored entry (from another
+  // window or a reload) is not, so finishing it must not wipe what the form holds (Codex P2).
+  const formHoldsPending = useRef(false);
   const [msg, setMsg] = useState('');
   // Set when this device's saved entries cannot be read: new entries stay blocked.
   const [storageBlocked, setStorageBlocked] = useState(false);
@@ -99,6 +102,7 @@ export function ExpensesScreen() {
     }
     setBusy(true);
     setMsg('');
+    if (!isRetry) formHoldsPending.current = true;
     setPending(req);
     const outcome = await postExpenseOutcome({
       isRetry,
@@ -135,7 +139,8 @@ export function ExpensesScreen() {
     clearPendingIntent(pendingKey(shop), clientId);
     setClientId(crypto.randomUUID());
     setMsg('Expense posted.');
-    form.reset();
+    if (formHoldsPending.current) form.reset();
+    formHoldsPending.current = false;
     restoreNext();
     setBusy(false);
     try {
@@ -150,6 +155,7 @@ export function ExpensesScreen() {
       pendingKey(shop),
     );
     if (next.ok && next.value) {
+      formHoldsPending.current = false;
       setPending(next.value.req);
       setClientId(next.value.clientId);
       setMsg(

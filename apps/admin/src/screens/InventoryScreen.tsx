@@ -359,7 +359,9 @@ export function InventoryScreen() {
         setError(`Not posted: ${outcome.message}.${anotherNote}`);
         return;
       }
-      setPurchaseCart([]);
+      // Only a purchase built from this cart (it carries the cart's id) clears the cart when it posts;
+      // a restored entry from another window leaves the user's cart intact (Codex P2).
+      if (request.clientId === purchaseClientId) setPurchaseCart([]);
       // Refresh before announcing, as before: the screen is settled when the message appears.
       let refreshNote = '';
       await refresh().catch((e) => (refreshNote = ` (Refresh failed: ${String(e)})`));
