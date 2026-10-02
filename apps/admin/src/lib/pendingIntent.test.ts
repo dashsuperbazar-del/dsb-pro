@@ -64,4 +64,43 @@ describe('pending intent slot', () => {
     clearPendingIntent('k', 'old');
     expect(store.size).toBe(0);
   });
+  it('a retry of a stored entry is allowed while another entry exists (V003 VF-009)', () => {
+    store.set('k:a', JSON.stringify({ clientId: 'a', amount: 1, savedAt: 1 }));
+    store.set('k:b', JSON.stringify({ clientId: 'b', amount: 2, savedAt: 2 }));
+    expect(() =>
+      savePendingIntent('k', { clientId: 'a', amount: 1 }, { retry: true }),
+    ).not.toThrow();
+    expect(() =>
+      savePendingIntent('k', { amount: 2, clientId: 'b' }, { retry: true }),
+    ).not.toThrow();
+    // stored copies are not rewritten
+    expect(JSON.parse(store.get('k:a') as string).savedAt).toBe(1);
+  });
+  it('a retry with a different payload than stored is refused', () => {
+    store.set('k:a', JSON.stringify({ clientId: 'a', amount: 1, savedAt: 1 }));
+    expect(() => savePendingIntent('k', { clientId: 'a', amount: 9 }, { retry: true })).toThrow(
+      /differs/,
+    );
+  });
+  it('a new entry is still refused while another is unconfirmed', () => {
+    store.set('k:a', JSON.stringify({ clientId: 'a', amount: 1, savedAt: 1 }));
+    expect(() => savePendingIntent('k', { clientId: 'c', amount: 3 })).toThrow(/Another window/);
+  });
+  it('a retry whose stored copy is gone is stored again even with others present', () => {
+    store.set('k:b', JSON.stringify({ clientId: 'b', amount: 2, savedAt: 2 }));
+    expect(() =>
+      savePendingIntent('k', { clientId: 'a', amount: 1 }, { retry: true }),
+    ).not.toThrow();
+    expect(store.has('k:a')).toBe(true);
+  });
+  it('a retry whose in-memory request has undefined fields matches its stored copy (V4 review)', () => {
+    savePendingIntent('k', { clientId: 'p', partyId: undefined, billNo: undefined, lines: [1] });
+    expect(() =>
+      savePendingIntent(
+        'k',
+        { clientId: 'p', partyId: undefined, billNo: undefined, lines: [1] },
+        { retry: true },
+      ),
+    ).not.toThrow();
+  });
 });

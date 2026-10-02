@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   getDayBook,
   getDefaultShopId,
@@ -39,6 +39,9 @@ export function ExpensesScreen() {
     mode: string;
   } | null>(null);
   const [busy, setBusy] = useState(false);
+  // True while the pending expense is the one typed into this form. A restored entry (from another
+  // window or a reload) is not, so finishing it must not wipe what the form holds (Codex P2).
+  const formHoldsPending = useRef(false);
   const [msg, setMsg] = useState('');
   // Set when this device's saved entries cannot be read: new entries stay blocked.
   const [storageBlocked, setStorageBlocked] = useState(false);
@@ -92,13 +95,14 @@ export function ExpensesScreen() {
     }
     // Durable before dispatch, or not sent at all.
     try {
-      savePendingIntent(pendingKey(shop), { req, clientId });
+      savePendingIntent(pendingKey(shop), { req, clientId }, { retry: isRetry });
     } catch (err) {
       setMsg(err instanceof Error ? err.message : String(err));
       return;
     }
     setBusy(true);
     setMsg('');
+    if (!isRetry) formHoldsPending.current = true;
     setPending(req);
     const outcome = await postExpenseOutcome({
       isRetry,
@@ -124,6 +128,7 @@ export function ExpensesScreen() {
       clearPendingIntent(pendingKey(shop), clientId);
       setClientId(crypto.randomUUID());
       setMsg(`Not posted: ${outcome.message}`);
+      restoreNext();
       setBusy(false);
       return;
     }
@@ -134,12 +139,29 @@ export function ExpensesScreen() {
     clearPendingIntent(pendingKey(shop), clientId);
     setClientId(crypto.randomUUID());
     setMsg('Expense posted.');
-    form.reset();
+    if (formHoldsPending.current) form.reset();
+    formHoldsPending.current = false;
+    restoreNext();
     setBusy(false);
     try {
       await load();
     } catch (err) {
       setMsg(`Expense posted. (Totals could not refresh: ${String(err)})`);
+    }
+  }
+  // Another window's unconfirmed expense may still be stored: bring it up next, same id (VF-009).
+  function restoreNext() {
+    const next = loadPendingIntent<{ req: NonNullable<typeof pending>; clientId: string }>(
+      pendingKey(shop),
+    );
+    if (next.ok && next.value) {
+      formHoldsPending.current = false;
+      setPending(next.value.req);
+      setClientId(next.value.clientId);
+      setMsg(
+        (m) =>
+          `${m} Another expense from this device is not confirmed yet — press "Retry same expense".`,
+      );
     }
   }
   async function undo() {

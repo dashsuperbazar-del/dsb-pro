@@ -316,3 +316,117 @@ test('customer receipt: when the first window succeeds, the waiting window does 
   await expect(other.getByText(/Another window just recorded a payment/)).toBeVisible();
   expect(calls).toBe(1);
 });
+
+test('expense: two unconfirmed expenses from racing windows are each finished once (VF-009)', async ({
+  page,
+}) => {
+  await createOwnerShop(page);
+  await page.goto('/expenses');
+  let calls = 0;
+  await page.route('**/rpc/post_expense', async (route) => {
+    if (calls++ === 0) {
+      await route.fetch(); // A commits, answer lost
+      await route.abort('connectionreset');
+    } else await route.continue();
+  });
+  await page.getByLabel('Category').fill('Rent');
+  await page.getByLabel('Amount ₹').fill('100');
+  await page.getByRole('button', { name: 'Post expense' }).click();
+  await expect(page.getByRole('status')).toContainText('Not confirmed');
+  // A second window raced past the check and stored B (never sent) under its own key.
+  await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((k) => k.startsWith('dsb-pending-expense:'))!;
+    const a = JSON.parse(localStorage.getItem(key)!);
+    const prefix = key.slice(0, key.lastIndexOf(':'));
+    const b = {
+      req: { ...a.req, category: 'Transport', description: 'Transport', amountPaise: 2500 },
+      clientId: crypto.randomUUID(),
+      savedAt: a.savedAt + 1,
+    };
+    localStorage.setItem(`${prefix}:${b.clientId}`, JSON.stringify(b));
+  });
+  await page.reload();
+  await page.getByRole('button', { name: 'Retry same expense' }).click();
+  await expect(page.getByRole('status')).toContainText('Expense posted.');
+  await expect(page.getByRole('status')).toContainText('Another expense from this device');
+  await page.getByRole('button', { name: 'Retry same expense' }).click();
+  await expect(page.getByRole('status')).toContainText('Expense posted.');
+  await expect(page.getByRole('button', { name: 'Post expense' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Expenses today' })).toContainText('125.00');
+});
+
+test('customer receipt: finishing customer A’s receipt after switching to B never shows or voids A’s payment under B (VF-007)', async ({
+  page,
+}) => {
+  await createOwnerShop(page);
+  await page.getByRole('link', { name: 'Customers & ledger' }).click();
+  await page.getByLabel('Name').fill('Customer B');
+  await page.getByRole('button', { name: 'Create customer' }).click();
+  await expect(page.getByText(/Balance ₹0.00/)).toBeVisible();
+  await page.getByLabel('Name').fill('Customer A');
+  await page.getByRole('button', { name: 'Create customer' }).click();
+  await expect(page.getByText(/Customer A created/)).toBeVisible();
+  await expect(page.locator('strong', { hasText: 'Customer A' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Record payment' })).toBeEnabled();
+
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((r) => (release = r));
+  let committed = false;
+  await page.route('**/rpc/record_customer_payment_v2', async (route) => {
+    const response = await route.fetch();
+    committed = true;
+    await gate;
+    await route.fulfill({ response });
+  });
+  await page.getByLabel('Amount ₹').fill('30');
+  await page.getByRole('button', { name: 'Record payment' }).click();
+  await expect.poll(() => committed).toBe(true);
+
+  await page
+    .locator('select')
+    .filter({ has: page.locator('option', { hasText: 'Customer B' }) })
+    .first()
+    .selectOption({ label: 'Customer B' });
+  release(); // A's receipt completes while B is selected
+  await expect(page.getByText(/Payment recorded/)).toBeVisible();
+  const ledger = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Customer ledger' }) });
+  await expect(page.locator('strong', { hasText: 'Customer B' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Record payment' })).toBeEnabled();
+  await expect(ledger.getByRole('button', { name: 'Void payment' })).toHaveCount(0);
+  await expect(ledger).not.toContainText('PAYMENT');
+});
+
+test('purchase without a supplier: a 502 after commit is retried in the same window and posts once (V4 review)', async ({
+  page,
+}) => {
+  await createOwnerShop(page);
+  await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await page.getByPlaceholder('Item name').fill('Loose item');
+  await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
+  await page.getByRole('button', { name: 'Create item' }).click();
+  await expect(page.getByRole('status')).toContainText('Created Loose item');
+  let calls = 0;
+  await page.route('**/rpc/post_purchase', async (route) => {
+    if (calls++ === 0) {
+      await route.fetch();
+      await route.fulfill({ status: 502, contentType: 'text/plain', body: 'Bad Gateway' });
+    } else await route.continue();
+  });
+  const purchase = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
+  await purchase.locator('select[name="itemId"]').selectOption({ label: 'Loose item' });
+  await purchase.locator('input[name="qty"]').fill('4');
+  await purchase.locator('input[name="price"]').fill('5');
+  await purchase.getByRole('button', { name: 'Add line' }).click();
+  await purchase.getByRole('button', { name: 'Post purchase' }).click(); // no supplier, no bill no
+  await expect(purchase.getByRole('button', { name: 'Retry same purchase' })).toBeVisible();
+  await purchase.getByRole('button', { name: 'Retry same purchase' }).click();
+  await expect(page.getByRole('status')).toContainText('Purchase posted');
+  await page.goto('/stock-adjust');
+  await page.getByLabel('Item').selectOption({ label: 'Loose item' });
+  await expect(page.getByLabel('expected stock')).toContainText('Expected 4');
+  expect(calls).toBe(2);
+});
