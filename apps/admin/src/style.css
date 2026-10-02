@@ -168,6 +168,10 @@ td small {
   size: 80mm auto;
   margin: 4mm;
 }
+@page thermal58 {
+  size: 58mm auto;
+  margin: 3mm;
+}
 @page invoiceA4 {
   size: A4;
   margin: 12mm;
@@ -202,6 +206,12 @@ td small {
     page: thermal;
     width: 72mm;
     font-size: 9pt;
+  }
+  /* D2a: 58mm paper (about 52mm printable) from the shop's printer width setting. */
+  .receipt-w58 {
+    page: thermal58;
+    width: 52mm;
+    font-size: 8pt;
   }
   .receipt-thermal h1 {
     font-size: 14pt;

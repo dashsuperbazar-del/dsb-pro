@@ -41,6 +41,8 @@ import {
   completeHeldCartForResume,
   discardHeldCartById,
 } from '../lib/offlineSync';
+import { ReceiptHeader } from '../components/ReceiptHeader';
+import { loadShopProfile, type ProfileLoad } from '../lib/shopProfile';
 
 type CartLine = {
   item: Item;
@@ -112,8 +114,13 @@ export function PosScreen() {
   const [catalogReady, setCatalogReady] = useState(false);
   const [offlineSales, setOfflineSales] = useState<OfflineSaleRecord[]>([]);
   const [localReceipt, setLocalReceipt] = useState<OfflineSaleRecord | null>(null);
+  const [profile, setProfile] = useState<ProfileLoad | null>(null);
   const [balances, setBalances] = useState<Record<string, number>>({});
   const [shopId, setShopId] = useState('');
+  // Warm the shop-profile cache while online so a later offline receipt can still name the shop.
+  useEffect(() => {
+    if (shopId) void loadShopProfile(shopId).then(setProfile);
+  }, [shopId]);
   const [tenantId, setTenantId] = useState('');
   const [businessDate, setBusinessDate] = useState('');
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -534,6 +541,7 @@ export function PosScreen() {
     }
   }
   function printLocalReceipt(sale: OfflineSaleRecord) {
+    // Uses the profile loaded (or read from cache) when POS opened; never waits on the network.
     setLocalReceipt(sale);
     window.setTimeout(() => window.print(), 0);
   }
@@ -1056,9 +1064,11 @@ export function PosScreen() {
         </section>
       )}
       {localReceipt && (
-        <article class="receipt-print receipt-thermal" aria-label="provisional offline receipt">
-          <header>
-            <h1>DSB Store</h1>
+        <article
+          class={`receipt-print receipt-thermal${profile?.profile?.printerWidth === '58mm' ? ' receipt-w58' : ''}`}
+          aria-label="provisional offline receipt"
+        >
+          <ReceiptHeader load={profile}>
             <p>
               <strong>
                 {localReceipt.status === 'QUEUED'
@@ -1076,7 +1086,7 @@ export function PosScreen() {
               <br />
               Date {localReceipt.businessDate}
             </p>
-          </header>
+          </ReceiptHeader>
           <table>
             <thead>
               <tr>
