@@ -4,9 +4,10 @@ Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/CO
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
-- `main` at last update: `a6cd057` (R1 merged, PR #52; deploy dispatched). V2 deployed (run 36901510335).
-  Migrations 0001–0052.
-- Last merged: **R1** compare page. In review: **V3** cross-window receipt lock (no migration).
+- `main` at last update: `57413c3` (V3 merged, PR #53; deploy run 36909385797 green; R1 + V3 live).
+  Migrations 0001–0052 (immutable). In review: **R0b** return round-off (mig 0053, group `r0b`).
+- Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
+  partial returns carry item value only. Extra charges still stay with the shop.
 - Live DB: D1 applied 2026-10-01 (run 36894777286, only group `d1` pending; verify green). Fully upgraded.
   D1 deployed after the apply (run 36897126086, green).
 - Verifier (GPT) log V002 (2026-10-01): CHANGES REQUIRED for VF-005 (intent not durable before dispatch),

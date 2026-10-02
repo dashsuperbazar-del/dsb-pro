@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: $0 <database-url> <foundation|hardening|phase65|batcha|batchb|p1|p2|c0|c1|c2|c3|c3b|r0|d1|all> [...]" >&2
+  echo "usage: $0 <database-url> <foundation|hardening|phase65|batcha|batchb|p1|p2|c0|c1|c2|c3|c3b|r0|d1|r0b|all> [...]" >&2
   exit 2
 }
 
@@ -15,7 +15,7 @@ repo_root=$(cd "$script_dir/.." && pwd)
 
 for group in "$@"; do
   case "$group" in
-    foundation|hardening|phase65|batcha|batchb|p1|p2|c0|c1|c2|c3|c3b|r0|d1|all) ;;
+    foundation|hardening|phase65|batcha|batchb|p1|p2|c0|c1|c2|c3|c3b|r0|d1|r0b|all) ;;
     *) echo "Unknown Phase 6 migration group: $group" >&2; usage ;;
   esac
 done

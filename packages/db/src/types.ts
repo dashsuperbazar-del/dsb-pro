@@ -1951,6 +1951,7 @@ export type Database = {
           notes: string | null
           posted_at: string | null
           request_fingerprint: string
+          round_off_paise: number
           sale_invoice_id: string
           shop_id: string
           status: string
@@ -1974,6 +1975,7 @@ export type Database = {
           notes?: string | null
           posted_at?: string | null
           request_fingerprint: string
+          round_off_paise?: number
           sale_invoice_id: string
           shop_id: string
           status?: string
@@ -1997,6 +1999,7 @@ export type Database = {
           notes?: string | null
           posted_at?: string | null
           request_fingerprint?: string
+          round_off_paise?: number
           sale_invoice_id?: string
           shop_id?: string
           status?: string
