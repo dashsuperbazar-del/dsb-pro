@@ -243,7 +243,7 @@ export async function listSupplierPayments(
   const { data, error } = await getSupabaseClient()
     .from('payments')
     .select(
-      'id,business_date,amount_paise,mode,reference,status,created_at,payment_allocations(amount_paise,status)',
+      'id,business_date,amount_paise,mode,reference,status,created_at,payment_allocations(amount_paise,status),opening_settlements(amount_paise,status)',
     )
     .eq('shop_id', shopId)
     .eq('party_id', partyId)
@@ -256,11 +256,13 @@ export async function listSupplierPayments(
     (data ?? []) as unknown as Array<
       Omit<SupplierPayment, 'allocated_paise'> & {
         payment_allocations: { amount_paise: number; status: string }[];
+        opening_settlements?: { amount_paise: number; status: string }[] | null;
       }
     >
-  ).map(({ payment_allocations, ...p }) => ({
+  ).map(({ payment_allocations, opening_settlements, ...p }) => ({
     ...p,
-    allocated_paise: payment_allocations
+    // O3: cash settled against an opening balance (O2) is assigned too, so it is never offered again.
+    allocated_paise: [...payment_allocations, ...(opening_settlements ?? [])]
       .filter((a) => a.status === 'POSTED')
       .reduce((s, a) => s + a.amount_paise, 0),
   }));

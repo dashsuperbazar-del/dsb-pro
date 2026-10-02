@@ -85,4 +85,14 @@ test('owner records a supplier opening, sees it in balances, voids it and re-ent
   await expect(settle.getByRole('status')).toContainText('Payment settled against the opening');
   await expect(settle.getByLabel('Opening')).toContainText('₹150.00 left');
   await expect(settle.locator('tbody tr')).toContainText('₹300.00');
+
+  // O3: the supplier's payment history counts the settled cash as assigned (nothing left to allocate).
+  await page.goto('/');
+  await page.getByRole('link', { name: 'Suppliers & payments' }).click();
+  await page.getByLabel('Supplier').selectOption({ label: 'Opening Traders' });
+  const hist = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Payment history' }) });
+  await expect(hist.locator('tbody tr').first()).toContainText('₹300.00');
+  await expect(hist.locator('tbody tr').first().locator('td').nth(3)).toHaveText('₹0.00');
 });

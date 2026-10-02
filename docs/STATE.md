@@ -4,8 +4,8 @@ Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/CO
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
-- `main` at last update: `8b68b15` (O1 merged, PR #56; `o1` applied live run 734, only o1; deployed run 735).
-  Migrations 0001–0054 (immutable). In review: **O2** (0055 `opening_settlements`, group `o2`). H3 waits on the user.
+- `main` at last update: `9475aa4` (O2 merged, PR #57; `o2` live apply run 740).
+  Migrations 0001–0055 (immutable). In review: **O3** (supplier payment history counts settlements; UI only).
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
   partial returns carry item value, capped so a bill's returns never exceed what was billed for its
   items (total - extra charges). Extra charges still stay with the shop.
@@ -30,16 +30,16 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
   correct) instead of editing the 5 live payment writers; a new BEFORE INSERT trigger on payment_allocations
   counts settlements so a payment is never assigned twice (DSB_ALLOCATION_EXCEEDS_PAYMENT); voiding a payment
   voids its settlements; a settled opening cannot be voided. Credit (negative) openings are not applied to
-  bills (stay as credits in the net). Known gap: receipt/payment screens still show the pre-settlement
-  unassigned amount; an allocation over it is refused by the trigger (definitive, nothing written).
+  bills (stay as credits in the net). Known gap: the supplier payment screen showed the pre-settlement
+  unassigned amount; an allocation over it is refused by the trigger. Closed for suppliers by O3 (payment
+  history counts settlements); the customer screen only allocates at receipt time, so no gap there.
 - Watch (2026-10-02, local parallel e2e): recovery 'expense crash after commit' and suppliers 'lost
   response' timed out at 30 s under load, both passed alone. Not O2 code; check CI runs.
-- Next: **O1 opening balances** (manual customer/supplier dues as of a cutover date, immutable ledger
-  entries; opening stock via existing stock count) → **H3** dated device exercise with the user
-  (offline entry → restart → reconnect, each entry exactly once).
-- New M1 (daily-usable) gate: O1 merged + H3 passed + first real-data week with clean Compare page and
-  invariant check.
-- Milestone in progress: **M1 Daily-usable** (exit = O1 + H3 + first clean real-data week).
+- Decision 2026-10-02 (user): build, merge, apply and deploy the next 5 packets, each only on green CI.
+  Chosen (M2 list, daily-use first): O3 settlement-aware supplier payments → F1 fiscal-year bill
+  numbering → D2 receipt snapshots → D4 health v2 → D3 export v5.
+- M1 gate (daily-usable): O1 ✓ + H3 (user, offline→restart→reconnect, each entry once) + first clean
+  real-data week (Compare page + invariants). Waiting on the user for H3 and the cutover date.
 
 ## Workflow (single builder)
 failing tests → migration → adapters/UI → `pnpm lint && pnpm typecheck && pnpm test` (+pgTAP) →
