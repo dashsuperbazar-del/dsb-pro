@@ -4,8 +4,10 @@
 -- "balance credit"), while a rounded-up bill kept up to 0.50. Now all returns of a bill together
 -- equal what was billed (extra charges still stay with the shop, unchanged). Partial returns carry
 -- item value only; the completing return stores the bill's round-off in sale_returns.round_off_paise.
+-- Upper bound only: the adjustment is at most the bill's +50 round-up; downward it is bounded by the
+-- non-negative return total (existing total_paise >= 0 check).
 alter table sale_returns add column round_off_paise bigint not null default 0
-  check (round_off_paise between -50 and 50);
+  check (round_off_paise <= 50);
 
 -- The void path must keep round_off_paise unchanged like every other money field.
 create or replace function phase65_sale_return_guard() returns trigger language plpgsql as $$
@@ -37,7 +39,7 @@ declare
  v_purchase purchase_bills%rowtype; v_purchase_line purchase_bill_items%rowtype; v_purchase_return uuid;
  v_line jsonb; v_ord bigint; v_qty numeric; v_base numeric; v_prior_base numeric; v_prior_amount bigint;
  v_cap bigint; v_amount bigint; v_total bigint:=0; v_disposition text; v_seq bigint; v_doc text;
- v_received bigint:=0; v_prior_refunds bigint:=0; v_refund bigint:=0; v_round bigint:=0;
+ v_received bigint:=0; v_prior_refunds bigint:=0; v_refund bigint:=0; v_round bigint:=0; v_prior_total bigint; v_remaining bigint;
 begin
  if v_tenant is null then raise exception 'not authenticated'; end if;
  if v_type not in ('SALE','PURCHASE') then raise exception 'return type must be SALE or PURCHASE'; end if;
@@ -123,18 +125,27 @@ begin
      v_total:=v_total+v_amount;
    end loop;
 
-   -- R0b (user decision 2026-10-02): the return that completes a rounded bill also reverses the bill's
-   -- round-off, so all returns of a bill together equal what was billed. Partial returns carry item
-   -- value only. "Completes" = after this return every line is fully returned (DRAFT/POSTED returns,
-   -- this one included); a voided completing return frees the round-off for the next one.
-   if v_sale.round_off_paise<>0 and not exists(
+   -- R0b (user decision 2026-10-02), rounded bills only: all returns of a bill together never exceed
+   -- what was billed for its items (total - extra charges), and the return that completes the bill
+   -- (every line fully returned, this one included) takes exactly what remains, i.e. it reverses the
+   -- bill's round-off. A partial return carries item value, capped at what remains (a rounded-down
+   -- bill's bigger item returned first cannot exceed the bill). A voided return frees its share.
+   -- The adjustment is stored in round_off_paise; the bill's returns are serialized by the lock above.
+   if v_sale.round_off_paise<>0 then
+     select coalesce(sum(total_paise),0) into v_prior_total from sale_returns
+       where tenant_id=v_tenant and sale_invoice_id=v_sale.id and status='POSTED' and id<>v_sale_return;
+     v_remaining:=greatest(v_sale.total_paise-v_sale.extra_charges_paise-v_prior_total,0);
+     if not exists(
      select 1 from sale_invoice_items li
      where li.tenant_id=v_tenant and li.sale_invoice_id=v_sale.id
        and li.base_qty>coalesce((select sum(sri.base_qty) from sale_return_items sri
          join sale_returns sr on sr.tenant_id=sri.tenant_id and sr.id=sri.sale_return_id
          where sri.tenant_id=v_tenant and sri.sale_invoice_item_id=li.id and sr.status in ('DRAFT','POSTED')),0))
-   then
-     v_round:=v_sale.round_off_paise;
+     then
+       v_round:=v_remaining-v_total;
+     elsif v_total>v_remaining then
+       v_round:=v_remaining-v_total;
+     end if;
      v_total:=v_total+v_round;
    end if;
 

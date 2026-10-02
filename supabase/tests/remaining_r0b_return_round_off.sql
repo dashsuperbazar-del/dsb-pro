@@ -1,7 +1,7 @@
 -- Packet R0b (mig 0053): the return that completes a rounded bill also reverses its round-off (user decision 2026-10-02).
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(17);
+select plan(20);
 insert into auth.users(id) values ('a0a00000-0000-0000-0000-000000000001');
 set role authenticated;
 select set_config('request.jwt.claims','{"sub":"a0a00000-0000-0000-0000-000000000001","role":"authenticated"}',true);
@@ -67,6 +67,30 @@ select is((select sum(total_paise) from sale_returns where sale_invoice_id=(pg_t
 -- E: a void of the completing return, then the same quantity returned again, carries it again (once).
 select lives_ok($$select void_return('SALE',(select id from sale_returns where client_id='D-r2'),'D-r2-void')$$,'completing return can be voided');
 select is((pg_temp.ret('D','D-r3')).round_off_paise,2::bigint,'the new completing return carries the round-off once');
+
+-- F (review MAJOR): 1.40 + 0.09 = 1.49 -> 1.00. Returning the 1.40 line first may not exceed the
+-- bill, and the completing 0.09 return must not go negative (it used to fail and block the last item).
+insert into items(tenant_id,name,unit1,client_id) values(current_tenant_id(),'Big','piece','r0b-big'),(current_tenant_id(),'Small','piece','r0b-small');
+select set_item_price((select id from items where client_id='r0b-big'),current_setting('r0.shop')::uuid,'retail',1::smallint,140::bigint,'r0b-p1');
+select set_item_price((select id from items where client_id='r0b-small'),current_setting('r0.shop')::uuid,'retail',1::smallint,9::bigint,'r0b-p2');
+select post_purchase(current_setting('r0.shop')::uuid,null,'R0B-SEED','2026-09-01',0,0,'r0b-seed',
+ jsonb_build_array(jsonb_build_object('item_id',(select id from items where client_id='r0b-big'),'unit_level',1,'qty',5,'unit_price_paise',50),
+                   jsonb_build_object('item_id',(select id from items where client_id='r0b-small'),'unit_level',1,'qty',5,'unit_price_paise',5)),null);
+select lives_ok($$select r0_sync_post_sale('r0-phone',1,current_setting('r0.shop')::uuid,null,'2026-09-20',0,0,'F',
+  jsonb_build_array(
+    jsonb_build_object('item_id',(select id from items where client_id='r0b-big'),'unit_level',1,'qty',1,'price_kind','retail','discount_paise',0,'expected_unit_price_paise',140),
+    jsonb_build_object('item_id',(select id from items where client_id='r0b-small'),'unit_level',1,'qty',1,'price_kind','retail','discount_paise',0,'expected_unit_price_paise',9)),
+  jsonb_build_array(jsonb_build_object('amount_paise',100,'mode','cash')),null)$$,'1.49 -> 1.00 two-line sale posts');
+create function pg_temp.retline(p_item text,p_rc text) returns sale_returns language plpgsql as $$
+declare r sale_returns;
+begin
+ perform post_return('SALE',(pg_temp.inv('F')).id,'2026-09-21',p_rc,jsonb_build_array(jsonb_build_object(
+   'sale_invoice_item_id',(select li.id from sale_invoice_items li join items i on i.id=li.item_id where li.sale_invoice_id=(pg_temp.inv('F')).id and i.client_id=p_item),
+   'qty',1,'disposition','RETURN_TO_SELLABLE')),null);
+ select * into r from sale_returns where client_id=p_rc; return r;
+end $$;
+select is((pg_temp.retline('r0b-big','F-r1')).total_paise,100::bigint,'bigger line returned first is capped at the bill (1.00)');
+select is((pg_temp.retline('r0b-small','F-r2')).total_paise,0::bigint,'completing return takes what remains (0), never negative');
 
 select is((check_invariants()->>'ok')::boolean,true,'invariants hold with return round-off');
 
