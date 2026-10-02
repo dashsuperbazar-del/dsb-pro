@@ -58,7 +58,7 @@ export const uuidAck = (data: unknown): string | null => (isUuid(data) ? data : 
 // access error (row-level security hides rows from a user without access, so absence is unprovable).
 const ACCESS = /not permitted|permission|access|tenant|shop (is )?(not|un)/i;
 export async function verifyRetryRejection(
-  table: 'expenses' | 'purchase_bills' | 'stock_counts',
+  table: 'expenses' | 'purchase_bills' | 'stock_counts' | 'account_openings',
   clientId: string,
   rejected: { kind: 'rejected'; code: string; message: string },
 ): Promise<WriteOutcome<string>> {
@@ -221,16 +221,19 @@ async function readStockCountStatus(countId: string): Promise<WriteOutcome<strin
 }
 
 // O1 opening balances. Positive = the customer owes the shop / the shop owes the supplier.
-export function recordOpeningOutcome(input: {
-  shopId: string;
-  kind: 'CUSTOMER' | 'SUPPLIER';
-  accountId: string;
-  asOfDate: string;
-  amountPaise: number;
-  reason: string;
-  clientId: string;
-}): Promise<WriteOutcome<string>> {
-  return rpcOutcome(
+export async function recordOpeningOutcome(
+  input: {
+    shopId: string;
+    kind: 'CUSTOMER' | 'SUPPLIER';
+    accountId: string;
+    asOfDate: string;
+    amountPaise: number;
+    reason: string;
+    clientId: string;
+  },
+  isRetry = false,
+): Promise<WriteOutcome<string>> {
+  const outcome = await rpcOutcome(
     'record_account_opening',
     {
       p_shop_id: input.shopId,
@@ -243,6 +246,10 @@ export function recordOpeningOutcome(input: {
     },
     uuidAck,
   );
+  // A refused retry is checked by client id: the first send may have committed (O1 Codex review).
+  return outcome.kind === 'rejected' && isRetry
+    ? verifyRetryRejection('account_openings', input.clientId, outcome)
+    : outcome;
 }
 export function voidOpeningOutcome(
   openingId: string,

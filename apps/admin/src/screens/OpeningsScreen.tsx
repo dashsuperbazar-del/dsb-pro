@@ -110,11 +110,14 @@ export function OpeningsScreen() {
     setPending(cur);
     setBusy(true);
     setMsg('');
-    const outcome = await recordOpeningOutcome({
-      shopId: shop,
-      ...cur.req,
-      clientId: cur.clientId,
-    });
+    const outcome = await recordOpeningOutcome(
+      {
+        shopId: shop,
+        ...cur.req,
+        clientId: cur.clientId,
+      },
+      pending !== null,
+    );
     if (outcome.kind === 'unknown') {
       setMsg(
         `Not confirmed: ${outcome.message}. Press "Retry same opening" — it is never recorded twice.`,

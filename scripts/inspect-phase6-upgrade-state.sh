@@ -195,7 +195,7 @@ select
   (coalesce((select present from _r0b_receipt_check), false)) as r0b_receipt,
   (exists(select 1 from information_schema.columns where table_schema='public' and table_name='sale_returns' and column_name='round_off_paise')) as r0b_schema,
   (coalesce((select present from _o1_receipt_check), false)) as o1_receipt,
-  (to_regclass('public.account_openings') is not null and to_regprocedure('public.record_account_opening(uuid,text,uuid,date,bigint,text,text)') is not null) as o1_schema;
+  (to_regclass('public.account_openings') is not null and to_regprocedure('public.record_account_opening(uuid,text,uuid,date,bigint,text,text)') is not null and to_regprocedure('public.void_account_opening(uuid,text)') is not null and to_regprocedure('public.o1_opening_guard()') is not null and exists(select 1 from pg_trigger where tgname='account_openings_guard' and tgrelid='public.account_openings'::regclass)) as o1_schema;
 SQL
 )
 read -r foundation hardening phase65 batcha batchb p1_shape p1_rls p1_no_grants p1_receipt p2_receipt p2_body c0_receipt c0_schema c1_receipt c1_schema c2_receipt c2_schema c3_receipt c3_schema c3b_receipt c3b_schema r0_receipt r0_schema d1_receipt d1_schema r0b_receipt r0b_schema o1_receipt o1_schema \
