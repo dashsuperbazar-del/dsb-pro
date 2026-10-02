@@ -4,8 +4,8 @@ Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/CO
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
-- `main` at last update: `50b77ab` (D2a merged, PR #59; deploy dispatched 2026-10-02).
-  Migrations 0001–0055 (immutable). In review: **D2b** (0056 settings guard, group `d2b`).
+- `main` at last update: `c9e2854` (D2b merged, PR #60; `d2b` applied live run 755, only d2b; deployed).
+  Migrations 0001–0056 (immutable). In review: **D4a** health panel lists every invariant check (UI only).
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
   partial returns carry item value, capped so a bill's returns never exceed what was billed for its
   items (total - extra charges). Extra charges still stay with the shop.
@@ -37,8 +37,8 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
   response' timed out at 30 s under load, both passed alone. Not O2 code; check CI runs.
 - Decision 2026-10-02 (user): build, merge, apply and deploy the next 5 packets, each only on green CI.
   Plan (each D/F packet split to keep one PR small): O3 ✓ (deployed run 745) → D2a ✓ receipt header (shop name/address/
-  GSTIN, cached for offline, 58mm layout) → D2b settings guard (row lock, IANA timezone, owner-only
-  negative stock, fiscal month frozen until F1) → D4a readiness panel → F1
+  GSTIN, cached for offline, 58mm layout) → D2b ✓ settings guard (row lock, IANA timezone, owner-only
+  negative stock, fiscal month frozen until F1) → D4a health panel (all invariant codes by name, UNKNOWN on failure) → F1
   or D2c snapshots (decide on risk). Receipts no longer print "DSB Store".
 - M1 gate (daily-usable): O1 ✓ + H3 (user, offline→restart→reconnect, each entry once) + first clean
   real-data week (Compare page + invariants). Waiting on the user for H3 and the cutover date.
