@@ -58,7 +58,7 @@ export const uuidAck = (data: unknown): string | null => (isUuid(data) ? data : 
 // access error (row-level security hides rows from a user without access, so absence is unprovable).
 const ACCESS = /not permitted|permission|access|tenant|shop (is )?(not|un)/i;
 export async function verifyRetryRejection(
-  table: 'expenses' | 'purchase_bills' | 'stock_counts',
+  table: 'expenses' | 'purchase_bills' | 'stock_counts' | 'account_openings',
   clientId: string,
   rejected: { kind: 'rejected'; code: string; message: string },
 ): Promise<WriteOutcome<string>> {
@@ -218,4 +218,64 @@ async function readStockCountStatus(countId: string): Promise<WriteOutcome<strin
   } catch (error) {
     return { kind: 'unknown', message: error instanceof Error ? error.message : String(error) };
   }
+}
+
+// O1 opening balances. Positive = the customer owes the shop / the shop owes the supplier.
+export async function recordOpeningOutcome(
+  input: {
+    shopId: string;
+    kind: 'CUSTOMER' | 'SUPPLIER';
+    accountId: string;
+    asOfDate: string;
+    amountPaise: number;
+    reason: string;
+    clientId: string;
+  },
+  isRetry = false,
+): Promise<WriteOutcome<string>> {
+  const outcome = await rpcOutcome(
+    'record_account_opening',
+    {
+      p_shop_id: input.shopId,
+      p_account_kind: input.kind,
+      p_account_id: input.accountId,
+      p_as_of_date: input.asOfDate,
+      p_amount_paise: input.amountPaise,
+      p_reason: input.reason,
+      p_client_id: input.clientId,
+    },
+    uuidAck,
+  );
+  // A refused retry is checked by client id: the first send may have committed (O1 Codex review).
+  return outcome.kind === 'rejected' && isRetry
+    ? verifyRetryRejection('account_openings', input.clientId, outcome)
+    : outcome;
+}
+export function voidOpeningOutcome(
+  openingId: string,
+  reason: string,
+): Promise<WriteOutcome<string>> {
+  return rpcOutcome('void_account_opening', { p_opening_id: openingId, p_reason: reason }, uuidAck);
+}
+export type AccountOpening = {
+  id: string;
+  account_kind: 'CUSTOMER' | 'SUPPLIER';
+  customer_id: string | null;
+  party_id: string | null;
+  as_of_date: string;
+  amount_paise: string;
+  status: 'POSTED' | 'VOID';
+  reason: string;
+  void_reason: string | null;
+};
+export async function listOpenings(shopId: string): Promise<AccountOpening[]> {
+  const { data, error } = await getSupabaseClient()
+    .from('account_openings')
+    .select(
+      'id,account_kind,customer_id,party_id,as_of_date,amount_paise::text,status,reason,void_reason',
+    )
+    .eq('shop_id', shopId)
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as unknown as AccountOpening[];
 }

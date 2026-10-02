@@ -20,6 +20,7 @@ import { SuppliersScreen } from './screens/SuppliersScreen';
 import { ExpensesScreen } from './screens/ExpensesScreen';
 import { StockAdjustScreen } from './screens/StockAdjustScreen';
 import { CompareScreen } from './screens/CompareScreen';
+import { OpeningsScreen } from './screens/OpeningsScreen';
 import { DayBookTile } from './components/DayBookTile';
 import { BottomNav } from './components/BottomNav';
 import { t } from './lib/i18n';
@@ -58,6 +59,7 @@ export function App() {
         <Route path={appRoute.expenses} component={ExpensesScreen} />
         <Route path={appRoute.stockAdjust} component={StockAdjustScreen} />
         <Route path={appRoute.compare} component={CompareScreen} />
+        <Route path={appRoute.openings} component={OpeningsScreen} />
         <Route default component={() => <Home session={session} />} />
       </Router>
       {session.status === 'active' && <BottomNav role={session.membership.role} />}

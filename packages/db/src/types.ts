@@ -34,6 +34,95 @@ export type Database = {
   }
   public: {
     Tables: {
+      account_openings: {
+        Row: {
+          account_kind: string
+          amount_paise: number
+          as_of_date: string
+          client_id: string
+          created_at: string
+          created_by: string
+          customer_id: string | null
+          deleted_at: number | null
+          id: string
+          party_id: string | null
+          reason: string
+          shop_id: string
+          status: string
+          tenant_id: string
+          updated_at: number
+          void_reason: string | null
+          voided_at: string | null
+        }
+        Insert: {
+          account_kind: string
+          amount_paise: number
+          as_of_date: string
+          client_id: string
+          created_at?: string
+          created_by?: string
+          customer_id?: string | null
+          deleted_at?: number | null
+          id?: string
+          party_id?: string | null
+          reason: string
+          shop_id: string
+          status?: string
+          tenant_id: string
+          updated_at?: number
+          void_reason?: string | null
+          voided_at?: string | null
+        }
+        Update: {
+          account_kind?: string
+          amount_paise?: number
+          as_of_date?: string
+          client_id?: string
+          created_at?: string
+          created_by?: string
+          customer_id?: string | null
+          deleted_at?: number | null
+          id?: string
+          party_id?: string | null
+          reason?: string
+          shop_id?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: number
+          void_reason?: string | null
+          voided_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_openings_tenant_id_customer_id_fkey"
+            columns: ["tenant_id", "customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "account_openings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "account_openings_tenant_id_party_id_fkey"
+            columns: ["tenant_id", "party_id"]
+            isOneToOne: false
+            referencedRelation: "parties"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "account_openings_tenant_id_shop_id_fkey"
+            columns: ["tenant_id", "shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["tenant_id", "id"]
+          },
+        ]
+      }
       app_migration_receipts: {
         Row: {
           applied_at: string
@@ -3401,6 +3490,18 @@ export type Database = {
         }
         Returns: Json
       }
+      record_account_opening: {
+        Args: {
+          p_account_id: string
+          p_account_kind: string
+          p_amount_paise: number
+          p_as_of_date: string
+          p_client_id: string
+          p_reason: string
+          p_shop_id: string
+        }
+        Returns: string
+      }
       record_customer_payment: {
         Args: {
           p_allocations: Json
@@ -3488,6 +3589,10 @@ export type Database = {
           p_timezone: string
         }
         Returns: undefined
+      }
+      void_account_opening: {
+        Args: { p_opening_id: string; p_reason: string }
+        Returns: string
       }
       void_expense: { Args: { p_expense_id: string }; Returns: undefined }
       void_payment: { Args: { p_payment_id: string }; Returns: string }

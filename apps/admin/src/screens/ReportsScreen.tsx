@@ -189,6 +189,10 @@ export function ReportsScreen() {
           <a href={appRoute.compare}>Compare with old DSB</a> — balances, stock and day totals on
           one page, each exportable as CSV.
         </p>
+        <p>
+          <a href={appRoute.openings}>Opening balances</a> — owner only: what each customer and
+          supplier stood at on your cutover date.
+        </p>
       </section>
       <section class="card">
         <h2>Party ledger</h2>

@@ -41,3 +41,5 @@ export type { SupplierOperation, CustomerOperation, FinancialOperation, SaleAllo
 export { recordCustomerPaymentV2, allocateCustomerPaymentV2, lookupFinancialRequest, recordSupplierPayment, allocateSupplierPayment, voidSupplierPayment, releaseSupplierAllocation, lookupSupplierRequest, getSupplierOutstanding, listSupplierBills, listSupplierPayments, listSupplierAllocations, getSupplierLedger } from './supplierPayments';
 export type { WriteOutcome, PurchaseRequest, StockCountRequest } from './outcomes';
 export { postExpenseOutcome, postPurchaseOutcome, postStockCountOutcome } from './outcomes';
+export type { AccountOpening } from './outcomes';
+export { recordOpeningOutcome, voidOpeningOutcome, listOpenings } from './outcomes';
