@@ -34,6 +34,7 @@ export function SettingsScreen() {
   const [printerWidth, setPrinterWidth] = useState<PrinterWidth>('80mm');
   const [fiscalYearStartMonth, setFiscalYearStartMonth] = useState(4);
   const [allowNegativeStock, setAllowNegativeStock] = useState(false);
+  const [isOwner, setIsOwner] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -41,6 +42,7 @@ export function SettingsScreen() {
   async function refresh() {
     const membership = await getCurrentMembership();
     if (!membership) throw new Error('No tenant membership.');
+    setIsOwner(membership.role === 'owner');
     const shop = await getDefaultShopId();
     setShopId(shop);
     const s = await getShopSettings(shop);
@@ -161,6 +163,8 @@ export function SettingsScreen() {
             Fiscal year starts{' '}
             <select
               value={String(fiscalYearStartMonth)}
+              disabled
+              title="Fixed until fiscal-year invoice numbering is added"
               onChange={(e) =>
                 setFiscalYearStartMonth(Number((e.currentTarget as HTMLSelectElement).value))
               }
@@ -177,12 +181,14 @@ export function SettingsScreen() {
               <input
                 type="checkbox"
                 checked={allowNegativeStock}
+                disabled={!isOwner}
                 onChange={(e) =>
                   setAllowNegativeStock((e.currentTarget as HTMLInputElement).checked)
                 }
               />{' '}
               Allow selling below zero stock
             </label>
+            {!isOwner && <span class="muted"> (owner only)</span>}
           </p>
           <p class="muted">
             On: a sale never blocks on stock — it posts, the item's stock can go negative, and you

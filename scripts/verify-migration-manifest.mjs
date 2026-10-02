@@ -43,6 +43,7 @@ export const ALLOWED_GROUPS = Object.freeze([
   'r0b',
   'o1',
   'o2',
+  'd2b',
 ]);
 
 const VERSION_RE = /^[0-9]{4}$/;
@@ -89,6 +90,7 @@ const EXPECTED_LEGACY_ENTRIES = Object.freeze({
   '0052': ['d1', 'supabase/migrations/0052_aging_as_of.sql', '7bad8d7050f1234ab0ef15149f2705a6ff8a5915056bac1d0c6b3793d2a83e93'],
   '0053': ['r0b', 'supabase/migrations/0053_return_round_off.sql', '4e86b769e3d679c32c256dfb4f1a6985887e2aec028f9aafe85faa5d99e7c38e'],
   '0054': ['o1', 'supabase/migrations/0054_account_openings.sql', '74d8d8d1c38668228820713ee45d489c778397612b4610e6e442eba8d0d7d9cb'],
+  '0055': ['o2', 'supabase/migrations/0055_opening_settlements.sql', 'cccbe2a580dfacd2695b5d64ec43e63d36ce2a5c7c7f247c6e41dfce77593e76'],
 });
 
 // Group/path can be frozen for an in-flight (not yet merged) entry the
@@ -100,7 +102,7 @@ const EXPECTED_LEGACY_ENTRIES = Object.freeze({
 // omitted. Move an entry here into EXPECTED_LEGACY_ENTRIES (with its
 // checksum) once it has actually merged to `main`.
 const EXPECTED_IN_FLIGHT_GROUP_AND_PATH = Object.freeze({
-  '0055': ['o2', 'supabase/migrations/0055_opening_settlements.sql'],
+  '0056': ['d2b', 'supabase/migrations/0056_shop_settings_guard.sql'],
 });
 
 /**

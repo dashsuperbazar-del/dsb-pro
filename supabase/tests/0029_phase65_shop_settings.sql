@@ -36,7 +36,7 @@ insert into tenant_users(tenant_id,user_id,role,shop_ids,status,client_id) value
 set role authenticated;
 
 select set_config('request.jwt.claims','{"sub":"b6520000-0000-0000-0000-000000000002","role":"authenticated"}',true);
-select lives_ok($$select update_shop_settings(current_setting('st.shop')::uuid,'Manager Renamed','','','','Asia/Kolkata','80mm',1::smallint,false)$$,'manager can update shop settings');
+select lives_ok($$select update_shop_settings(current_setting('st.shop')::uuid,'Manager Renamed','','','','Asia/Kolkata','80mm',4::smallint,true)$$,'manager can update shop profile settings (policy fields unchanged; D2b)');
 
 select set_config('request.jwt.claims','{"sub":"b6520000-0000-0000-0000-000000000003","role":"authenticated"}',true);
 select throws_ok($$select update_shop_settings(current_setting('st.shop')::uuid,'Cashier Renamed','','','','Asia/Kolkata','80mm',1::smallint,false)$$,null,'not permitted','cashier cannot change shop settings');

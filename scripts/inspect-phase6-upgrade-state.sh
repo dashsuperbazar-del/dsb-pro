@@ -62,6 +62,8 @@ begin
   delete from _o1_receipt_check;
   create temp table if not exists _o2_receipt_check (present boolean);
   delete from _o2_receipt_check;
+  create temp table if not exists _d2b_receipt_check (present boolean);
+  delete from _d2b_receipt_check;
   if to_regclass('public.app_migration_receipts') is not null then
     insert into _p1_receipt_check
       select exists(select 1 from public.app_migration_receipts where version = '0044');
@@ -87,6 +89,8 @@ begin
       select exists(select 1 from public.app_migration_receipts where version = '0054');
     insert into _o2_receipt_check
       select exists(select 1 from public.app_migration_receipts where version = '0055');
+    insert into _d2b_receipt_check
+      select exists(select 1 from public.app_migration_receipts where version = '0056');
   else
     insert into _p1_receipt_check values (false);
     insert into _p2_receipt_check values (false);
@@ -100,6 +104,7 @@ begin
     insert into _r0b_receipt_check values (false);
     insert into _o1_receipt_check values (false);
     insert into _o2_receipt_check values (false);
+    insert into _d2b_receipt_check values (false);
   end if;
 end
 $$;
@@ -202,10 +207,12 @@ select
   (coalesce((select present from _o1_receipt_check), false)) as o1_receipt,
   (to_regclass('public.account_openings') is not null and to_regprocedure('public.record_account_opening(uuid,text,uuid,date,bigint,text,text)') is not null and to_regprocedure('public.void_account_opening(uuid,text)') is not null and to_regprocedure('public.o1_opening_guard()') is not null and exists(select 1 from pg_trigger where tgname='account_openings_guard' and tgrelid=to_regclass('public.account_openings'))) as o1_schema,
   (coalesce((select present from _o2_receipt_check), false)) as o2_receipt,
-  (to_regclass('public.opening_settlements') is not null and to_regprocedure('public.settle_opening(uuid,uuid,bigint,text)') is not null and to_regprocedure('public.void_opening_settlement(uuid,text)') is not null and to_regprocedure('public.get_opening_settlement_options(uuid)') is not null and exists(select 1 from pg_trigger where tgname='payment_allocations_o2_within_payment' and tgrelid=to_regclass('public.payment_allocations')) and exists(select 1 from pg_trigger where tgname='payments_o2_void_settlements' and tgrelid=to_regclass('public.payments')) and exists(select 1 from pg_trigger where tgname='opening_settlements_guard' and tgrelid=to_regclass('public.opening_settlements'))) as o2_schema;
+  (to_regclass('public.opening_settlements') is not null and to_regprocedure('public.settle_opening(uuid,uuid,bigint,text)') is not null and to_regprocedure('public.void_opening_settlement(uuid,text)') is not null and to_regprocedure('public.get_opening_settlement_options(uuid)') is not null and exists(select 1 from pg_trigger where tgname='payment_allocations_o2_within_payment' and tgrelid=to_regclass('public.payment_allocations')) and exists(select 1 from pg_trigger where tgname='payments_o2_void_settlements' and tgrelid=to_regclass('public.payments')) and exists(select 1 from pg_trigger where tgname='opening_settlements_guard' and tgrelid=to_regclass('public.opening_settlements'))) as o2_schema,
+  (coalesce((select present from _d2b_receipt_check), false)) as d2b_receipt,
+  (regexp_replace(coalesce(pg_get_functiondef(to_regprocedure('public.update_shop_settings(uuid,text,text,text,text,text,text,smallint,boolean)')),''),'\s+','','g') like '%DSB_FISCAL_MONTH_FROZEN%') as d2b_schema;
 SQL
 )
-read -r foundation hardening phase65 batcha batchb p1_shape p1_rls p1_no_grants p1_receipt p2_receipt p2_body c0_receipt c0_schema c1_receipt c1_schema c2_receipt c2_schema c3_receipt c3_schema c3b_receipt c3b_schema r0_receipt r0_schema d1_receipt d1_schema r0b_receipt r0b_schema o1_receipt o1_schema o2_receipt o2_schema \
+read -r foundation hardening phase65 batcha batchb p1_shape p1_rls p1_no_grants p1_receipt p2_receipt p2_body c0_receipt c0_schema c1_receipt c1_schema c2_receipt c2_schema c3_receipt c3_schema c3b_receipt c3b_schema r0_receipt r0_schema d1_receipt d1_schema r0b_receipt r0b_schema o1_receipt o1_schema o2_receipt o2_schema d2b_receipt d2b_schema \
   <<<"$(tail -n1 <<<"$psql_state_output")"
 
 # Validate the raw p1 4-tuple against the only three legitimate
@@ -449,13 +456,33 @@ if [[ "$o2" == "2" ]]; then
   fi
 fi
 
+# D2b shop settings guard (0056): same 0/1/2 states as C0.
+case "$d2b_receipt:$d2b_schema" in
+  f:f) d2b=0 ;;
+  f:t) d2b=1 ;;
+  t:t) d2b=2 ;;
+  *)
+    echo "D2b shop settings guard drift: 0056 receipt=$d2b_receipt but schema present=$d2b_schema. Refusing migration." >&2
+    exit 1
+    ;;
+esac
+if [[ "$d2b" == "2" ]]; then
+  d2b_expected=$(sha256sum "$repo_root/supabase/migrations/0056_shop_settings_guard.sql" | cut -d' ' -f1)
+  d2b_recorded=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -c \
+    "select checksum_sha256 from public.app_migration_receipts where version='0056'")
+  if [[ "$d2b_recorded" != "$d2b_expected" ]]; then
+    echo "0056 receipt checksum does not match supabase/migrations/0056_shop_settings_guard.sql. Refusing migration." >&2
+    exit 1
+  fi
+fi
+
 emit_state() {
-  local needs_foundation=$1 needs_hardening=$2 needs_phase65=$3 needs_batcha=$4 needs_batchb=$5 needs_p1=$6 needs_p2=$7 needs_c0=$8 needs_c1=$9 needs_c2=${10} needs_c3=${11} needs_c3b=${12} needs_r0=${13} needs_d1=${14} needs_r0b=${15} needs_o1=${16} needs_o2=${17}
+  local needs_foundation=$1 needs_hardening=$2 needs_phase65=$3 needs_batcha=$4 needs_batchb=$5 needs_p1=$6 needs_p2=$7 needs_c0=$8 needs_c1=$9 needs_c2=${10} needs_c3=${11} needs_c3b=${12} needs_r0=${13} needs_d1=${14} needs_r0b=${15} needs_o1=${16} needs_o2=${17} needs_d2b=${18}
   local needs_upgrade=true
-  if [[ "$needs_foundation:$needs_hardening:$needs_phase65:$needs_batcha:$needs_batchb:$needs_p1:$needs_p2:$needs_c0:$needs_c1:$needs_c2:$needs_c3:$needs_c3b:$needs_r0:$needs_d1:$needs_r0b:$needs_o1:$needs_o2" == "false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false" ]]; then
+  if [[ "$needs_foundation:$needs_hardening:$needs_phase65:$needs_batcha:$needs_batchb:$needs_p1:$needs_p2:$needs_c0:$needs_c1:$needs_c2:$needs_c3:$needs_c3b:$needs_r0:$needs_d1:$needs_r0b:$needs_o1:$needs_o2:$needs_d2b" == "false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false" ]]; then
     needs_upgrade=false
   fi
-  printf 'observed_state=%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s\n' "$foundation" "$hardening" "$phase65" "$batcha" "$batchb" "$p1" "$p2" "$c0" "$c1" "$c2" "$c3" "$c3b" "$r0" "$d1" "$r0b" "$o1" "$o2"
+  printf 'observed_state=%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s\n' "$foundation" "$hardening" "$phase65" "$batcha" "$batchb" "$p1" "$p2" "$c0" "$c1" "$c2" "$c3" "$c3b" "$r0" "$d1" "$r0b" "$o1" "$o2" "$d2b"
   printf 'needs_upgrade=%s\n' "$needs_upgrade"
   printf 'needs_foundation=%s\n' "$needs_foundation"
   printf 'needs_hardening=%s\n' "$needs_hardening"
@@ -474,6 +501,7 @@ emit_state() {
   printf 'needs_r0b=%s\n' "$needs_r0b"
   printf 'needs_o1=%s\n' "$needs_o1"
   printf 'needs_o2=%s\n' "$needs_o2"
+  printf 'needs_d2b=%s\n' "$needs_d2b"
 }
 
 # Legacy (0030-0043) classification is unchanged from before Packet P1: the
@@ -484,41 +512,43 @@ emit_state() {
 # generic-iteration form (mechanism point 8) because that rewrite could not
 # be verified here to preserve the exact existing legacy behavior without a
 # live database to test against (see final report for this deviation).
-case "$foundation:$hardening:$phase65:$batcha:$batchb:$p1:$p2:$c0:$c1:$c2:$c3:$c3b:$r0:$d1:$r0b:$o1:$o2" in
-  0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0) emit_state true true true true true true true true true true true true true true true true true ;;
-  5:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0) emit_state false true true true true true true true true true true true true true true true true ;;
-  5:2:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0) emit_state false false true true true true true true true true true true true true true true true ;;
-  5:2:5:0:0:0:0:0:0:0:0:0:0:0:0:0:0) emit_state false false false true true true true true true true true true true true true true true ;;
-  5:2:5:2:0:0:0:0:0:0:0:0:0:0:0:0:0) emit_state false false false false true true true true true true true true true true true true true ;;
-  5:2:5:2:3:0:0:0:0:0:0:0:0:0:0:0:0) emit_state false false false false false true true true true true true true true true true true true ;;
-  5:2:5:2:3:3:0:0:0:0:0:0:0:0:0:0:0) emit_state false false false false false true true true true true true true true true true true true ;;
+case "$foundation:$hardening:$phase65:$batcha:$batchb:$p1:$p2:$c0:$c1:$c2:$c3:$c3b:$r0:$d1:$r0b:$o1:$o2:$d2b" in
+  0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0) emit_state true true true true true true true true true true true true true true true true true true ;;
+  5:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0) emit_state false true true true true true true true true true true true true true true true true true ;;
+  5:2:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0) emit_state false false true true true true true true true true true true true true true true true true ;;
+  5:2:5:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0) emit_state false false false true true true true true true true true true true true true true true true ;;
+  5:2:5:2:0:0:0:0:0:0:0:0:0:0:0:0:0:0) emit_state false false false false true true true true true true true true true true true true true true ;;
+  5:2:5:2:3:0:0:0:0:0:0:0:0:0:0:0:0:0) emit_state false false false false false true true true true true true true true true true true true true ;;
+  5:2:5:2:3:3:0:0:0:0:0:0:0:0:0:0:0:0) emit_state false false false false false true true true true true true true true true true true true true ;;
   # Fresh disposable reset before the receipt bootstrap: every receipt-tracked
   # group's schema exists, no receipts yet.
-  5:2:5:2:3:3:0:1:1:1:1:1:1:1:1:1:1) emit_state false false false false false true true true true true true true true true true true true ;;
-  5:2:5:2:3:4:0:0:0:0:0:0:0:0:0:0:0) emit_state false false false false false false true true true true true true true true true true true ;;
-  5:2:5:2:3:4:1:0:0:0:0:0:0:0:0:0:0) emit_state false false false false false false false true true true true true true true true true true ;;
-  5:2:5:2:3:4:1:1:0:0:0:0:0:0:0:0:0) emit_state false false false false false false false true true true true true true true true true true ;;
-  5:2:5:2:3:4:1:2:0:0:0:0:0:0:0:0:0) emit_state false false false false false false false false true true true true true true true true true ;;
-  5:2:5:2:3:4:1:2:1:0:0:0:0:0:0:0:0) emit_state false false false false false false false false true true true true true true true true true ;;
-  5:2:5:2:3:4:1:2:2:0:0:0:0:0:0:0:0) emit_state false false false false false false false false false true true true true true true true true ;;
-  5:2:5:2:3:4:1:2:2:1:0:0:0:0:0:0:0) emit_state false false false false false false false false false true true true true true true true true ;;
-  5:2:5:2:3:4:1:2:2:2:0:0:0:0:0:0:0) emit_state false false false false false false false false false false true true true true true true true ;;
-  5:2:5:2:3:4:1:2:2:2:1:0:0:0:0:0:0) emit_state false false false false false false false false false false true true true true true true true ;;
-  5:2:5:2:3:4:1:2:2:2:2:0:0:0:0:0:0) emit_state false false false false false false false false false false false true true true true true true ;;
-  5:2:5:2:3:4:1:2:2:2:2:1:0:0:0:0:0) emit_state false false false false false false false false false false false true true true true true true ;;
-  5:2:5:2:3:4:1:2:2:2:2:2:0:0:0:0:0) emit_state false false false false false false false false false false false false true true true true true ;;
-  5:2:5:2:3:4:1:2:2:2:2:2:1:0:0:0:0) emit_state false false false false false false false false false false false false true true true true true ;;
-  5:2:5:2:3:4:1:2:2:2:2:2:2:0:0:0:0) emit_state false false false false false false false false false false false false false true true true true ;;
-  5:2:5:2:3:4:1:2:2:2:2:2:2:1:0:0:0) emit_state false false false false false false false false false false false false false true true true true ;;
-  5:2:5:2:3:4:1:2:2:2:2:2:2:2:0:0:0) emit_state false false false false false false false false false false false false false false true true true ;;
-  5:2:5:2:3:4:1:2:2:2:2:2:2:2:1:0:0) emit_state false false false false false false false false false false false false false false true true true ;;
-  5:2:5:2:3:4:1:2:2:2:2:2:2:2:2:0:0) emit_state false false false false false false false false false false false false false false false true true ;;
-  5:2:5:2:3:4:1:2:2:2:2:2:2:2:2:1:0) emit_state false false false false false false false false false false false false false false false true true ;;
-  5:2:5:2:3:4:1:2:2:2:2:2:2:2:2:2:0) emit_state false false false false false false false false false false false false false false false false true ;;
-  5:2:5:2:3:4:1:2:2:2:2:2:2:2:2:2:1) emit_state false false false false false false false false false false false false false false false false true ;;
-  5:2:5:2:3:4:1:2:2:2:2:2:2:2:2:2:2) emit_state false false false false false false false false false false false false false false false false false ;;
+  5:2:5:2:3:3:0:1:1:1:1:1:1:1:1:1:1:1) emit_state false false false false false true true true true true true true true true true true true true ;;
+  5:2:5:2:3:4:0:0:0:0:0:0:0:0:0:0:0:0) emit_state false false false false false false true true true true true true true true true true true true ;;
+  5:2:5:2:3:4:1:0:0:0:0:0:0:0:0:0:0:0) emit_state false false false false false false false true true true true true true true true true true true ;;
+  5:2:5:2:3:4:1:1:0:0:0:0:0:0:0:0:0:0) emit_state false false false false false false false true true true true true true true true true true true ;;
+  5:2:5:2:3:4:1:2:0:0:0:0:0:0:0:0:0:0) emit_state false false false false false false false false true true true true true true true true true true ;;
+  5:2:5:2:3:4:1:2:1:0:0:0:0:0:0:0:0:0) emit_state false false false false false false false false true true true true true true true true true true ;;
+  5:2:5:2:3:4:1:2:2:0:0:0:0:0:0:0:0:0) emit_state false false false false false false false false false true true true true true true true true true ;;
+  5:2:5:2:3:4:1:2:2:1:0:0:0:0:0:0:0:0) emit_state false false false false false false false false false true true true true true true true true true ;;
+  5:2:5:2:3:4:1:2:2:2:0:0:0:0:0:0:0:0) emit_state false false false false false false false false false false true true true true true true true true ;;
+  5:2:5:2:3:4:1:2:2:2:1:0:0:0:0:0:0:0) emit_state false false false false false false false false false false true true true true true true true true ;;
+  5:2:5:2:3:4:1:2:2:2:2:0:0:0:0:0:0:0) emit_state false false false false false false false false false false false true true true true true true true ;;
+  5:2:5:2:3:4:1:2:2:2:2:1:0:0:0:0:0:0) emit_state false false false false false false false false false false false true true true true true true true ;;
+  5:2:5:2:3:4:1:2:2:2:2:2:0:0:0:0:0:0) emit_state false false false false false false false false false false false false true true true true true true ;;
+  5:2:5:2:3:4:1:2:2:2:2:2:1:0:0:0:0:0) emit_state false false false false false false false false false false false false true true true true true true ;;
+  5:2:5:2:3:4:1:2:2:2:2:2:2:0:0:0:0:0) emit_state false false false false false false false false false false false false false true true true true true ;;
+  5:2:5:2:3:4:1:2:2:2:2:2:2:1:0:0:0:0) emit_state false false false false false false false false false false false false false true true true true true ;;
+  5:2:5:2:3:4:1:2:2:2:2:2:2:2:0:0:0:0) emit_state false false false false false false false false false false false false false false true true true true ;;
+  5:2:5:2:3:4:1:2:2:2:2:2:2:2:1:0:0:0) emit_state false false false false false false false false false false false false false false true true true true ;;
+  5:2:5:2:3:4:1:2:2:2:2:2:2:2:2:0:0:0) emit_state false false false false false false false false false false false false false false false true true true ;;
+  5:2:5:2:3:4:1:2:2:2:2:2:2:2:2:1:0:0) emit_state false false false false false false false false false false false false false false false true true true ;;
+  5:2:5:2:3:4:1:2:2:2:2:2:2:2:2:2:0:0) emit_state false false false false false false false false false false false false false false false false true true ;;
+  5:2:5:2:3:4:1:2:2:2:2:2:2:2:2:2:1:0) emit_state false false false false false false false false false false false false false false false false true true ;;
+  5:2:5:2:3:4:1:2:2:2:2:2:2:2:2:2:2:0) emit_state false false false false false false false false false false false false false false false false false true ;;
+  5:2:5:2:3:4:1:2:2:2:2:2:2:2:2:2:2:1) emit_state false false false false false false false false false false false false false false false false false true ;;
+  5:2:5:2:3:4:1:2:2:2:2:2:2:2:2:2:2:2) emit_state false false false false false false false false false false false false false false false false false false ;;
   *)
-    echo "Partial or out-of-order Phase 6 schema detected ($foundation/5 foundation, $hardening/2 hardening, $phase65/5 Phase 6.5, $batcha/2 Batch A, $batchb/3 Batch B, $p1/4 P1, $p2/1 P2, $c0/2 C0, $c1/2 C1, $c2/2 C2, $c3/2 C3, $c3b/2 C3b, $r0/2 R0 bill round-off, $d1/2 D1, $r0b/2 R0b, $o1/2 O1, $o2/2 O2 opening settlements). Refusing migration." >&2
+    echo "Partial or out-of-order Phase 6 schema detected ($foundation/5 foundation, $hardening/2 hardening, $phase65/5 Phase 6.5, $batcha/2 Batch A, $batchb/3 Batch B, $p1/4 P1, $p2/1 P2, $c0/2 C0, $c1/2 C1, $c2/2 C2, $c3/2 C3, $c3b/2 C3b, $r0/2 R0 bill round-off, $d1/2 D1, $r0b/2 R0b, $o1/2 O1, $o2/2 O2 opening settlements, $d2b/2 D2b shop settings guard). Refusing migration." >&2
     exit 1
     ;;
 esac
