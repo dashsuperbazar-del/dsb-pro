@@ -4,8 +4,8 @@ Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/CO
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
-- `main` at last update: `9221177` (R0b merged, PR #54; live apply of `r0b` dispatched 2026-10-02).
-  Migrations 0001–0053 (immutable). In review: **V4** verifier V003 fixes (VF-007 follow-up, VF-009).
+- `main` at last update: `842a8c4` (V4 merged, PR #55; r0b applied live run 721, deployed run 724).
+  Migrations 0001–0053 (immutable). In review: **O1** (0054 `account_openings`, group `o1`, /openings).
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
   partial returns carry item value, capped so a bill's returns never exceed what was billed for its
   items (total - extra charges). Extra charges still stay with the shop.
@@ -24,6 +24,10 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
   `classifyError` to decide an outcome.
 - Decision 2026-10-02 (user): old DSB is retired; no legacy import, no shadow run. DSB Pro goes live
   with real data once daily-usable, then is patched in use. F0/F3 dropped; F1 (fiscal numbering) later.
+- O1 design: one POSTED opening per account (signed paise; customer + = owes shop, supplier + = shop
+  owes), owner only, void + re-enter to correct. Feeds customer_ledger, party ledger v2, supplier
+  outstanding and both as-of aging reports (aged from as_of_date), export. DEFERRED to O2: allocating
+  payments/credits against an opening — until then such cash shows as unassigned; net balance exact.
 - Next: **O1 opening balances** (manual customer/supplier dues as of a cutover date, immutable ledger
   entries; opening stock via existing stock count) → **H3** dated device exercise with the user
   (offline entry → restart → reconnect, each entry exactly once).
