@@ -65,6 +65,17 @@ export function StockAdjustScreen() {
     setFrozen(null);
     clearPendingIntent(pendingKey(shop), clientId);
     setClientId(crypto.randomUUID());
+    // Another window's unconfirmed count may still be stored: bring it up next, same id (VF-009).
+    const next = loadPendingIntent<{ req: Frozen; clientId: string }>(pendingKey(shop));
+    if (next.ok && next.value) {
+      setFrozen(next.value.req);
+      setClientId(next.value.clientId);
+      setItem(next.value.req.item);
+      setCounted(next.value.req.counted);
+      setReason(next.value.req.reason);
+      return true;
+    }
+    return false;
   }
   async function submit(e: Event) {
     e.preventDefault();
@@ -77,7 +88,7 @@ export function StockAdjustScreen() {
     }
     // Durable before dispatch, or not sent at all.
     try {
-      savePendingIntent(pendingKey(shop), { req, clientId });
+      savePendingIntent(pendingKey(shop), { req, clientId }, { retry: isRetry });
     } catch (err) {
       setMsg(err instanceof Error ? err.message : String(err));
       return;
@@ -97,21 +108,27 @@ export function StockAdjustScreen() {
         isRetry,
       );
       if (outcome.kind === 'committed') {
-        startOver();
-        setCounted('');
+        const more = startOver();
+        if (!more) setCounted('');
         setMsg(
-          outcome.value.alreadyPosted
+          (outcome.value.alreadyPosted
             ? 'This count was already posted by an earlier attempt; nothing was applied twice.'
-            : 'Stock adjusted through the adjustment ledger.',
+            : 'Stock adjusted through the adjustment ledger.') +
+            (more
+              ? ' Another count from this device is not confirmed yet — press Retry to finish it.'
+              : ''),
         );
         await load().catch(() => undefined);
       } else if (outcome.kind === 'rejected') {
         // The database refused and rolled back (e.g. stock changed since the count): nothing applied.
-        startOver();
+        const more = startOver();
         setMsg(
-          /recount required/i.test(outcome.message)
+          (/recount required/i.test(outcome.message)
             ? 'Stock changed since this count was taken. Nothing was posted — count again.'
-            : `Not posted: ${outcome.message}`,
+            : `Not posted: ${outcome.message}`) +
+            (more
+              ? ' Another count from this device is not confirmed yet — press Retry to finish it.'
+              : ''),
         );
         await load().catch(() => undefined);
       } else {

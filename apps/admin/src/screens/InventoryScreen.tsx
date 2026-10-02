@@ -323,7 +323,7 @@ export function InventoryScreen() {
     const isRetry = Boolean(purchaseLocked && lockedPurchase.current);
     // Durable before dispatch, or not sent at all.
     try {
-      savePendingIntent(pendingKey(request.shopId), request);
+      savePendingIntent(pendingKey(request.shopId), request, { retry: isRetry });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       return;
@@ -344,6 +344,12 @@ export function InventoryScreen() {
       setPurchaseLocked(false);
       clearPendingIntent(pendingKey(request.shopId), request.clientId);
       setPurchaseClientId(crypto.randomUUID());
+      // Another window's unconfirmed purchase may still be stored: lock onto it next, same id (VF-009).
+      const next = loadPendingIntent<PurchaseRequest>(pendingKey(request.shopId));
+      if (next.ok && next.value) {
+        lockedPurchase.current = next.value;
+        setPurchaseLocked(true);
+      }
       if (outcome.kind === 'rejected') {
         // The database refused and rolled back: nothing posted; the cart stays for correction.
         setError(`Not posted: ${outcome.message}`);

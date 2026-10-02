@@ -53,6 +53,14 @@ export function CustomersScreen() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [balances, setBalances] = useState<Record<string, number>>({});
   const [selected, setSelected] = useState('');
+  // The customer the screen shows right now. An action that finishes after the user switched customer
+  // must never repaint or act on the old customer (V003 VF-007): every refresh and ledger action is
+  // checked against this, not against the `selected` captured when the action started.
+  const selectedRef = useRef('');
+  const selectCustomer = (id: string) => {
+    selectedRef.current = id;
+    setSelected(id);
+  };
   const [ledger, setLedger] = useState<CustomerLedgerRow[]>([]);
   const [openSales, setOpenSales] = useState<CustomerOutstandingInvoice[]>([]);
   const [allocations, setAllocations] = useState<AllocationDraft[]>([]);
@@ -87,7 +95,8 @@ export function CustomersScreen() {
     setBalances(Object.fromEntries(b.map((x) => [x.customer_id, x.balance_paise])));
     setBusinessDate(d);
   }
-  async function refreshCustomer(customerId = selected, shop = shopId) {
+  async function refreshCustomer(customerId = selectedRef.current, shop = shopId) {
+    if (customerId !== selectedRef.current) return; // a stale action's refresh: the screen moved on
     const generation = ++loadGeneration.current;
     setReadyFor('');
     setLedger([]);
@@ -101,7 +110,7 @@ export function CustomersScreen() {
     ]);
     await waitForOfflineRuntime();
     const attempts = await listOpenFinancialAttempts(shop, customerId);
-    if (generation !== loadGeneration.current) return;
+    if (generation !== loadGeneration.current || customerId !== selectedRef.current) return;
     setOpenAttempts(attempts);
     setLedger(l);
     setOpenSales(s);
@@ -141,7 +150,7 @@ export function CustomersScreen() {
         clientId: crypto.randomUUID(),
       });
       await refreshBase();
-      setSelected(c.id);
+      selectCustomer(c.id);
       form.reset();
       setMessage(`Customer ${c.name} created.`);
     } catch (e) {
@@ -211,7 +220,7 @@ export function CustomersScreen() {
         setError(
           'The server answer was lost. Do NOT record this payment again — use “Check status”.',
         );
-        await refreshCustomer(selected);
+        await refreshCustomer();
         return;
       }
       if (result.state === 'REJECTED')
@@ -220,7 +229,7 @@ export function CustomersScreen() {
       setReference('');
       setMessage('Payment recorded. Any unallocated remainder is retained as customer advance.');
       await refreshBase();
-      await refreshCustomer(selected);
+      await refreshCustomer();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -239,7 +248,7 @@ export function CustomersScreen() {
       else if (r.state === 'REJECTED') setError(`Not recorded: ${r.errorMessage ?? r.errorCode}`);
       else setError(`Still unknown: ${r.errorMessage ?? 'no answer'}. Try again when online.`);
       await refreshBase();
-      await refreshCustomer(selected);
+      await refreshCustomer();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -249,6 +258,14 @@ export function CustomersScreen() {
 
   async function voidLedgerPayment(row: CustomerLedgerRow) {
     if (row.entry_type !== 'PAYMENT') return;
+    // Only a row of the customer on screen, loaded for that customer, can be voided.
+    if (
+      row.customer_id !== selectedRef.current ||
+      readyFor !== `${shopId}:${selectedRef.current}`
+    ) {
+      setError('This ledger is not loaded for the selected customer. Choose the customer again.');
+      return;
+    }
     if (
       !confirm(
         'Void this payment? The ledger entry will remain in history as a voided financial record.',
@@ -261,7 +278,7 @@ export function CustomersScreen() {
       await voidPayment(row.ref_id);
       setMessage('Payment voided.');
       await refreshBase();
-      await refreshCustomer(selected);
+      await refreshCustomer();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -307,7 +324,7 @@ export function CustomersScreen() {
           Customer
           <select
             value={selected}
-            onChange={(e) => setSelected((e.currentTarget as HTMLSelectElement).value)}
+            onChange={(e) => selectCustomer((e.currentTarget as HTMLSelectElement).value)}
           >
             <option value="">Choose…</option>
             {customers.map((c) => (
@@ -517,7 +534,11 @@ export function CustomersScreen() {
                         {r.entry_type === 'PAYMENT' && (
                           <button
                             type="button"
-                            disabled={busy}
+                            disabled={
+                              busy ||
+                              readyFor !== `${shopId}:${selected}` ||
+                              r.customer_id !== selected
+                            }
                             onClick={() => void voidLedgerPayment(r)}
                           >
                             Void payment

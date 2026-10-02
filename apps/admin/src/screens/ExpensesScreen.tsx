@@ -92,7 +92,7 @@ export function ExpensesScreen() {
     }
     // Durable before dispatch, or not sent at all.
     try {
-      savePendingIntent(pendingKey(shop), { req, clientId });
+      savePendingIntent(pendingKey(shop), { req, clientId }, { retry: isRetry });
     } catch (err) {
       setMsg(err instanceof Error ? err.message : String(err));
       return;
@@ -124,6 +124,7 @@ export function ExpensesScreen() {
       clearPendingIntent(pendingKey(shop), clientId);
       setClientId(crypto.randomUUID());
       setMsg(`Not posted: ${outcome.message}`);
+      restoreNext();
       setBusy(false);
       return;
     }
@@ -135,11 +136,26 @@ export function ExpensesScreen() {
     setClientId(crypto.randomUUID());
     setMsg('Expense posted.');
     form.reset();
+    restoreNext();
     setBusy(false);
     try {
       await load();
     } catch (err) {
       setMsg(`Expense posted. (Totals could not refresh: ${String(err)})`);
+    }
+  }
+  // Another window's unconfirmed expense may still be stored: bring it up next, same id (VF-009).
+  function restoreNext() {
+    const next = loadPendingIntent<{ req: NonNullable<typeof pending>; clientId: string }>(
+      pendingKey(shop),
+    );
+    if (next.ok && next.value) {
+      setPending(next.value.req);
+      setClientId(next.value.clientId);
+      setMsg(
+        (m) =>
+          `${m} Another expense from this device is not confirmed yet — press "Retry same expense".`,
+      );
     }
   }
   async function undo() {

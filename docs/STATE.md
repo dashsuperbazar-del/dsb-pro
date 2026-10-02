@@ -4,15 +4,17 @@ Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/CO
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
-- `main` at last update: `57413c3` (V3 merged, PR #53; deploy run 36909385797 green; R1 + V3 live).
-  Migrations 0001–0052 (immutable). In review: **R0b** return round-off (mig 0053, group `r0b`).
+- `main` at last update: `9221177` (R0b merged, PR #54; live apply of `r0b` dispatched 2026-10-02).
+  Migrations 0001–0053 (immutable). In review: **V4** verifier V003 fixes (VF-007 follow-up, VF-009).
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
   partial returns carry item value, capped so a bill's returns never exceed what was billed for its
   items (total - extra charges). Extra charges still stay with the shop.
 - Live DB: D1 applied 2026-10-01 (run 36894777286, only group `d1` pending; verify green). Fully upgraded.
   D1 deployed after the apply (run 36897126086, green).
-- Verifier (GPT) log V002 (2026-10-01): CHANGES REQUIRED for VF-005 (intent not durable before dispatch),
-  VF-006 (transport errors treated as refusals), VF-007 (customer receipt guard race). V2 (PR #51) fixes all three; awaiting verifier recheck.
+- Verifier log V003 (2026-10-02): VF-005/006/008 CLOSED. Open MAJORs fixed in V4: VF-007 follow-up
+  (a finished action repainted/voided the previous customer) and VF-009 (two stored intents blocked
+  each other's retry). Watch: held-cart repeat once showed "Saved locally" instead of "Sale finalized"
+  (main push run 36909385562, 9/10) — check eventual exactly-once sync if it recurs.
 - Decision 2026-10-01: D1-lite built before F0 (F0 blocked on the user's export; D1-lite has no F dependency).
   F2 must extend both aging reports with opening rows (remainingPositiveOpenings / remainingOpeningCredits).
 - V2 residual closed by V3: receipt/payment check+create+send is serialized per account across windows

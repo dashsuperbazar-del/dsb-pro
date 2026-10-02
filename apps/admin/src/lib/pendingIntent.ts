@@ -23,17 +23,45 @@ function entries(prefix: string): { key: string; value: Stored }[] {
   return out.sort((a, b) => (a.value.savedAt ?? 0) - (b.value.savedAt ?? 0));
 }
 
-export function savePendingIntent<T extends { clientId: string }>(prefix: string, value: T): void {
-  let others: { key: string; value: Stored }[];
+// Stable JSON for comparing a stored request with a retry (key order independent, savedAt ignored).
+function canonical(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(canonical).join(',')}]`;
+  if (v && typeof v === 'object')
+    return `{${Object.keys(v as object)
+      .filter((k) => k !== 'savedAt')
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${canonical((v as Record<string, unknown>)[k])}`)
+      .join(',')}}`;
+  return JSON.stringify(v);
+}
+
+// `retry: true` re-sends an entry that is already stored under its own id (V003 VF-009): it is never
+// blocked by other windows' entries and never rewritten; a stored entry with a different payload is
+// refused. A new entry is still refused while another unconfirmed entry exists.
+export function savePendingIntent<T extends { clientId: string }>(
+  prefix: string,
+  value: T,
+  opts: { retry?: boolean } = {},
+): void {
+  let all: { key: string; value: Stored }[];
   try {
-    others = entries(prefix).filter((e) => e.value.clientId !== value.clientId);
+    all = entries(prefix);
   } catch (e) {
     throw new IntentStorageError(
       `Saved entries on this device cannot be read (${String(e)}). Nothing was sent.`,
     );
   }
-  // Courtesy check only; safety comes from the per-request key below.
-  if (others.length)
+  const own = all.find((e) => e.value.clientId === value.clientId);
+  if (own) {
+    if (canonical(own.value) !== canonical(value))
+      throw new IntentStorageError(
+        'The saved entry for this request differs from what would be sent. Nothing was sent.',
+      );
+    return; // already durable, exactly as stored
+  }
+  const others = all.filter((e) => e.value.clientId !== value.clientId);
+  // A retry whose stored copy is gone is re-stored before sending; a new entry waits for the others.
+  if (others.length && !opts.retry)
     throw new IntentStorageError(
       'Another window on this device has an unconfirmed entry here. Nothing was sent; reload this page to finish that entry first.',
     );

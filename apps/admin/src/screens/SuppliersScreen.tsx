@@ -91,6 +91,9 @@ export function SuppliersScreen() {
   const [businessDate, setBusinessDate] = useState('');
   const [summary, setSummary] = useState<SupplierOutstandingRow[]>([]);
   const [partyId, setPartyId] = useState('');
+  // The supplier on screen right now; refreshes from actions that started under another supplier are
+  // ignored instead of taking the screen back (V003 VF-007 audit).
+  const partyRef = useRef('');
   const [bills, setBills] = useState<SupplierBill[]>([]);
   const [payments, setPayments] = useState<SupplierPayment[]>([]);
   const [ledger, setLedger] = useState<SupplierLedger | null>(null);
@@ -129,7 +132,8 @@ export function SuppliersScreen() {
     setAllParties(parties);
     setBusinessDate(d);
   }
-  async function refreshParty(shop = shopId, party = partyId) {
+  async function refreshParty(shop = shopId, party = partyRef.current) {
+    if (party !== partyRef.current) return;
     const key = `${shop}:${party}`;
     current.current = key;
     if (!shop || !party) {
@@ -227,6 +231,7 @@ export function SuppliersScreen() {
     setDraft(null);
     current.current = '';
     restoredFor.current = '';
+    partyRef.current = next;
     setPartyId(next);
     setConfirming(false);
     setMessage('');
