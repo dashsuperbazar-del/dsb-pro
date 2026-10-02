@@ -4,7 +4,7 @@ Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/CO
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
-- `main` at last update: `8b68b15` (O1 merged, PR #56; `o1` applied live run 734, only o1; deploy dispatched).
+- `main` at last update: `8b68b15` (O1 merged, PR #56; `o1` applied live run 734, only o1; deployed run 735).
   Migrations 0001–0054 (immutable). Next: **H3** device exercise with the user, then O2 (allocations on openings).
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
   partial returns carry item value, capped so a bill's returns never exceed what was billed for its
