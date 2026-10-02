@@ -19,6 +19,10 @@ async function createOwnerShop(page: import('@playwright/test').Page) {
 
 test('Phase 6 reports and recovery surface loads and invariant check passes', async ({ page }) => {
   await createOwnerShop(page);
+  // D4a: the home health panel lists every server check and when it ran.
+  await expect(page.getByTestId('invariants-status')).toContainText(
+    /PASS · checked .* · \d+ checks/,
+  );
   await page.getByRole('link', { name: 'Reports & recovery' }).click();
   await expect(page.getByRole('heading', { name: 'Reports & recovery' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Daily entry' })).toBeVisible();

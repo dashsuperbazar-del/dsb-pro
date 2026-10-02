@@ -1,22 +1,37 @@
 import { useEffect, useState } from 'preact/hooks';
-import {
-  checkInvariants,
-  getLatestBackupHealth,
-  type BackupHealth,
-  type InvariantHealth,
-} from '@dsb-pro/adapters';
+import { checkInvariants, getLatestBackupHealth, type BackupHealth } from '@dsb-pro/adapters';
+import { invariantLabel, invariantRows } from './lib/invariants';
+
+// D4a: every invariant check is listed by name; a failed check is UNKNOWN, never a stale green.
+
+type Integrity = { ok: boolean; rows: { code: string; count: number }[]; checkedAt: Date };
 
 export function HealthPanel() {
   const [backup, setBackup] = useState<BackupHealth | null | undefined>(undefined);
-  const [integrity, setIntegrity] = useState<InvariantHealth | null | undefined>(undefined);
-  const [error, setError] = useState<string | null>(null);
+  const [integrity, setIntegrity] = useState<Integrity | null | undefined>(undefined);
+  const [backupError, setBackupError] = useState<string | null>(null);
+  const [integrityError, setIntegrityError] = useState<string | null>(null);
   useEffect(() => {
-    void Promise.all([getLatestBackupHealth(), checkInvariants()])
-      .then(([b, i]) => {
-        setBackup(b);
-        setIntegrity(i);
+    void getLatestBackupHealth()
+      .then(setBackup)
+      .catch((e: unknown) => {
+        setBackup(null);
+        setBackupError(e instanceof Error ? e.message : String(e));
+      });
+    void checkInvariants()
+      .then((raw) => {
+        const rows = invariantRows(raw);
+        // PASS only if the server says ok AND it returned checks AND every count is zero.
+        const ok =
+          (raw as { ok?: unknown }).ok === true &&
+          rows.length > 0 &&
+          rows.every((r) => r.count === 0);
+        setIntegrity({ ok, rows, checkedAt: new Date() });
       })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e: unknown) => {
+        setIntegrity(null);
+        setIntegrityError(e instanceof Error ? e.message : String(e));
+      });
   }, []);
   const backupAgeMs = backup?.finished_at
     ? Date.now() - Date.parse(backup.finished_at)
@@ -27,13 +42,18 @@ export function HealthPanel() {
     backupAgeMs <= 24 * 60 * 60 * 1000 &&
     backup.destinations.length >= 2 &&
     backup.destinations.every((d) => d.verified);
-  const integrityOk = integrity?.ok === true;
+  const bad = integrity ? integrity.rows.filter((r) => r.count > 0) : [];
   return (
     <section class="card" aria-label="System health">
       <h2>System health</h2>
-      {error && (
+      {backupError && (
         <p role="alert" class="alert">
-          Health check unavailable: {error}
+          Backup status unavailable: {backupError}
+        </p>
+      )}
+      {integrityError && (
+        <p role="alert" class="alert">
+          Invariant check unavailable: {integrityError}
         </p>
       )}
       {backup === undefined ? (
@@ -59,19 +79,31 @@ export function HealthPanel() {
       )}
       {integrity === undefined ? (
         <p>Loading invariant health…</p>
-      ) : integrity === null ? null : (
-        <p class={integrityOk ? 'success' : 'alert'}>
-          <strong>Financial invariants:</strong> {integrityOk ? 'PASS' : 'FAIL'} · sale totals{' '}
-          {integrity.saleTotalViolations} · purchase totals {integrity.purchaseTotalViolations} ·
-          negative stock {integrity.negativeStock} · allocation violations{' '}
-          {integrity.allocationViolations} · stock projection {integrity.stockProjectionViolations}{' '}
-          · void reversals {integrity.voidReversalViolations}
+      ) : integrity === null ? (
+        <p class="alert" data-testid="invariants-status">
+          <strong>Financial invariants:</strong> UNKNOWN — the check could not run.
         </p>
-      )}
-      {!integrityOk && integrity !== undefined && (
-        <p class="alert">
-          <strong>Stop financial posting and investigate before continuing.</strong>
-        </p>
+      ) : (
+        <>
+          <p class={integrity.ok ? 'success' : 'alert'} data-testid="invariants-status">
+            <strong>Financial invariants:</strong> {integrity.ok ? 'PASS' : 'FAIL'} · checked{' '}
+            {integrity.checkedAt.toLocaleTimeString()} · {integrity.rows.length} checks
+          </p>
+          {bad.length > 0 && (
+            <ul aria-label="Failing checks">
+              {bad.map((r) => (
+                <li key={r.code}>
+                  {invariantLabel(r.code)}: {r.count}
+                </li>
+              ))}
+            </ul>
+          )}
+          {!integrity.ok && (
+            <p class="alert">
+              <strong>Stop financial posting and investigate before continuing.</strong>
+            </p>
+          )}
+        </>
       )}
     </section>
   );
