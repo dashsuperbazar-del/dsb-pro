@@ -23,6 +23,9 @@ test('Phase 6 reports and recovery surface loads and invariant check passes', as
   await expect(page.getByTestId('invariants-status')).toContainText(
     /PASS · checked .* · \d+ checks/,
   );
+  await expect(page.getByRole('list', { name: 'Invariant checks' })).toContainText(
+    'Opening settlements: 0',
+  );
   await page.getByRole('link', { name: 'Reports & recovery' }).click();
   await expect(page.getByRole('heading', { name: 'Reports & recovery' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Daily entry' })).toBeVisible();

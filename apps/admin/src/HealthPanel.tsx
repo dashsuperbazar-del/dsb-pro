@@ -42,7 +42,6 @@ export function HealthPanel() {
     backupAgeMs <= 24 * 60 * 60 * 1000 &&
     backup.destinations.length >= 2 &&
     backup.destinations.every((d) => d.verified);
-  const bad = integrity ? integrity.rows.filter((r) => r.count > 0) : [];
   return (
     <section class="card" aria-label="System health">
       <h2>System health</h2>
@@ -59,7 +58,9 @@ export function HealthPanel() {
       {backup === undefined ? (
         <p>Loading backup health…</p>
       ) : backup === null ? (
-        <p class="alert">No verified backup has run yet.</p>
+        backupError ? null : (
+          <p class="alert">No verified backup has run yet.</p>
+        )
       ) : (
         <>
           <p class={backupOk ? 'success' : 'alert'}>
@@ -89,15 +90,14 @@ export function HealthPanel() {
             <strong>Financial invariants:</strong> {integrity.ok ? 'PASS' : 'FAIL'} · checked{' '}
             {integrity.checkedAt.toLocaleTimeString()} · {integrity.rows.length} checks
           </p>
-          {bad.length > 0 && (
-            <ul aria-label="Failing checks">
-              {bad.map((r) => (
-                <li key={r.code}>
-                  {invariantLabel(r.code)}: {r.count}
-                </li>
-              ))}
-            </ul>
-          )}
+          <ul aria-label="Invariant checks">
+            {integrity.rows.map((r) => (
+              <li key={r.code} class={r.count > 0 ? 'alert' : undefined}>
+                {invariantLabel(r.code)}: {r.count}
+                {r.count > 0 ? ' — FAIL' : ''}
+              </li>
+            ))}
+          </ul>
           {!integrity.ok && (
             <p class="alert">
               <strong>Stop financial posting and investigate before continuing.</strong>
