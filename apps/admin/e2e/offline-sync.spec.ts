@@ -101,6 +101,10 @@ test('chaos: airplane mode + app restart + logical one-hour outage preserves and
   await expect(page.locator('[aria-label="provisional offline receipt"]')).toContainText(
     'PROVISIONAL — PENDING SYNC',
   );
+  // D2a: offline, the receipt still names the shop from the cached profile (never "DSB Store").
+  await expect(page.locator('[aria-label="provisional offline receipt"] h1')).toHaveText(
+    'Offline Chaos Shop',
+  );
 
   // Kill/reload the SPA while still offline. The service worker must boot the
   // app shell and IndexedDB must retain both the outbox and cached shop data.

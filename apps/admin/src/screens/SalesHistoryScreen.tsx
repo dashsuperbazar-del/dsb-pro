@@ -14,6 +14,8 @@ import {
 import { LanguageToggle } from '../components/LanguageToggle';
 import { appRoute } from '../lib/paths';
 import { getLocale, t } from '../lib/i18n';
+import { ReceiptHeader } from '../components/ReceiptHeader';
+import { loadShopProfile, type ProfileLoad } from '../lib/shopProfile';
 
 const money = (paise: number) => `₹${(paise / 100).toFixed(2)}`;
 
@@ -23,6 +25,7 @@ export function SalesHistoryScreen() {
   const [sales, setSales] = useState<SaleInvoice[]>([]);
   const [receipt, setReceipt] = useState<SaleReceipt | null>(null);
   const [printMode, setPrintMode] = useState<PrintMode>('a4');
+  const [profile, setProfile] = useState<ProfileLoad | null>(null);
   const [shopId, setShopId] = useState('');
   const [reportDate, setReportDate] = useState('');
   const [report, setReport] = useState<ShopDayReconciliation | null>(null);
@@ -66,7 +69,9 @@ export function SalesHistoryScreen() {
     setError('');
     try {
       setPrintMode(mode);
-      setReceipt(await getSaleReceipt(sale.id));
+      const [r, prof] = await Promise.all([getSaleReceipt(sale.id), loadShopProfile(shopId)]);
+      setProfile(prof);
+      setReceipt(r);
       setTimeout(() => window.print(), 50);
     } catch (e) {
       setError(String(e));
@@ -424,9 +429,11 @@ export function SalesHistoryScreen() {
       </section>
 
       {receipt && (
-        <article class={`receipt-print receipt-${printMode}`} aria-label="invoice receipt">
-          <header>
-            <h1>DSB Store</h1>
+        <article
+          class={`receipt-print receipt-${printMode}${printMode === 'thermal' && profile?.profile?.printerWidth === '58mm' ? ' receipt-w58' : ''}`}
+          aria-label="invoice receipt"
+        >
+          <ReceiptHeader load={profile}>
             <p>
               Invoice {receipt.invoice.doc_no}
               <br />
@@ -434,7 +441,7 @@ export function SalesHistoryScreen() {
               <br />
               Status {receipt.invoice.status}
             </p>
-          </header>
+          </ReceiptHeader>
           <table>
             <thead>
               <tr>

@@ -165,8 +165,12 @@ td small {
   }
 }
 @page thermal {
-  size: 80mm auto;
+  size: 80mm 297mm; /* valid two-length size; roll printers paginate the content */
   margin: 4mm;
+}
+@page thermal58 {
+  size: 58mm 297mm;
+  margin: 3mm;
 }
 @page invoiceA4 {
   size: A4;
@@ -202,6 +206,12 @@ td small {
     page: thermal;
     width: 72mm;
     font-size: 9pt;
+  }
+  /* D2a: 58mm paper (about 52mm printable) from the shop's printer width setting. */
+  .receipt-w58 {
+    page: thermal58;
+    width: 52mm;
+    font-size: 8pt;
   }
   .receipt-thermal h1 {
     font-size: 14pt;

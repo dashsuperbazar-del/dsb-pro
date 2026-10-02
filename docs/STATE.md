@@ -4,8 +4,8 @@ Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/CO
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
-- `main` at last update: `9475aa4` (O2 merged, PR #57; `o2` applied live run 740, only o2).
-  Migrations 0001–0055 (immutable). In review: **O3** (supplier payment history counts settlements; UI only).
+- `main` at last update: `143c11e` (O3 merged, PR #58; O2+O3 deploy dispatched 2026-10-02).
+  Migrations 0001–0055 (immutable). In review: **D2a** receipt header from the shop profile (UI only).
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
   partial returns carry item value, capped so a bill's returns never exceed what was billed for its
   items (total - extra charges). Extra charges still stay with the shop.
@@ -36,8 +36,9 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
 - Watch (2026-10-02, local parallel e2e): recovery 'expense crash after commit' and suppliers 'lost
   response' timed out at 30 s under load, both passed alone. Not O2 code; check CI runs.
 - Decision 2026-10-02 (user): build, merge, apply and deploy the next 5 packets, each only on green CI.
-  Chosen (M2 list, daily-use first): O3 settlement-aware supplier payments → F1 fiscal-year bill
-  numbering → D2 receipt snapshots → D4 health v2 → D3 export v5.
+  Plan (each D/F packet split to keep one PR small): O3 ✓ → D2a receipt header (shop name/address/
+  GSTIN, cached for offline, 58mm layout) → D2b settings server validation → D4a readiness panel → F1
+  or D2c snapshots (decide on risk). Receipts no longer print "DSB Store".
 - M1 gate (daily-usable): O1 ✓ + H3 (user, offline→restart→reconnect, each entry once) + first clean
   real-data week (Compare page + invariants). Waiting on the user for H3 and the cutover date.
 
