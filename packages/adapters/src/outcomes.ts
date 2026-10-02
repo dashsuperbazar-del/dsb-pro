@@ -330,6 +330,8 @@ export type SettlementOptions = {
     id: string;
     openingId: string;
     paymentId: string;
+    kind: 'CUSTOMER' | 'SUPPLIER';
+    accountId: string;
     amountPaise: string;
     effectiveDate: string;
     status: 'POSTED' | 'VOID';

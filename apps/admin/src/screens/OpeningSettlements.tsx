@@ -118,7 +118,6 @@ export function OpeningSettlements(props: { shop: string; names: Map<string, str
     await load().catch(() => undefined);
   }
 
-  const openingOf = (id: string) => opts?.openings.find((o) => o.id === id);
   return (
     <section class="card" aria-label="Settlements">
       <h2>Settle payments against openings</h2>
@@ -190,10 +189,9 @@ export function OpeningSettlements(props: { shop: string; names: Map<string, str
             </thead>
             <tbody>
               {opts!.settlements.map((s) => {
-                const o = openingOf(s.openingId);
                 return (
                   <tr key={s.id}>
-                    <td>{o ? label(o.kind, o.accountId) : '—'}</td>
+                    <td>{label(s.kind, s.accountId)}</td>
                     <td>{s.effectiveDate}</td>
                     <td>{rupees(s.amountPaise)}</td>
                     <td>{s.status === 'VOID' ? `Voided: ${s.voidReason ?? ''}` : 'Active'}</td>

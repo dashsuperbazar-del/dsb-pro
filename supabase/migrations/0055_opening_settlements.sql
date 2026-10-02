@@ -98,7 +98,8 @@ end $$;
 create trigger payments_o2_void_settlements after update of status on payments
  for each row when (old.status='POSTED' and new.status='VOID') execute function o2_void_settlements_with_payment();
 
--- Owner only, idempotent by client id, under the shop finance lock.
+-- Owner only, idempotent by client id, under the shop finance lock. Dated the day it is recorded (never
+-- before the payment or the opening), so reports for earlier dates never change (plan v1.1 §15.3).
 create function settle_opening(p_opening_id uuid,p_payment_id uuid,p_amount_paise bigint,p_client_id text)
 returns uuid language plpgsql security definer set search_path=public as $$
 declare v_tenant uuid:=current_tenant_id(); v_open account_openings%rowtype; v_pay payments%rowtype;
@@ -141,7 +142,7 @@ begin
  end if;
  insert into opening_settlements(tenant_id,shop_id,account_kind,opening_id,payment_id,amount_paise,effective_date,client_id)
  values(v_tenant,v_open.shop_id,v_open.account_kind,v_open.id,v_pay.id,p_amount_paise,
-   greatest(v_pay.business_date,v_open.as_of_date),p_client_id)
+   greatest(shop_business_date(v_open.shop_id),v_pay.business_date,v_open.as_of_date),p_client_id)
  returning * into v_row;
  return v_row.id;
 end $$;
@@ -185,6 +186,7 @@ begin
      and ((p.kind='customer' and p.direction='in' and p.customer_id is not null) or (p.kind='party' and p.direction='out' and p.party_id is not null))
      and p.amount_paise>o2_payment_assigned(v_tenant,p.id)),'[]'::jsonb),
   'settlements',coalesce((select jsonb_agg(jsonb_build_object('id',x.id,'openingId',x.opening_id,'paymentId',x.payment_id,
+     'kind',x.account_kind,'accountId',(select coalesce(o.customer_id,o.party_id) from account_openings o where o.tenant_id=x.tenant_id and o.id=x.opening_id),
      'amountPaise',x.amount_paise::text,'effectiveDate',x.effective_date,'status',x.status,'voidReason',x.void_reason)
      order by x.created_at desc,x.id)
    from opening_settlements x where x.tenant_id=v_tenant and x.shop_id=p_shop_id),'[]'::jsonb));
