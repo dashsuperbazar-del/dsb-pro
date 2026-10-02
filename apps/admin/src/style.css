@@ -165,11 +165,11 @@ td small {
   }
 }
 @page thermal {
-  size: 80mm auto;
+  size: 80mm 297mm; /* valid two-length size; roll printers paginate the content */
   margin: 4mm;
 }
 @page thermal58 {
-  size: 58mm auto;
+  size: 58mm 297mm;
   margin: 3mm;
 }
 @page invoiceA4 {
