@@ -4,7 +4,7 @@ Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/CO
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
-- `main` at last update: `c9e2854` (D2b merged, PR #60; `d2b` live apply dispatched 2026-10-02).
+- `main` at last update: `c9e2854` (D2b merged, PR #60; `d2b` applied live run 755, only d2b; deployed).
   Migrations 0001–0056 (immutable). In review: **D4a** health panel lists every invariant check (UI only).
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
   partial returns carry item value, capped so a bill's returns never exceed what was billed for its
