@@ -4,8 +4,8 @@ Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/CO
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
-- `main` at last update: `842a8c4` (V4 merged, PR #55; r0b applied live run 721, deployed run 724).
-  Migrations 0001–0053 (immutable). In review: **O1** (0054 `account_openings`, group `o1`, /openings).
+- `main` at last update: `8b68b15` (O1 merged, PR #56; `o1` applied live run 734, only o1; deployed run 735).
+  Migrations 0001–0054 (immutable). In review: **O2** (0055 `opening_settlements`, group `o2`). H3 waits on the user.
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
   partial returns carry item value, capped so a bill's returns never exceed what was billed for its
   items (total - extra charges). Extra charges still stay with the shop.
@@ -15,8 +15,6 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
   (a finished action repainted/voided the previous customer) and VF-009 (two stored intents blocked
   each other's retry). Watch: held-cart repeat once showed "Saved locally" instead of "Sale finalized"
   (main push run 36909385562, 9/10) — check eventual exactly-once sync if it recurs.
-- Decision 2026-10-01: D1-lite built before F0 (F0 blocked on the user's export; D1-lite has no F dependency).
-  F2 must extend both aging reports with opening rows (remainingPositiveOpenings / remainingOpeningCredits).
 - V2 residual closed by V3: receipt/payment check+create+send is serialized per account across windows
   (Web Locks). Browsers without Web Locks keep the unserialized check.
 - Rule (V2): every money/stock write stores its exact request on the device BEFORE sending (fail
@@ -28,6 +26,14 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
   owes), owner only, void + re-enter to correct. Feeds customer_ledger, party ledger v2, supplier
   outstanding and both as-of aging reports (aged from as_of_date), export. DEFERRED to O2: allocating
   payments/credits against an opening — until then such cash shows as unassigned; net balance exact.
+- O2 design (2026-10-02): separate `opening_settlements` (payment ↔ positive opening, owner only, void to
+  correct) instead of editing the 5 live payment writers; a new BEFORE INSERT trigger on payment_allocations
+  counts settlements so a payment is never assigned twice (DSB_ALLOCATION_EXCEEDS_PAYMENT); voiding a payment
+  voids its settlements; a settled opening cannot be voided. Credit (negative) openings are not applied to
+  bills (stay as credits in the net). Known gap: receipt/payment screens still show the pre-settlement
+  unassigned amount; an allocation over it is refused by the trigger (definitive, nothing written).
+- Watch (2026-10-02, local parallel e2e): recovery 'expense crash after commit' and suppliers 'lost
+  response' timed out at 30 s under load, both passed alone. Not O2 code; check CI runs.
 - Next: **O1 opening balances** (manual customer/supplier dues as of a cutover date, immutable ledger
   entries; opening stock via existing stock count) → **H3** dated device exercise with the user
   (offline entry → restart → reconnect, each entry exactly once).

@@ -913,6 +913,92 @@ export type Database = {
           },
         ]
       }
+      opening_settlements: {
+        Row: {
+          account_kind: string
+          amount_paise: number
+          client_id: string
+          created_at: string
+          created_by: string
+          deleted_at: number | null
+          effective_date: string
+          id: string
+          opening_id: string
+          payment_id: string
+          shop_id: string
+          status: string
+          tenant_id: string
+          updated_at: number
+          void_reason: string | null
+          voided_at: string | null
+        }
+        Insert: {
+          account_kind: string
+          amount_paise: number
+          client_id: string
+          created_at?: string
+          created_by?: string
+          deleted_at?: number | null
+          effective_date: string
+          id?: string
+          opening_id: string
+          payment_id: string
+          shop_id: string
+          status?: string
+          tenant_id: string
+          updated_at?: number
+          void_reason?: string | null
+          voided_at?: string | null
+        }
+        Update: {
+          account_kind?: string
+          amount_paise?: number
+          client_id?: string
+          created_at?: string
+          created_by?: string
+          deleted_at?: number | null
+          effective_date?: string
+          id?: string
+          opening_id?: string
+          payment_id?: string
+          shop_id?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: number
+          void_reason?: string | null
+          voided_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "opening_settlements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "opening_settlements_tenant_id_opening_id_fkey"
+            columns: ["tenant_id", "opening_id"]
+            isOneToOne: false
+            referencedRelation: "account_openings"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "opening_settlements_tenant_id_payment_id_fkey"
+            columns: ["tenant_id", "payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "opening_settlements_tenant_id_shop_id_fkey"
+            columns: ["tenant_id", "shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["tenant_id", "id"]
+          },
+        ]
+      }
       parties: {
         Row: {
           address: string | null
@@ -3160,6 +3246,10 @@ export type Database = {
           unit_name: string
         }[]
       }
+      get_opening_settlement_options: {
+        Args: { p_shop_id: string }
+        Returns: Json
+      }
       get_party_ledger: {
         Args: { p_from?: string; p_party_id: string; p_to?: string }
         Returns: {
@@ -3230,6 +3320,10 @@ export type Database = {
       }
       next_doc_no: {
         Args: { p_series: string; p_shop_id: string }
+        Returns: number
+      }
+      o2_payment_assigned: {
+        Args: { p_payment: string; p_tenant: string }
         Returns: number
       }
       phase3_assert_shop: { Args: { p_shop_id: string }; Returns: string }
@@ -3575,6 +3669,15 @@ export type Database = {
         Args: { p_status: string; p_user_id: string }
         Returns: undefined
       }
+      settle_opening: {
+        Args: {
+          p_amount_paise: number
+          p_client_id: string
+          p_opening_id: string
+          p_payment_id: string
+        }
+        Returns: string
+      }
       shop_business_date: { Args: { p_shop_id: string }; Returns: string }
       update_shop_settings: {
         Args: {
@@ -3595,6 +3698,10 @@ export type Database = {
         Returns: string
       }
       void_expense: { Args: { p_expense_id: string }; Returns: undefined }
+      void_opening_settlement: {
+        Args: { p_reason: string; p_settlement_id: string }
+        Returns: string
+      }
       void_payment: { Args: { p_payment_id: string }; Returns: string }
       void_purchase: {
         Args: { p_client_id: string; p_purchase_id: string }

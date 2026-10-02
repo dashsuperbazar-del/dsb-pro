@@ -58,7 +58,7 @@ export const uuidAck = (data: unknown): string | null => (isUuid(data) ? data : 
 // access error (row-level security hides rows from a user without access, so absence is unprovable).
 const ACCESS = /not permitted|permission|access|tenant|shop (is )?(not|un)/i;
 export async function verifyRetryRejection(
-  table: 'expenses' | 'purchase_bills' | 'stock_counts' | 'account_openings',
+  table: 'expenses' | 'purchase_bills' | 'stock_counts' | 'account_openings' | 'opening_settlements',
   clientId: string,
   rejected: { kind: 'rejected'; code: string; message: string },
 ): Promise<WriteOutcome<string>> {
@@ -278,4 +278,70 @@ export async function listOpenings(shopId: string): Promise<AccountOpening[]> {
     .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as unknown as AccountOpening[];
+}
+
+// O2: settle the unassigned part of a payment against a positive opening of the same account.
+export async function settleOpeningOutcome(
+  input: { openingId: string; paymentId: string; amountPaise: number; clientId: string },
+  isRetry = false,
+): Promise<WriteOutcome<string>> {
+  const outcome = await rpcOutcome(
+    'settle_opening',
+    {
+      p_opening_id: input.openingId,
+      p_payment_id: input.paymentId,
+      p_amount_paise: input.amountPaise,
+      p_client_id: input.clientId,
+    },
+    uuidAck,
+  );
+  return outcome.kind === 'rejected' && isRetry
+    ? verifyRetryRejection('opening_settlements', input.clientId, outcome)
+    : outcome;
+}
+export function voidSettlementOutcome(
+  settlementId: string,
+  reason: string,
+): Promise<WriteOutcome<string>> {
+  return rpcOutcome(
+    'void_opening_settlement',
+    { p_settlement_id: settlementId, p_reason: reason },
+    uuidAck,
+  );
+}
+export type SettlementOptions = {
+  openings: {
+    id: string;
+    kind: 'CUSTOMER' | 'SUPPLIER';
+    accountId: string;
+    asOfDate: string;
+    amountPaise: string;
+    remainingPaise: string;
+  }[];
+  payments: {
+    id: string;
+    kind: 'CUSTOMER' | 'SUPPLIER';
+    accountId: string;
+    businessDate: string;
+    amountPaise: string;
+    unassignedPaise: string;
+  }[];
+  settlements: {
+    id: string;
+    openingId: string;
+    paymentId: string;
+    kind: 'CUSTOMER' | 'SUPPLIER';
+    accountId: string;
+    amountPaise: string;
+    effectiveDate: string;
+    status: 'POSTED' | 'VOID';
+    voidReason: string | null;
+  }[];
+};
+export async function getSettlementOptions(shopId: string): Promise<SettlementOptions> {
+  const { data, error } = await getSupabaseClient().rpc('get_opening_settlement_options' as never, {
+    p_shop_id: shopId,
+  } as never);
+  if (error) throw new Error(error.message);
+  return data as unknown as SettlementOptions;
 }
