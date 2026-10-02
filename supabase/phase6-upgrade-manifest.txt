@@ -24,3 +24,4 @@
 0052 d1 supabase/migrations/0052_aging_as_of.sql
 0053 r0b supabase/migrations/0053_return_round_off.sql
 0054 o1 supabase/migrations/0054_account_openings.sql
+0055 o2 supabase/migrations/0055_opening_settlements.sql

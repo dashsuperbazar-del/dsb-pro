@@ -29,7 +29,7 @@ test('owner records a supplier opening, sees it in balances, voids it and re-ent
   await page
     .getByRole('combobox', { name: 'Account', exact: true })
     .selectOption({ label: 'Opening Traders' });
-  await page.getByLabel('Amount ₹').fill('500');
+  await page.getByLabel('Amount ₹', { exact: true }).fill('500');
   await page.getByRole('button', { name: 'Record opening' }).click();
   await expect(page.getByRole('status')).toContainText('Opening recorded for Opening Traders');
   const list = page.getByRole('region', { name: 'Openings' });
@@ -39,7 +39,7 @@ test('owner records a supplier opening, sees it in balances, voids it and re-ent
   await page
     .getByRole('combobox', { name: 'Account', exact: true })
     .selectOption({ label: 'Opening Traders' });
-  await page.getByLabel('Amount ₹').fill('10');
+  await page.getByLabel('Amount ₹', { exact: true }).fill('10');
   await page.getByRole('button', { name: 'Record opening' }).click();
   await expect(page.getByRole('status')).toContainText('Not recorded');
 
@@ -59,7 +59,7 @@ test('owner records a supplier opening, sees it in balances, voids it and re-ent
   await page
     .getByRole('combobox', { name: 'Account', exact: true })
     .selectOption({ label: 'Opening Traders' });
-  await page.getByLabel('Amount ₹').fill('450');
+  await page.getByLabel('Amount ₹', { exact: true }).fill('450');
   await page.getByRole('button', { name: 'Record opening' }).click();
   await expect(page.getByRole('status')).toContainText('Opening recorded');
 
@@ -67,4 +67,22 @@ test('owner records a supplier opening, sees it in balances, voids it and re-ent
   await expect(suppliers.locator('tr').filter({ hasText: 'Opening Traders' })).toContainText(
     '₹450.00',
   );
+
+  // O2: pay the supplier 300, settle it against the opening; the opening has 150 left.
+  await page.goto('/');
+  await page.getByRole('link', { name: 'Suppliers & payments' }).click();
+  await page.getByLabel('Supplier').selectOption({ label: 'Opening Traders' });
+  await page.getByLabel('Amount paid ₹').fill('300');
+  await page.getByRole('button', { name: 'Review' }).click();
+  await page.getByRole('button', { name: 'Confirm and record' }).click();
+  await expect(page.getByRole('status').first()).toContainText(/recorded/i);
+  await page.goto('/openings');
+  const settle = page.getByRole('region', { name: 'Settlements' });
+  await settle.getByLabel('Opening').selectOption({ index: 1 });
+  await settle.getByLabel('Payment').selectOption({ index: 1 });
+  await settle.getByLabel('Settle amount ₹').fill('300');
+  await settle.getByRole('button', { name: 'Settle' }).click();
+  await expect(settle.getByRole('status')).toContainText('Payment settled against the opening');
+  await expect(settle.getByLabel('Opening')).toContainText('₹150.00 left');
+  await expect(settle.locator('tbody tr')).toContainText('₹300.00');
 });

@@ -43,3 +43,5 @@ export type { WriteOutcome, PurchaseRequest, StockCountRequest } from './outcome
 export { postExpenseOutcome, postPurchaseOutcome, postStockCountOutcome } from './outcomes';
 export type { AccountOpening } from './outcomes';
 export { recordOpeningOutcome, voidOpeningOutcome, listOpenings } from './outcomes';
+export type { SettlementOptions } from './outcomes';
+export { settleOpeningOutcome, voidSettlementOutcome, getSettlementOptions } from './outcomes';

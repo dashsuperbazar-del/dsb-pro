@@ -12,6 +12,7 @@ import {
 } from '@dsb-pro/adapters';
 import { parseRupeesToPaise } from '@dsb-pro/core';
 import { appRoute } from '../lib/paths';
+import { OpeningSettlements } from './OpeningSettlements';
 import { rupees } from '../lib/money';
 import { clearPendingIntent, loadPendingIntent, savePendingIntent } from '../lib/pendingIntent';
 
@@ -312,6 +313,13 @@ export function OpeningsScreen() {
           </div>
         )}
       </section>
+      {shop && (
+        <OpeningSettlements
+          key={rows.map((r) => r.id + r.status).join()}
+          shop={shop}
+          names={names}
+        />
+      )}
     </main>
   );
 }
