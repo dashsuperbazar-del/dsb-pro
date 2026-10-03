@@ -464,7 +464,13 @@ export async function finalizeSaleResilient(input: {
     });
   }
   emit();
-  if (navigator.onLine) await runSyncNow();
+  if (navigator.onLine) {
+    await runSyncNow();
+    // runSyncNow joins a cycle already in flight, which may have read the outbox before this sale
+    // was queued. Run one fresh cycle so an online sale is posted now instead of "saved locally".
+    const afterJoin = await rt.db.offlineSales.get(record.clientId);
+    if (afterJoin?.status === 'QUEUED' && navigator.onLine && !state.lastError) await runSyncNow();
+  }
   const final = await rt.db.offlineSales.get(record.clientId);
   if (final?.status === 'SYNCED' && final.officialSaleId && final.officialDocNo)
     return { kind: 'synced', saleId: final.officialSaleId, docNo: final.officialDocNo };
@@ -591,7 +597,12 @@ export async function postReturnResilient(
     deviceId: rt.identity.deviceId,
   });
   emit();
-  if (navigator.onLine) await runSyncNow();
+  if (navigator.onLine) {
+    await runSyncNow();
+    // Same as sales: a joined in-flight cycle may have missed this return; run one fresh cycle.
+    const afterJoin = await rt.db.offlineReturns.get(record.clientId);
+    if (afterJoin?.status === 'QUEUED' && navigator.onLine && !state.lastError) await runSyncNow();
+  }
   const final = (await rt.db.offlineReturns.get(record.clientId)) ?? record;
   return final;
 }
