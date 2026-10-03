@@ -216,7 +216,7 @@ select
   (coalesce((select present from _d2b_receipt_check), false)) as d2b_receipt,
   (regexp_replace(coalesce(pg_get_functiondef(to_regprocedure('public.update_shop_settings(uuid,text,text,text,text,text,text,smallint,boolean)')),''),'\s+','','g') like '%DSB_FISCAL_MONTH_FROZEN%') as d2b_schema,
   (coalesce((select present from _d3a_receipt_check), false)) as d3a_receipt,
-  (position('''financialRequests'',coalesce' in coalesce(pg_get_functiondef(to_regprocedure('public.phase6_export_tenant(uuid)')),''))>0) as d3a_schema;
+  (position('''financialRequests'',coalesce' in coalesce(pg_get_functiondef(to_regprocedure('public.phase6_export_tenant(uuid)')),''))>0 and position('''shopFinancialHistory'',coalesce' in coalesce(pg_get_functiondef(to_regprocedure('public.phase6_export_tenant(uuid)')),''))>0) as d3a_schema;
 SQL
 )
 read -r foundation hardening phase65 batcha batchb p1_shape p1_rls p1_no_grants p1_receipt p2_receipt p2_body c0_receipt c0_schema c1_receipt c1_schema c2_receipt c2_schema c3_receipt c3_schema c3b_receipt c3b_schema r0_receipt r0_schema d1_receipt d1_schema r0b_receipt r0b_schema o1_receipt o1_schema o2_receipt o2_schema d2b_receipt d2b_schema d3a_receipt d3a_schema \
