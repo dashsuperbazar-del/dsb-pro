@@ -4,8 +4,8 @@ Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/CO
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
-- `main` at last update: `a442894` (S1 merged, PR #62; deploy of D2b+D4a+S1 dispatched 2026-10-03).
-  Migrations 0001–0056 (immutable). In review: **D3a** export carries the request ledger (0057, group `d3a`).
+- `main` at last update: `5b59901` (D3a merged, PR #63; `d3a` applied live run 771, only d3a; deployed run 772).
+  Migrations 0001–0057 (immutable). Five-packet run done; next waits on the user (H3 + cutover date).
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
   partial returns carry item value, capped so a bill's returns never exceed what was billed for its
   items (total - extra charges). Extra charges still stay with the shop.
