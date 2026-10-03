@@ -76,11 +76,22 @@ test('owner records a supplier opening, sees it in balances, voids it and re-ent
   await page.getByRole('button', { name: 'Review' }).click();
   await page.getByRole('button', { name: 'Confirm and record' }).click();
   await expect(page.getByRole('status').first()).toContainText(/recorded/i);
+  // The openings list arrives after the settle form is filled in (CI run on 228940b): the late
+  // list must not reset what was typed.
+  let releaseList: () => void = () => undefined;
+  const listGate = new Promise<void>((r) => (releaseList = r));
+  await page.route('**/rest/v1/account_openings*', async (route) => {
+    await listGate;
+    await route.continue();
+  });
   await page.goto('/openings');
   const settle = page.getByRole('region', { name: 'Settlements' });
   await settle.getByLabel('Opening').selectOption({ index: 1 });
   await settle.getByLabel('Payment').selectOption({ index: 1 });
   await settle.getByLabel('Settle amount ₹').fill('300');
+  releaseList();
+  await expect(page.getByRole('region', { name: 'Openings' })).toContainText('Opening Traders');
+  await page.unroute('**/rest/v1/account_openings*');
   await settle.getByRole('button', { name: 'Settle' }).click();
   await expect(settle.getByRole('status')).toContainText('Payment settled against the opening');
   await expect(settle.getByLabel('Opening')).toContainText('₹150.00 left');
