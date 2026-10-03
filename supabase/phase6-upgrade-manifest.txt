@@ -26,3 +26,4 @@
 0054 o1 supabase/migrations/0054_account_openings.sql
 0055 o2 supabase/migrations/0055_opening_settlements.sql
 0056 d2b supabase/migrations/0056_shop_settings_guard.sql
+0057 d3a supabase/migrations/0057_export_requests.sql

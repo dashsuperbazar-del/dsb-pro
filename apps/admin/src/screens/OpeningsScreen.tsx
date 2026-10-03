@@ -315,7 +315,7 @@ export function OpeningsScreen() {
       </section>
       {shop && (
         <OpeningSettlements
-          key={rows.map((r) => r.id + r.status).join()}
+          version={rows.map((r) => r.id + r.status).join()}
           shop={shop}
           names={names}
         />

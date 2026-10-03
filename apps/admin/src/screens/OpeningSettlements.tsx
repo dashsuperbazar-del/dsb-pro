@@ -14,8 +14,14 @@ import { clearPendingIntent, loadPendingIntent, savePendingIntent } from '../lib
 type Req = { openingId: string; paymentId: string; amountPaise: number };
 type Pending = { req: Req; clientId: string };
 
-export function OpeningSettlements(props: { shop: string; names: Map<string, string> }) {
-  const { shop, names } = props;
+// `version` changes when the openings list changes; options reload without resetting the form, so a
+// value typed while the list was still loading is kept.
+export function OpeningSettlements(props: {
+  shop: string;
+  names: Map<string, string>;
+  version: string;
+}) {
+  const { shop, names, version } = props;
   const [opts, setOpts] = useState<SettlementOptions | null>(null);
   const [openingId, setOpeningId] = useState('');
   const [paymentId, setPaymentId] = useState('');
@@ -37,8 +43,10 @@ export function OpeningSettlements(props: { shop: string; names: Map<string, str
         'An earlier settlement was not confirmed. Press "Retry same settlement" to finish it.',
       );
     } else if (!saved.ok) setMsg(saved.message);
-    load().catch((e) => setMsg(String(e)));
   }, [shop]);
+  useEffect(() => {
+    if (shop) load().catch((e) => setMsg(String(e)));
+  }, [shop, version]);
 
   const opening = opts?.openings.find((o) => o.id === openingId);
   const payments = (opts?.payments ?? []).filter(
