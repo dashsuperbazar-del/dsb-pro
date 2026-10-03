@@ -4,8 +4,8 @@ Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/CO
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
-- `main` at last update: `c9e2854` (D2b merged, PR #60; `d2b` applied live run 755, only d2b; deployed).
-  Migrations 0001–0056 (immutable). In review: **D4a** health panel lists every invariant check (UI only).
+- `main` at last update: `6f38ad2` (D4a merged, PR #61). D2b deploy run 758 blocked by the held-cart e2e
+  (root-caused below); D2b+D4a not yet deployed. In review: **S1** sync race fix (UI only).
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
   partial returns carry item value, capped so a bill's returns never exceed what was billed for its
   items (total - extra charges). Extra charges still stay with the shop.
@@ -13,8 +13,13 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
   D1 deployed after the apply (run 36897126086, green).
 - Verifier log V003 (2026-10-02): VF-005/006/008 CLOSED. Open MAJORs fixed in V4: VF-007 follow-up
   (a finished action repainted/voided the previous customer) and VF-009 (two stored intents blocked
-  each other's retry). Watch: held-cart repeat once showed "Saved locally" instead of "Sale finalized"
-  (main push run 36909385562, 9/10) — check eventual exactly-once sync if it recurs.
+  each other's retry).
+- FIXED (S1, 2026-10-03): an online sale/return finalized while a background sync cycle was in flight
+  joined that cycle, which had already read the outbox, so it showed "Saved locally" and posted only on
+  the next cycle (held-cart repeat, runs 36909385562 and 758). One fresh cycle now runs if it is still
+  QUEUED; a deterministic e2e holds the cycle's ack. Never a money risk (exactly-once outbox).
+- Watch: daily-entry 'expense answer lost' timed out once locally under full parallel load (button
+  click); 6/6 alone on main and on S1 — same pattern as the suppliers-form watch item.
 - V2 residual closed by V3: receipt/payment check+create+send is serialized per account across windows
   (Web Locks). Browsers without Web Locks keep the unserialized check.
 - Rule (V2): every money/stock write stores its exact request on the device BEFORE sending (fail
@@ -69,8 +74,6 @@ Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it
   `c0_*_body`. `phase5_sync_post_sale` is intentionally unwrapped (own key first, no cycle; keeps Batch B signal).
   New money writers MUST take `dsb_lock_shop_finance` first. Wrappers lock before the body's permission check
   (tenant member could serialize own shop; MINOR, not fixed).
-- Allocation `effective_date_source`: `EXPLICIT` = set by the server at insert (default = later of payment/doc
-  date), `LEGACY_INFERRED` = pre-C0 backfill (latest of payment date, doc date, shop-local created date).
 - Pre-C0 `void_purchase` never checked allocations: live may hold VOID bills with POSTED allocations (stranded
   money). C1 reports them in `get_supplier_outstanding().strandedAllocationsOnVoidBills`; owner releases them
   via `release_supplier_allocation`. Check that field on live right after the `c1` apply.

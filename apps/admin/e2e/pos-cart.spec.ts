@@ -128,3 +128,45 @@ test('cart lines edit in place, and a held cart survives being parked and comes 
   await page.getByRole('button', { name: 'Finalize sale' }).click();
   await expect(page.getByRole('status')).toContainText('Sale finalized');
 });
+
+// An online sale finalized while a background sync cycle is already in flight must still post
+// now. That cycle read the outbox before the sale was queued; joining it alone left the sale
+// "Saved locally" until the next cycle (CI run 758, held-cart repeat).
+test('an online sale finalized during an in-flight sync cycle is posted, not left saved locally', async ({
+  page,
+}) => {
+  test.setTimeout(60000);
+  await createOwnerShop(page);
+  await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await createItemWithStock(page, 'Race Item', '10', '5');
+  // Let the start-up sync cycle cache the item and finish before the race is set up.
+  await page.goto('/sync');
+  await expect(page.getByTestId('sync-outbox-count')).toHaveText('0');
+  await page.waitForTimeout(2000);
+  await page.goto('/pos');
+  await page.getByLabel('Find product').fill('Race Item');
+  await expect(page.getByLabel('Item').locator('option')).toHaveCount(2);
+  await page.getByLabel('Item').selectOption({ index: 1 });
+  await page.getByTestId('pos-add-quantity').fill('1');
+  await page.getByRole('button', { name: 'Add line' }).click();
+  await expect(page.getByRole('cell', { name: /Race Item/ })).toBeVisible();
+  await page.getByLabel('Amount ₹').first().fill('10');
+
+  // Start a fresh background cycle and hold its ack (only that cycle calls it): the cycle has
+  // already read the empty outbox when the sale is finalized.
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((r) => (release = r));
+  let held = false;
+  await page.route('**/rest/v1/rpc/phase5_sync_ack', async (route) => {
+    if (!held) {
+      held = true;
+      await gate;
+    }
+    await route.continue();
+  });
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect.poll(() => held).toBe(true);
+  await page.getByRole('button', { name: 'Finalize sale' }).click();
+  setTimeout(release, 3000);
+  await expect(page.getByRole('status')).toContainText('Sale finalized', { timeout: 15000 });
+});
