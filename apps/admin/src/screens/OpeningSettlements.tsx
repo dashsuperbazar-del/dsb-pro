@@ -100,7 +100,9 @@ export function OpeningSettlements(props: {
     let text =
       outcome.kind === 'committed'
         ? 'Payment settled against the opening.'
-        : `Not settled: ${outcome.message}. An earlier attempt may already be in the list below — check it before trying again.`;
+        : outcome.message.includes('DSB_SETTLEMENT_VOIDED')
+          ? 'This settlement was recorded earlier and has since been voided — see the list below. Nothing new was settled.'
+          : `Not settled: ${outcome.message}. An earlier attempt may already be in the list below — check it before trying again.`;
     if (outcome.kind === 'committed') setAmount('');
     if (more)
       text +=

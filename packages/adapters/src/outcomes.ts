@@ -58,7 +58,8 @@ export const uuidAck = (data: unknown): string | null => (isUuid(data) ? data : 
 // access error (row-level security hides rows from a user without access, so absence is unprovable).
 const ACCESS = /not permitted|permission|access|tenant|shop (is )?(not|un)/i;
 export async function verifyRetryRejection(
-  table: 'expenses' | 'purchase_bills' | 'stock_counts' | 'account_openings' | 'opening_settlements',
+  table:
+    'expenses' | 'purchase_bills' | 'stock_counts' | 'account_openings' | 'opening_settlements',
   clientId: string,
   rejected: { kind: 'rejected'; code: string; message: string },
 ): Promise<WriteOutcome<string>> {
@@ -295,6 +296,10 @@ export async function settleOpeningOutcome(
     },
     uuidAck,
   );
+  // VF-010: the server only says VOIDED when this id's row exists and is void; finding the row
+  // must not turn that into "settled".
+  if (outcome.kind === 'rejected' && outcome.message.includes('DSB_SETTLEMENT_VOIDED'))
+    return outcome;
   return outcome.kind === 'rejected' && isRetry
     ? verifyRetryRejection('opening_settlements', input.clientId, outcome)
     : outcome;
@@ -339,9 +344,12 @@ export type SettlementOptions = {
   }[];
 };
 export async function getSettlementOptions(shopId: string): Promise<SettlementOptions> {
-  const { data, error } = await getSupabaseClient().rpc('get_opening_settlement_options' as never, {
-    p_shop_id: shopId,
-  } as never);
+  const { data, error } = await getSupabaseClient().rpc(
+    'get_opening_settlement_options' as never,
+    {
+      p_shop_id: shopId,
+    } as never,
+  );
   if (error) throw new Error(error.message);
   return data as unknown as SettlementOptions;
 }
