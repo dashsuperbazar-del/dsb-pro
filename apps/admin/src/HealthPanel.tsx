@@ -15,7 +15,7 @@ import { invariantLabel, invariantRows } from './lib/invariants';
 
 type Integrity = { ok: boolean; rows: { code: string; count: number }[]; checkedAt: Date };
 
-export function HealthPanel() {
+export function HealthPanel(props: { canAdjustStock?: boolean } = {}) {
   const [backup, setBackup] = useState<BackupHealth | null | undefined>(undefined);
   const [integrity, setIntegrity] = useState<Integrity | null | undefined>(undefined);
   const [backupError, setBackupError] = useState<string | null>(null);
@@ -72,8 +72,14 @@ export function HealthPanel() {
         <p class="alert" data-testid="below-zero-warning">
           <strong>Below-zero stock (allowed by shop policy):</strong> {belowZero.length} item
           {belowZero.length === 1 ? '' : 's'} — {belowZero.slice(0, 5).join(', ')}
-          {belowZero.length > 5 ? ', …' : ''}. Count them on{' '}
-          <a href={appRoute.stockAdjust}>Stock adjust</a>.
+          {belowZero.length > 5 ? ', …' : ''}.{' '}
+          {props.canAdjustStock ? (
+            <>
+              Count them on <a href={appRoute.stockAdjust}>Stock adjust</a>.
+            </>
+          ) : (
+            'Ask the owner or manager to count them.'
+          )}
         </p>
       )}
       {backupError && (
