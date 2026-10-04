@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { postExpenseOutcome, postStockCountOutcome } from './outcomes';
+import { postExpenseOutcome, postStockCountOutcome, settleOpeningOutcome } from './outcomes';
 
 const { rpc, from } = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn() }));
 vi.mock('./client', () => ({ getSupabaseClient: () => ({ rpc, from }) }));
@@ -155,5 +155,25 @@ describe('a rejected RETRY is verified by client id (V2 review M2)', () => {
     });
     lookup(null, { message: 'network' });
     await expect(retry()).resolves.toMatchObject({ kind: 'unknown' });
+  });
+});
+
+describe('a voided settlement retry stays a rejection (VF-010)', () => {
+  it('DSB_SETTLEMENT_VOIDED is never turned into committed by the id lookup', async () => {
+    rpc.mockResolvedValue({
+      data: null,
+      error: {
+        code: 'P0001',
+        message: 'DSB_SETTLEMENT_VOIDED: this settlement was recorded and has since been voided',
+      },
+    });
+    from.mockReturnValue({
+      select: () => ({
+        eq: () => ({ maybeSingle: () => Promise.resolve({ data: { id: U }, error: null }) }),
+      }),
+    });
+    await expect(
+      settleOpeningOutcome({ openingId: U, paymentId: U, amountPaise: 100, clientId: U }, true),
+    ).resolves.toMatchObject({ kind: 'rejected', message: expect.stringContaining('voided') });
   });
 });

@@ -42,8 +42,8 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
   Plan (each D/F packet split to keep one PR small): O3 ✓ (deployed run 745) → D2a ✓ receipt header (shop name/address/
   GSTIN, cached for offline, 58mm layout) → D2b ✓ settings guard (row lock, IANA timezone, owner-only
   negative stock, fiscal month frozen until F1) → D4a health panel (all invariant codes by name, UNKNOWN on failure) → F1
-  or D2c snapshots (decide on risk). N1 (PR, no migration): home health panel lists below-zero items
-  when negative stock is allowed (server filter qty_base<0; 'unavailable' on error).
+  or D2c snapshots (decide on risk). N1 ✓ (deployed run 776). V5 (PR): VF-010 fix — a voided
+  settlement retry stays a rejection and says so; never shown as settled. F1 stays deferred (2 Oct).
 - M1 gate (daily-usable): O1 ✓ + H3 (user, offline→restart→reconnect, each entry once) + first clean
   real-data week (Compare page + invariants). Waiting on the user for H3 and the cutover date.
 
