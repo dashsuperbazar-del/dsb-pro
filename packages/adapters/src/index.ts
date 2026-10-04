@@ -8,7 +8,7 @@ export { createTenant, getDefaultShopId, createInvite, revokeInvite, acceptInvit
 export type { Device } from './devices';
 export { getOrCreateDeviceId, guessDeviceLabel, registerCurrentDevice, listDevices, renameDevice, revokeDevice } from './devices';
 export type { Item, Party, StockRow, PurchaseLine, ItemBarcode } from './masterData';
-export { listItems, listParties, createItem, createParty, addItemBarcode, findItemByBarcode, listStock, getShopBusinessDate, postPurchase, voidPurchase, archiveMaster, uploadItemImage, purgeItemImage, setItemMinStock } from './masterData';
+export { listItems, listParties, createItem, createParty, addItemBarcode, findItemByBarcode, listStock, listBelowZeroStock, getShopBusinessDate, postPurchase, voidPurchase, archiveMaster, uploadItemImage, purgeItemImage, setItemMinStock } from './masterData';
 export type { ItemPrice } from './pricing';
 export { listCurrentPrices, setItemPrice } from './pricing';
 export { replaceItemImage } from './itemImages';

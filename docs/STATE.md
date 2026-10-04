@@ -4,8 +4,8 @@ Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/CO
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
-- `main` at last update: `a442894` (S1 merged, PR #62; deploy of D2b+D4a+S1 dispatched 2026-10-03).
-  Migrations 0001–0056 (immutable). In review: **D3a** export carries the request ledger (0057, group `d3a`).
+- `main` at last update: `5b59901` (D3a merged, PR #63; `d3a` applied live run 771, only d3a; deployed run 772).
+  Migrations 0001–0057 (immutable). Five-packet run done; next waits on the user (H3 + cutover date).
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
   partial returns carry item value, capped so a bill's returns never exceed what was billed for its
   items (total - extra charges). Extra charges still stay with the shop.
@@ -38,13 +38,12 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
   bills (stay as credits in the net). Known gap: the supplier payment screen showed the pre-settlement
   unassigned amount; an allocation over it is refused by the trigger. Closed for suppliers by O3 (payment
   history counts settlements); the customer screen only allocates at receipt time, so no gap there.
-- Watch (2026-10-02, local parallel e2e): recovery 'expense crash after commit' and suppliers 'lost
-  response' timed out at 30 s under load, both passed alone. Not O2 code; check CI runs.
 - Decision 2026-10-02 (user): build, merge, apply and deploy the next 5 packets, each only on green CI.
   Plan (each D/F packet split to keep one PR small): O3 ✓ (deployed run 745) → D2a ✓ receipt header (shop name/address/
   GSTIN, cached for offline, 58mm layout) → D2b ✓ settings guard (row lock, IANA timezone, owner-only
   negative stock, fiscal month frozen until F1) → D4a health panel (all invariant codes by name, UNKNOWN on failure) → F1
-  or D2c snapshots (decide on risk). Receipts no longer print "DSB Store".
+  or D2c snapshots (decide on risk). N1 (PR, no migration): home health panel lists below-zero items
+  when negative stock is allowed (server filter qty_base<0; 'unavailable' on error).
 - M1 gate (daily-usable): O1 ✓ + H3 (user, offline→restart→reconnect, each entry once) + first clean
   real-data week (Compare page + invariants). Waiting on the user for H3 and the cutover date.
 

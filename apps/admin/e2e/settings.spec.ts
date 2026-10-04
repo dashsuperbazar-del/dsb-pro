@@ -82,4 +82,7 @@ test('owner can edit shop profile and it survives a reload, and the invoice pref
   await page.goto('/inventory');
   await page.getByLabel('Peek item').selectOption({ label: 'Settings E2E Item' });
   await expect(page.getByLabel('item peek')).toContainText('Stock -1 piece');
+  // N1: the home health panel warns about allowed below-zero stock.
+  await page.goto('/');
+  await expect(page.getByTestId('below-zero-warning')).toContainText('Settings E2E Item');
 });

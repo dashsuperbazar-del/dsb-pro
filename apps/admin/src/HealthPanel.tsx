@@ -1,16 +1,38 @@
 import { useEffect, useState } from 'preact/hooks';
-import { checkInvariants, getLatestBackupHealth, type BackupHealth } from '@dsb-pro/adapters';
+import {
+  checkInvariants,
+  getDefaultShopId,
+  getLatestBackupHealth,
+  getShopSettings,
+  listItems,
+  listBelowZeroStock,
+  type BackupHealth,
+} from '@dsb-pro/adapters';
+import { appRoute } from './lib/paths';
 import { invariantLabel, invariantRows } from './lib/invariants';
 
 // D4a: every invariant check is listed by name; a failed check is UNKNOWN, never a stale green.
 
 type Integrity = { ok: boolean; rows: { code: string; count: number }[]; checkedAt: Date };
 
-export function HealthPanel() {
+export function HealthPanel(props: { canAdjustStock?: boolean } = {}) {
   const [backup, setBackup] = useState<BackupHealth | null | undefined>(undefined);
   const [integrity, setIntegrity] = useState<Integrity | null | undefined>(undefined);
   const [backupError, setBackupError] = useState<string | null>(null);
   const [integrityError, setIntegrityError] = useState<string | null>(null);
+  // N1: items below zero that the shop's policy allows are not invariant failures, but still need a
+  // recount; list them as a warning (invariants already flag below-zero stock when not allowed).
+  const [belowZero, setBelowZero] = useState<string[] | 'error' | null>(null);
+  useEffect(() => {
+    void (async () => {
+      const shop = await getDefaultShopId();
+      const settings = await getShopSettings(shop);
+      if (!settings.allowNegativeStock) return setBelowZero([]);
+      const [stock, items] = await Promise.all([listBelowZeroStock(shop), listItems()]);
+      const names = new Map(items.map((i) => [i.id, i.name]));
+      setBelowZero(stock.map((r) => names.get(r.item_id) ?? r.item_id).sort());
+    })().catch(() => setBelowZero('error'));
+  }, []);
   useEffect(() => {
     void getLatestBackupHealth()
       .then(setBackup)
@@ -45,6 +67,21 @@ export function HealthPanel() {
   return (
     <section class="card" aria-label="System health">
       <h2>System health</h2>
+      {belowZero === 'error' && <p class="alert">Below-zero stock check unavailable.</p>}
+      {Array.isArray(belowZero) && belowZero.length > 0 && (
+        <p class="alert" data-testid="below-zero-warning">
+          <strong>Below-zero stock (allowed by shop policy):</strong> {belowZero.length} item
+          {belowZero.length === 1 ? '' : 's'} — {belowZero.slice(0, 5).join(', ')}
+          {belowZero.length > 5 ? ', …' : ''}.{' '}
+          {props.canAdjustStock ? (
+            <>
+              Count them on <a href={appRoute.stockAdjust}>Stock adjust</a>.
+            </>
+          ) : (
+            'Ask the owner or manager to count them.'
+          )}
+        </p>
+      )}
       {backupError && (
         <p role="alert" class="alert">
           Backup status unavailable: {backupError}

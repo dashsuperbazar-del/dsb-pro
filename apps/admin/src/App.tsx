@@ -41,7 +41,9 @@ export function App() {
           the same transactions here only for comparison.
         </div>
       )}
-      {session.status === 'active' && session.membership.role !== 'cashier' && <HealthPanel />}
+      {session.status === 'active' && session.membership.role !== 'cashier' && (
+        <HealthPanel canAdjustStock={['owner', 'manager'].includes(session.membership.role)} />
+      )}
       <Router>
         <Route path={appRoute.signup} component={SignupScreen} />
         <Route path={appRoute.join} component={JoinInviteScreen} />

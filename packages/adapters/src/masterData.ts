@@ -59,6 +59,14 @@ export async function listStock(shopId:string):Promise<StockRow[]> {
  const {data,error}=await getSupabaseClient().from('stock_current').select('tenant_id,shop_id,item_id,qty_base').eq('shop_id',shopId);
  if(error) throw new Error(friendly(error)); return (data??[]) as StockRow[];
 }
+// N1: only below-zero rows, filtered by the server (no row cap issue on large catalogs).
+export async function listBelowZeroStock(shopId:string):Promise<StockRow[]> {
+ const client=getSupabaseClient();
+ return collectPaginatedRows<StockRow>(async(from,to)=>{
+  const {data,error}=await client.from('stock_current').select('tenant_id,shop_id,item_id,qty_base').eq('shop_id',shopId).lt('qty_base',0).order('item_id').range(from,to);
+  if(error) throw new Error(friendly(error)); return (data??[]) as StockRow[];
+ });
+}
 export async function getShopBusinessDate(shopId:string):Promise<string> {
  const {data,error}=await getSupabaseClient().rpc('shop_business_date',{p_shop_id:shopId});
  return must(data,error) as string;
