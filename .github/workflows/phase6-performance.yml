@@ -3,13 +3,19 @@ name: Phase 6 production-scale performance
 on:
   push:
     branches: [phase-6-ledgers-reports-dr]
+  pull_request:
+    paths:
+      - '.github/workflows/phase6-performance.yml'
+      - 'scripts/remove-chrome-apt-source.sh'
+      - 'scripts/phase6-performance-fixture.sql'
+      - 'apps/admin/e2e/phase6-performance.spec.ts'
   schedule:
     # Runs from main after the phase stack is consolidated.
     - cron: '0 20 * * 2'
   workflow_dispatch:
 
 concurrency:
-  group: phase6-production-scale-performance
+  group: phase6-production-scale-performance-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -105,10 +111,22 @@ jobs:
 
       - name: Install Chromium
         run: |
-          grep -RIl 'dl.google.com/linux/chrome' /etc/apt/sources.list.d 2>/dev/null | while IFS= read -r source; do sudo rm -f "$source"; done
+          bash scripts/remove-chrome-apt-source.sh
           pnpm --filter @dsb-pro/admin exec playwright install --with-deps chromium
 
       - name: Enforce throttled 3G sync and billing-search thresholds
         env:
           PHASE6_PERF: '1'
         run: pnpm --filter @dsb-pro/admin exec playwright test e2e/phase6-performance.spec.ts --workers=1
+
+      - name: Upload performance failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            performance-fixture.txt
+            apps/admin/test-results/
+            apps/admin/playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore
