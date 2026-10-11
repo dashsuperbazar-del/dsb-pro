@@ -8,7 +8,7 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
 - 2026-10-11: user asked Codex to take over the remaining 2–4-session build scope. Packet RP1
   on `codex/recovery-proof-hardening`: optional Chrome apt cleanup must tolerate no matches while
   preserving scan/deletion errors; performance PR runs and retained failure evidence. No migration.
-  Local tests/review pass; push blocked by automatic approval review pending explicit permission.
+  Local tests/review pass; user approved upload on 11 October. Connected GitHub upload succeeded.
   VF-011 stays open until CI and a successful recovery proof. Historical performance job
   112552935035 has incomplete setup-step metadata and unavailable logs; no app slowdown inferred.
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
