@@ -2,10 +2,15 @@
 
 Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/COMPLETE_REMAINING_BUILD_PLAN.md` v1.1.
 Always verify the SHA below with `git log origin/main -1` before trusting it.
-
 ## Current
-- `main` at last update: `5b59901` (D3a merged, PR #63; `d3a` applied live run 771, only d3a; deployed run 772).
-  Migrations 0001–0057 (immutable). Five-packet run done; next waits on the user (H3 + cutover date).
+- `main` at last update: `397dcf2` (V5 merged, PR #65; fetched 2026-10-11).
+  Migrations 0001–0057 (immutable). Next: recovery/performance proof hardening, then H3 + clean shop week.
+- 2026-10-11: user asked Codex to take over the remaining 2–4-session build scope. Packet RP1
+  on `codex/recovery-proof-hardening`: optional Chrome apt cleanup must tolerate no matches while
+  preserving scan/deletion errors; performance PR runs and retained failure evidence. No migration.
+  Local tests/review pass; push blocked by automatic approval review pending explicit permission.
+  VF-011 stays open until CI and a successful recovery proof. Historical performance job
+  112552935035 has incomplete setup-step metadata and unavailable logs; no app slowdown inferred.
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
   partial returns carry item value, capped so a bill's returns never exceed what was billed for its
   items (total - extra charges). Extra charges still stay with the shop.
@@ -42,11 +47,10 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
   Plan (each D/F packet split to keep one PR small): O3 ✓ (deployed run 745) → D2a ✓ receipt header (shop name/address/
   GSTIN, cached for offline, 58mm layout) → D2b ✓ settings guard (row lock, IANA timezone, owner-only
   negative stock, fiscal month frozen until F1) → D4a health panel (all invariant codes by name, UNKNOWN on failure) → F1
-  or D2c snapshots (decide on risk). N1 ✓ (deployed run 776). V5 (PR): VF-010 fix — a voided
+  or D2c snapshots (decide on risk). N1 ✓ (deployed run 776). V5 ✓ (#65): VF-010 fix — a voided
   settlement retry stays a rejection and says so; never shown as settled. F1 stays deferred (2 Oct).
 - M1 gate (daily-usable): O1 ✓ + H3 (user, offline→restart→reconnect, each entry once) + first clean
   real-data week (Compare page + invariants). Waiting on the user for H3 and the cutover date.
-
 ## Workflow (single builder)
 failing tests → migration → adapters/UI → `pnpm lint && pnpm typecheck && pnpm test` (+pgTAP) →
 fresh sub-agent review (BLOCKER/MAJOR fixed, max 2 rounds) → PR → CI → 5-line summary → user says `merge`.
@@ -54,13 +58,11 @@ CI gate: UI/no-migration packet = one green full run on final head. Migration pa
 `workflow_dispatch operation=validate`, both on the unchanged final head. Squash-merge is the ratified practice.
 Ask the user only for: merge, live migration/deploy approval, money/data-loss trade-off.
 Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it applies all pending groups).
-
 ## Local environment
 - Docker works in the cloud session: `dockerd &`, then `pnpm exec supabase start` (CLI 2.116.0).
 - After every migration: `pnpm exec supabase db reset && pnpm exec supabase gen types typescript --local >
   packages/db/src/types.ts` — CI fails if the committed types are stale.
 - `pnpm exec prettier --check "apps/**/*.{ts,tsx,css,json,html}"` (config `.prettierrc.json`).
-
 ## Open risks / debts
 - D1-lite: old `get_customer_aging_report` (current-state balances labelled as-of) stays for compatibility but the
   UI no longer calls it. 100k-invoice EXPLAIN not done (one shop; revisit at S1). Cash counts as assigned only
@@ -95,7 +97,6 @@ Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it
 - Every gate H1–H9 from Phase 3 on is NOT GO; needs dated real-shop evidence. H3 needs an explicit
   offline→restart→reconnect device test. Returns/offline returns/Batch B are now live on the DB, so these matter.
 - P1 deferred follow-ups 1–6 (see ledger P1 row) are moved to M2.
-
 ## Decisions log
 - 2026-10-01: USER DECISION (B1) — item values stay in exact paise; the BILL total rounds to the nearest rupee
   (half-up, as old DSB) with a separate round-off amount. New packet R0 (migration). Old/queued sales stay exact.
