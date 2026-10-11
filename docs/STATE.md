@@ -6,9 +6,9 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
 - `main` at last update: `397dcf2` (V5 merged, PR #65; fetched 2026-10-11).
   Migrations 0001–0057 (immutable). Next: recovery/performance proof hardening, then H3 + clean shop week.
 - 2026-10-11: user asked Codex to take over the remaining 2–4-session build scope. Packet RP1
-  on `codex/recovery-proof-hardening`: optional Chrome apt cleanup must tolerate no matches while
+  PR #66: optional Chrome apt cleanup must tolerate no matches while
   preserving scan/deletion errors; performance PR runs and retained failure evidence. No migration.
-  Local tests/review pass; user approved upload on 11 October. Connected GitHub upload succeeded.
+  Local checks/review pass; CI found dev-dependency advisories, patched source-map-js 1.2.2/sharp 0.35.5.
   VF-011 stays open until CI and a successful recovery proof. Historical performance job
   112552935035 has incomplete setup-step metadata and unavailable logs; no app slowdown inferred.
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
