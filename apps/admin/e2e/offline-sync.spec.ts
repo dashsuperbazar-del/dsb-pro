@@ -1,3 +1,4 @@
+import { stockTask, addItemForm, reviewPayment } from './design-helpers';
 import { test, expect } from '@playwright/test';
 
 const PASSWORD = 'TestOnly-2026!pw';
@@ -15,21 +16,24 @@ async function createOwnerShop(page: import('@playwright/test').Page) {
   await page.goto('/');
   await page.getByLabel('Shop name').fill('Offline Chaos Shop');
   await page.getByRole('button', { name: 'Create your shop' }).click();
-  await expect(page.getByText(/DSB Pro — Admin/)).toBeVisible();
+  await expect(page.getByText(/Overview/)).toBeVisible();
 }
 
 async function seedOfflineItem(page: import('@playwright/test').Page) {
   await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await addItemForm(page);
   await page.getByPlaceholder('Item name').fill('Offline E2E Item');
   await page.getByPlaceholder('SKU').fill(`OFF-${Date.now()}`);
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
   await expect(page.getByRole('status')).toContainText('Created Offline E2E Item');
-  await page.getByLabel('Peek item').selectOption({ label: 'Offline E2E Item' });
+  await stockTask(page, 'Items');
+  await page.getByLabel('Item details').selectOption({ label: 'Offline E2E Item' });
   const priceForm = page.getByRole('button', { name: 'Set price' }).locator('xpath=..');
   await priceForm.locator('input[name="price"]').fill('10');
   await page.getByRole('button', { name: 'Set price' }).click();
   await expect(page.getByRole('status')).toContainText('Price history updated');
+  await stockTask(page, 'Purchases');
   const purchase = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
@@ -56,6 +60,7 @@ async function addOnePaidLine(page: import('@playwright/test').Page) {
   await expect(
     page.locator('section').filter({ has: page.getByRole('heading', { name: '2. Cart' }) }),
   ).toContainText('Offline E2E Item');
+  await reviewPayment(page);
   await page.getByLabel('Amount ₹').first().fill('10');
 }
 
@@ -94,6 +99,7 @@ test('chaos: airplane mode + app restart + logical one-hour outage preserves and
   // Begin a real bill while online, then lose the backend before finalization.
   await addOnePaidLine(page);
   await context.setOffline(true);
+  await reviewPayment(page);
   await page.getByRole('button', { name: 'Finalize sale' }).click();
   await expect(page.getByRole('status')).toContainText('Saved locally as T-');
   await expect(page.locator('section[aria-label="Local offline sales"]')).toContainText('QUEUED');
@@ -154,6 +160,7 @@ test('chaos: airplane mode + app restart + logical one-hour outage preserves and
     });
   });
   await addOnePaidLine(page);
+  await reviewPayment(page);
   await page.getByRole('button', { name: 'Finalize sale' }).click();
   await expect(page.getByRole('status')).toContainText('Saved locally as T-');
 
@@ -194,6 +201,7 @@ test('chaos: airplane mode + app restart + logical one-hour outage preserves and
   );
 
   await page.goto('/inventory');
-  await page.getByLabel('Peek item').selectOption({ label: 'Offline E2E Item' });
+  await stockTask(page, 'Items');
+  await page.getByLabel('Item details').selectOption({ label: 'Offline E2E Item' });
   await expect(page.locator('[aria-label="item peek"]')).toContainText('Stock 1 piece');
 });

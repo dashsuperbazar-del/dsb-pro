@@ -2,15 +2,18 @@
 Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/COMPLETE_REMAINING_BUILD_PLAN.md` v1.1.
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 ## Current
-- `main` at last update: `8d1ed82` (MU1 merged #67; fetched 2026-10-12).
-  Migrations 0001–0057 immutable. Recovery proof #785 and deploy #787 PASS; VF-011 CLOSED.
-- MU1 (2026-10-12, user requested confusing phone UI be changed): dashboard action tiles,
-  active mobile navigation, compact item fields, labelled mobile cart rows, sticky bill summary,
-  optional customer form, collapsed diagnostics. No financial handlers, migration or role grants changed.
-  Local lint/typecheck/304 unit tests/build PASS; fresh review (2 rounds) PASS; CI found 7 stale selectors, fixed; final-head CI pending.
-  Risks: obscured payment controls or cart edits lost on navigation; real browser checks required.
-  MU1a: preserve health disclosure choice across async health updates; deterministic regression + CI pending.
-  H3 + clean shop week remain open; visual/UI acceptance is distinct from automated money proofs.
+- `main` verified: `4c1be81` (MU1a #68; fetched 2026-10-12). Migrations 0001–0057 immutable.
+- MU1/MU1a CI and deploy run 38225164664 PASS. User rejected MU1's oversized visual design.
+- PD1 professional design: user requested research first, then authorized build on 2026-10-12.
+  Compact blue/slate system; Home/Billing/Parties/Stock/More; retained task views for purchases,
+  supplier payments, receipts, report categories and dedicated checkout; light/dark/system theme.
+  Financial RPC payloads, request IDs, immutable ledgers and money calculations unchanged.
+  Silent-corruption risks: lost draft/input identity; hidden unknown outcomes; stale price replies;
+  unreadable totals or print; private navigation exposure. CI must prove existing money/recovery paths.
+  Local lint/typecheck/build + 308 unit tests PASS. Fresh independent review PASS (3 findings corrected); final-head CI pending.
+  Browser screenshots are synthetic fixture evidence, not real shop usability acceptance.
+  No migration. Production deployment remains manual; never rerun an old failed deployment SHA.
+  H3 + clean shop week remain NOT GO pending dated evidence.
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
   partial returns carry item value, capped so a bill's returns never exceed what was billed for its
   items (total - extra charges). Extra charges still stay with the shop.

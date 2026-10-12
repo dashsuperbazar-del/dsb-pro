@@ -1,48 +1,53 @@
 import type { Role } from '@dsb-pro/core';
 import { appRoute } from '../lib/paths';
-
-// Phone-width navigation for the daily-entry screens. Hidden on wide screens by CSS.
+import { Icon, type IconName } from './Icon';
 export function BottomNav({ role, currentPath }: { role: Role; currentPath: string }) {
-  const links: [string, string][] = [
-    [appRoute.pos, 'POS'],
-    [appRoute.customers, 'Customers'],
+  const links: { href: string; label: string; icon: IconName; active: boolean }[] = [
+    { href: appRoute.home, label: 'Home', icon: 'home', active: currentPath === appRoute.home },
+    {
+      href: appRoute.pos,
+      label: 'Billing',
+      icon: 'bill',
+      active: [appRoute.pos, appRoute.salesHistory, appRoute.returns].includes(currentPath),
+    },
+    {
+      href: role === 'cashier' ? appRoute.customers : appRoute.suppliers,
+      label: 'Parties',
+      icon: 'people',
+      active: [appRoute.suppliers, appRoute.customers].includes(currentPath),
+    },
     ...(role === 'cashier'
       ? []
-      : ([
-          [appRoute.suppliers, 'Suppliers'],
-          [appRoute.expenses, 'Expenses'],
-        ] as [string, string][])),
-    [appRoute.home, 'Home'],
+      : [
+          {
+            href: appRoute.inventory,
+            label: 'Stock',
+            icon: 'stock' as const,
+            active: [appRoute.inventory, appRoute.stockAdjust].includes(currentPath),
+          },
+        ]),
+    {
+      href: appRoute.more,
+      label: 'More',
+      icon: 'more',
+      active: ![
+        appRoute.home,
+        appRoute.pos,
+        appRoute.salesHistory,
+        appRoute.returns,
+        appRoute.suppliers,
+        appRoute.customers,
+        appRoute.inventory,
+        appRoute.stockAdjust,
+      ].includes(currentPath),
+    },
   ];
   return (
     <nav class="bottom-nav" aria-label="Quick navigation">
-      {links.map(([href, label]) => (
-        <a key={href} href={href} aria-current={currentPath === href ? 'page' : undefined}>
-          <svg
-            class="nav-mark"
-            aria-hidden="true"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path
-              d={
-                label === 'POS'
-                  ? 'M5 3h14v18l-3-2-4 2-4-2-3 2V3 M8 8h8 M8 12h5'
-                  : label === 'Home'
-                    ? 'M3 10l9-7 9 7 M5 9v12h14V9 M9 21v-7h6v7'
-                    : label === 'Expenses'
-                      ? 'M4 6h16v14H4V6 M4 6V4h12 M16 11h4v5h-4z'
-                      : label === 'Customers'
-                        ? 'M8 8a4 4 0 1 0 8 0a4 4 0 1 0-8 0 M4 21v-2a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v2'
-                        : 'M3 8l2-5h14l2 5 M3 8v4h18V8 M5 12v9h14v-9 M9 21v-6h6v6'
-              }
-            />
-          </svg>
-          {label}
+      {links.map((link) => (
+        <a key={link.href} href={link.href} aria-current={link.active ? 'page' : undefined}>
+          <Icon name={link.icon} />
+          <span>{link.label}</span>
         </a>
       ))}
     </nav>

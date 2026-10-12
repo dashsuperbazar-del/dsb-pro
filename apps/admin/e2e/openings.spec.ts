@@ -1,3 +1,4 @@
+import { stockTask } from './design-helpers';
 // O1: opening balances at cutover feed the account balances; a wrong one is voided and re-entered.
 import { test, expect } from '@playwright/test';
 
@@ -16,9 +17,10 @@ test('owner records a supplier opening, sees it in balances, voids it and re-ent
   await page.goto('/');
   await page.getByLabel('Shop name').fill('Openings Shop');
   await page.getByRole('button', { name: 'Create your shop' }).click();
-  await expect(page.getByText(/DSB Pro — Admin/)).toBeVisible();
+  await expect(page.getByText(/Overview/)).toBeVisible();
 
   await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await stockTask(page, 'Suppliers');
   await page.getByPlaceholder('Supplier name').fill('Opening Traders');
   await page.getByRole('button', { name: 'Create supplier' }).click();
   await expect(page.getByRole('status')).toContainText('Created supplier Opening Traders');
@@ -72,6 +74,10 @@ test('owner records a supplier opening, sees it in balances, voids it and re-ent
   await page.goto('/');
   await page.getByRole('link', { name: 'Suppliers & payments' }).click();
   await page.getByLabel('Supplier').selectOption({ label: 'Opening Traders' });
+  await page
+    .getByRole('navigation', { name: 'Supplier tasks' })
+    .getByRole('button', { name: 'Record payment', exact: true })
+    .click();
   await page.getByLabel('Amount paid ₹').fill('300');
   await page.getByRole('button', { name: 'Review' }).click();
   await page.getByRole('button', { name: 'Confirm and record' }).click();
@@ -101,6 +107,10 @@ test('owner records a supplier opening, sees it in balances, voids it and re-ent
   await page.goto('/');
   await page.getByRole('link', { name: 'Suppliers & payments' }).click();
   await page.getByLabel('Supplier').selectOption({ label: 'Opening Traders' });
+  await page
+    .getByRole('navigation', { name: 'Supplier tasks' })
+    .getByRole('button', { name: 'Payments', exact: true })
+    .click();
   const hist = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Payment history' }) });

@@ -1,3 +1,4 @@
+import { stockTask, addItemForm } from './design-helpers';
 import { test, expect } from '@playwright/test';
 
 const PASSWORD = 'TestOnly-2026!pw';
@@ -14,9 +15,10 @@ async function createOwnerShop(page: import('@playwright/test').Page) {
   await page.goto('/');
   await page.getByLabel('Shop name').fill('Multi-line Purchase Shop');
   await page.getByRole('button', { name: 'Create your shop' }).click();
-  await expect(page.getByText(/DSB Pro — Admin/)).toBeVisible();
+  await expect(page.getByText(/Overview/)).toBeVisible();
 }
 async function createItem(page: import('@playwright/test').Page, name: string) {
+  await addItemForm(page);
   await page.getByPlaceholder('Item name').fill(name);
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
@@ -29,6 +31,7 @@ test('a single supplier bill can carry more than one purchase line', async ({ pa
   await createItem(page, 'Purchase Line Item A');
   await createItem(page, 'Purchase Line Item B');
 
+  await stockTask(page, 'Purchases');
   const purchase = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
@@ -67,9 +70,11 @@ test('a single supplier bill can carry more than one purchase line', async ({ pa
   );
   await expect(purchase.locator('table tbody tr')).toHaveCount(0);
 
-  await page.getByLabel('Peek item').selectOption({ label: 'Purchase Line Item A' });
+  await stockTask(page, 'Items');
+  await page.getByLabel('Item details').selectOption({ label: 'Purchase Line Item A' });
   await expect(page.getByLabel('item peek')).toContainText('Stock 4 piece');
-  await page.getByLabel('Peek item').selectOption({ label: 'Purchase Line Item B' });
+  await stockTask(page, 'Items');
+  await page.getByLabel('Item details').selectOption({ label: 'Purchase Line Item B' });
   await expect(page.getByLabel('item peek')).toContainText('Stock 6 piece');
 });
 
@@ -79,6 +84,7 @@ test('a purchase whose answer is lost is retried as the same bill, never posted 
   await createOwnerShop(page);
   await page.getByRole('link', { name: 'Inventory & purchases' }).click();
   await createItem(page, 'Retry Item');
+  await stockTask(page, 'Purchases');
   const purchase = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
@@ -101,7 +107,8 @@ test('a purchase whose answer is lost is retried as the same bill, never posted 
   await expect(purchase.getByRole('button', { name: 'Retry same purchase' })).toBeVisible();
   await purchase.getByRole('button', { name: 'Retry same purchase' }).click();
   await expect(page.getByRole('status')).toContainText('Purchase posted (1 line)');
-  await page.getByLabel('Peek item').selectOption({ label: 'Retry Item' });
+  await stockTask(page, 'Items');
+  await page.getByLabel('Item details').selectOption({ label: 'Retry Item' });
   await expect(page.getByLabel('item peek')).toContainText('Stock 3 piece');
   expect(calls).toBe(2);
 });

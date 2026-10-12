@@ -36,6 +36,7 @@ import {
   waitForOfflineRuntime,
   type FinancialAttempt,
 } from '../lib/offlineSync';
+import { TaskTabs } from '../components/TaskTabs';
 import { appRoute } from '../lib/paths';
 import { rupees } from '../lib/money';
 import { t } from '../lib/i18n';
@@ -86,6 +87,8 @@ const lookup = (a: FinancialAttempt) =>
   lookupSupplierRequest(a.shopId, a.operation as SupplierOperation, a.id);
 
 export function SuppliersScreen() {
+  const [supplierSearch, setSupplierSearch] = useState('');
+  const [view, setView] = useState<'bills' | 'payment' | 'history' | 'ledger'>('bills');
   const [role, setRole] = useState<Role | null>(null);
   const [shopId, setShopId] = useState('');
   const [businessDate, setBusinessDate] = useState('');
@@ -327,6 +330,12 @@ export function SuppliersScreen() {
     <main>
       <div class="row">
         <h1>{t('suppliers')}</h1>
+        <nav class="party-tabs" aria-label="Party type">
+          <a href={appRoute.suppliers} aria-current="page">
+            Suppliers
+          </a>
+          <a href={appRoute.customers}>Customers</a>
+        </nav>
         <a href={appRoute.home}>{t('home')}</a>
       </div>
       <p class="hint">
@@ -339,8 +348,16 @@ export function SuppliersScreen() {
       )}
       {message && <p role="status">{message}</p>}
 
-      <section>
+      <section class="mobile-records">
         <h2>Summary</h2>
+        <label class="search-field">
+          Find supplier
+          <input
+            value={supplierSearch}
+            onInput={(e) => setSupplierSearch(e.currentTarget.value)}
+            placeholder="Supplier name"
+          />
+        </label>
         <table>
           <thead>
             <tr>
@@ -352,26 +369,30 @@ export function SuppliersScreen() {
             </tr>
           </thead>
           <tbody>
-            {summary.map((s) => (
-              <tr key={s.partyId}>
-                <td>
-                  <button class="link" onClick={() => void changeParty(s.partyId)}>
-                    {s.partyName}
-                  </button>
-                  {s.strandedAllocationsOnVoidBills > 0 && (
-                    <span class="alert">
-                      {' '}
-                      ⚠ {s.strandedAllocationsOnVoidBills} payment(s) on void bills — owner must
-                      release
-                    </span>
-                  )}
-                </td>
-                <td>{rupees(s.grossOpenBills)}</td>
-                <td>{rupees(s.unallocatedCashAdvances)}</td>
-                <td>{rupees(s.returnCredits)}</td>
-                <td>{rupees(s.netLedgerBalance)}</td>
-              </tr>
-            ))}
+            {summary
+              .filter((s) => s.partyName.toLowerCase().includes(supplierSearch.toLowerCase()))
+              .map((s) => (
+                <tr key={s.partyId}>
+                  <td class="record-title" data-label="Supplier">
+                    <button class="link" onClick={() => void changeParty(s.partyId)}>
+                      {s.partyName}
+                    </button>
+                    {s.strandedAllocationsOnVoidBills > 0 && (
+                      <span class="alert">
+                        {' '}
+                        ⚠ {s.strandedAllocationsOnVoidBills} payment(s) on void bills — owner must
+                        release
+                      </span>
+                    )}
+                  </td>
+                  <td data-label="Open bills">{rupees(s.grossOpenBills)}</td>
+                  <td data-label="Advance available">{rupees(s.unallocatedCashAdvances)}</td>
+                  <td data-label="Return credits">{rupees(s.returnCredits)}</td>
+                  <td data-label={Number(s.netLedgerBalance) < 0 ? 'Net credit' : 'You owe'}>
+                    {rupees(s.netLedgerBalance)}
+                  </td>
+                </tr>
+              ))}
           </tbody>
         </table>
         <label>
@@ -399,6 +420,17 @@ export function SuppliersScreen() {
 
       {partyId && (
         <>
+          <TaskTabs
+            label="Supplier tasks"
+            value={view}
+            onChange={setView}
+            options={[
+              { value: 'bills', label: 'Bills' },
+              { value: 'payment', label: 'Record payment' },
+              { value: 'history', label: 'Payments' },
+              { value: 'ledger', label: 'Ledger' },
+            ]}
+          />
           {unresolved.length > 0 && (
             <section class="alert" role="alert" aria-label="Unresolved payments">
               <h2>Payments awaiting server confirmation</h2>
@@ -434,7 +466,7 @@ export function SuppliersScreen() {
             </section>
           )}
 
-          <section>
+          <section class="mobile-records" hidden={view !== 'bills' && view !== 'payment'}>
             <h2>Open bills</h2>
             <table>
               <thead>
@@ -451,12 +483,12 @@ export function SuppliersScreen() {
               <tbody>
                 {bills.map((b) => (
                   <tr key={b.purchase_bill_id}>
-                    <td>{b.bill_no ?? b.purchase_bill_id.slice(0, 8)}</td>
-                    <td>{b.business_date}</td>
-                    <td>{rupees(b.total_paise)}</td>
-                    <td>{rupees(b.returned_paise)}</td>
-                    <td>{rupees(b.allocated_paise)}</td>
-                    <td>{rupees(b.outstanding_paise)}</td>
+                    <td data-label="Bill">{b.bill_no ?? b.purchase_bill_id.slice(0, 8)}</td>
+                    <td data-label="Date">{b.business_date}</td>
+                    <td data-label="Total">{rupees(b.total_paise)}</td>
+                    <td data-label="Returned">{rupees(b.returned_paise)}</td>
+                    <td data-label="Paid">{rupees(b.allocated_paise)}</td>
+                    <td data-label="Outstanding">{rupees(b.outstanding_paise)}</td>
                     {canPost && (
                       <td>
                         {b.outstanding_paise > 0 && (
@@ -482,7 +514,7 @@ export function SuppliersScreen() {
           </section>
 
           {canPost && loadedParty === partyId && (
-            <section>
+            <section hidden={view !== 'payment'}>
               <h2>{t('recordPaymentMade')}</h2>
               {unresolved.length > 0 ? (
                 <p>Blocked until the payments above are resolved.</p>
@@ -577,7 +609,7 @@ export function SuppliersScreen() {
             </section>
           )}
 
-          <section>
+          <section hidden={view !== 'history'}>
             <h2>Payment history</h2>
             <table>
               <thead>
@@ -619,7 +651,7 @@ export function SuppliersScreen() {
           </section>
 
           {ledger && (
-            <section>
+            <section class="mobile-records" hidden={view !== 'ledger'}>
               <h2>Ledger (this shop)</h2>
               <p>
                 Opening {rupees(ledger.openingBalancePaise)} · Closing{' '}
@@ -638,11 +670,11 @@ export function SuppliersScreen() {
                 <tbody>
                   {ledger.entries.map((e) => (
                     <tr key={`${e.kind}-${e.id}`}>
-                      <td>{e.date}</td>
-                      <td>{e.kind}</td>
-                      <td>{e.document}</td>
-                      <td>{rupees(e.amountPaise)}</td>
-                      <td>{rupees(e.runningBalancePaise)}</td>
+                      <td data-label="Date">{e.date}</td>
+                      <td data-label="Entry">{e.kind}</td>
+                      <td data-label="Document">{e.document}</td>
+                      <td data-label="Amount">{rupees(e.amountPaise)}</td>
+                      <td data-label="Balance">{rupees(e.runningBalancePaise)}</td>
                     </tr>
                   ))}
                 </tbody>

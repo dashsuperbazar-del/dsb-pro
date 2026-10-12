@@ -1,3 +1,4 @@
+import { stockTask, addItemForm, reviewPayment } from './design-helpers';
 import { test, expect } from '@playwright/test';
 
 const PASSWORD = 'TestOnly-2026!pw';
@@ -14,7 +15,7 @@ async function createOwnerShop(page: import('@playwright/test').Page) {
   await page.goto('/');
   await page.getByLabel('Shop name').fill('Settings Screen Shop');
   await page.getByRole('button', { name: 'Create your shop' }).click();
-  await expect(page.getByText(/DSB Pro — Admin/)).toBeVisible();
+  await expect(page.getByText(/Overview/)).toBeVisible();
 }
 
 test('owner can edit shop profile and it survives a reload, and the invoice prefix reaches a real sale', async ({
@@ -50,14 +51,17 @@ test('owner can edit shop profile and it survives a reload, and the invoice pref
 
   // The renamed shop's own invoice prefix must show up on a real posted sale's doc number.
   await page.goto('/inventory');
+  await addItemForm(page);
   await page.getByPlaceholder('Item name').fill('Settings E2E Item');
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
   await expect(page.getByRole('status')).toContainText('Created Settings E2E Item');
-  await page.getByLabel('Peek item').selectOption({ label: 'Settings E2E Item' });
+  await stockTask(page, 'Items');
+  await page.getByLabel('Item details').selectOption({ label: 'Settings E2E Item' });
   const priceForm = page.getByRole('button', { name: 'Set price' }).locator('xpath=..');
   await priceForm.locator('input[name="price"]').fill('10');
   await page.getByRole('button', { name: 'Set price' }).click();
+  await stockTask(page, 'Purchases');
   const purchase = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
@@ -77,11 +81,14 @@ test('owner can edit shop profile and it survives a reload, and the invoice pref
   // reaches post_sale(), not just that the checkbox itself saves.
   await page.getByLabel('Quantity').fill('6');
   await page.getByRole('button', { name: 'Add line' }).click();
+  await reviewPayment(page);
   await page.getByLabel('Amount ₹').first().fill('60');
+  await reviewPayment(page);
   await page.getByRole('button', { name: 'Finalize sale' }).click();
   await expect(page.getByRole('status')).toContainText(/Sale finalized.*RCS-/);
   await page.goto('/inventory');
-  await page.getByLabel('Peek item').selectOption({ label: 'Settings E2E Item' });
+  await stockTask(page, 'Items');
+  await page.getByLabel('Item details').selectOption({ label: 'Settings E2E Item' });
   await expect(page.getByLabel('item peek')).toContainText('Stock -1 piece');
   // N1: the home health panel warns about allowed below-zero stock.
   await page.goto('/');

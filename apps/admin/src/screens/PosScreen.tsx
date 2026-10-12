@@ -108,6 +108,7 @@ function HoldLabelField() {
 }
 
 export function PosScreen() {
+  const [checkout, setCheckout] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [sales, setSales] = useState<SaleInvoice[]>([]);
@@ -339,6 +340,7 @@ export function PosScreen() {
         })),
       });
       setCart([]);
+      setCheckout(false);
       setCustomerId('');
       setGlobalDiscount('0');
       setExtra('0');
@@ -498,6 +500,7 @@ export function PosScreen() {
       );
       setSaleClientId(crypto.randomUUID());
       setCart([]);
+      setCheckout(false);
       setGlobalDiscount('0');
       setExtra('0');
       setTenders([{ mode: 'cash', amount: '' }]);
@@ -605,9 +608,16 @@ export function PosScreen() {
           </small>
           <strong>{money(previewTotal)}</strong>
         </div>
-        <a class="checkout-link" href="#pos-payment">
-          Review payment ↓
-        </a>
+        <button
+          class="primary checkout-link"
+          type="button"
+          onClick={() => {
+            setCheckout(!checkout);
+            window.scrollTo(0, 0);
+          }}
+        >
+          {checkout ? '← Back to items' : 'Review payment →'}
+        </button>
       </div>
       <details class="keyboard-help">
         <summary>
@@ -629,8 +639,8 @@ export function PosScreen() {
         </p>
       )}
 
-      <section class="card pos-items" id="pos-items">
-        <h2>1. Scan or add item</h2>
+      <section class="card pos-items" id="pos-items" hidden={checkout}>
+        <h2>Find products</h2>
         <form onSubmit={scan} class="row">
           <label>
             Barcode{' '}
@@ -730,7 +740,7 @@ export function PosScreen() {
         </form>
       </section>
 
-      <section class="card pos-cart" id="pos-cart">
+      <section class="card pos-cart" id="pos-cart" hidden={checkout}>
         <h2>2. Cart</h2>
         {!cart.length ? (
           <p key="cart-lines" class="muted">
@@ -857,7 +867,7 @@ export function PosScreen() {
         </div>
       </section>
       {heldCarts.length > 0 && (
-        <section class="card" aria-label="Held carts">
+        <section class="card" aria-label="Held carts" hidden={checkout}>
           <h2>Held carts</h2>
           <div class="table-wrap">
             <table>
@@ -898,8 +908,8 @@ export function PosScreen() {
         </section>
       )}
 
-      <section class="card pos-payment" id="pos-payment">
-        <h2>3. Customer & payment</h2>
+      <section class="card pos-payment" id="pos-payment" hidden={!checkout}>
+        <h2>Customer & payment</h2>
         <p class="payment-total">
           Bill total <strong>{money(previewTotal)}</strong>
         </p>
@@ -999,7 +1009,7 @@ export function PosScreen() {
         </div>
       </section>
 
-      <section class="card">
+      <section class="card" hidden={checkout}>
         <h2>Customer payment / advance</h2>
         <form onSubmit={receivePayment} class="grid-form">
           <label>

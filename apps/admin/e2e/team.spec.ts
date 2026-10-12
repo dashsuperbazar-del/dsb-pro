@@ -206,7 +206,7 @@ async function createOwnerShop(page: Page, state: State, name: string) {
   await signup(page, state.ownerEmail);
   await page.getByLabel('Shop name').fill(name);
   await page.getByRole('button', { name: 'Create your shop' }).click();
-  await page.getByText(/DSB Pro — Admin/i).waitFor({ timeout: 5000 });
+  await page.getByText(/Overview/i).waitFor({ timeout: 5000 });
 }
 
 test('owner creates an invite and a new user accepts the shared deep link', async ({

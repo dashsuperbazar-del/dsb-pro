@@ -29,12 +29,19 @@ import {
   type LegacyDsbImportPlan,
 } from '@dsb-pro/core';
 import { compressItemImage } from '../lib/compressImage';
+import { TaskTabs } from '../components/TaskTabs';
 import { appRoute } from '../lib/paths';
 import { clearPendingIntent, loadPendingIntent, savePendingIntent } from '../lib/pendingIntent';
 
 const paise = (rupees: string) => parseRupeesToPaise(rupees || '0');
 
 export function InventoryScreen() {
+  type View = 'items' | 'purchase' | 'suppliers' | 'advanced';
+  const initial = new URLSearchParams(window.location.search).get('view');
+  const [view, setView] = useState<View>(
+    initial === 'purchase' || initial === 'suppliers' || initial === 'advanced' ? initial : 'items',
+  );
+  const [itemSearch, setItemSearch] = useState('');
   const [items, setItems] = useState<Item[]>([]);
   const [parties, setParties] = useState<Party[]>([]);
   const [stock, setStock] = useState<StockRow[]>([]);
@@ -55,6 +62,9 @@ export function InventoryScreen() {
   // form stays frozen so a retry resends the SAME request id and payload; the server returns the
   // stored bill if it was committed (and refuses a changed payload).
   const [purchaseLocked, setPurchaseLocked] = useState(false);
+  useEffect(() => {
+    if (purchaseLocked) setView('purchase');
+  }, [purchaseLocked]);
   const lockedPurchase = useRef<PurchaseRequest | null>(null);
   // Survives a reload: stored BEFORE the first send (V002 VF-005), so an unconfirmed purchase is
   // retried as the same request, never re-entered. Unreadable storage blocks new purchases.
@@ -109,9 +119,18 @@ export function InventoryScreen() {
       setPrices([]);
       return;
     }
+    let cancelled = false;
+    setPrices([]);
     void listCurrentPrices(selected)
-      .then(setPrices)
-      .catch((e) => setError(String(e)));
+      .then((value) => {
+        if (!cancelled) setPrices(value);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [selected]);
   const selectedItem = items.find((i) => i.id === selected);
   const purchaseLineItem = items.find((i) => i.id === purchaseLineItemId);
@@ -431,9 +450,58 @@ export function InventoryScreen() {
         <a href={appRoute.home}>← Home</a>
       </p>
       <h1>Inventory & purchases</h1>
+      <TaskTabs
+        label="Stock tasks"
+        value={view}
+        onChange={setView}
+        options={[
+          { value: 'items', label: 'Items' },
+          { value: 'purchase', label: 'Purchases' },
+          { value: 'suppliers', label: 'Suppliers' },
+          { value: 'advanced', label: 'Advanced' },
+        ]}
+      />
+      {(purchaseLocked || purchaseStorageBlocked) && (
+        <p role="alert">
+          A purchase needs attention.{' '}
+          <button type="button" onClick={() => setView('purchase')}>
+            Review pending purchase
+          </button>
+        </p>
+      )}
+      <section class="card" hidden={view !== 'items'} aria-label="Stock items">
+        <label class="search-field">
+          Find stock item
+          <input
+            value={itemSearch}
+            placeholder="Name or SKU"
+            onInput={(e) => setItemSearch(e.currentTarget.value)}
+          />
+        </label>
+        <div class="record-list">
+          {items
+            .filter((item) =>
+              (item.name + ' ' + (item.sku ?? '')).toLowerCase().includes(itemSearch.toLowerCase()),
+            )
+            .slice(0, 50)
+            .map((item) => (
+              <button type="button" key={item.id} onClick={() => setSelected(item.id)}>
+                <span>
+                  <strong>{item.name}</strong>
+                  <small>{item.sku || 'No SKU'}</small>
+                </span>
+                <span class="record-value">
+                  {stock.find((row) => row.item_id === item.id)?.qty_base ?? '—'}
+                  <small>{item.unit3 || item.unit2 || item.unit1}</small>
+                </span>
+              </button>
+            ))}
+        </div>
+        <p class="muted">Showing up to 50 matches · {items.length} items</p>
+      </section>
       {error && <p role="alert">{error}</p>}
       {message && <p role="status">{message}</p>}
-      <section aria-label="Import old DSB backup">
+      <section hidden={view !== 'advanced'} aria-label="Import old DSB backup">
         <h2>Import old DSB backup</h2>
         <p class="muted">
           Shop-test setup only. This imports the current item master, sale prices, current stock,
@@ -487,24 +555,50 @@ export function InventoryScreen() {
           </div>
         )}
       </section>
-      <section>
+      <section hidden={view !== 'items'}>
         <h2>Item master</h2>
         <p>
           Unit order follows DSB: big → small → piece. Stock is stored in the smallest configured
           unit.
         </p>
-        <form onSubmit={addItem}>
-          <input name="name" placeholder="Item name" required />{' '}
-          <input name="sku" placeholder="SKU" />{' '}
-          <input name="unit1" placeholder="Big unit (e.g. case)" required />{' '}
-          <input name="unit2" placeholder="Small unit (e.g. pack)" />{' '}
-          <input name="conv1" type="number" min="0" step="any" placeholder="Small units per big" />{' '}
-          <input name="unit3" placeholder="Piece unit (optional)" />{' '}
-          <input name="conv2" type="number" min="0" step="any" placeholder="Pieces per small" />{' '}
-          <button disabled={!tenantId}>Create item</button>
-        </form>
+        <details>
+          <summary>Add item</summary>
+          <form onSubmit={addItem}>
+            <label>
+              Item name <input name="name" placeholder="Item name" required />
+            </label>{' '}
+            <label>
+              SKU <input name="sku" placeholder="SKU" />
+            </label>{' '}
+            <label>
+              Big unit (e.g. case){' '}
+              <input name="unit1" placeholder="Big unit (e.g. case)" required />
+            </label>{' '}
+            <label>
+              Small unit (e.g. pack) <input name="unit2" placeholder="Small unit (e.g. pack)" />
+            </label>{' '}
+            <label>
+              Small units per big{' '}
+              <input
+                name="conv1"
+                type="number"
+                min="0"
+                step="any"
+                placeholder="Small units per big"
+              />
+            </label>{' '}
+            <label>
+              Piece unit (optional) <input name="unit3" placeholder="Piece unit (optional)" />
+            </label>{' '}
+            <label>
+              Pieces per small{' '}
+              <input name="conv2" type="number" min="0" step="any" placeholder="Pieces per small" />
+            </label>{' '}
+            <button disabled={!tenantId}>Create item</button>
+          </form>
+        </details>
         <label>
-          Peek item{' '}
+          Item details{' '}
           <select
             value={selected}
             onChange={(e) => setSelected((e.currentTarget as HTMLSelectElement).value)}
@@ -551,8 +645,10 @@ export function InventoryScreen() {
         )}
         {selectedItem && (
           <form onSubmit={addBarcode}>
-            <input name="barcode" placeholder="Barcode" required />{' '}
-            <select name="unitLevel">
+            <label>
+              Barcode <input name="barcode" placeholder="Barcode" required />
+            </label>{' '}
+            <select aria-label="Unit" name="unitLevel">
               <option value="1">{selectedItem.unit1}</option>
               {selectedItem.unit2 && <option value="2">{selectedItem.unit2}</option>}
               {selectedItem.unit3 && <option value="3">{selectedItem.unit3}</option>}
@@ -568,25 +664,42 @@ export function InventoryScreen() {
               <option value="mrp">MRP</option>
               <option value="cost_last">Last cost</option>
             </select>{' '}
-            <select name="unitLevel">
+            <select aria-label="Unit" name="unitLevel">
               <option value="1">{selectedItem.unit1}</option>
               {selectedItem.unit2 && <option value="2">{selectedItem.unit2}</option>}
               {selectedItem.unit3 && <option value="3">{selectedItem.unit3}</option>}
             </select>{' '}
-            <input name="price" type="number" min="0" step="0.01" placeholder="₹ price" required />{' '}
+            <label>
+              ₹ price{' '}
+              <input
+                name="price"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="₹ price"
+                required
+              />
+            </label>{' '}
             <button disabled={!shopId}>Set price</button>
           </form>
         )}
       </section>
-      <section>
+      <section hidden={view !== 'suppliers'}>
         <h2>Suppliers</h2>
         <form onSubmit={addParty}>
-          <input name="name" placeholder="Supplier name" required />{' '}
-          <input name="phone" placeholder="Phone" /> <input name="gstin" placeholder="GSTIN" />{' '}
+          <label>
+            Supplier name <input name="name" placeholder="Supplier name" required />
+          </label>{' '}
+          <label>
+            Phone <input name="phone" placeholder="Phone" />
+          </label>{' '}
+          <label>
+            GSTIN <input name="gstin" placeholder="GSTIN" />
+          </label>{' '}
           <button disabled={!tenantId}>Create supplier</button>
         </form>
       </section>
-      <section>
+      <section hidden={view !== 'purchase'}>
         <h2>Post purchase</h2>
         <form onSubmit={addPurchase}>
           {purchaseLocked && (
@@ -596,7 +709,9 @@ export function InventoryScreen() {
             </p>
           )}
           <fieldset disabled={purchaseLocked} class="plain">
-            <input name="billNo" placeholder="Bill no." />{' '}
+            <label>
+              Bill no. <input name="billNo" placeholder="Bill no." />
+            </label>{' '}
             <input
               name="date"
               type="date"
@@ -604,19 +719,28 @@ export function InventoryScreen() {
               onInput={(e) => setBusinessDate((e.currentTarget as HTMLInputElement).value)}
               required
             />{' '}
-            <select name="partyId">
-              <option value="">No supplier</option>
-              {parties.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>{' '}
-            <input name="discount" type="number" min="0" step="0.01" placeholder="Discount ₹" />{' '}
-            <input name="extra" type="number" min="0" step="0.01" placeholder="Extra ₹" />
+            <label>
+              Supplier
+              <select name="partyId">
+                <option value="">No supplier</option>
+                {parties.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>{' '}
+            <label>
+              Discount ₹{' '}
+              <input name="discount" type="number" min="0" step="0.01" placeholder="Discount ₹" />
+            </label>{' '}
+            <label>
+              Extra ₹ <input name="extra" type="number" min="0" step="0.01" placeholder="Extra ₹" />
+            </label>
             <fieldset>
               <legend>Add purchase line</legend>
               <select
+                aria-label="Purchase item"
                 name="itemId"
                 value={purchaseLineItemId}
                 onChange={(e) => {
@@ -632,6 +756,7 @@ export function InventoryScreen() {
                 ))}
               </select>{' '}
               <select
+                aria-label="Unit"
                 name="unitLevel"
                 disabled={!purchaseLineItem}
                 value={purchaseLineUnitLevel}
@@ -668,7 +793,7 @@ export function InventoryScreen() {
               </button>
             </fieldset>
             {purchaseCart.length > 0 && (
-              <div class="table-wrap" aria-label="Purchase cart">
+              <div class="table-wrap mobile-records" aria-label="Purchase cart">
                 <table>
                   <thead>
                     <tr>
@@ -682,13 +807,15 @@ export function InventoryScreen() {
                   <tbody>
                     {purchaseCart.map((l, n) => (
                       <tr key={n}>
-                        <td>
+                        <td class="record-title" data-label="Item">
                           {l.item.name}
                           <small> {unitLabel(l.item, l.unitLevel)}</small>
                         </td>
-                        <td>{l.qty}</td>
-                        <td>₹{(l.unitPricePaise / 100).toFixed(2)}</td>
-                        <td>₹{(quantityTimesPaise(l.qty, l.unitPricePaise) / 100).toFixed(2)}</td>
+                        <td data-label="Quantity">{l.qty}</td>
+                        <td data-label="Unit cost">₹{(l.unitPricePaise / 100).toFixed(2)}</td>
+                        <td data-label="Line total">
+                          ₹{(quantityTimesPaise(l.qty, l.unitPricePaise) / 100).toFixed(2)}
+                        </td>
                         <td>
                           <button
                             type="button"

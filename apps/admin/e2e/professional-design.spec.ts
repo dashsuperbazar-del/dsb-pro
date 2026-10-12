@@ -1,0 +1,95 @@
+import { test, expect } from '@playwright/test';
+import { addItemForm, reviewPayment, stockTask } from './design-helpers';
+test('professional phone workspace preserves drafts across task views and has reachable controls', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(90000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/signup');
+  await page.getByLabel('Email').fill(`design-${Date.now()}@example.com`);
+  await page.getByLabel('Password', { exact: true }).fill('TestOnly-2026!pw');
+  await page.getByLabel('Confirm password').fill('TestOnly-2026!pw');
+  await page.getByRole('button', { name: 'Sign up' }).click();
+  await expect(page.getByRole('heading', { name: 'Welcome' })).toBeVisible();
+  await page.goto('/');
+  await page.getByLabel('Shop name').fill('Design preview shop');
+  await page.getByRole('button', { name: 'Create your shop' }).click();
+  await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
+  async function capture(name: string) {
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    await page.screenshot({ path: testInfo.outputPath(`${name}.png`), fullPage: true });
+  }
+  await expect(page.getByRole('region', { name: 'Day book today' })).toContainText('₹0.00');
+  await capture('01-home-phone');
+  const nav = page.getByRole('navigation', { name: 'Quick navigation' });
+  await nav.getByRole('link', { name: 'Stock', exact: true }).click();
+  await addItemForm(page);
+  await page.getByPlaceholder('Item name').fill('Daily rice');
+  await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
+  await page.getByRole('button', { name: 'Create item' }).click();
+  await expect(page.getByRole('status')).toContainText('Created Daily rice');
+  await page.getByLabel('Item details').selectOption({ label: 'Daily rice' });
+  const price = page.getByRole('button', { name: 'Set price' }).locator('xpath=..');
+  await price.locator('input[name="price"]').fill('20');
+  await page.getByRole('button', { name: 'Set price' }).click();
+  await expect(page.getByRole('status')).toContainText('Price history updated');
+  await stockTask(page, 'Purchases');
+  const purchase = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
+  await purchase.locator('select[name="itemId"]').selectOption({ label: 'Daily rice' });
+  await purchase.locator('input[name="qty"]').fill('12');
+  await purchase.locator('input[name="price"]').fill('10');
+  await stockTask(page, 'Items');
+  await stockTask(page, 'Purchases');
+  await expect(purchase.locator('input[name="qty"]')).toHaveValue('12');
+  await expect(purchase.locator('input[name="price"]')).toHaveValue('10');
+  await purchase.getByRole('button', { name: 'Add line' }).click();
+  await capture('02-purchase-phone');
+  await purchase.getByRole('button', { name: 'Post purchase' }).click();
+  await expect(page.getByRole('status')).toContainText('Purchase posted');
+  await nav.getByRole('link', { name: 'Billing', exact: true }).click();
+  await page.getByLabel('Item', { exact: true }).selectOption({ label: 'Daily rice' });
+  await page.getByLabel('Quantity', { exact: true }).fill('2');
+  await page.getByRole('button', { name: 'Add line' }).click();
+  await expect(page.locator('.pos-cart')).toContainText('₹40.00');
+  await capture('03-billing-phone');
+  await reviewPayment(page);
+  const amount = page.getByLabel('Amount ₹').first();
+  await amount.fill('40');
+  await amount.evaluate((node) => node.setAttribute('data-draft-node', 'retained'));
+  await page.getByRole('button', { name: '← Back to items' }).click();
+  await expect(page.locator('.pos-cart')).toContainText('₹40.00');
+  await reviewPayment(page);
+  await expect(amount).toHaveValue('40');
+  await expect(amount).toHaveAttribute('data-draft-node', 'retained');
+  await capture('04-checkout-phone');
+  await page.getByRole('button', { name: 'Finalize sale' }).click();
+  await expect(page.getByRole('status')).toContainText('Sale finalized');
+  await nav.getByRole('link', { name: 'Parties', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Suppliers & payments' })).toBeVisible();
+  await capture('05-parties-phone');
+  await nav.getByRole('link', { name: 'Stock', exact: true }).click();
+  await capture('06-stock-phone');
+  await nav.getByRole('link', { name: 'More', exact: true }).click();
+  await capture('07-more-phone');
+  await page.getByLabel('Appearance').selectOption('dark');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.reload();
+  await expect(page.getByLabel('Appearance')).toHaveValue('dark');
+  await capture('08-dark-phone');
+  await page.getByLabel('Appearance').selectOption('light');
+  await page.getByRole('link', { name: 'Reports & recovery', exact: true }).click();
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Invariant check: PASS');
+  await capture('09-reports-phone');
+  await page.goto('/sync');
+  await expect(page.getByTestId('sync-outbox-count')).toHaveText('0');
+  await capture('10-sync-phone');
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
+  await capture('11-home-desktop');
+});

@@ -32,7 +32,7 @@ test('signup, sign out, then login with the same credentials', async ({ page }) 
   // Create a tenant so the authenticated home has a stable post-login target.
   await page.getByLabel('Shop name').fill('Auth Test Shop');
   await page.getByRole('button', { name: 'Create your shop' }).click();
-  await expect(page.getByText(/DSB Pro — Admin/)).toBeVisible();
+  await expect(page.getByText(/Overview/)).toBeVisible();
 
   await page.getByRole('button', { name: 'Sign out' }).click();
   await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible();
@@ -40,7 +40,7 @@ test('signup, sign out, then login with the same credentials', async ({ page }) 
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill(TEST_PASSWORD);
   await page.getByRole('button', { name: 'Log in' }).click();
-  await expect(page.getByText(/DSB Pro — Admin/)).toBeVisible();
+  await expect(page.getByText(/Overview/)).toBeVisible();
   await expect(page.getByText(/Signed in · owner/i)).toBeVisible();
 });
 
