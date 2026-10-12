@@ -598,7 +598,7 @@ export function SuppliersScreen() {
                     Total {rupees(pl.amountPaise)} · allocated to bills {rupees(allocTotal)} ·
                     remaining advance {rupees(Number(pl.amountPaise) - allocTotal)}
                   </p>
-                  <button disabled={busy} onClick={() => void submitRecord()}>
+                  <button class="primary" disabled={busy} onClick={() => void submitRecord()}>
                     Confirm and record
                   </button>{' '}
                   <button disabled={busy} onClick={() => setConfirming(false)}>
@@ -792,22 +792,25 @@ function PaymentRow(props: {
 function RejectedCopy(props: { shopId: string; partyId: string; onCopied: () => void }) {
   const [hint, setHint] = useState('');
   return (
-    <p class="hint">
-      A rejected payment is never re-sent. To fix and resubmit one, enter its request id:{' '}
-      <input
-        aria-label="Rejected request id"
-        value={hint}
-        onInput={(e) => setHint((e.target as HTMLInputElement).value)}
-      />{' '}
-      <button
-        onClick={() =>
-          void copyRejectedFinancialAttempt(hint.trim())
-            .then(props.onCopied)
-            .catch((e) => alert(String(e)))
-        }
-      >
-        Copy to new draft
-      </button>
-    </p>
+    <details class="recovery-tools">
+      <summary>Correct a rejected payment</summary>
+      <p class="hint">
+        A rejected payment is never re-sent. To fix and resubmit one, enter its request id:{' '}
+        <input
+          aria-label="Rejected request id"
+          value={hint}
+          onInput={(e) => setHint((e.target as HTMLInputElement).value)}
+        />{' '}
+        <button
+          onClick={() =>
+            void copyRejectedFinancialAttempt(hint.trim())
+              .then(props.onCopied)
+              .catch((e) => alert(String(e)))
+          }
+        >
+          Copy to new draft
+        </button>
+      </p>
+    </details>
   );
 }

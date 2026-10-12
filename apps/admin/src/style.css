@@ -943,3 +943,13 @@ body {
 #stock-item-details {
   scroll-margin-top: 72px;
 }
+.row > label:has(input[type='date']) {
+  min-width: min(160px, 100%);
+}
+.recovery-tools {
+  margin-top: 12px;
+}
+.recovery-tools summary {
+  font-size: 12px;
+  color: var(--muted);
+}

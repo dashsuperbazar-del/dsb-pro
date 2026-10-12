@@ -122,6 +122,10 @@ test('professional phone workspace preserves drafts across task views and has re
   await capture('08-dark-phone');
   await page.getByLabel('Appearance').selectOption('light');
   await page.getByRole('link', { name: 'Reports & recovery', exact: true }).click();
+  for (const date of ['From', 'To'])
+    expect(
+      (await page.getByLabel(date, { exact: true }).boundingBox())!.width,
+    ).toBeGreaterThanOrEqual(160);
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Invariant check: PASS');
   await capture('09-reports-phone');
