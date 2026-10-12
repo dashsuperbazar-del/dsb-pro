@@ -8,8 +8,8 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
   Compact blue/slate system; Home/Billing/Parties/Stock/More; retained purchase/payment/report tasks and checkout; themes.
   Financial RPC payloads, request IDs, immutable ledgers and money calculations unchanged.
   Risks: lost draft/input identity; hidden unknown outcomes; stale prices; unreadable print; private navigation. CI covers recovery.
-  Local lint/typecheck/build + 309 unit tests PASS. Fresh independent review PASS (2 rounds); CI #795 found 9 navigation/selector failures, fixed.
-  PR #69: CI #796 green (54 browser + 20 repeats); final screenshot/copy/stock-access checks pending on final head.
+  Local lint/typecheck/build + 310 unit tests PASS. Fresh independent review PASS (2 rounds); CI #795 found 9 navigation/selector failures, fixed.
+  PR #69: CI #796–798 green (54 browser + 20 repeats); final item-specific price/barcode draft guard pending.
   Synthetic browser screenshots are visual evidence only. No migration; production deploy stays manual on new main SHA.
   H3 + clean shop week remain NOT GO pending dated evidence.
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;

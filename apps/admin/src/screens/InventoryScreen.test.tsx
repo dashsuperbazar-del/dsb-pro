@@ -58,3 +58,45 @@ test('a late price response cannot relabel old prices as the newly selected item
   expect(host.querySelector('[aria-label="item peek"]')?.textContent).toContain('Item B');
   expect(host.querySelector('[aria-label="item peek"]')?.textContent).not.toContain('₹99.00');
 });
+test('item-specific price and barcode edits stay on the same item and cannot carry into another', async () => {
+  let finish!: (rows: unknown[]) => void;
+  api.listCurrentPrices.mockImplementation((id) =>
+    id === 'a'
+      ? new Promise((resolve) => {
+          finish = resolve;
+        })
+      : Promise.resolve([]),
+  );
+  await act(async () => {
+    render(<InventoryScreen />, host);
+  });
+  await vi.waitFor(() =>
+    expect(host.querySelectorAll('select option[value="a"]').length).toBeGreaterThan(0),
+  );
+  const picker = host.querySelector('select')!;
+  await act(async () => {
+    picker.value = 'a';
+    picker.dispatchEvent(new Event('change'));
+  });
+  await vi.waitFor(() => expect(api.listCurrentPrices).toHaveBeenCalledWith('a'));
+  const price = host.querySelector<HTMLInputElement>('input[placeholder="₹ price"]')!;
+  const barcode = host.querySelector<HTMLInputElement>('input[name="barcode"]')!;
+  price.value = '42';
+  barcode.value = 'CODE-A';
+  await act(async () => {
+    finish([]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(host.querySelector('input[placeholder="₹ price"]')).toBe(price);
+  expect(price.value).toBe('42');
+  expect(barcode.value).toBe('CODE-A');
+  await act(async () => {
+    picker.value = 'b';
+    picker.dispatchEvent(new Event('change'));
+  });
+  await vi.waitFor(() =>
+    expect(host.querySelector('[aria-label="item peek"]')?.textContent).toContain('Item B'),
+  );
+  expect(host.querySelector<HTMLInputElement>('input[placeholder="₹ price"]')!.value).toBe('');
+  expect(host.querySelector<HTMLInputElement>('input[name="barcode"]')!.value).toBe('');
+});

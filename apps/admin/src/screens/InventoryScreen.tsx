@@ -684,7 +684,7 @@ export function InventoryScreen() {
           </form>
         )}
         {selectedItem && (
-          <form onSubmit={addBarcode}>
+          <form key={`barcode:${selectedItem.id}`} onSubmit={addBarcode}>
             <label>
               Barcode <input name="barcode" placeholder="Barcode" required />
             </label>{' '}
@@ -697,7 +697,7 @@ export function InventoryScreen() {
           </form>
         )}
         {selectedItem && (
-          <form onSubmit={changePrice}>
+          <form key={`price:${selectedItem.id}`} onSubmit={changePrice}>
             <select name="kind">
               <option value="retail">Retail</option>
               <option value="wholesale">Wholesale</option>
