@@ -8,7 +8,7 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
 - MU1 (2026-10-12, user requested confusing phone UI be changed): dashboard action tiles,
   active mobile navigation, compact item fields, labelled mobile cart rows, sticky bill summary,
   optional customer form, collapsed diagnostics. No financial handlers, migration or role grants changed.
-  Local lint/typecheck/304 unit tests/build PASS; fresh review (2 rounds) PASS; final-head CI pending.
+  Local lint/typecheck/304 unit tests/build PASS; fresh review (2 rounds) PASS; CI found 7 stale selectors, fixed; final-head CI pending.
   Risks: obscured payment controls or cart edits lost on navigation; real browser checks required.
   H3 + clean shop week remain open; visual/UI acceptance is distinct from automated money proofs.
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;

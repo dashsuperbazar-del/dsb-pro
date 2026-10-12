@@ -130,7 +130,7 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
                 <strong>{t('suppliers')}</strong>
                 <span>Purchase balances and payments</span>
               </a>
-              <a class="action-tile" href={appRoute.expenses}>
+              <a class="action-tile" aria-label="Expenses" href={appRoute.expenses}>
                 <strong>Expenses</strong>
                 <span>Record daily shop spending</span>
               </a>

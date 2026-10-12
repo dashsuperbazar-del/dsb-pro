@@ -21,6 +21,7 @@ test('owner can edit shop profile and it survives a reload, and the invoice pref
   page,
 }) => {
   await createOwnerShop(page);
+  await page.getByText('Shop management', { exact: true }).click();
   await page.getByRole('link', { name: 'Settings' }).click();
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
   await expect(page.getByLabel('Shop name')).toHaveValue('Settings Screen Shop');
