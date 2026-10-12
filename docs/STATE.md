@@ -1,15 +1,15 @@
 # DSB Pro — STATE (read this instead of HANDOVER.md)
-
 Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/COMPLETE_REMAINING_BUILD_PLAN.md` v1.1.
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 ## Current
-- `main` at last update: `1d451c1` (RP1 merged #66; fetched 2026-10-12).
+- `main` at last update: `8d1ed82` (MU1 merged #67; fetched 2026-10-12).
   Migrations 0001–0057 immutable. Recovery proof #785 and deploy #787 PASS; VF-011 CLOSED.
 - MU1 (2026-10-12, user requested confusing phone UI be changed): dashboard action tiles,
   active mobile navigation, compact item fields, labelled mobile cart rows, sticky bill summary,
   optional customer form, collapsed diagnostics. No financial handlers, migration or role grants changed.
   Local lint/typecheck/304 unit tests/build PASS; fresh review (2 rounds) PASS; CI found 7 stale selectors, fixed; final-head CI pending.
   Risks: obscured payment controls or cart edits lost on navigation; real browser checks required.
+  MU1a: preserve health disclosure choice across async health updates; deterministic regression + CI pending.
   H3 + clean shop week remain open; visual/UI acceptance is distinct from automated money proofs.
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
   partial returns carry item value, capped so a bill's returns never exceed what was billed for its

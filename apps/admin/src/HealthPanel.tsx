@@ -16,6 +16,7 @@ import { invariantLabel, invariantRows } from './lib/invariants';
 type Integrity = { ok: boolean; rows: { code: string; count: number }[]; checkedAt: Date };
 
 export function HealthPanel(props: { canAdjustStock?: boolean } = {}) {
+  const [expanded, setExpanded] = useState(false);
   const [backup, setBackup] = useState<BackupHealth | null | undefined>(undefined);
   const [integrity, setIntegrity] = useState<Integrity | null | undefined>(undefined);
   const [backupError, setBackupError] = useState<string | null>(null);
@@ -64,16 +65,22 @@ export function HealthPanel(props: { canAdjustStock?: boolean } = {}) {
     backupAgeMs <= 24 * 60 * 60 * 1000 &&
     backup.destinations.length >= 2 &&
     backup.destinations.every((d) => d.verified);
+  const needsAttention =
+    (backup !== undefined && !backupOk) ||
+    (integrity !== undefined && !integrity?.ok) ||
+    belowZero === 'error' ||
+    (Array.isArray(belowZero) && belowZero.length > 0);
+  // A new problem reveals its warning. A later healthy response must not erase
+  // the user's explicit expansion while they are inspecting the checks.
+  useEffect(() => {
+    if (needsAttention) setExpanded(true);
+  }, [needsAttention]);
   return (
     <section class="card" aria-label="System health">
       <details
         class="health-summary"
-        open={
-          (backup !== undefined && !backupOk) ||
-          (integrity !== undefined && !integrity?.ok) ||
-          belowZero === 'error' ||
-          (Array.isArray(belowZero) && belowZero.length > 0)
-        }
+        open={expanded}
+        onToggle={(event) => setExpanded(event.currentTarget.open)}
       >
         <summary>
           Shop checks ·{' '}

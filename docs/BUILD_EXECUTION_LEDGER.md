@@ -184,4 +184,6 @@ itself not evidence.
 P1 is MERGED as `81ac0d1` (PR #38, squash). Dual-builder protocol retired; packet order and CI policy now per
 `docs/SINGLE_BUILDER_PLAN.md`. Current status lives in `docs/STATE.md`. M0 Hygiene row: see PR for this change.
 
-| MU1 mobile workspace and billing layout | LOCAL_REVIEWED / CI_PENDING | `codex/mobile-ux` from `1d451c1` | none | lint/typecheck/304 unit tests/build PASS | pending final-head CI; 360px navigation + 390px cart money path | not required | independent MU1 review: print/health/checkbox findings fixed; round 2 no findings | pending release | H3 + clean shop week open | Preserve handlers, amount semantics and stable inputs |
+| MU1 mobile workspace and billing layout | MERGED / DEPLOY_BLOCKED | `codex/mobile-ux` from `1d451c1` | none | lint/typecheck/304 unit tests/build PASS | pending final-head CI; 360px navigation + 390px cart money path | not required | independent MU1 review: print/health/checkbox findings fixed; round 2 no findings | pending release | H3 + clean shop week open | Preserve handlers, amount semantics and stable inputs |
+
+| MU1a health disclosure async state | LOCAL_CHECKS_PASS / REVIEW_PENDING | `codex/mobile-health-fix` from `8d1ed82` | none | failing-before-fix DOM regression; late failure auto-expansion; 306 unit tests + lint/typecheck PASS | pending final-head CI | not required | pending fresh review | deployment run 38220566134 stopped by reports disclosure race | H3 + shop week open | No financial handler or data changes |
