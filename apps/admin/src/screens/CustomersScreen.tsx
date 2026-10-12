@@ -383,8 +383,9 @@ export function CustomersScreen() {
         </label>
         {customer && (
           <p>
-            <strong>{customer.name}</strong> · Balance {money(balances[customer.id] ?? 0)}{' '}
-            <small>(positive = customer owes; negative = advance)</small>
+            <strong>{customer.name}</strong> ·{' '}
+            {(balances[customer.id] ?? 0) < 0 ? 'Advance available' : 'Customer owes'}{' '}
+            {money(Math.abs(balances[customer.id] ?? 0))}
           </p>
         )}
       </section>

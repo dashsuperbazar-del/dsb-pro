@@ -15,14 +15,21 @@ test('professional phone workspace preserves drafts across task views and has re
   await page.getByLabel('Shop name').fill('Design preview shop');
   await page.getByRole('button', { name: 'Create your shop' }).click();
   await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
-  async function capture(name: string) {
+  async function capture(name: string, resetScroll = true) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await page.screenshot({ path: testInfo.outputPath(`${name}.png`), fullPage: true });
+    const healthPanel = page.locator('.health-summary');
+    await expect(healthPanel.locator('summary').first()).not.toContainText('Checking…');
+    if ((await healthPanel.getAttribute('open')) !== null)
+      await healthPanel.locator('summary').first().click();
+    if (resetScroll) await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: testInfo.outputPath(`${name}.png`), fullPage: false });
   }
   await expect(page.getByRole('region', { name: 'Day book today' })).toContainText('₹0.00');
+  const health = page.locator('.health-summary');
+  await expect(health.locator('summary').first()).not.toContainText('Checking…');
+  if ((await health.getAttribute('open')) !== null) await health.locator('summary').first().click();
   await capture('01-home-phone');
   const nav = page.getByRole('navigation', { name: 'Quick navigation' });
   await nav.getByRole('link', { name: 'Stock', exact: true }).click();
@@ -36,10 +43,16 @@ test('professional phone workspace preserves drafts across task views and has re
   await price.locator('input[name="price"]').fill('20');
   await page.getByRole('button', { name: 'Set price' }).click();
   await expect(page.getByRole('status')).toContainText('Price history updated');
+  await stockTask(page, 'Suppliers');
+  await page.getByPlaceholder('Supplier name', { exact: true }).fill('Daily Traders');
+  await page.getByRole('button', { name: 'Create supplier', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Created supplier Daily Traders');
   await stockTask(page, 'Purchases');
   const purchase = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
+  await purchase.locator('input[name="billNo"]').fill('PREVIEW-1');
+  await purchase.locator('select[name="partyId"]').selectOption({ label: 'Daily Traders' });
   await purchase.locator('select[name="itemId"]').selectOption({ label: 'Daily rice' });
   await purchase.locator('input[name="qty"]').fill('12');
   await purchase.locator('input[name="price"]').fill('10');
@@ -71,9 +84,35 @@ test('professional phone workspace preserves drafts across task views and has re
   await expect(page.getByRole('status')).toContainText('Sale finalized');
   await nav.getByRole('link', { name: 'Parties', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Suppliers & payments' })).toBeVisible();
+  await page.getByLabel('Supplier', { exact: true }).selectOption({ label: 'Daily Traders' });
+  const tasks = page.getByRole('navigation', { name: 'Supplier tasks' });
+  await expect(page.getByRole('heading', { name: 'Open bills', exact: true })).toBeVisible();
+  await expect(
+    page
+      .locator('section')
+      .filter({ has: page.getByRole('heading', { name: 'Open bills', exact: true }) }),
+  ).toContainText('PREVIEW-1');
   await capture('05-parties-phone');
+  await tasks.getByRole('button', { name: 'Record payment', exact: true }).click();
+  await page.getByLabel('Amount paid ₹').fill('30');
+  await page.getByLabel('Allocate to PREVIEW-1').fill('30');
+  await page.getByRole('button', { name: 'Review', exact: true }).click();
+  await expect(page.getByLabel('Confirm payment')).toBeVisible();
+  await page.getByLabel('Confirm payment').scrollIntoViewIfNeeded();
+  await capture('05b-supplier-payment-phone', false);
+  await page.getByRole('button', { name: 'Confirm and record', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('confirmed by the server');
   await nav.getByRole('link', { name: 'Stock', exact: true }).click();
+  await expect(page.getByRole('button', { name: /Daily rice/ }).first()).toBeVisible();
   await capture('06-stock-phone');
+  await page
+    .getByRole('button', { name: /Daily rice/ })
+    .first()
+    .click();
+  await expect(page.getByLabel('Item details')).toHaveValue(/.+/);
+  await expect(page.getByRole('heading', { name: 'Item setup', exact: true })).toBeInViewport();
+  await page.getByRole('button', { name: 'New item', exact: true }).click();
+  await expect(page.getByPlaceholder('Item name', { exact: true })).toBeVisible();
   await nav.getByRole('link', { name: 'More', exact: true }).click();
   await capture('07-more-phone');
   await page.getByLabel('Appearance').selectOption('dark');
@@ -89,6 +128,9 @@ test('professional phone workspace preserves drafts across task views and has re
   await page.goto('/sync');
   await expect(page.getByTestId('sync-outbox-count')).toHaveText('0');
   await capture('10-sync-phone');
+  await page.goto('/');
+  await expect(page.getByRole('region', { name: 'Day book today' })).toContainText('₹40.00');
+  await capture('01-home-phone');
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();

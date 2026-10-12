@@ -742,7 +742,7 @@ export function PosScreen() {
       </section>
 
       <section class="card pos-cart" id="pos-cart" hidden={checkout}>
-        <h2>2. Cart</h2>
+        <h2>Current bill</h2>
         {!cart.length ? (
           <p key="cart-lines" class="muted">
             Cart is empty.
@@ -1213,7 +1213,7 @@ export function PosScreen() {
           )}
         </article>
       )}
-      <section class="card print-area">
+      <section class="card print-area" hidden={checkout}>
         <div class="row no-print">
           <h2>Recent invoices</h2>
           <button type="button" onClick={() => window.print()}>

@@ -60,7 +60,7 @@ test('cart lines edit in place, and a held cart survives being parked and comes 
   await page.goto('/pos');
   const cartSection = page
     .locator('section')
-    .filter({ has: page.getByRole('heading', { name: '2. Cart' }) });
+    .filter({ has: page.getByRole('heading', { name: 'Current bill' }) });
 
   await page.getByLabel('Find product').fill('Cart Edit Item A');
   await expect(page.getByLabel('Item').locator('option')).toHaveCount(2);

@@ -493,6 +493,16 @@ export function InventoryScreen() {
             onInput={(e) => setItemSearch(e.currentTarget.value)}
           />
         </label>
+        <button
+          type="button"
+          onClick={() => {
+            const form = document.getElementById('stock-add-item') as HTMLDetailsElement | null;
+            if (form) form.open = true;
+            document.getElementById('stock-item-details')?.scrollIntoView({ block: 'start' });
+          }}
+        >
+          New item
+        </button>
         <div class="record-list">
           {items
             .filter((item) =>
@@ -500,7 +510,18 @@ export function InventoryScreen() {
             )
             .slice(0, 50)
             .map((item) => (
-              <button type="button" key={item.id} onClick={() => setSelected(item.id)}>
+              <button
+                type="button"
+                key={item.id}
+                onClick={() => {
+                  setSelected(item.id);
+                  requestAnimationFrame(() =>
+                    document
+                      .getElementById('stock-item-details')
+                      ?.scrollIntoView({ block: 'start' }),
+                  );
+                }}
+              >
                 <span>
                   <strong>{item.name}</strong>
                   <small>{item.sku || 'No SKU'}</small>
@@ -570,13 +591,13 @@ export function InventoryScreen() {
           </div>
         )}
       </section>
-      <section hidden={view !== 'items'}>
-        <h2>Item master</h2>
+      <section id="stock-item-details" hidden={view !== 'items'}>
+        <h2>Item setup</h2>
         <p>
           Unit order follows DSB: big → small → piece. Stock is stored in the smallest configured
           unit.
         </p>
-        <details>
+        <details id="stock-add-item">
           <summary>Add item</summary>
           <form onSubmit={addItem}>
             <label>

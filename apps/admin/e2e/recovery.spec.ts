@@ -171,7 +171,7 @@ test('customer receipt: switching to a customer with an unresolved receipt canno
   await addCustomerForm(page);
   await page.getByLabel('Name').fill('Customer B');
   await page.getByRole('button', { name: 'Create customer' }).click();
-  await expect(page.getByText(/Balance ₹0.00/)).toBeVisible();
+  await expect(page.getByText(/Customer owes ₹0.00/)).toBeVisible();
   // B gets a receipt whose answer is lost after commit (UNKNOWN on this device).
   let calls = 0;
   await page.route('**/rpc/record_customer_payment_v2', async (route) => {
@@ -251,7 +251,7 @@ test('customer receipt: a second window waits for the first and then refuses to 
   await addCustomerForm(page);
   await page.getByLabel('Name').fill('Two Window Customer');
   await page.getByRole('button', { name: 'Create customer' }).click();
-  await expect(page.getByText(/Balance ₹0.00/)).toBeVisible();
+  await expect(page.getByText(/Customer owes ₹0.00/)).toBeVisible();
   const other = await page.context().newPage();
   await other.goto('/customers');
   await other
@@ -293,7 +293,7 @@ test('customer receipt: when the first window succeeds, the waiting window does 
   await addCustomerForm(page);
   await page.getByLabel('Name').fill('Success Window Customer');
   await page.getByRole('button', { name: 'Create customer' }).click();
-  await expect(page.getByText(/Balance ₹0.00/)).toBeVisible();
+  await expect(page.getByText(/Customer owes ₹0.00/)).toBeVisible();
   const other = await page.context().newPage();
   await other.goto('/customers');
   await other
@@ -371,7 +371,7 @@ test('customer receipt: finishing customer A’s receipt after switching to B ne
   await addCustomerForm(page);
   await page.getByLabel('Name').fill('Customer B');
   await page.getByRole('button', { name: 'Create customer' }).click();
-  await expect(page.getByText(/Balance ₹0.00/)).toBeVisible();
+  await expect(page.getByText(/Customer owes ₹0.00/)).toBeVisible();
   await addCustomerForm(page);
   await page.getByLabel('Name').fill('Customer A');
   await page.getByRole('button', { name: 'Create customer' }).click();

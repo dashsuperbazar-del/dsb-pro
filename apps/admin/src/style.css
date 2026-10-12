@@ -940,3 +940,6 @@ body {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+#stock-item-details {
+  scroll-margin-top: 72px;
+}

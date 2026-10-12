@@ -58,7 +58,7 @@ async function addOnePaidLine(page: import('@playwright/test').Page) {
   await page.getByLabel('Quantity').fill('1');
   await page.getByRole('button', { name: 'Add line' }).click();
   await expect(
-    page.locator('section').filter({ has: page.getByRole('heading', { name: '2. Cart' }) }),
+    page.locator('section').filter({ has: page.getByRole('heading', { name: 'Current bill' }) }),
   ).toContainText('Offline E2E Item');
   await reviewPayment(page);
   await page.getByLabel('Amount ₹').first().fill('10');

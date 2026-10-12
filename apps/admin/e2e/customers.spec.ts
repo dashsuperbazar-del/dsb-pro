@@ -28,7 +28,7 @@ test('owner can open customer ledger and allocation workflow', async ({ page }) 
     .click();
   await page.getByLabel('Name').fill('Ledger Customer');
   await page.getByRole('button', { name: 'Create customer' }).click();
-  await expect(page.getByText(/Balance ₹0.00/)).toBeVisible();
+  await expect(page.getByText(/Customer owes ₹0.00/)).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'Receive payment / allocate invoices' }),
   ).toBeVisible();
@@ -50,7 +50,7 @@ test('a receipt whose answer is lost after commit is reconciled, never recorded 
     .click();
   await page.getByLabel('Name').fill('Receipt Customer');
   await page.getByRole('button', { name: 'Create customer' }).click();
-  await expect(page.getByText(/Balance ₹0.00/)).toBeVisible();
+  await expect(page.getByText(/Customer owes ₹0.00/)).toBeVisible();
   let calls = 0;
   await page.route('**/rpc/record_customer_payment_v2', async (route) => {
     if (calls++ === 0) {
@@ -69,6 +69,6 @@ test('a receipt whose answer is lost after commit is reconciled, never recorded 
   await tasks.getByRole('button', { name: 'Receive payment', exact: true }).click();
   await page.getByRole('button', { name: 'Check status' }).click();
   await expect(page.getByText('Receipt confirmed by the server.')).toBeVisible();
-  await expect(page.getByText(/Balance -₹25.00|Balance ₹-25.00/)).toBeVisible();
+  await expect(page.getByText(/Advance available ₹25.00/)).toBeVisible();
   expect(calls).toBe(1);
 });
