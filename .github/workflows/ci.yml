@@ -33,6 +33,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
+      - name: Optional apt source cleanup regression tests
+        run: node --test scripts/test-remove-chrome-apt-source.mjs
       - name: Check Pages Function syntax
         run: node --check apps/admin/functions/api/item-images.js
 
@@ -791,9 +793,7 @@ jobs:
           # Playwright does not need. During repository metadata rotations it
           # can return a transient Hash Sum mismatch and prevent the E2E suite
           # from even starting. Playwright downloads its own Chromium build.
-          grep -RIl 'dl.google.com/linux/chrome' /etc/apt/sources.list.d 2>/dev/null | while IFS= read -r source; do
-            sudo rm -f "$source"
-          done
+          bash scripts/remove-chrome-apt-source.sh
           pnpm --filter @dsb-pro/admin exec playwright install --with-deps chromium
       - run: pnpm --filter @dsb-pro/admin run e2e
       - name: Repeat held-cart resume scenario 10 times
@@ -1014,9 +1014,7 @@ jobs:
       - name: Install backup tools
         if: steps.preflight.outputs.needs_upgrade == 'true'
         run: |
-          grep -RIl 'dl.google.com/linux/chrome' /etc/apt/sources.list.d 2>/dev/null | while IFS= read -r source; do
-            sudo rm -f "$source"
-          done
+          bash scripts/remove-chrome-apt-source.sh
           sudo apt-get update
           sudo apt-get install -y age rclone
           docker pull postgres:17
@@ -1498,9 +1496,7 @@ jobs:
       - name: Install DR backup tools
         run: |
           set -euo pipefail
-          grep -RIl 'dl.google.com/linux/chrome' /etc/apt/sources.list.d 2>/dev/null | while IFS= read -r source; do
-            sudo rm -f "$source"
-          done
+          bash scripts/remove-chrome-apt-source.sh
           sudo apt-get update
           sudo apt-get install -y age rclone
           docker pull postgres:17

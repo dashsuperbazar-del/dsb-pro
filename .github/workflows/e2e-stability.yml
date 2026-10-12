@@ -69,9 +69,7 @@ jobs:
       - run: pnpm --filter @dsb-pro/admin run build
       - name: Install Playwright Chromium and OS dependencies
         run: |
-          grep -RIl 'dl.google.com/linux/chrome' /etc/apt/sources.list.d 2>/dev/null | while IFS= read -r source; do
-            sudo rm -f "$source"
-          done
+          bash scripts/remove-chrome-apt-source.sh
           pnpm --filter @dsb-pro/admin exec playwright install --with-deps chromium
       - name: Repeat the money path
         env:
