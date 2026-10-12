@@ -21,8 +21,11 @@ test('Phase 6 reports and recovery surface loads and invariant check passes', as
   await createOwnerShop(page);
   // D4a: healthy diagnostics can collapse; attention states open automatically.
   const healthSummary = page.locator('.health-summary');
+  // Wait for all health requests before deciding whether a click should open it.
+  await expect(healthSummary.locator('summary').first()).not.toContainText('Checking…');
   if ((await healthSummary.getAttribute('open')) === null)
     await healthSummary.locator('summary').first().click();
+  await expect(healthSummary).toHaveAttribute('open', '');
   // The health panel lists every server check and when it ran.
   await expect(page.getByTestId('invariants-status')).toContainText(
     /PASS · checked .* · \d+ checks/,
