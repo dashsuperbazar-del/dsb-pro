@@ -3,14 +3,14 @@
 Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/COMPLETE_REMAINING_BUILD_PLAN.md` v1.1.
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 ## Current
-- `main` at last update: `397dcf2` (V5 merged, PR #65; fetched 2026-10-11).
-  Migrations 0001–0057 (immutable). Next: recovery/performance proof hardening, then H3 + clean shop week.
-- 2026-10-11: user asked Codex to take over the remaining 2–4-session build scope. Packet RP1
-  PR #66: optional Chrome apt cleanup must tolerate no matches while
-  preserving scan/deletion errors; performance PR runs and retained failure evidence. No migration.
-  Local checks/review pass; CI found dev-dependency advisories, patched source-map-js 1.2.2/sharp 0.35.5.
-  VF-011 stays open until CI and a successful recovery proof. Historical performance job
-  112552935035 has incomplete setup-step metadata and unavailable logs; no app slowdown inferred.
+- `main` at last update: `1d451c1` (RP1 merged #66; fetched 2026-10-12).
+  Migrations 0001–0057 immutable. Recovery proof #785 and deploy #787 PASS; VF-011 CLOSED.
+- MU1 (2026-10-12, user requested confusing phone UI be changed): dashboard action tiles,
+  active mobile navigation, compact item fields, labelled mobile cart rows, sticky bill summary,
+  optional customer form, collapsed diagnostics. No financial handlers, migration or role grants changed.
+  Local lint/typecheck/304 unit tests/build PASS; fresh review (2 rounds) PASS; final-head CI pending.
+  Risks: obscured payment controls or cart edits lost on navigation; real browser checks required.
+  H3 + clean shop week remain open; visual/UI acceptance is distinct from automated money proofs.
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
   partial returns carry item value, capped so a bill's returns never exceed what was billed for its
   items (total - extra charges). Extra charges still stay with the shop.

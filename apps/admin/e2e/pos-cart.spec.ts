@@ -47,6 +47,7 @@ test('cart lines edit in place, and a held cart survives being parked and comes 
   page,
 }) => {
   test.setTimeout(60000);
+  await page.setViewportSize({ width: 390, height: 844 });
   await createOwnerShop(page);
   await page.getByRole('link', { name: 'Inventory & purchases' }).click();
   await createItemWithStock(page, 'Cart Edit Item A', '10', '5');
@@ -64,6 +65,11 @@ test('cart lines edit in place, and a held cart survives being parked and comes 
   await page.getByRole('button', { name: 'Add line' }).click();
   await expect(page.getByRole('cell', { name: /Cart Edit Item A/ })).toBeVisible();
   await expect(cartSection).toContainText('₹20.00');
+
+  await expect(page.locator('[aria-label="Bill summary"]')).toContainText('₹20.00');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
 
   // Editing quantity in place recomputes the line and preview totals.
   await page.getByLabel('Cart qty for Cart Edit Item A').fill('3');

@@ -19,10 +19,15 @@ async function createOwnerShop(page: import('@playwright/test').Page) {
 
 test('Phase 6 reports and recovery surface loads and invariant check passes', async ({ page }) => {
   await createOwnerShop(page);
-  // D4a: the home health panel lists every server check and when it ran.
+  // D4a: healthy diagnostics can collapse; attention states open automatically.
+  const healthSummary = page.locator('.health-summary');
+  if ((await healthSummary.getAttribute('open')) === null)
+    await healthSummary.locator('summary').first().click();
+  // The health panel lists every server check and when it ran.
   await expect(page.getByTestId('invariants-status')).toContainText(
     /PASS · checked .* · \d+ checks/,
   );
+  await page.getByText('View financial checks', { exact: true }).click();
   await expect(page.getByRole('list', { name: 'Invariant checks' })).toContainText(
     'Opening settlements: 0',
   );
@@ -88,6 +93,7 @@ test('the missing reports show real low stock, item-wise sales, purchase registe
   await page.getByLabel('Item').selectOption({ index: 1 });
   await page.getByLabel('Quantity').fill('1');
   await page.getByRole('button', { name: 'Add line' }).click();
+  await page.getByText('Add a new customer', { exact: true }).click();
   await page.getByLabel('Quick customer').fill('Aging E2E Customer');
   await page.getByRole('button', { name: 'Create & select' }).click();
   await expect(page.getByRole('status')).toContainText('Aging E2E Customer created');
