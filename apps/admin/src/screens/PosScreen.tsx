@@ -583,7 +583,7 @@ export function PosScreen() {
   }
 
   return (
-    <main class="page wide" onKeyDown={handlePosKeyDown}>
+    <main class="page wide pos-page" onKeyDown={handlePosKeyDown}>
       <p>
         <a href={appRoute.home}>← Home</a> ·{' '}
         <a
@@ -597,11 +597,19 @@ export function PosScreen() {
         </a>
       </p>
       <h1>Sales POS</h1>
-      <p class="muted">
-        Billing is written to the durable local outbox first. The server re-resolves permissions,
-        prices and stock before assigning the official invoice number.
-      </p>
-      <details class="card" open>
+      <p class="muted">Add items, review your bill, then enter the payment.</p>
+      <div class="pos-overview no-print" aria-label="Bill summary">
+        <div>
+          <small>
+            {cart.length} cart line{cart.length === 1 ? '' : 's'}
+          </small>
+          <strong>{money(previewTotal)}</strong>
+        </div>
+        <a class="checkout-link" href="#pos-payment">
+          Review payment ↓
+        </a>
+      </div>
+      <details class="keyboard-help">
         <summary>
           <strong>Keyboard map</strong>
         </summary>
@@ -621,7 +629,7 @@ export function PosScreen() {
         </p>
       )}
 
-      <section class="card">
+      <section class="card pos-items" id="pos-items">
         <h2>1. Scan or add item</h2>
         <form onSubmit={scan} class="row">
           <label>
@@ -693,6 +701,7 @@ export function PosScreen() {
               data-testid="pos-add-quantity"
               name="qty"
               type="number"
+              inputMode="decimal"
               min="0.000001"
               step="0.000001"
               value="1"
@@ -708,13 +717,20 @@ export function PosScreen() {
           </label>
           <label>
             Line discount ₹{' '}
-            <input name="lineDiscount" type="number" min="0" step="0.01" value="0" />
+            <input
+              name="lineDiscount"
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="0.01"
+              value="0"
+            />
           </label>
           <button>Add line</button>
         </form>
       </section>
 
-      <section class="card">
+      <section class="card pos-cart" id="pos-cart">
         <h2>2. Cart</h2>
         {!cart.length ? (
           <p key="cart-lines" class="muted">
@@ -736,15 +752,16 @@ export function PosScreen() {
               <tbody>
                 {cart.map((l, n) => (
                   <tr>
-                    <td>
+                    <td data-label="Item" class="cart-item-name">
                       {l.item.name}
                       <small>
                         {unitName(l.item, l.unitLevel)} · {l.priceKind}
                       </small>
                     </td>
-                    <td>
+                    <td data-label="Quantity">
                       <input
                         type="number"
+                        inputMode="decimal"
                         min="0.000001"
                         step="0.000001"
                         value={l.qty}
@@ -755,10 +772,11 @@ export function PosScreen() {
                         }}
                       />
                     </td>
-                    <td>{money(l.unitPricePaise)}</td>
-                    <td>
+                    <td data-label="Price">{money(l.unitPricePaise)}</td>
+                    <td data-label="Discount ₹">
                       <input
                         type="number"
+                        inputMode="decimal"
                         min="0"
                         step="0.01"
                         value={(l.discountPaise / 100).toFixed(2)}
@@ -772,7 +790,9 @@ export function PosScreen() {
                         }}
                       />
                     </td>
-                    <td>{money(lineGross(l.qty, l.unitPricePaise) - l.discountPaise)}</td>
+                    <td data-label="Total" class="cart-line-total">
+                      {money(lineGross(l.qty, l.unitPricePaise) - l.discountPaise)}
+                    </td>
                     <td>
                       <button
                         type="button"
@@ -793,6 +813,7 @@ export function PosScreen() {
             <input
               value={globalDiscount}
               type="number"
+              inputMode="decimal"
               min="0"
               step="0.01"
               onInput={(e) => setGlobalDiscount((e.currentTarget as HTMLInputElement).value)}
@@ -803,6 +824,7 @@ export function PosScreen() {
             <input
               value={extra}
               type="number"
+              inputMode="decimal"
               min="0"
               step="0.01"
               onInput={(e) => setExtra((e.currentTarget as HTMLInputElement).value)}
@@ -876,8 +898,11 @@ export function PosScreen() {
         </section>
       )}
 
-      <section class="card">
+      <section class="card pos-payment" id="pos-payment">
         <h2>3. Customer & payment</h2>
+        <p class="payment-total">
+          Bill total <strong>{money(previewTotal)}</strong>
+        </p>
         <label>
           Customer{' '}
           <select
@@ -893,15 +918,18 @@ export function PosScreen() {
             ))}
           </select>
         </label>
-        <form onSubmit={addCustomer} class="row">
-          <label>
-            Quick customer <input name="name" placeholder="Name" required />
-          </label>
-          <label>
-            Phone <input name="phone" placeholder="Phone" />
-          </label>
-          <button>Create & select</button>
-        </form>
+        <details class="optional-control">
+          <summary>Add a new customer</summary>
+          <form onSubmit={addCustomer} class="row">
+            <label>
+              Quick customer <input name="name" placeholder="Name" required />
+            </label>
+            <label>
+              Phone <input name="phone" placeholder="Phone" />
+            </label>
+            <button>Create & select</button>
+          </form>
+        </details>
         {tenders.map((t, n) => (
           <div class="row">
             <label>
@@ -933,6 +961,7 @@ export function PosScreen() {
               <input
                 value={t.amount}
                 type="number"
+                inputMode="decimal"
                 min="0"
                 step="0.01"
                 onInput={(e) =>
@@ -951,7 +980,7 @@ export function PosScreen() {
             )}
           </div>
         ))}
-        <div class="row">
+        <div class="row checkout-actions">
           <button
             type="button"
             onClick={() => setTenders((v) => [...v, { mode: 'upi', amount: '' }])}
@@ -994,6 +1023,7 @@ export function PosScreen() {
               value={paymentAmount}
               onInput={(e) => setPaymentAmount((e.currentTarget as HTMLInputElement).value)}
               type="number"
+              inputMode="decimal"
               min="0.01"
               step="0.01"
               required
@@ -1104,7 +1134,7 @@ export function PosScreen() {
                     <small>{l.unitName}</small>
                   </td>
                   <td>{l.qty}</td>
-                  <td>{money(l.unitPricePaise)}</td>
+                  <td data-label="Price">{money(l.unitPricePaise)}</td>
                   <td>{money(l.lineTotalPaise)}</td>
                 </tr>
               ))}

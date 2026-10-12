@@ -23,6 +23,7 @@ test('owner can open the Phase 4 POS and customer payment surface', async ({ pag
   await page.getByRole('link', { name: 'Sales POS' }).click();
   await expect(page.getByRole('heading', { name: 'Sales POS' })).toBeVisible();
   await expect(page.getByText('Cart is empty.')).toBeVisible();
+  await page.getByText('Keyboard map', { exact: true }).click();
   await expect(page.getByText(/Ctrl.*Enter.*finalizes the current sale/)).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Customer payment / advance' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Finalize sale' })).toBeDisabled();
@@ -386,4 +387,52 @@ test('bill total rounds to the nearest rupee while the item keeps exact paise (R
   await page.getByRole('button', { name: 'Finalize sale' }).click();
   await expect(page.getByRole('status')).toContainText('Sale finalized');
   await expect(page.locator('table').last()).toContainText('₹10.00');
+});
+
+test('phone navigation and checkout stay readable at narrow widths', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await createOwnerShop(page);
+  const actions = page.getByRole('navigation', { name: 'Shop actions' });
+  await expect(actions.getByRole('link', { name: /Sales POS/ })).toBeVisible();
+  await expect(page.getByText(/Signed in as tenant/)).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await actions.getByRole('link', { name: /Sales POS/ }).click();
+  const nav = page.getByRole('navigation', { name: 'Quick navigation' });
+  await expect(nav.getByRole('link', { name: 'POS', exact: true })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
+  await expect(page.getByLabel('Quick customer')).not.toBeVisible();
+  await page.getByRole('link', { name: 'Review payment ↓' }).click();
+  await expect(page.getByRole('button', { name: 'Finalize sale' })).toBeVisible();
+  const finalize = page.getByRole('button', { name: 'Finalize sale' });
+  await finalize.scrollIntoViewIfNeeded();
+  expect(
+    await finalize.evaluate((button) => {
+      const rect = button.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      const hit = document.elementFromPoint(x, y);
+      return (
+        x > 0 &&
+        x < window.innerWidth &&
+        y > 0 &&
+        y < window.innerHeight &&
+        (hit === button || button.contains(hit))
+      );
+    }),
+  ).toBe(true);
+  await page.getByText('Add a new customer', { exact: true }).click();
+  await expect(page.getByLabel('Quick customer')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await nav.getByRole('link', { name: 'Home', exact: true }).click();
+  await expect(actions).toBeVisible();
+  await expect(nav.getByRole('link', { name: 'Home', exact: true })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
 });

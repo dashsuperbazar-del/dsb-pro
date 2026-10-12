@@ -41,7 +41,7 @@ test('signup, sign out, then login with the same credentials', async ({ page }) 
   await page.getByLabel('Password').fill(TEST_PASSWORD);
   await page.getByRole('button', { name: 'Log in' }).click();
   await expect(page.getByText(/DSB Pro — Admin/)).toBeVisible();
-  await expect(page.getByText(/role owner/i)).toBeVisible();
+  await expect(page.getByText(/Signed in · owner/i)).toBeVisible();
 });
 
 test('shows a user-facing error for wrong credentials', async ({ page }) => {

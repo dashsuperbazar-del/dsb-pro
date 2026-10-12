@@ -230,7 +230,7 @@ test('owner creates an invite and a new user accepts the shared deep link', asyn
   await joinPage.getByLabel('Password', { exact: true }).fill(PASSWORD);
   await joinPage.getByLabel('Confirm password').fill(PASSWORD);
   await joinPage.getByRole('button', { name: 'Sign up' }).click();
-  await expect(joinPage.getByText(/role cashier/i)).toBeVisible({ timeout: 5000 });
+  await expect(joinPage.getByText(/Signed in · cashier/i)).toBeVisible({ timeout: 5000 });
   await context.close();
 });
 
@@ -255,6 +255,7 @@ test('owner can change role, disable, reactivate, and remove a member', async ({
   // Team navigation so this test exercises SPA routing instead of relying on a
   // mocked access token surviving a synthetic hard reload.
   state.joinerLoggedIn = true;
+  await page.getByText('Shop management', { exact: true }).click();
   await page.getByRole('link', { name: 'Team' }).click();
 
   const members = page.getByTestId('members-list');

@@ -66,82 +66,103 @@ export function HealthPanel(props: { canAdjustStock?: boolean } = {}) {
     backup.destinations.every((d) => d.verified);
   return (
     <section class="card" aria-label="System health">
-      <h2>System health</h2>
-      {belowZero === 'error' && <p class="alert">Below-zero stock check unavailable.</p>}
-      {Array.isArray(belowZero) && belowZero.length > 0 && (
-        <p class="alert" data-testid="below-zero-warning">
-          <strong>Below-zero stock (allowed by shop policy):</strong> {belowZero.length} item
-          {belowZero.length === 1 ? '' : 's'} — {belowZero.slice(0, 5).join(', ')}
-          {belowZero.length > 5 ? ', …' : ''}.{' '}
-          {props.canAdjustStock ? (
-            <>
-              Count them on <a href={appRoute.stockAdjust}>Stock adjust</a>.
-            </>
-          ) : (
-            'Ask the owner or manager to count them.'
-          )}
-        </p>
-      )}
-      {backupError && (
-        <p role="alert" class="alert">
-          Backup status unavailable: {backupError}
-        </p>
-      )}
-      {integrityError && (
-        <p role="alert" class="alert">
-          Invariant check unavailable: {integrityError}
-        </p>
-      )}
-      {backup === undefined ? (
-        <p>Loading backup health…</p>
-      ) : backup === null ? (
-        backupError ? null : (
-          <p class="alert">No verified backup has run yet.</p>
-        )
-      ) : (
-        <>
-          <p class={backupOk ? 'success' : 'alert'}>
-            <strong>Backup:</strong> {backupOk ? 'PASS' : 'ATTENTION'} · {backup.status} ·{' '}
-            {backup.finished_at ?? 'never'}
-            {backupAgeMs > 24 * 60 * 60 * 1000 ? ' · older than 24 hours' : ''}
+      <details
+        class="health-summary"
+        open={
+          (backup !== undefined && !backupOk) ||
+          (integrity !== undefined && !integrity?.ok) ||
+          belowZero === 'error' ||
+          (Array.isArray(belowZero) && belowZero.length > 0)
+        }
+      >
+        <summary>
+          Shop checks ·{' '}
+          {backup === undefined || integrity === undefined || belowZero === null
+            ? 'Checking…'
+            : backupOk && integrity?.ok && Array.isArray(belowZero) && !belowZero.length
+              ? 'All clear'
+              : 'Needs attention'}
+        </summary>
+        <h2>System health</h2>
+        {belowZero === 'error' && <p class="alert">Below-zero stock check unavailable.</p>}
+        {Array.isArray(belowZero) && belowZero.length > 0 && (
+          <p class="alert" data-testid="below-zero-warning">
+            <strong>Below-zero stock (allowed by shop policy):</strong> {belowZero.length} item
+            {belowZero.length === 1 ? '' : 's'} — {belowZero.slice(0, 5).join(', ')}
+            {belowZero.length > 5 ? ', …' : ''}.{' '}
+            {props.canAdjustStock ? (
+              <>
+                Count them on <a href={appRoute.stockAdjust}>Stock adjust</a>.
+              </>
+            ) : (
+              'Ask the owner or manager to count them.'
+            )}
           </p>
-          <p>
-            Destinations:{' '}
-            {backup.destinations.length
-              ? backup.destinations
-                  .map((d) => `${d.name} (${d.verified ? 'verified' : 'unverified'})`)
-                  .join(', ')
-              : 'none'}
+        )}
+        {backupError && (
+          <p role="alert" class="alert">
+            Backup status unavailable: {backupError}
           </p>
-        </>
-      )}
-      {integrity === undefined ? (
-        <p>Loading invariant health…</p>
-      ) : integrity === null ? (
-        <p class="alert" data-testid="invariants-status">
-          <strong>Financial invariants:</strong> UNKNOWN — the check could not run.
-        </p>
-      ) : (
-        <>
-          <p class={integrity.ok ? 'success' : 'alert'} data-testid="invariants-status">
-            <strong>Financial invariants:</strong> {integrity.ok ? 'PASS' : 'FAIL'} · checked{' '}
-            {integrity.checkedAt.toLocaleTimeString()} · {integrity.rows.length} checks
+        )}
+        {integrityError && (
+          <p role="alert" class="alert">
+            Invariant check unavailable: {integrityError}
           </p>
-          <ul aria-label="Invariant checks">
-            {integrity.rows.map((r) => (
-              <li key={r.code} class={r.count > 0 ? 'alert' : undefined}>
-                {invariantLabel(r.code)}: {r.count}
-                {r.count > 0 ? ' — FAIL' : ''}
-              </li>
-            ))}
-          </ul>
-          {!integrity.ok && (
-            <p class="alert">
-              <strong>Stop financial posting and investigate before continuing.</strong>
+        )}
+        {backup === undefined ? (
+          <p>Loading backup health…</p>
+        ) : backup === null ? (
+          backupError ? null : (
+            <p class="alert">No verified backup has run yet.</p>
+          )
+        ) : (
+          <>
+            <p class={backupOk ? 'success' : 'alert'}>
+              <strong>Backup:</strong> {backupOk ? 'PASS' : 'ATTENTION'} · {backup.status} ·{' '}
+              {backup.finished_at ?? 'never'}
+              {backupAgeMs > 24 * 60 * 60 * 1000 ? ' · older than 24 hours' : ''}
             </p>
-          )}
-        </>
-      )}
+            <p>
+              Destinations:{' '}
+              {backup.destinations.length
+                ? backup.destinations
+                    .map((d) => `${d.name} (${d.verified ? 'verified' : 'unverified'})`)
+                    .join(', ')
+                : 'none'}
+            </p>
+          </>
+        )}
+        {integrity === undefined ? (
+          <p>Loading invariant health…</p>
+        ) : integrity === null ? (
+          <p class="alert" data-testid="invariants-status">
+            <strong>Financial invariants:</strong> UNKNOWN — the check could not run.
+          </p>
+        ) : (
+          <>
+            <p class={integrity.ok ? 'success' : 'alert'} data-testid="invariants-status">
+              <strong>Financial invariants:</strong> {integrity.ok ? 'PASS' : 'FAIL'} · checked{' '}
+              {integrity.checkedAt.toLocaleTimeString()} · {integrity.rows.length} checks
+            </p>
+            <details class="health-details">
+              <summary>View financial checks</summary>
+              <ul aria-label="Invariant checks">
+                {integrity.rows.map((r) => (
+                  <li key={r.code} class={r.count > 0 ? 'alert' : undefined}>
+                    {invariantLabel(r.code)}: {r.count}
+                    {r.count > 0 ? ' — FAIL' : ''}
+                  </li>
+                ))}
+              </ul>
+            </details>
+            {!integrity.ok && (
+              <p class="alert">
+                <strong>Stop financial posting and investigate before continuing.</strong>
+              </p>
+            )}
+          </>
+        )}
+      </details>
     </section>
   );
 }

@@ -1,3 +1,4 @@
+import { useState } from 'preact/hooks';
 import { Router, Route } from 'preact-router';
 import { signOut } from '@dsb-pro/adapters';
 import { useSession } from './lib/useSession';
@@ -31,6 +32,7 @@ import { appRoute } from './lib/paths';
 
 export function App() {
   const session = useSession();
+  const [currentPath, setCurrentPath] = useState(window.location.pathname);
   const testMode = import.meta.env.VITE_TEST_MODE === 'phase4-shop-test';
   return (
     <>
@@ -42,9 +44,11 @@ export function App() {
         </div>
       )}
       {session.status === 'active' && session.membership.role !== 'cashier' && (
-        <HealthPanel canAdjustStock={['owner', 'manager'].includes(session.membership.role)} />
+        <div class="health-container no-print">
+          <HealthPanel canAdjustStock={['owner', 'manager'].includes(session.membership.role)} />
+        </div>
       )}
-      <Router>
+      <Router onChange={(event) => setCurrentPath(event.url.split(/[?#]/)[0])}>
         <Route path={appRoute.signup} component={SignupScreen} />
         <Route path={appRoute.join} component={JoinInviteScreen} />
         <Route path={appRoute.team} component={TeamScreen} />
@@ -64,7 +68,9 @@ export function App() {
         <Route path={appRoute.openings} component={OpeningsScreen} />
         <Route default component={() => <Home session={session} />} />
       </Router>
-      {session.status === 'active' && <BottomNav role={session.membership.role} />}
+      {session.status === 'active' && (
+        <BottomNav role={session.membership.role} currentPath={currentPath} />
+      )}
     </>
   );
 }
@@ -89,9 +95,12 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
   return (
     <>
       <VerificationBanner session={session.session} />
-      <main>
-        <div class="row">
-          <h1>DSB Pro — Admin</h1>
+      <main class="dashboard">
+        <div class="dashboard-heading">
+          <div>
+            <p class="eyebrow">YOUR SHOP WORKSPACE</p>
+            <h1>DSB Pro — Admin</h1>
+          </div>
           <LanguageToggle />
         </div>
         {session.offline && (
@@ -101,34 +110,64 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
           </p>
         )}
         {session.membership.role !== 'cashier' && <DayBookTile />}
-        <p>
-          Signed in as tenant {session.membership.tenantId}, role {session.membership.role}.
-        </p>
-        <p>
-          <a href={appRoute.pos}>Sales POS</a> · <a href={appRoute.returns}>Returns</a> ·{' '}
-          <a href={appRoute.salesHistory}>Sales history</a> ·{' '}
-          <a href={appRoute.customers}>Customers & ledger</a> ·{' '}
-          <a href={appRoute.inventory}>Inventory & purchases</a> ·{' '}
+        <nav class="action-grid" aria-label="Shop actions">
+          <a class="action-tile action-featured" href={appRoute.pos}>
+            <strong>Sales POS</strong>
+            <span>Start a bill · scan or find products</span>
+            <b aria-hidden="true">→</b>
+          </a>
+          <a class="action-tile" href={appRoute.inventory}>
+            <strong>Inventory & purchases</strong>
+            <span>Items, prices and purchase bills</span>
+          </a>
+          <a class="action-tile" href={appRoute.customers}>
+            <strong>Customers & ledger</strong>
+            <span>Balances and received payments</span>
+          </a>
           {session.membership.role !== 'cashier' && (
             <>
-              <a href={appRoute.suppliers}>{t('suppliers')}</a> ·{' '}
+              <a class="action-tile" href={appRoute.suppliers}>
+                <strong>{t('suppliers')}</strong>
+                <span>Purchase balances and payments</span>
+              </a>
+              <a class="action-tile" aria-label="Expenses" href={appRoute.expenses}>
+                <strong>Expenses</strong>
+                <span>Record daily shop spending</span>
+              </a>
             </>
           )}
-          {session.membership.role !== 'cashier' && (
-            <>
-              <a href={appRoute.expenses}>Expenses</a> ·{' '}
-              {['owner', 'manager'].includes(session.membership.role) && (
-                <>
-                  <a href={appRoute.stockAdjust}>Stock adjust</a> ·{' '}
-                </>
-              )}
-            </>
-          )}
-          <a href={appRoute.reports}>Reports & recovery</a> ·{' '}
-          <a href={appRoute.sync}>Sync & offline</a> · <a href={appRoute.team}>Team</a> ·{' '}
-          <a href={appRoute.devices}>Devices</a> · <a href={appRoute.settings}>Settings</a> ·{' '}
+          <a class="action-tile" href={appRoute.salesHistory}>
+            <strong>Sales history</strong>
+            <span>Find invoices and print receipts</span>
+          </a>
+          <a class="action-tile" href={appRoute.returns}>
+            <strong>Returns</strong>
+            <span>Return items against a bill</span>
+          </a>
+          <a class="action-tile" href={appRoute.reports}>
+            <strong>Reports & recovery</strong>
+            <span>Day book, exports and backups</span>
+          </a>
+          <a class="action-tile" href={appRoute.sync}>
+            <strong>Sync & offline</strong>
+            <span>Check pending entries</span>
+          </a>
+        </nav>
+        <details class="card shop-tools">
+          <summary>Shop management</summary>
+          <nav class="management-links" aria-label="Shop management">
+            {['owner', 'manager'].includes(session.membership.role) && (
+              <a href={appRoute.stockAdjust}>Stock adjust</a>
+            )}
+            <a href={appRoute.team}>Team</a>
+            <a href={appRoute.devices}>Devices</a>
+            <a href={appRoute.settings}>Settings</a>
+          </nav>
+        </details>
+        <div class="account-row">
+          <span class="muted">Signed in · {session.membership.role}</span>
           <button onClick={() => void signOut()}>Sign out</button>
-        </p>
+        </div>
       </main>
     </>
   );

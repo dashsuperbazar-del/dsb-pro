@@ -20,7 +20,7 @@ test('create your shop takes an owner straight into the app', async ({ page }) =
   await page.getByLabel('Shop name').fill('Ramesh Store');
   await page.getByRole('button', { name: 'Create your shop' }).click();
   await expect(page.getByText(/DSB Pro — Admin/)).toBeVisible();
-  await expect(page.getByText(/role owner/i)).toBeVisible();
+  await expect(page.getByText(/Signed in · owner/i)).toBeVisible();
 });
 
 test('owner creates a real invite and a new user accepts it through the deep link', async ({
@@ -51,7 +51,7 @@ test('owner creates a real invite and a new user accepts it through the deep lin
   await invitePage.getByRole('button', { name: 'Sign up' }).click();
 
   await expect(invitePage.getByText(/DSB Pro — Admin/)).toBeVisible();
-  await expect(invitePage.getByText(/role cashier/i)).toBeVisible();
+  await expect(invitePage.getByText(/Signed in · cashier/i)).toBeVisible();
   await inviteContext.close();
 });
 
