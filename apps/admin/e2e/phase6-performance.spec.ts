@@ -65,7 +65,7 @@ async function loginAndFullSync(browser: import('@playwright/test').Browser, dev
   await page.getByLabel('Email').fill(EMAIL);
   await page.getByLabel('Password').fill(PASSWORD);
   await page.getByRole('button', { name: 'Log in' }).click();
-  await expect(page.getByText(/DSB Pro — Admin/)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(/Overview/)).toBeVisible({ timeout: 20_000 });
   await expect
     .poll(() => itemCount(page), { timeout: SYNC_LIMIT_MS, intervals: [250, 500, 1000] })
     .toBe(ITEM_TARGET);

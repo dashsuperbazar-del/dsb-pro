@@ -18,6 +18,7 @@ import {
   type CustomerLedgerRow,
   type CustomerOutstandingInvoice,
 } from '@dsb-pro/adapters';
+import { TaskTabs } from '../components/TaskTabs';
 import { appRoute } from '../lib/paths';
 import {
   listOpenFinancialAttempts,
@@ -50,6 +51,9 @@ const toPaise = (rupees: string) => parseRupeesToPaise(rupees || '0');
 type AllocationDraft = { saleId: string; docNo: string; checked: boolean; amount: string };
 
 export function CustomersScreen() {
+  const [view, setView] = useState<'receipt' | 'ledger'>('receipt');
+  const [canViewSuppliers, setCanViewSuppliers] = useState(false);
+  const [search, setSearch] = useState('');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [balances, setBalances] = useState<Record<string, number>>({});
   const [selected, setSelected] = useState('');
@@ -89,6 +93,7 @@ export function CustomersScreen() {
       listCustomerBalances(),
       getShopBusinessDate(shop),
     ]);
+    setCanViewSuppliers(membership.role !== 'cashier');
     setTenantId(membership.tenantId);
     setShopId(shop);
     setCustomers(c);
@@ -293,6 +298,12 @@ export function CustomersScreen() {
         <a href={appRoute.home}>← Home</a>
       </p>
       <h1>Customers & ledger</h1>
+      <nav class="party-tabs" aria-label="Party type">
+        {canViewSuppliers && <a href={appRoute.suppliers}>Suppliers</a>}
+        <a href={appRoute.customers} aria-current="page">
+          Customers
+        </a>
+      </nav>
       {error && (
         <p role="alert" class="alert">
           {error}
@@ -305,21 +316,57 @@ export function CustomersScreen() {
       )}
       <section class="card">
         <h2>Customer master</h2>
-        <form onSubmit={addCustomer} class="grid-form">
-          <label>
-            Name
-            <input name="name" required />
-          </label>
-          <label>
-            Phone
-            <input name="phone" />
-          </label>
-          <label>
-            Address
-            <input name="address" />
-          </label>
-          <button disabled={!tenantId}>Create customer</button>
-        </form>
+        <details>
+          <summary>Add customer</summary>
+          <form onSubmit={addCustomer} class="grid-form">
+            <label>
+              Name
+              <input name="name" required />
+            </label>
+            <label>
+              Phone
+              <input name="phone" />
+            </label>
+            <label>
+              Address
+              <input name="address" />
+            </label>
+            <button disabled={!tenantId}>Create customer</button>
+          </form>
+        </details>
+        <label>
+          Find customer
+          <input
+            type="search"
+            value={search}
+            onInput={(e) => setSearch(e.currentTarget.value)}
+            placeholder="Name or phone"
+          />
+        </label>
+        <div class="record-list">
+          {customers
+            .filter((c) =>
+              (c.name + ' ' + (c.phone ?? '')).toLowerCase().includes(search.toLowerCase()),
+            )
+            .map((c) => (
+              <button
+                class="record-row"
+                type="button"
+                onClick={() => selectCustomer(c.id)}
+                aria-pressed={selected === c.id}
+              >
+                <span class="record-title">{c.name}</span>
+                <span>
+                  {c.phone || 'No phone'} ·{' '}
+                  {balances[c.id] === undefined
+                    ? 'Owes ' + money(0)
+                    : balances[c.id] < 0
+                      ? 'Advance ' + money(-balances[c.id])
+                      : 'Owes ' + money(balances[c.id])}
+                </span>
+              </button>
+            ))}
+        </div>
         <label>
           Customer
           <select
@@ -336,15 +383,27 @@ export function CustomersScreen() {
         </label>
         {customer && (
           <p>
-            <strong>{customer.name}</strong> · Balance {money(balances[customer.id] ?? 0)}{' '}
-            <small>(positive = customer owes; negative = advance)</small>
+            <strong>{customer.name}</strong> ·{' '}
+            {(balances[customer.id] ?? 0) < 0 ? 'Advance available' : 'Customer owes'}{' '}
+            {money(Math.abs(balances[customer.id] ?? 0))}
           </p>
         )}
       </section>
 
       {selected && (
+        <TaskTabs
+          label="Customer tasks"
+          value={view}
+          onChange={setView}
+          options={[
+            { value: 'receipt', label: 'Receive payment' },
+            { value: 'ledger', label: 'Ledger' },
+          ]}
+        />
+      )}
+      {selected && (
         <section class="card">
-          <h2>Receive payment / allocate invoices</h2>
+          <h2 hidden={view !== 'receipt'}>Receive payment / allocate invoices</h2>
           {openAttempts.length > 0 && (
             <div class="alert" role="alert" aria-label="Unresolved receipts">
               <p>Receipt awaiting server confirmation. Do not record it again.</p>
@@ -361,7 +420,7 @@ export function CustomersScreen() {
               </ul>
             </div>
           )}
-          <form onSubmit={receive}>
+          <form onSubmit={receive} hidden={view !== 'receipt'}>
             <div class="grid-form">
               <label>
                 Business date
@@ -505,7 +564,7 @@ export function CustomersScreen() {
       )}
 
       {selected && (
-        <section class="card">
+        <section class="card" hidden={view !== 'ledger'}>
           <h2>Customer ledger</h2>
           {!ledger.length ? (
             <p class="muted">No ledger entries.</p>

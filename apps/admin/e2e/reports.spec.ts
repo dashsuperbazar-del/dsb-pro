@@ -1,3 +1,4 @@
+import { stockTask, addItemForm, reviewPayment } from './design-helpers';
 import { test, expect } from '@playwright/test';
 
 const PASSWORD = 'TestOnly-2026!pw';
@@ -14,7 +15,7 @@ async function createOwnerShop(page: import('@playwright/test').Page) {
   await page.goto('/');
   await page.getByLabel('Shop name').fill('Phase 6 Reports Shop');
   await page.getByRole('button', { name: 'Create your shop' }).click();
-  await expect(page.getByText(/DSB Pro — Admin/)).toBeVisible();
+  await expect(page.getByText(/Overview/)).toBeVisible();
 }
 
 test('Phase 6 reports and recovery surface loads and invariant check passes', async ({ page }) => {
@@ -40,6 +41,10 @@ test('Phase 6 reports and recovery surface loads and invariant check passes', as
   await page.getByRole('button', { name: 'Refresh' }).click();
   await expect(page.getByText('Invariant check: PASS')).toBeVisible();
   const downloadPromise = page.waitForEvent('download');
+  await page
+    .getByRole('navigation', { name: 'Report categories' })
+    .getByRole('button', { name: 'Recovery', exact: true })
+    .click();
   await page.getByRole('button', { name: 'Save full device backup ZIP' }).click();
   const backup = await downloadPromise;
   expect(backup.suggestedFilename()).toMatch(/^dsb-pro-full-device-backup-\d{4}-\d{2}-\d{2}\.zip$/);
@@ -52,11 +57,13 @@ test('the missing reports show real low stock, item-wise sales, purchase registe
   test.setTimeout(60000);
   await createOwnerShop(page);
   await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await addItemForm(page);
   await page.getByPlaceholder('Item name').fill('Reports E2E Item');
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
   await expect(page.getByRole('status')).toContainText('Created Reports E2E Item');
-  await page.getByLabel('Peek item').selectOption({ label: 'Reports E2E Item' });
+  await stockTask(page, 'Items');
+  await page.getByLabel('Item details').selectOption({ label: 'Reports E2E Item' });
 
   // The reorder threshold has never been settable from the UI before this.
   await page.getByLabel('Reorder threshold').fill('5');
@@ -67,6 +74,7 @@ test('the missing reports show real low stock, item-wise sales, purchase registe
   await priceForm.locator('input[name="price"]').fill('10');
   await page.getByRole('button', { name: 'Set price' }).click();
 
+  await stockTask(page, 'Purchases');
   const purchase = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
@@ -87,7 +95,9 @@ test('the missing reports show real low stock, item-wise sales, purchase registe
   await page.getByLabel('Item').selectOption({ index: 1 });
   await page.getByLabel('Quantity').fill('8');
   await page.getByRole('button', { name: 'Add line' }).click();
+  await reviewPayment(page);
   await page.getByLabel('Amount ₹').first().fill('80');
+  await reviewPayment(page);
   await page.getByRole('button', { name: 'Finalize sale' }).click();
   await expect(page.getByRole('status')).toContainText('Sale finalized');
 
@@ -96,10 +106,12 @@ test('the missing reports show real low stock, item-wise sales, purchase registe
   await page.getByLabel('Item').selectOption({ index: 1 });
   await page.getByLabel('Quantity').fill('1');
   await page.getByRole('button', { name: 'Add line' }).click();
+  await reviewPayment(page);
   await page.getByText('Add a new customer', { exact: true }).click();
   await page.getByLabel('Quick customer').fill('Aging E2E Customer');
   await page.getByRole('button', { name: 'Create & select' }).click();
   await expect(page.getByRole('status')).toContainText('Aging E2E Customer created');
+  await reviewPayment(page);
   await page.getByRole('button', { name: 'Finalize sale' }).click();
   await expect(page.getByRole('status')).toContainText('Sale finalized');
 
@@ -107,12 +119,20 @@ test('the missing reports show real low stock, item-wise sales, purchase registe
   await page.getByRole('button', { name: 'Refresh' }).click();
   await expect(page.getByText('Invariant check: PASS')).toBeVisible();
 
+  await page
+    .getByRole('navigation', { name: 'Report categories' })
+    .getByRole('button', { name: 'Stock', exact: true })
+    .click();
   const lowStock = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Low stock / reorder' }) });
   await expect(lowStock).toContainText('Reports E2E Item');
   await expect(lowStock.locator('tbody tr')).toHaveCount(1);
 
+  await page
+    .getByRole('navigation', { name: 'Report categories' })
+    .getByRole('button', { name: 'Sales', exact: true })
+    .click();
   const itemSales = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Item-wise sales' }) });
@@ -120,6 +140,10 @@ test('the missing reports show real low stock, item-wise sales, purchase registe
   await expect(salesRow).toContainText('9'); // 8 + 1, both sales in the default From..To range
   await expect(salesRow).toContainText('₹90.00');
 
+  await page
+    .getByRole('navigation', { name: 'Report categories' })
+    .getByRole('button', { name: 'Purchases', exact: true })
+    .click();
   const purchaseRegister = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Purchase register' }) });
@@ -127,6 +151,10 @@ test('the missing reports show real low stock, item-wise sales, purchase registe
   await expect(purchaseRegister).toContainText('₹50.00');
   await expect(purchaseRegister).toContainText('POSTED');
 
+  await page
+    .getByRole('navigation', { name: 'Report categories' })
+    .getByRole('button', { name: 'Outstanding', exact: true })
+    .click();
   const aging = page.locator('section').filter({
     has: page.getByRole('heading', { name: 'Customer outstanding (as of the To date)' }),
   });

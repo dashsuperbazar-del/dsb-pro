@@ -7,6 +7,7 @@ export function appPath(path = '/') {
 
 export const appRoute = {
   home: appPath('/'),
+  more: appPath('/more'),
   signup: appPath('/signup'),
   join: appPath('/join/:token?'),
   team: appPath('/team'),

@@ -1,3 +1,4 @@
+import { stockTask, addItemForm } from './design-helpers';
 import { test, expect, type Page } from '@playwright/test';
 
 const PASSWORD = 'TestOnly-2026!pw';
@@ -13,15 +14,18 @@ async function ownerWithBill(page: Page) {
   await page.goto('/');
   await page.getByLabel('Shop name').fill('Supplier Pay Shop');
   await page.getByRole('button', { name: 'Create your shop' }).click();
-  await expect(page.getByText(/DSB Pro — Admin/)).toBeVisible();
+  await expect(page.getByText(/Overview/)).toBeVisible();
   await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await stockTask(page, 'Suppliers');
   await page.getByPlaceholder('Supplier name').fill('Acme Traders');
   await page.getByRole('button', { name: 'Create supplier' }).click();
   await expect(page.getByRole('status')).toContainText('Created supplier Acme Traders');
+  await addItemForm(page);
   await page.getByPlaceholder('Item name').fill('Rice bag');
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
   await expect(page.getByRole('status')).toContainText('Created Rice bag');
+  await stockTask(page, 'Purchases');
   const purchase = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
@@ -35,14 +39,22 @@ async function ownerWithBill(page: Page) {
   await expect(page.getByRole('status')).toContainText('Purchase posted');
   await page.goto('/');
   await page.getByRole('link', { name: 'Suppliers & payments' }).click();
-  await page.getByLabel('Supplier').selectOption({ label: 'Acme Traders' });
+  await page.getByLabel('Supplier', { exact: true }).selectOption({ label: 'Acme Traders' });
 }
 const bills = (page: Page) =>
-  page.locator('section').filter({ has: page.getByRole('heading', { name: 'Open bills' }) });
+  page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Open bills', includeHidden: true }) });
 const history = (page: Page) =>
-  page.locator('section').filter({ has: page.getByRole('heading', { name: 'Payment history' }) });
+  page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Payment history', includeHidden: true }) });
 
 async function record(page: Page, amount: string, toBill?: string) {
+  await page
+    .getByRole('navigation', { name: 'Supplier tasks' })
+    .getByRole('button', { name: 'Record payment', exact: true })
+    .click();
   if (toBill) await page.getByLabel('Allocate to ACME-1').fill(toBill);
   await page.getByLabel('Amount paid ₹').fill(amount);
   await page.getByRole('button', { name: 'Review' }).click();
@@ -57,6 +69,10 @@ test('partial bill + advance, allocate the advance, release the match, void', as
   await record(page, '100', '40');
   await expect(page.getByRole('status')).toContainText('confirmed by the server');
   await expect(bills(page).locator('tbody tr')).toContainText('₹60.00');
+  await page
+    .getByRole('navigation', { name: 'Supplier tasks' })
+    .getByRole('button', { name: 'Payments', exact: true })
+    .click();
   const row = history(page).locator('tbody tr').first();
   await expect(row).toContainText('₹100.00');
   await expect(row).toContainText('₹60.00'); // advance left
@@ -70,11 +86,23 @@ test('partial bill + advance, allocate the advance, release the match, void', as
   await expect(page.getByRole('status')).toContainText('confirmed by the server');
   await expect(bills(page).locator('tbody tr').first().locator('td').nth(5)).toHaveText('₹0.00');
 
+  await page
+    .getByRole('navigation', { name: 'Supplier tasks' })
+    .getByRole('button', { name: 'Payments', exact: true })
+    .click();
   await history(page).locator('tbody tr').first().getByRole('button', { name: 'Bills' }).click();
+  await page
+    .getByRole('navigation', { name: 'Supplier tasks' })
+    .getByRole('button', { name: 'Payments', exact: true })
+    .click();
   await history(page).getByRole('button', { name: 'Release' }).first().click();
   await expect(page.getByRole('status')).toContainText('confirmed by the server');
   await expect(history(page).locator('tbody tr').first()).toContainText('POSTED'); // cash stays recorded
 
+  await page
+    .getByRole('navigation', { name: 'Supplier tasks' })
+    .getByRole('button', { name: 'Payments', exact: true })
+    .click();
   await history(page).locator('tbody tr').first().getByRole('button', { name: 'Void' }).click();
   await expect(page.getByRole('status')).toContainText('confirmed by the server');
   await expect(history(page).locator('tbody tr').first()).toContainText('VOID');
@@ -96,10 +124,15 @@ test('a response lost after commit is reconciled by request id, never recorded t
   await expect(page.getByRole('alert').first()).toContainText('Do NOT record this payment again');
   const pending = page.getByRole('alert', { name: 'Unresolved payments' });
   await expect(pending).toContainText('UNKNOWN');
+  await page
+    .getByRole('navigation', { name: 'Supplier tasks' })
+    .getByRole('button', { name: 'Ledger', exact: true })
+    .click();
+  await expect(pending).toContainText('UNKNOWN');
   await expect(page.getByRole('button', { name: 'Review' })).toHaveCount(0); // blocked until resolved
 
   await page.reload();
-  await page.getByLabel('Supplier').selectOption({ label: 'Acme Traders' });
+  await page.getByLabel('Supplier', { exact: true }).selectOption({ label: 'Acme Traders' });
   await page.getByRole('button', { name: 'Check status' }).click();
   await expect(page.getByRole('status')).toContainText('confirmed by the server');
   await expect(history(page).locator('tbody tr')).toHaveCount(1);

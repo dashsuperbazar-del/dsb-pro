@@ -19,7 +19,7 @@ test('create your shop takes an owner straight into the app', async ({ page }) =
   await page.getByRole('button', { name: 'Sign up' }).click();
   await page.getByLabel('Shop name').fill('Ramesh Store');
   await page.getByRole('button', { name: 'Create your shop' }).click();
-  await expect(page.getByText(/DSB Pro — Admin/)).toBeVisible();
+  await expect(page.getByText(/Overview/)).toBeVisible();
   await expect(page.getByText(/Signed in · owner/i)).toBeVisible();
 });
 
@@ -33,7 +33,7 @@ test('owner creates a real invite and a new user accepts it through the deep lin
   await page.getByRole('button', { name: 'Sign up' }).click();
   await page.getByLabel('Shop name').fill('Invite Test Shop');
   await page.getByRole('button', { name: 'Create your shop' }).click();
-  await expect(page.getByText(/DSB Pro — Admin/)).toBeVisible();
+  await expect(page.getByText(/Overview/)).toBeVisible();
 
   await page.goto('/team');
   await expect(page.getByRole('heading', { name: 'Team' })).toBeVisible();
@@ -50,8 +50,22 @@ test('owner creates a real invite and a new user accepts it through the deep lin
   await fillSignup(invitePage, uniqueEmail());
   await invitePage.getByRole('button', { name: 'Sign up' }).click();
 
-  await expect(invitePage.getByText(/DSB Pro — Admin/)).toBeVisible();
+  await expect(invitePage.getByText(/Overview/)).toBeVisible();
   await expect(invitePage.getByText(/Signed in · cashier/i)).toBeVisible();
+  const nav = invitePage.getByRole('navigation', { name: 'Quick navigation' });
+  await expect(nav.getByRole('link', { name: 'Stock', exact: true })).toHaveCount(0);
+  await nav.getByRole('link', { name: 'Parties', exact: true }).click();
+  await expect(invitePage.getByRole('heading', { name: 'Customers & ledger' })).toBeVisible();
+  await expect(
+    invitePage
+      .getByRole('navigation', { name: 'Party type' })
+      .getByRole('link', { name: 'Suppliers', exact: true }),
+  ).toHaveCount(0);
+  await nav.getByRole('link', { name: 'More', exact: true }).click();
+  await expect(
+    invitePage.getByRole('link', { name: 'Reports & recovery', exact: true }),
+  ).toHaveCount(0);
+  await expect(invitePage.getByRole('link', { name: 'Expenses', exact: true })).toHaveCount(0);
   await inviteContext.close();
 });
 
@@ -62,7 +76,7 @@ test('invalid invite remains a user-facing error after signed-out signup', async
   await page.getByRole('button', { name: 'Sign up' }).click();
   await page.getByLabel('Shop name').fill('Invite Error Shop');
   await page.getByRole('button', { name: 'Create your shop' }).click();
-  await expect(page.getByText(/DSB Pro — Admin/)).toBeVisible();
+  await expect(page.getByText(/Overview/)).toBeVisible();
   await page.getByRole('button', { name: 'Sign out' }).click();
 
   await page.goto('/join/not-a-real-token');

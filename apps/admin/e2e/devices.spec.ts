@@ -150,7 +150,7 @@ test('an owner sees their own device, auto-labeled, and can rename it', async ({
   await page.getByRole('button', { name: 'Sign up' }).click();
   await page.getByLabel('Shop name').fill('Devices Test Shop');
   await page.getByRole('button', { name: 'Create your shop' }).click();
-  await page.getByText(/DSB Pro — Admin/i).waitFor({ timeout: 5000 });
+  await page.getByText(/Overview/i).waitFor({ timeout: 5000 });
 
   await page.goto('/devices');
   await expect(page.getByTestId('my-devices')).toContainText(/chrome/i);
@@ -179,7 +179,7 @@ test('device screen states that Phase 5 revocation blocks sync on the next reque
   await page.getByRole('button', { name: 'Sign up' }).click();
   await page.getByLabel('Shop name').fill('Owner Devices Shop');
   await page.getByRole('button', { name: 'Create your shop' }).click();
-  await page.getByText(/DSB Pro — Admin/i).waitFor({ timeout: 5000 });
+  await page.getByText(/Overview/i).waitFor({ timeout: 5000 });
 
   await page.goto('/devices');
   await expect(

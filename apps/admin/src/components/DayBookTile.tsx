@@ -14,6 +14,7 @@ const rupee = (p: number) =>
 export function DayBookTile() {
   const [date, setDate] = useState('');
   const [row, setRow] = useState<DayBookRow | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => {
     void (async () => {
@@ -21,16 +22,25 @@ export function DayBookTile() {
       const d = await getShopBusinessDate(shop);
       setDate(d);
       setRow((await getDayBook(shop, d, d))[0] ?? null);
+      setLoaded(true);
     })().catch((e) => setError(String(e)));
   }, []);
-  if (error) return null;
-  const v = (k: keyof Omit<DayBookRow, 'business_date'>) => rupee(row ? row[k] : 0);
+  if (error)
+    return (
+      <section class="card daybook-tile" aria-label="Day book today">
+        <p role="alert">
+          Today’s totals are unavailable. <a href={appRoute.reports}>Open reports</a>
+        </p>
+      </section>
+    );
+  const v = (k: keyof Omit<DayBookRow, 'business_date'>) =>
+    loaded ? rupee(row ? row[k] : 0) : '—';
   return (
     <section class="card daybook-tile" aria-label="Day book today">
       <h2>Today {date && `· ${date}`}</h2>
       <dl class="tiles">
         <div>
-          <dt>Sales</dt>
+          <dt>Net sales</dt>
           <dd>{v('sales_paise')}</dd>
         </div>
         <div>
@@ -45,12 +55,14 @@ export function DayBookTile() {
           <dt>Expenses</dt>
           <dd>{v('expenses_paise')}</dd>
         </div>
-        <div>
-          <dt>Net cash</dt>
+        <div class="daybook-net">
+          <dt>Net money flow</dt>
           <dd>{v('net_cashflow_paise')}</dd>
         </div>
       </dl>
-      <a href={appRoute.reports}>Full day book</a>
+      <a class="daybook-link" href={appRoute.reports}>
+        Full day book →
+      </a>
     </section>
   );
 }

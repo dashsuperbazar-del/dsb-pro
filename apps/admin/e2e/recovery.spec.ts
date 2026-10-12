@@ -1,3 +1,4 @@
+import { stockTask, addItemForm, addCustomerForm } from './design-helpers';
 // V002 verifier findings VF-005/006/007: a write whose outcome is unknown is stored on the device
 // before it is sent, survives reload, is retried with the same request id, and is never replaced by
 // a new id. Each case commits on the real local database and then loses or withholds the answer.
@@ -16,7 +17,7 @@ async function createOwnerShop(page: Page) {
   await page.goto('/');
   await page.getByLabel('Shop name').fill('Recovery Shop');
   await page.getByRole('button', { name: 'Create your shop' }).click();
-  await expect(page.getByText(/DSB Pro — Admin/)).toBeVisible();
+  await expect(page.getByText(/Overview/)).toBeVisible();
 }
 
 // The first call commits on the server; its answer is withheld until the page is reloaded
@@ -105,6 +106,7 @@ test('stock count: answer lost after posting; the retry after reload never appli
 }) => {
   await createOwnerShop(page);
   await page.goto('/inventory');
+  await addItemForm(page);
   await page.getByPlaceholder('Item name').fill('Count Item');
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
@@ -130,11 +132,13 @@ test('purchase: a crash after commit keeps the bill locked; the retry posts it o
 }) => {
   await createOwnerShop(page);
   await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await addItemForm(page);
   await page.getByPlaceholder('Item name').fill('Rice bag');
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
   await expect(page.getByRole('status')).toContainText('Created Rice bag');
   const net = commitThenCrash(page, '**/rpc/post_purchase');
+  await stockTask(page, 'Purchases');
   const purchase = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
@@ -164,9 +168,10 @@ test('customer receipt: switching to a customer with an unresolved receipt canno
 }) => {
   await createOwnerShop(page);
   await page.getByRole('link', { name: 'Customers & ledger' }).click();
+  await addCustomerForm(page);
   await page.getByLabel('Name').fill('Customer B');
   await page.getByRole('button', { name: 'Create customer' }).click();
-  await expect(page.getByText(/Balance ₹0.00/)).toBeVisible();
+  await expect(page.getByText(/Customer owes ₹0.00/)).toBeVisible();
   // B gets a receipt whose answer is lost after commit (UNKNOWN on this device).
   let calls = 0;
   await page.route('**/rpc/record_customer_payment_v2', async (route) => {
@@ -178,6 +183,7 @@ test('customer receipt: switching to a customer with an unresolved receipt canno
   await page.getByRole('button', { name: 'Record payment' }).click();
   await expect(page.getByRole('alert', { name: 'Unresolved receipts' })).toContainText('UNKNOWN');
 
+  await addCustomerForm(page);
   await page.getByLabel('Name').fill('Customer A');
   await page.getByRole('button', { name: 'Create customer' }).click();
   await expect(page.getByRole('alert', { name: 'Unresolved receipts' })).toHaveCount(0);
@@ -242,9 +248,10 @@ test('customer receipt: a second window waits for the first and then refuses to 
 }) => {
   await createOwnerShop(page);
   await page.getByRole('link', { name: 'Customers & ledger' }).click();
+  await addCustomerForm(page);
   await page.getByLabel('Name').fill('Two Window Customer');
   await page.getByRole('button', { name: 'Create customer' }).click();
-  await expect(page.getByText(/Balance ₹0.00/)).toBeVisible();
+  await expect(page.getByText(/Customer owes ₹0.00/)).toBeVisible();
   const other = await page.context().newPage();
   await other.goto('/customers');
   await other
@@ -283,9 +290,10 @@ test('customer receipt: when the first window succeeds, the waiting window does 
 }) => {
   await createOwnerShop(page);
   await page.getByRole('link', { name: 'Customers & ledger' }).click();
+  await addCustomerForm(page);
   await page.getByLabel('Name').fill('Success Window Customer');
   await page.getByRole('button', { name: 'Create customer' }).click();
-  await expect(page.getByText(/Balance ₹0.00/)).toBeVisible();
+  await expect(page.getByText(/Customer owes ₹0.00/)).toBeVisible();
   const other = await page.context().newPage();
   await other.goto('/customers');
   await other
@@ -360,9 +368,11 @@ test('customer receipt: finishing customer A’s receipt after switching to B ne
 }) => {
   await createOwnerShop(page);
   await page.getByRole('link', { name: 'Customers & ledger' }).click();
+  await addCustomerForm(page);
   await page.getByLabel('Name').fill('Customer B');
   await page.getByRole('button', { name: 'Create customer' }).click();
-  await expect(page.getByText(/Balance ₹0.00/)).toBeVisible();
+  await expect(page.getByText(/Customer owes ₹0.00/)).toBeVisible();
+  await addCustomerForm(page);
   await page.getByLabel('Name').fill('Customer A');
   await page.getByRole('button', { name: 'Create customer' }).click();
   await expect(page.getByText(/Customer A created/)).toBeVisible();
@@ -391,7 +401,7 @@ test('customer receipt: finishing customer A’s receipt after switching to B ne
   await expect(page.getByText(/Payment recorded/)).toBeVisible();
   const ledger = page
     .locator('section')
-    .filter({ has: page.getByRole('heading', { name: 'Customer ledger' }) });
+    .filter({ has: page.getByRole('heading', { name: 'Customer ledger', includeHidden: true }) });
   await expect(page.locator('strong', { hasText: 'Customer B' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Record payment' })).toBeEnabled();
   await expect(ledger.getByRole('button', { name: 'Void payment' })).toHaveCount(0);
@@ -403,6 +413,7 @@ test('purchase without a supplier: a 502 after commit is retried in the same win
 }) => {
   await createOwnerShop(page);
   await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await addItemForm(page);
   await page.getByPlaceholder('Item name').fill('Loose item');
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
@@ -414,6 +425,7 @@ test('purchase without a supplier: a 502 after commit is retried in the same win
       await route.fulfill({ status: 502, contentType: 'text/plain', body: 'Bad Gateway' });
     } else await route.continue();
   });
+  await stockTask(page, 'Purchases');
   const purchase = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });

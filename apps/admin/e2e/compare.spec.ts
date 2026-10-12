@@ -1,3 +1,4 @@
+import { stockTask, addItemForm } from './design-helpers';
 // R1 shadow-run kit: the compare page shows the day's totals, balances and stock, and exports CSV.
 import { test, expect } from '@playwright/test';
 
@@ -16,16 +17,19 @@ test('compare page shows day totals, supplier balance and stock, and exports CSV
   await page.goto('/');
   await page.getByLabel('Shop name').fill('Compare Shop');
   await page.getByRole('button', { name: 'Create your shop' }).click();
-  await expect(page.getByText(/DSB Pro — Admin/)).toBeVisible();
+  await expect(page.getByText(/Overview/)).toBeVisible();
 
   await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await stockTask(page, 'Suppliers');
   await page.getByPlaceholder('Supplier name').fill('Compare Traders');
   await page.getByRole('button', { name: 'Create supplier' }).click();
   await expect(page.getByRole('status')).toContainText('Created supplier Compare Traders');
+  await addItemForm(page);
   await page.getByPlaceholder('Item name').fill('Compare Item');
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
   await expect(page.getByRole('status')).toContainText('Created Compare Item');
+  await stockTask(page, 'Purchases');
   const purchase = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
@@ -44,6 +48,10 @@ test('compare page shows day totals, supplier balance and stock, and exports CSV
   await expect(page.getByRole('status')).toContainText('Expense posted.');
 
   await page.goto('/reports');
+  await page
+    .getByRole('navigation', { name: 'Report categories' })
+    .getByRole('button', { name: 'Recovery', exact: true })
+    .click();
   await page.getByRole('link', { name: 'Compare with old DSB' }).click();
   const day = page.getByRole('region', { name: 'Day totals' });
   await expect(day.locator('tr').filter({ hasText: 'Purchases' })).toContainText('₹120.00');

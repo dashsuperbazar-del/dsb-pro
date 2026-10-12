@@ -2,15 +2,16 @@
 Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/COMPLETE_REMAINING_BUILD_PLAN.md` v1.1.
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 ## Current
-- `main` at last update: `8d1ed82` (MU1 merged #67; fetched 2026-10-12).
-  Migrations 0001–0057 immutable. Recovery proof #785 and deploy #787 PASS; VF-011 CLOSED.
-- MU1 (2026-10-12, user requested confusing phone UI be changed): dashboard action tiles,
-  active mobile navigation, compact item fields, labelled mobile cart rows, sticky bill summary,
-  optional customer form, collapsed diagnostics. No financial handlers, migration or role grants changed.
-  Local lint/typecheck/304 unit tests/build PASS; fresh review (2 rounds) PASS; CI found 7 stale selectors, fixed; final-head CI pending.
-  Risks: obscured payment controls or cart edits lost on navigation; real browser checks required.
-  MU1a: preserve health disclosure choice across async health updates; deterministic regression + CI pending.
-  H3 + clean shop week remain open; visual/UI acceptance is distinct from automated money proofs.
+- `main` verified: `4c1be81` (MU1a #68; fetched 2026-10-12). Migrations 0001–0057 immutable.
+- MU1/MU1a CI and deploy run 38225164664 PASS. User rejected MU1's oversized visual design.
+- PD1 professional design: user requested research first, then authorized build on 2026-10-12.
+  Compact blue/slate system; Home/Billing/Parties/Stock/More; retained purchase/payment/report tasks and checkout; themes.
+  Financial RPC payloads, request IDs, immutable ledgers and money calculations unchanged.
+  Risks: lost draft/input identity; hidden unknown outcomes; stale prices; unreadable print; private navigation. CI covers recovery.
+  Local lint/typecheck/build + 310 unit tests PASS. Fresh independent review PASS (2 rounds); CI #795 found 9 navigation/selector failures, fixed.
+  PR #69: CI #796–798 green (54 browser + 20 repeats); final item-specific price/barcode draft guard pending.
+  Synthetic browser screenshots are visual evidence only. No migration; production deploy stays manual on new main SHA.
+  H3 + clean shop week remain NOT GO pending dated evidence.
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
   partial returns carry item value, capped so a bill's returns never exceed what was billed for its
   items (total - extra charges). Extra charges still stay with the shop.
@@ -59,9 +60,8 @@ CI gate: UI/no-migration packet = one green full run on final head. Migration pa
 Ask the user only for: merge, live migration/deploy approval, money/data-loss trade-off.
 Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it applies all pending groups).
 ## Local environment
-- Docker works in the cloud session: `dockerd &`, then `pnpm exec supabase start` (CLI 2.116.0).
-- After every migration: `pnpm exec supabase db reset && pnpm exec supabase gen types typescript --local >
-  packages/db/src/types.ts` — CI fails if the committed types are stale.
+- This session lacks Docker/local Chromium; full Supabase/browser proofs run in CI (CLI 2.116.0).
+- After migrations reset DB and regenerate `packages/db/src/types.ts`; CI rejects stale types.
 - `pnpm exec prettier --check "apps/**/*.{ts,tsx,css,json,html}"` (config `.prettierrc.json`).
 ## Open risks / debts
 - D1-lite: old `get_customer_aging_report` (current-state balances labelled as-of) stays for compatibility but the

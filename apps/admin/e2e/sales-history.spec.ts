@@ -14,7 +14,7 @@ async function createOwnerShop(page: import('@playwright/test').Page) {
   await page.goto('/');
   await page.getByLabel('Shop name').fill('Sales History Shop');
   await page.getByRole('button', { name: 'Create your shop' }).click();
-  await expect(page.getByText(/DSB Pro — Admin/)).toBeVisible();
+  await expect(page.getByText(/Overview/)).toBeVisible();
 }
 
 test('sales history exposes print/void surface and language scaffold', async ({ page }) => {

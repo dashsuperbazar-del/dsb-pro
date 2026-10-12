@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { Router, Route } from 'preact-router';
 import { signOut } from '@dsb-pro/adapters';
 import { useSession } from './lib/useSession';
@@ -26,17 +26,35 @@ import { DayBookTile } from './components/DayBookTile';
 import { BottomNav } from './components/BottomNav';
 import { t } from './lib/i18n';
 import { VerificationBanner } from './components/VerificationBanner';
-import { LanguageToggle } from './components/LanguageToggle';
+import { MoreScreen } from './screens/MoreScreen';
+import { Icon } from './components/Icon';
+import { applyTheme, readTheme } from './components/ThemeToggle';
 import { SyncRuntime } from './components/SyncRuntime';
 import { appRoute } from './lib/paths';
 
 export function App() {
   const session = useSession();
+  useEffect(() => {
+    applyTheme(readTheme());
+  }, []);
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
   const testMode = import.meta.env.VITE_TEST_MODE === 'phase4-shop-test';
   return (
     <>
       <SyncRuntime session={session} />
+      <header class="app-bar no-print">
+        <a href={appRoute.home} class="app-brand" aria-label="DSB Pro home">
+          <span class="brand-mark">DSB</span>
+          <span>
+            DSB Pro<small>Your shop workspace</small>
+          </span>
+        </a>
+        {session.status === 'active' && (
+          <a href={appRoute.more} class="toolbar-action" aria-label="Shop tools">
+            <Icon name="settings" />
+          </a>
+        )}
+      </header>
       {testMode && (
         <div class="shop-test-banner" role="status">
           <strong>PHASE 4 SHOP TEST</strong> — Use legacy DSB as the official record today. Enter
@@ -49,6 +67,12 @@ export function App() {
         </div>
       )}
       <Router onChange={(event) => setCurrentPath(event.url.split(/[?#]/)[0])}>
+        <Route
+          path={appRoute.more}
+          component={() => (
+            <MoreScreen role={session.status === 'active' ? session.membership.role : null} />
+          )}
+        />
         <Route path={appRoute.signup} component={SignupScreen} />
         <Route path={appRoute.join} component={JoinInviteScreen} />
         <Route path={appRoute.team} component={TeamScreen} />
@@ -97,11 +121,10 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
       <VerificationBanner session={session.session} />
       <main class="dashboard">
         <div class="dashboard-heading">
-          <div>
-            <p class="eyebrow">YOUR SHOP WORKSPACE</p>
-            <h1>DSB Pro — Admin</h1>
-          </div>
-          <LanguageToggle />
+          <h1>Overview</h1>
+          <a class="quiet-link" href={appRoute.sync}>
+            Sync status
+          </a>
         </div>
         {session.offline && (
           <p class="alert" role="status">
@@ -110,47 +133,83 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
           </p>
         )}
         {session.membership.role !== 'cashier' && <DayBookTile />}
-        <nav class="action-grid" aria-label="Shop actions">
-          <a class="action-tile action-featured" href={appRoute.pos}>
-            <strong>Sales POS</strong>
-            <span>Start a bill · scan or find products</span>
-            <b aria-hidden="true">→</b>
-          </a>
-          <a class="action-tile" href={appRoute.inventory}>
-            <strong>Inventory & purchases</strong>
-            <span>Items, prices and purchase bills</span>
-          </a>
-          <a class="action-tile" href={appRoute.customers}>
-            <strong>Customers & ledger</strong>
-            <span>Balances and received payments</span>
-          </a>
+        <h2 class="section-label">Quick entry</h2>
+        <nav class="quick-entry" aria-label="Quick entry">
           {session.membership.role !== 'cashier' && (
             <>
-              <a class="action-tile" href={appRoute.suppliers}>
-                <strong>{t('suppliers')}</strong>
-                <span>Purchase balances and payments</span>
+              <a href={appRoute.inventory + '?view=purchase'}>
+                <Icon name="purchase" />
+                <span>Purchase</span>
               </a>
-              <a class="action-tile" aria-label="Expenses" href={appRoute.expenses}>
-                <strong>Expenses</strong>
-                <span>Record daily shop spending</span>
+              <a href={appRoute.suppliers}>
+                <Icon name="money" />
+                <span>Pay supplier</span>
               </a>
             </>
           )}
-          <a class="action-tile" href={appRoute.salesHistory}>
+          <a href={appRoute.pos}>
+            <Icon name="bill" />
+            <span>New bill</span>
+          </a>
+          {session.membership.role !== 'cashier' && (
+            <a href={appRoute.expenses}>
+              <Icon name="expense" />
+              <span>Expense</span>
+            </a>
+          )}
+        </nav>
+        <h2 class="section-label">Workspace</h2>
+        <nav class="workspace-list" aria-label="Shop actions">
+          <a href={appRoute.pos}>
+            <Icon name="bill" />
+            <strong>Sales POS</strong>
+            <Icon name="arrow" />
+          </a>
+          {session.membership.role !== 'cashier' && (
+            <a href={appRoute.inventory}>
+              <Icon name="stock" />
+              <strong>Inventory & purchases</strong>
+              <Icon name="arrow" />
+            </a>
+          )}
+          <a href={appRoute.customers}>
+            <Icon name="people" />
+            <strong>Customers & ledger</strong>
+            <Icon name="arrow" />
+          </a>
+          {session.membership.role !== 'cashier' && (
+            <>
+              <a href={appRoute.suppliers}>
+                <Icon name="people" />
+                <strong>{t('suppliers')}</strong>
+                <Icon name="arrow" />
+              </a>
+              <a href={appRoute.expenses} aria-label="Expenses">
+                <Icon name="expense" />
+                <strong>Expenses</strong>
+                <Icon name="arrow" />
+              </a>
+              <a href={appRoute.reports}>
+                <Icon name="report" />
+                <strong>Reports & recovery</strong>
+                <Icon name="arrow" />
+              </a>
+            </>
+          )}
+          <a href={appRoute.salesHistory}>
+            <Icon name="bill" />
             <strong>Sales history</strong>
-            <span>Find invoices and print receipts</span>
+            <Icon name="arrow" />
           </a>
-          <a class="action-tile" href={appRoute.returns}>
+          <a href={appRoute.returns}>
+            <Icon name="bill" />
             <strong>Returns</strong>
-            <span>Return items against a bill</span>
+            <Icon name="arrow" />
           </a>
-          <a class="action-tile" href={appRoute.reports}>
-            <strong>Reports & recovery</strong>
-            <span>Day book, exports and backups</span>
-          </a>
-          <a class="action-tile" href={appRoute.sync}>
+          <a href={appRoute.sync}>
+            <Icon name="sync" />
             <strong>Sync & offline</strong>
-            <span>Check pending entries</span>
+            <Icon name="arrow" />
           </a>
         </nav>
         <details class="card shop-tools">

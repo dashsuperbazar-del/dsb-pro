@@ -1,3 +1,4 @@
+import { stockTask, reviewPayment } from './design-helpers';
 import { test, expect } from '@playwright/test';
 
 const PASSWORD = 'TestOnly-2026!pw';
@@ -15,7 +16,7 @@ async function createOwnerShop(page: import('@playwright/test').Page) {
   await page.goto('/');
   await page.getByLabel('Shop name').fill('Legacy Import Shop');
   await page.getByRole('button', { name: 'Create your shop' }).click();
-  await expect(page.getByText(/DSB Pro — Admin/)).toBeVisible();
+  await expect(page.getByText(/Overview/)).toBeVisible();
 }
 
 test('owner can import a legacy DSB backup into an empty shop and sell imported stock', async ({
@@ -65,6 +66,7 @@ test('owner can import a legacy DSB backup into an empty shop and sell imported 
       },
     ],
   };
+  await stockTask(page, 'Advanced');
   await page.getByLabel('Choose DSB backup JSON').setInputFiles({
     name: 'DSB_backup_test.json',
     mimeType: 'application/json',
@@ -90,9 +92,10 @@ test('owner can import a legacy DSB backup into an empty shop and sell imported 
         requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
       ),
   );
-  await expect(page.getByLabel('Peek item').locator('option')).toHaveCount(2);
+  await expect(page.getByLabel('Item details').locator('option')).toHaveCount(2);
 
-  await page.getByLabel('Peek item').selectOption({ label: 'Imported Biscuit' });
+  await stockTask(page, 'Items');
+  await page.getByLabel('Item details').selectOption({ label: 'Imported Biscuit' });
   await expect(page.getByLabel('item peek')).toContainText('Stock 12 Pcs');
 
   await page.goto('/pos');
@@ -100,7 +103,9 @@ test('owner can import a legacy DSB backup into an empty shop and sell imported 
   await page.getByLabel('Quantity').fill('1');
   await page.getByRole('button', { name: 'Add line' }).click();
   await expect(page.getByRole('cell', { name: /Imported Biscuit/ })).toBeVisible();
+  await reviewPayment(page);
   await page.getByLabel('Amount ₹').first().fill('10');
+  await reviewPayment(page);
   await page.getByRole('button', { name: 'Finalize sale' }).click();
   await expect(page.getByRole('status')).toContainText('Sale finalized');
 });

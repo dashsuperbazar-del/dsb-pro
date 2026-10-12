@@ -24,6 +24,7 @@ import {
   type PurchaseRegisterRow,
   type AgingReportV2,
 } from '@dsb-pro/adapters';
+import { TaskTabs } from '../components/TaskTabs';
 import { appRoute } from '../lib/paths';
 import { rupees } from '../lib/money';
 import { exportOfflineBillingSnapshot } from '../lib/offlineSync';
@@ -43,6 +44,9 @@ function download(name: string, content: string | Uint8Array, type: string) {
 }
 
 export function ReportsScreen() {
+  const [view, setView] = useState<
+    'money' | 'sales' | 'purchases' | 'stock' | 'outstanding' | 'recovery'
+  >('money');
   const [shop, setShop] = useState('');
   const [businessDate, setBusinessDate] = useState('');
   const [from, setFrom] = useState('');
@@ -142,6 +146,20 @@ export function ReportsScreen() {
       <p>
         <a href={appRoute.home}>← Home</a>
       </p>
+      <p class="muted">Choose a category and date range, then Refresh to load server figures.</p>
+      <TaskTabs
+        label="Report categories"
+        value={view}
+        onChange={setView}
+        options={[
+          { value: 'money', label: 'Money' },
+          { value: 'sales', label: 'Sales' },
+          { value: 'purchases', label: 'Purchases' },
+          { value: 'stock', label: 'Stock' },
+          { value: 'outstanding', label: 'Outstanding' },
+          { value: 'recovery', label: 'Recovery' },
+        ]}
+      />
       <div class="row">
         <label>
           From
@@ -162,15 +180,19 @@ export function ReportsScreen() {
         <button class="primary" disabled={!shop || !from || !to} onClick={() => void load()}>
           Refresh
         </button>
-        <button onClick={() => void saveBackup()}>Save full device backup ZIP</button>
-        <button onClick={() => void saveOfflineSnapshot()}>Save offline billing snapshot</button>
+        <button hidden={view !== 'recovery'} onClick={() => void saveBackup()}>
+          Save full device backup ZIP
+        </button>
+        <button hidden={view !== 'recovery'} onClick={() => void saveOfflineSnapshot()}>
+          Save offline billing snapshot
+        </button>
       </div>
       {msg && (
         <p role="status" class={msg.includes('FAIL') ? 'alert' : ''}>
           {msg}
         </p>
       )}
-      <section class="card">
+      <section class="card" hidden={view !== 'money'}>
         <h2>Daily entry</h2>
         <p>
           Expenses and stock adjustments have their own screens:{' '}
@@ -183,7 +205,7 @@ export function ReportsScreen() {
           )}
         </p>
       </section>
-      <section class="card">
+      <section class="card" hidden={view !== 'recovery'}>
         <h2>Shadow run</h2>
         <p>
           <a href={appRoute.compare}>Compare with old DSB</a> — balances, stock and day totals on
@@ -194,7 +216,7 @@ export function ReportsScreen() {
           supplier stood at on your cutover date.
         </p>
       </section>
-      <section class="card">
+      <section class="card" hidden={view !== 'outstanding'}>
         <h2>Party ledger</h2>
         <div class="row">
           <select
@@ -237,7 +259,7 @@ export function ReportsScreen() {
           </table>
         </div>
       </section>
-      <section class="card">
+      <section class="card" hidden={view !== 'money'}>
         <h2>Day book</h2>
         <div class="table-wrap">
           <table>
@@ -249,7 +271,7 @@ export function ReportsScreen() {
                 <th>Receipts</th>
                 <th>Payments</th>
                 <th>Expenses</th>
-                <th>Net cash flow</th>
+                <th>Net money flow</th>
               </tr>
             </thead>
             <tbody>
@@ -268,7 +290,7 @@ export function ReportsScreen() {
           </table>
         </div>
       </section>
-      <section class="card">
+      <section class="card" hidden={view !== 'stock'}>
         <h2>Stock valuation</h2>
         <div class="table-wrap">
           <table>
@@ -293,7 +315,7 @@ export function ReportsScreen() {
           </table>
         </div>
       </section>
-      <section class="card">
+      <section class="card" hidden={view !== 'sales'}>
         <h2>GST summary</h2>
         <p class="muted">
           Derived from immutable tax-rate snapshots. This is a bookkeeping summary, not filing
@@ -324,7 +346,7 @@ export function ReportsScreen() {
           </table>
         </div>
       </section>
-      <section class="card">
+      <section class="card" hidden={view !== 'stock'}>
         <h2>Low stock / reorder</h2>
         <p class="muted">
           Items at or below their configured minimum stock, right now — not limited to the date
@@ -363,7 +385,7 @@ export function ReportsScreen() {
           </div>
         )}
       </section>
-      <section class="card">
+      <section class="card" hidden={view !== 'sales'}>
         <h2>Item-wise sales</h2>
         <div class="table-wrap">
           <table>
@@ -392,7 +414,7 @@ export function ReportsScreen() {
           </table>
         </div>
       </section>
-      <section class="card">
+      <section class="card" hidden={view !== 'purchases'}>
         <h2>Purchase register</h2>
         <div class="table-wrap">
           <table>
@@ -426,12 +448,14 @@ export function ReportsScreen() {
         </div>
       </section>
       <AgingSection
+        hidden={view !== 'outstanding'}
         title="Customer outstanding (as of the To date)"
         report={customerAging}
         outLabel="Refunds not linked"
         inLabel="Advances received"
       />
       <AgingSection
+        hidden={view !== 'outstanding'}
         title="Supplier outstanding (as of the To date)"
         report={supplierAging}
         outLabel="Advances paid"
@@ -442,6 +466,7 @@ export function ReportsScreen() {
 }
 
 function AgingSection(props: {
+  hidden: boolean;
   title: string;
   report: AgingReportV2 | null;
   outLabel: string;
@@ -449,7 +474,7 @@ function AgingSection(props: {
 }) {
   const r = props.report;
   return (
-    <section class="card">
+    <section class="card" hidden={props.hidden}>
       <h2>{props.title}</h2>
       {r && (
         <p class="muted">

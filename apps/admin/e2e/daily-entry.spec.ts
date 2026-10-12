@@ -1,3 +1,4 @@
+import { addItemForm } from './design-helpers';
 import { test, expect } from '@playwright/test';
 
 const PASSWORD = 'TestOnly-2026!pw';
@@ -14,7 +15,7 @@ async function createOwnerShop(page: import('@playwright/test').Page) {
   await page.goto('/');
   await page.getByLabel('Shop name').fill('Daily Entry Shop');
   await page.getByRole('button', { name: 'Create your shop' }).click();
-  await expect(page.getByText(/DSB Pro — Admin/)).toBeVisible();
+  await expect(page.getByText(/Overview/)).toBeVisible();
 }
 
 test('expenses, stock adjust and the day book tile work as daily-entry screens', async ({
@@ -31,6 +32,7 @@ test('expenses, stock adjust and the day book tile work as daily-entry screens',
   await expect(page.getByRole('region', { name: 'Expenses today' })).toContainText('45.50');
 
   await page.goto('/inventory');
+  await addItemForm(page);
   await page.getByPlaceholder('Item name').fill('Count Item');
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
@@ -53,7 +55,8 @@ test('phone-width screens get a bottom navigation bar', async ({ page }) => {
   await createOwnerShop(page);
   const nav = page.getByRole('navigation', { name: 'Quick navigation' });
   await expect(nav).toBeVisible();
-  await nav.getByRole('link', { name: 'Expenses' }).click();
+  await nav.getByRole('link', { name: 'More' }).click();
+  await page.getByRole('link', { name: 'Expenses', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Expenses' })).toBeVisible();
 });
 

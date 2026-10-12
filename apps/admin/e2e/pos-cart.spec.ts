@@ -1,3 +1,4 @@
+import { stockTask, addItemForm, reviewPayment } from './design-helpers';
 import { test, expect } from '@playwright/test';
 
 const PASSWORD = 'TestOnly-2026!pw';
@@ -14,7 +15,7 @@ async function createOwnerShop(page: import('@playwright/test').Page) {
   await page.goto('/');
   await page.getByLabel('Shop name').fill('POS Cart Shop');
   await page.getByRole('button', { name: 'Create your shop' }).click();
-  await expect(page.getByText(/DSB Pro — Admin/)).toBeVisible();
+  await expect(page.getByText(/Overview/)).toBeVisible();
 }
 async function createItemWithStock(
   page: import('@playwright/test').Page,
@@ -22,14 +23,17 @@ async function createItemWithStock(
   priceRupees: string,
   stockQty: string,
 ) {
+  await addItemForm(page);
   await page.getByPlaceholder('Item name').fill(name);
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
   await expect(page.getByRole('status')).toContainText(`Created ${name}`);
-  await page.getByLabel('Peek item').selectOption({ label: name });
+  await stockTask(page, 'Items');
+  await page.getByLabel('Item details').selectOption({ label: name });
   const priceForm = page.getByRole('button', { name: 'Set price' }).locator('xpath=..');
   await priceForm.locator('input[name="price"]').fill(priceRupees);
   await page.getByRole('button', { name: 'Set price' }).click();
+  await stockTask(page, 'Purchases');
   const purchase = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
@@ -56,7 +60,7 @@ test('cart lines edit in place, and a held cart survives being parked and comes 
   await page.goto('/pos');
   const cartSection = page
     .locator('section')
-    .filter({ has: page.getByRole('heading', { name: '2. Cart' }) });
+    .filter({ has: page.getByRole('heading', { name: 'Current bill' }) });
 
   await page.getByLabel('Find product').fill('Cart Edit Item A');
   await expect(page.getByLabel('Item').locator('option')).toHaveCount(2);
@@ -116,7 +120,9 @@ test('cart lines edit in place, and a held cart survives being parked and comes 
   await page.getByLabel('Item').selectOption({ index: 1 });
   await page.getByTestId('pos-add-quantity').fill('1');
   await page.getByRole('button', { name: 'Add line' }).click();
+  await reviewPayment(page);
   await page.getByLabel('Amount ₹').first().fill('20');
+  await reviewPayment(page);
   await page.getByRole('button', { name: 'Finalize sale' }).click();
   await expect(page.getByRole('status')).toContainText('Sale finalized');
 
@@ -130,7 +136,9 @@ test('cart lines edit in place, and a held cart survives being parked and comes 
   await expect(cartSection).toContainText('₹25.00');
   await expect(heldSection).toHaveCount(0);
 
+  await reviewPayment(page);
   await page.getByLabel('Amount ₹').first().fill('25');
+  await reviewPayment(page);
   await page.getByRole('button', { name: 'Finalize sale' }).click();
   await expect(page.getByRole('status')).toContainText('Sale finalized');
 });
@@ -156,6 +164,7 @@ test('an online sale finalized during an in-flight sync cycle is posted, not lef
   await page.getByTestId('pos-add-quantity').fill('1');
   await page.getByRole('button', { name: 'Add line' }).click();
   await expect(page.getByRole('cell', { name: /Race Item/ })).toBeVisible();
+  await reviewPayment(page);
   await page.getByLabel('Amount ₹').first().fill('10');
 
   // Start a fresh background cycle and hold its ack (only that cycle calls it): the cycle has
@@ -172,6 +181,7 @@ test('an online sale finalized during an in-flight sync cycle is posted, not lef
   });
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await expect.poll(() => held).toBe(true);
+  await reviewPayment(page);
   await page.getByRole('button', { name: 'Finalize sale' }).click();
   setTimeout(release, 3000);
   await expect(page.getByRole('status')).toContainText('Sale finalized', { timeout: 15000 });

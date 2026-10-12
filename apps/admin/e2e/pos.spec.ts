@@ -1,3 +1,4 @@
+import { stockTask, addItemForm, reviewPayment } from './design-helpers';
 import { test, expect } from '@playwright/test';
 
 const PASSWORD = 'TestOnly-2026!pw';
@@ -15,7 +16,7 @@ async function createOwnerShop(page: import('@playwright/test').Page) {
   await page.goto('/');
   await page.getByLabel('Shop name').fill('POS Smoke Shop');
   await page.getByRole('button', { name: 'Create your shop' }).click();
-  await expect(page.getByText(/DSB Pro — Admin/)).toBeVisible();
+  await expect(page.getByText(/Overview/)).toBeVisible();
 }
 
 test('owner can open the Phase 4 POS and customer payment surface', async ({ page }) => {
@@ -26,6 +27,7 @@ test('owner can open the Phase 4 POS and customer payment surface', async ({ pag
   await page.getByText('Keyboard map', { exact: true }).click();
   await expect(page.getByText(/Ctrl.*Enter.*finalizes the current sale/)).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Customer payment / advance' })).toBeVisible();
+  await reviewPayment(page);
   await expect(page.getByRole('button', { name: 'Finalize sale' })).toBeDisabled();
 });
 
@@ -36,18 +38,21 @@ test('real browser money path posts stock then finalizes a paid sale', async ({
   test.setTimeout(60000);
   await createOwnerShop(page);
   await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await addItemForm(page);
   await page.getByPlaceholder('Item name').fill('POS E2E Item');
-  await page.getByPlaceholder('SKU').fill(`POS-${Date.now()}`);
+  await page.getByPlaceholder('SKU', { exact: true }).fill(`POS-${Date.now()}`);
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
   await expect(page.getByRole('status')).toContainText('Created POS E2E Item');
 
-  await page.getByLabel('Peek item').selectOption({ label: 'POS E2E Item' });
+  await stockTask(page, 'Items');
+  await page.getByLabel('Item details').selectOption({ label: 'POS E2E Item' });
   const priceForm = page.getByRole('button', { name: 'Set price' }).locator('xpath=..');
   await priceForm.locator('input[name="price"]').fill('10');
   await page.getByRole('button', { name: 'Set price' }).click();
   await expect(page.getByRole('status')).toContainText('Price history updated');
 
+  await stockTask(page, 'Purchases');
   const purchase = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
@@ -67,7 +72,9 @@ test('real browser money path posts stock then finalizes a paid sale', async ({
   await page.getByLabel('Quantity').fill('1');
   await page.getByRole('button', { name: 'Add line' }).click();
   await expect(page.getByRole('cell', { name: /POS E2E Item/ })).toBeVisible();
+  await reviewPayment(page);
   await page.getByLabel('Amount ₹').first().fill('10');
+  await reviewPayment(page);
   await page.getByRole('button', { name: 'Finalize sale' }).click();
   await expect(page.getByRole('status')).toContainText('Sale finalized');
   await expect(page.locator('table').last()).toContainText('₹10.00');
@@ -262,7 +269,8 @@ test('real browser money path posts stock then finalizes a paid sale', async ({
   await page.goto('/sync');
   await expect(page.getByTestId('sync-outbox-count')).toHaveText('0');
   await page.goto('/inventory');
-  await page.getByLabel('Peek item').selectOption({ label: 'POS E2E Item' });
+  await stockTask(page, 'Items');
+  await page.getByLabel('Item details').selectOption({ label: 'POS E2E Item' });
   await expect(page.locator('[aria-label="item peek"]')).toContainText('Stock 5 piece');
   // Exercise the actual counter void path, not just the sync helper. Lose the
   // response after commit, restart offline, then replay and save reversed stock.
@@ -357,15 +365,18 @@ test('bill total rounds to the nearest rupee while the item keeps exact paise (R
   test.setTimeout(60000);
   await createOwnerShop(page);
   await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await addItemForm(page);
   await page.getByPlaceholder('Item name').fill('Round Item');
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
   await expect(page.getByRole('status')).toContainText('Created Round Item');
-  await page.getByLabel('Peek item').selectOption({ label: 'Round Item' });
+  await stockTask(page, 'Items');
+  await page.getByLabel('Item details').selectOption({ label: 'Round Item' });
   const priceForm = page.getByRole('button', { name: 'Set price' }).locator('xpath=..');
   await priceForm.locator('input[name="price"]').fill('10.49');
   await page.getByRole('button', { name: 'Set price' }).click();
   await expect(page.getByRole('status')).toContainText('Price history updated');
+  await stockTask(page, 'Purchases');
   const purchase = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
@@ -383,7 +394,9 @@ test('bill total rounds to the nearest rupee while the item keeps exact paise (R
   await page.getByRole('button', { name: 'Add line' }).click();
   await expect(page.getByText('Round off −₹0.49')).toBeVisible();
   await expect(page.getByText('Preview ₹10.00')).toBeVisible();
+  await reviewPayment(page);
   await page.getByLabel('Amount ₹').first().fill('10');
+  await reviewPayment(page);
   await page.getByRole('button', { name: 'Finalize sale' }).click();
   await expect(page.getByRole('status')).toContainText('Sale finalized');
   await expect(page.locator('table').last()).toContainText('₹10.00');
@@ -400,12 +413,12 @@ test('phone navigation and checkout stay readable at narrow widths', async ({ pa
   );
   await actions.getByRole('link', { name: /Sales POS/ }).click();
   const nav = page.getByRole('navigation', { name: 'Quick navigation' });
-  await expect(nav.getByRole('link', { name: 'POS', exact: true })).toHaveAttribute(
+  await expect(nav.getByRole('link', { name: 'Billing', exact: true })).toHaveAttribute(
     'aria-current',
     'page',
   );
   await expect(page.getByLabel('Quick customer')).not.toBeVisible();
-  await page.getByRole('link', { name: 'Review payment ↓' }).click();
+  await reviewPayment(page);
   await expect(page.getByRole('button', { name: 'Finalize sale' })).toBeVisible();
   const finalize = page.getByRole('button', { name: 'Finalize sale' });
   await finalize.scrollIntoViewIfNeeded();
@@ -424,6 +437,7 @@ test('phone navigation and checkout stay readable at narrow widths', async ({ pa
       );
     }),
   ).toBe(true);
+  await reviewPayment(page);
   await page.getByText('Add a new customer', { exact: true }).click();
   await expect(page.getByLabel('Quick customer')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
