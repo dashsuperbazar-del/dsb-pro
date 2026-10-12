@@ -39,7 +39,7 @@ async function ownerWithBill(page: Page) {
   await expect(page.getByRole('status')).toContainText('Purchase posted');
   await page.goto('/');
   await page.getByRole('link', { name: 'Suppliers & payments' }).click();
-  await page.getByLabel('Supplier').selectOption({ label: 'Acme Traders' });
+  await page.getByLabel('Supplier', { exact: true }).selectOption({ label: 'Acme Traders' });
 }
 const bills = (page: Page) =>
   page
@@ -132,7 +132,7 @@ test('a response lost after commit is reconciled by request id, never recorded t
   await expect(page.getByRole('button', { name: 'Review' })).toHaveCount(0); // blocked until resolved
 
   await page.reload();
-  await page.getByLabel('Supplier').selectOption({ label: 'Acme Traders' });
+  await page.getByLabel('Supplier', { exact: true }).selectOption({ label: 'Acme Traders' });
   await page.getByRole('button', { name: 'Check status' }).click();
   await expect(page.getByRole('status')).toContainText('confirmed by the server');
   await expect(history(page).locator('tbody tr')).toHaveCount(1);

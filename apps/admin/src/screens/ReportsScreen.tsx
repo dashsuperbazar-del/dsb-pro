@@ -146,6 +146,7 @@ export function ReportsScreen() {
       <p>
         <a href={appRoute.home}>← Home</a>
       </p>
+      <p class="muted">Choose a category and date range, then Refresh to load server figures.</p>
       <TaskTabs
         label="Report categories"
         value={view}

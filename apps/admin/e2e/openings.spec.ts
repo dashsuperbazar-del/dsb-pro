@@ -26,6 +26,10 @@ test('owner records a supplier opening, sees it in balances, voids it and re-ent
   await expect(page.getByRole('status')).toContainText('Created supplier Opening Traders');
 
   await page.goto('/reports');
+  await page
+    .getByRole('navigation', { name: 'Report categories' })
+    .getByRole('button', { name: 'Recovery', exact: true })
+    .click();
   await page.getByRole('link', { name: 'Opening balances' }).click();
   await page.getByLabel('Account type').selectOption('SUPPLIER');
   await page
@@ -73,7 +77,7 @@ test('owner records a supplier opening, sees it in balances, voids it and re-ent
   // O2: pay the supplier 300, settle it against the opening; the opening has 150 left.
   await page.goto('/');
   await page.getByRole('link', { name: 'Suppliers & payments' }).click();
-  await page.getByLabel('Supplier').selectOption({ label: 'Opening Traders' });
+  await page.getByLabel('Supplier', { exact: true }).selectOption({ label: 'Opening Traders' });
   await page
     .getByRole('navigation', { name: 'Supplier tasks' })
     .getByRole('button', { name: 'Record payment', exact: true })
@@ -106,7 +110,7 @@ test('owner records a supplier opening, sees it in balances, voids it and re-ent
   // O3: the supplier's payment history counts the settled cash as assigned (nothing left to allocate).
   await page.goto('/');
   await page.getByRole('link', { name: 'Suppliers & payments' }).click();
-  await page.getByLabel('Supplier').selectOption({ label: 'Opening Traders' });
+  await page.getByLabel('Supplier', { exact: true }).selectOption({ label: 'Opening Traders' });
   await page
     .getByRole('navigation', { name: 'Supplier tasks' })
     .getByRole('button', { name: 'Payments', exact: true })

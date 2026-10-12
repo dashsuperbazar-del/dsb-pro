@@ -10,7 +10,8 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
   Financial RPC payloads, request IDs, immutable ledgers and money calculations unchanged.
   Silent-corruption risks: lost draft/input identity; hidden unknown outcomes; stale price replies;
   unreadable totals or print; private navigation exposure. CI must prove existing money/recovery paths.
-  Local lint/typecheck/build + 308 unit tests PASS. Fresh independent review PASS (3 findings corrected); final-head CI pending.
+  Local lint/typecheck/build + 309 unit tests PASS. Fresh independent review PASS (2 rounds); CI #795 found 9 navigation/selector failures, fixed.
+  Final-head full CI pending; no production publishing or usability acceptance claimed.
   Browser screenshots are synthetic fixture evidence, not real shop usability acceptance.
   No migration. Production deployment remains manual; never rerun an old failed deployment SHA.
   H3 + clean shop week remain NOT GO pending dated evidence.

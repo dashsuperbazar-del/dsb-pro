@@ -48,6 +48,10 @@ test('compare page shows day totals, supplier balance and stock, and exports CSV
   await expect(page.getByRole('status')).toContainText('Expense posted.');
 
   await page.goto('/reports');
+  await page
+    .getByRole('navigation', { name: 'Report categories' })
+    .getByRole('button', { name: 'Recovery', exact: true })
+    .click();
   await page.getByRole('link', { name: 'Compare with old DSB' }).click();
   const day = page.getByRole('region', { name: 'Day totals' });
   await expect(day.locator('tr').filter({ hasText: 'Purchases' })).toContainText('₹120.00');

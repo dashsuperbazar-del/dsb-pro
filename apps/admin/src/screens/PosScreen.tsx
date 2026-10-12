@@ -668,6 +668,7 @@ export function PosScreen() {
             Item{' '}
             <select
               name="itemId"
+              aria-label="Item"
               required
               value={manualItemId}
               onChange={(e) => {

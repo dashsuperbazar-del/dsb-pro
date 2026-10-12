@@ -49,6 +49,10 @@ export function InventoryScreen() {
   const [tenantId, setTenantId] = useState('');
   const [businessDate, setBusinessDate] = useState('');
   const [selected, setSelected] = useState('');
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+  const [pricesLoading, setPricesLoading] = useState(false);
+  const [pricesFailed, setPricesFailed] = useState(false);
   const [purchaseLineItemId, setPurchaseLineItemId] = useState('');
   const [prices, setPrices] = useState<ItemPrice[]>([]);
   const [purchaseLineUnitLevel, setPurchaseLineUnitLevel] = useState<1 | 2 | 3>(1);
@@ -116,17 +120,27 @@ export function InventoryScreen() {
   }, []);
   useEffect(() => {
     if (!selected) {
+      setPricesLoading(false);
       setPrices([]);
       return;
     }
     let cancelled = false;
+    setPricesLoading(true);
+    setPricesFailed(false);
     setPrices([]);
     void listCurrentPrices(selected)
       .then((value) => {
-        if (!cancelled) setPrices(value);
+        if (!cancelled) {
+          setPrices(value);
+          setPricesLoading(false);
+        }
       })
       .catch((e) => {
-        if (!cancelled) setError(String(e));
+        if (!cancelled) {
+          setError(String(e));
+          setPricesFailed(true);
+          setPricesLoading(false);
+        }
       });
     return () => {
       cancelled = true;
@@ -408,7 +422,8 @@ export function InventoryScreen() {
         pricePaise: paise(String(f.get('price'))),
         clientId: crypto.randomUUID(),
       });
-      setPrices(await listCurrentPrices(selected));
+      const updatedPrices = await listCurrentPrices(selected);
+      if (selectedRef.current === selected) setPrices(updatedPrices);
       setMessage('Price history updated atomically.');
     } catch (e) {
       setError(String(e));
@@ -617,9 +632,13 @@ export function InventoryScreen() {
             {selectedItem.unit3 || selectedItem.unit2 || selectedItem.unit1}
             <br />
             Current prices:{' '}
-            {prices.length
-              ? prices.map((p) => `${p.kind} ₹${(p.price_paise / 100).toFixed(2)}`).join(' · ')
-              : 'none'}
+            {pricesLoading
+              ? 'Loading…'
+              : pricesFailed
+                ? 'Unavailable'
+                : prices.length
+                  ? prices.map((p) => `${p.kind} ₹${(p.price_paise / 100).toFixed(2)}`).join(' · ')
+                  : 'none'}
             <br />
             Reorder at: {selectedItem.min_stock}{' '}
             {selectedItem.unit3 || selectedItem.unit2 || selectedItem.unit1}
@@ -712,13 +731,16 @@ export function InventoryScreen() {
             <label>
               Bill no. <input name="billNo" placeholder="Bill no." />
             </label>{' '}
-            <input
-              name="date"
-              type="date"
-              value={businessDate}
-              onInput={(e) => setBusinessDate((e.currentTarget as HTMLInputElement).value)}
-              required
-            />{' '}
+            <label>
+              Business date
+              <input
+                name="date"
+                type="date"
+                value={businessDate}
+                onInput={(e) => setBusinessDate((e.currentTarget as HTMLInputElement).value)}
+                required
+              />
+            </label>{' '}
             <label>
               Supplier
               <select name="partyId">
@@ -770,24 +792,30 @@ export function InventoryScreen() {
                 {purchaseLineItem?.unit2 && <option value="2">{purchaseLineItem.unit2}</option>}
                 {purchaseLineItem?.unit3 && <option value="3">{purchaseLineItem.unit3}</option>}
               </select>{' '}
-              <input
-                name="qty"
-                type="number"
-                min="0.000001"
-                step="any"
-                placeholder="Qty"
-                value={purchaseLineQty}
-                onInput={(e) => setPurchaseLineQty((e.currentTarget as HTMLInputElement).value)}
-              />{' '}
-              <input
-                name="price"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="Unit cost ₹"
-                value={purchaseLinePrice}
-                onInput={(e) => setPurchaseLinePrice((e.currentTarget as HTMLInputElement).value)}
-              />{' '}
+              <label>
+                Quantity
+                <input
+                  name="qty"
+                  type="number"
+                  min="0.000001"
+                  step="any"
+                  placeholder="Qty"
+                  value={purchaseLineQty}
+                  onInput={(e) => setPurchaseLineQty((e.currentTarget as HTMLInputElement).value)}
+                />
+              </label>{' '}
+              <label>
+                Unit cost ₹
+                <input
+                  name="price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Unit cost ₹"
+                  value={purchaseLinePrice}
+                  onInput={(e) => setPurchaseLinePrice((e.currentTarget as HTMLInputElement).value)}
+                />
+              </label>{' '}
               <button type="button" onClick={addPurchaseLine}>
                 Add line
               </button>
@@ -834,6 +862,7 @@ export function InventoryScreen() {
             )}
           </fieldset>
           <button
+            class="primary"
             disabled={
               purchaseBusy || !shopId || !businessDate || (!purchaseCart.length && !purchaseLocked)
             }

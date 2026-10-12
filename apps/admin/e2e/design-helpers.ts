@@ -13,8 +13,10 @@ export async function addItemForm(page: Page) {
   if ((await details.getAttribute('open')) === null) await details.locator('summary').click();
 }
 export async function reviewPayment(page: Page) {
-  const review = page.getByRole('button', { name: 'Review payment →' });
-  if (await review.isVisible()) await review.click();
+  await expect(page.getByRole('heading', { name: 'Sales POS', exact: true })).toBeVisible();
+  const payment = page.locator('#pos-payment');
+  if (!(await payment.isVisible()))
+    await page.getByRole('button', { name: 'Review payment →', exact: true }).click();
   await expect(page.locator('#pos-payment')).toBeVisible();
 }
 export async function addCustomerForm(page: Page) {

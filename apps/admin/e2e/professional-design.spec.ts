@@ -19,6 +19,7 @@ test('professional phone workspace preserves drafts across task views and has re
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
+    await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: testInfo.outputPath(`${name}.png`), fullPage: true });
   }
   await expect(page.getByRole('region', { name: 'Day book today' })).toContainText('₹0.00');

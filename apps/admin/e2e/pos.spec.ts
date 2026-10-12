@@ -40,7 +40,7 @@ test('real browser money path posts stock then finalizes a paid sale', async ({
   await page.getByRole('link', { name: 'Inventory & purchases' }).click();
   await addItemForm(page);
   await page.getByPlaceholder('Item name').fill('POS E2E Item');
-  await page.getByPlaceholder('SKU').fill(`POS-${Date.now()}`);
+  await page.getByPlaceholder('SKU', { exact: true }).fill(`POS-${Date.now()}`);
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
   await expect(page.getByRole('status')).toContainText('Created POS E2E Item');
