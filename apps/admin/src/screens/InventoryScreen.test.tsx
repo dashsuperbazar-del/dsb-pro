@@ -489,3 +489,31 @@ test('UNKNOWN posting hides the unposted draft label and retains the exact reque
   delete retry.savedAt; // local persistence metadata is never part of the RPC payload
   expect(retry).toEqual(JSON.parse(JSON.stringify(first)));
 });
+
+test('purchase controls cannot accept a click during the transient initial context load', async () => {
+  let finish!: (date: string) => void;
+  api.getShopBusinessDate.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly />, host);
+  });
+  await vi.waitFor(() => expect(api.getShopBusinessDate).toHaveBeenCalled());
+  const create = [...host.querySelectorAll('button')].find(
+    (b) => b.textContent === 'Create & select supplier',
+  )!;
+  expect(create.disabled).toBe(true);
+  expect(
+    host.querySelector<HTMLInputElement>('input[name="billNo"]')!.closest('fieldset')!.disabled,
+  ).toBe(true);
+  await act(async () => {
+    finish('2026-10-12');
+  });
+  await vi.waitFor(() => expect(create.disabled).toBe(false));
+  expect(
+    host.querySelector<HTMLInputElement>('input[name="billNo"]')!.closest('fieldset')!.disabled,
+  ).toBe(false);
+});

@@ -132,6 +132,7 @@ export function InventoryScreen({
   const partiesRef = useRef(parties);
   partiesRef.current = parties;
   const [contextBusy, setContextBusy] = useState(false);
+  const [purchaseContextReady, setPurchaseContextReady] = useState(!purchaseOnly);
   const [editingPurchaseLine, setEditingPurchaseLine] = useState<number | null>(null);
   const [purchaseClientId, setPurchaseClientId] = useState<string>(() => crypto.randomUUID());
   // After a failure whose outcome is unknown (offline/server), the bill may already be posted. The
@@ -287,10 +288,12 @@ export function InventoryScreen({
       !confirm('Replace this unfinished purchase with the selected new draft?')
     ) {
       contextNeedsReset.current = true;
+      setPurchaseContextReady(true);
       return;
     }
     let active = true;
     let completed = false;
+    setPurchaseContextReady(false);
     setContextBusy(true);
     void (async () => {
       try {
@@ -332,7 +335,10 @@ export function InventoryScreen({
           contextNeedsReset.current = true;
         }
       } finally {
-        if (active) setContextBusy(false);
+        if (active) {
+          setContextBusy(false);
+          setPurchaseContextReady(true);
+        }
       }
     })();
     return () => {
@@ -657,7 +663,8 @@ export function InventoryScreen({
   }
   async function addPurchase(ev: Event) {
     ev.preventDefault();
-    if (purchaseBusy || contextBusy || accountChanged) return;
+    if (purchaseBusy || contextBusy || (!purchaseLocked && !purchaseContextReady) || accountChanged)
+      return;
     setError('');
     if (!purchaseLocked && editingPurchaseLine !== null) {
       setError('Update or cancel the line edit before posting this purchase.');
@@ -1144,7 +1151,15 @@ export function InventoryScreen({
               GSTIN
               <input name="gstin" />
             </label>
-            <button disabled={purchaseLocked || contextBusy || !tenantId}>
+            <button
+              disabled={
+                purchaseLocked ||
+                contextBusy ||
+                !purchaseContextReady ||
+                !catalogLoaded ||
+                !tenantId
+              }
+            >
               Create & select supplier
             </button>
           </form>
@@ -1212,7 +1227,7 @@ export function InventoryScreen({
               — it never posts the bill twice.
             </p>
           )}
-          <fieldset disabled={purchaseLocked || contextBusy} class="plain">
+          <fieldset disabled={purchaseLocked || contextBusy || !purchaseContextReady} class="plain">
             <label>
               Bill no.{' '}
               <input
@@ -1474,6 +1489,7 @@ export function InventoryScreen({
             disabled={
               purchaseBusy ||
               contextBusy ||
+              (!purchaseLocked && !purchaseContextReady) ||
               (!purchaseLocked && editingPurchaseLine !== null) ||
               !shopId ||
               !businessDate ||

@@ -28,7 +28,7 @@ Drafts are scoped locally, not encrypted; browser profiles are still a trusted d
 
 ## Proof and limits
 
-- Local lint/typecheck, 328 unit tests, production build, format, bundle ceiling and installability checks: PASS.
+- Local lint/typecheck, 329 unit tests, production build, format, bundle ceiling and installability checks: PASS.
 - DOM regression restores all monetary/date fields and unfinished editing, asserts no automatic RPC,
   then posts with the original identity and checks exact quantities/costs/adjustments and draft cleanup.
 - Unit regressions: user/shop isolation, simultaneous editor snapshots, exact identity cleanup,
@@ -40,3 +40,13 @@ Drafts are scoped locally, not encrypted; browser profiles are still a trusted d
 - Local Docker, PostgreSQL and Chromium are unavailable. Full database/browser proof must run in CI.
 - Independent review not yet completed. No review pass, merge, production deployment, live migration,
   Android picker/process-eviction test, H3 or real-shop acceptance is claimed.
+
+## Browser follow-up
+
+CI #813 passed database/upgrade/lint/types/unit/audit but failed two browser cases (53 passed, 2 failed,
+1 scale-only skip). Purchase trace showed no supplier POST: a context-initialization transition could
+briefly enable creation and then disable it during the click. A deterministic DOM test now holds the
+initial business-date request; supplier creation and editable purchase controls stay disabled until
+context initialization completes. Expense trace had an unsettled bootstrap business-date request
+(status -1), with Post correctly disabled; its fault-injection route is now installed after asserting
+the loaded date. No timeout increase, retry, skipped assertion or weakened financial proof.
