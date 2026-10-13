@@ -20,7 +20,9 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
   await page.getByPlaceholder('Item name', { exact: true }).fill('Daily oil');
   await page.getByPlaceholder('Big unit (e.g. case)').fill('jar');
   await page.getByRole('button', { name: 'Create item', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('Created Daily oil');
+  await expect(page.getByRole('status').filter({ hasText: 'Created Daily oil' })).toContainText(
+    'Created Daily oil',
+  );
   await page.goto('/purchases?new=1');
   const supplier = page
     .getByRole('button', { name: 'Create & select supplier' })
@@ -28,7 +30,9 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
   await page.getByText('Add a supplier', { exact: true }).click();
   await supplier.getByPlaceholder('New supplier name').fill('Daily Supplier');
   await supplier.getByRole('button', { name: 'Create & select supplier' }).click();
-  await expect(page.getByRole('status')).toContainText('Created supplier');
+  await expect(page.getByRole('status').filter({ hasText: 'Created supplier' })).toContainText(
+    'Created supplier',
+  );
   const purchase = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase', exact: true }) })
@@ -44,7 +48,9 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
   await purchase.locator('input[name="price"]').fill('120');
   await purchase.getByRole('button', { name: 'Add line', exact: true }).click();
   await purchase.getByRole('button', { name: 'Post purchase', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('Purchase posted');
+  await expect(page.getByRole('status').filter({ hasText: 'Purchase posted' })).toContainText(
+    'Purchase posted',
+  );
   await page.getByRole('link', { name: 'Bill list', exact: true }).click();
   await page.getByRole('button', { name: /Daily Supplier.*DSB-1/ }).click();
   const detail = page.getByLabel('Purchase detail');
@@ -62,19 +68,25 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
   }
   await capture('12-purchases-phone');
   await detail.getByRole('link', { name: 'Repeat into new draft' }).click();
-  await expect(page.getByRole('status')).toContainText('Draft repeated from DSB-1');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Draft repeated from DSB-1' }),
+  ).toContainText('Draft repeated from DSB-1');
   await expect(purchase.locator('input[name="billNo"]')).toHaveValue('');
   await expect(purchase.locator('input[name="date"]')).toHaveValue(currentBusinessDate);
   await expect(purchase).toContainText('Daily oil');
   await purchase.locator('input[name="billNo"]').fill('DSB-2');
   await capture('13-repeat-purchase-phone');
   await purchase.getByRole('button', { name: 'Post purchase', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('Purchase posted');
+  await expect(page.getByRole('status').filter({ hasText: 'Purchase posted' })).toContainText(
+    'Purchase posted',
+  );
   await page.getByRole('link', { name: 'Bill list', exact: true }).click();
   // Repeating the same source again after posting must create a fresh, unposted draft.
   await page.getByRole('button', { name: /Daily Supplier.*DSB-1/ }).click();
   await detail.getByRole('link', { name: 'Repeat into new draft' }).click();
-  await expect(page.getByRole('status')).toContainText('Draft repeated from DSB-1');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Draft repeated from DSB-1' }),
+  ).toContainText('Draft repeated from DSB-1');
   await expect(purchase.getByLabel('Purchase cart')).toContainText('₹240.00');
   await page.getByRole('link', { name: 'Bill list', exact: true }).click();
   await page.getByRole('button', { name: /Daily Supplier.*DSB-2/ }).click();
@@ -87,7 +99,9 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
   await expect(page.getByLabel('Allocate to DSB-1')).toHaveValue('100.00');
   await page.getByRole('button', { name: 'Review', exact: true }).click();
   await page.getByRole('button', { name: 'Confirm and record', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('confirmed by the server');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'confirmed by the server' }),
+  ).toContainText('confirmed by the server');
   await capture('14-context-payment-phone');
   await page.goto('/purchases');
   await page.getByRole('button', { name: /Daily Supplier.*DSB-1/ }).click();
