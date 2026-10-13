@@ -2,15 +2,18 @@
 Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/COMPLETE_REMAINING_BUILD_PLAN.md` v1.1.
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 ## Current
-- `main` verified: `4a4c172` (PD1 #69; fetched 2026-10-12). Migrations 0001–0057 immutable.
-- PD1 #69 deployed: CI #801 / run 38280419051 PASS on main 4a4c172; Cloudflare + GitHub Pages.
-- DW1 DSB workflow access/purchase speed: user authorized build 2026-10-13 after pinned legacy audit.
+- `main` verified: `41dfd4b6e4202a3fc90de29a143247d6f82e9885` (DW1 #70; fetched 2026-10-14 IST). Migrations 0001–0057 immutable.
+- DW1 #70 merged after final-head CI #809 / run 38359193865 PASS: 320 unit tests,
+  55 browser tests passed + 1 scale-only skip, 20 held-cart repetitions passed.
   Home/Purchases/Sales/Ledger/More; purchase bills/detail, snapshot-safe repeat into fresh draft,
   supplier/recent item shortcuts, inline supplier creation, bill-to-payment/ledger, Full + Auto allocations.
-  Risks before implementation: silent unit/cost mismatch on repeat, duplicate post/UNKNOWN replacement,
-  stale supplier/bill replies, unseen line edits, lost draft on task navigation, purchase-cost role leakage.
-  Local lint/typecheck/build + 320 unit tests PASS. Fresh review PASS (2 rounds); repeat lifecycle/edit guards fixed.
-  CI #803 found old navigation selectors + stale new-supplier labels; fixed. Final-head full CI required before merge.
+  Production publication of DW1 remains pending per saved verifier log; not independently dispatched here.
+- DW2a purchase draft recovery: IN_PROGRESS on `codex/dw2-purchase-draft-recovery`.
+  Full editable purchase state saved per user/shop; explicit Resume/Discard; original posting identity retained.
+  Frozen UNKNOWN requests take precedence; changed/missing item units refuse restore without deleting drafts.
+  Per-editor snapshots preserve parallel-window work. Account changes hide the previous editor.
+  No migration. Local validation and final-head full CI tracked in docs/PURCHASE_DRAFT_RECOVERY.md.
+  Bill-photo/document work remains DW2b; no full legacy-parity or daily-usability claim.
   H3 + clean shop week remain NOT GO pending dated real-device evidence.
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
   partial returns carry item value, capped so a bill's returns never exceed what was billed for its

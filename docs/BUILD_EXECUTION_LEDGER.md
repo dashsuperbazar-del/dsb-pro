@@ -1,5 +1,10 @@
 # Build Execution Ledger
 
+DW2a purchase draft recovery (2026-10-14 IST): IN_PROGRESS on `codex/dw2-purchase-draft-recovery`,
+based on DW1 merged main `41dfd4b`. No migration; explicit user/shop draft restore and retained
+posting identity. Local proof and CI/review limits: [PURCHASE_DRAFT_RECOVERY.md](PURCHASE_DRAFT_RECOVERY.md).
+This entry does not close bill-photo work or human acceptance gates.
+
 Packet-state tracker for `docs/COMPLETE_REMAINING_BUILD_PLAN.md` v1.1, per that plan's §4.1 and
 §0.4 execution protocol. States: `NOT_STARTED` / `IN_PROGRESS` / `CODE_REVIEW` / `CI_PASSED` /
 `HUMAN_PENDING` / `ACCEPTED` / `BLOCKED`. `ACCEPTED` is this file's terminal state and is the same

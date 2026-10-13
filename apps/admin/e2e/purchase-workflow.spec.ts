@@ -47,6 +47,26 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
   await purchase.locator('input[name="qty"]').fill('2');
   await purchase.locator('input[name="price"]').fill('120');
   await purchase.getByRole('button', { name: 'Add line', exact: true }).click();
+  await purchase.locator('input[name="discount"]').fill('5');
+  await purchase.locator('input[name="extra"]').fill('5');
+  await purchase.getByRole('button', { name: 'Edit purchase line 1' }).click();
+  await purchase.locator('input[name="qty"]').fill('2');
+  await expect(purchase).toContainText('Draft saved on this device');
+  const originalSupplier = await purchase.locator('select[name="partyId"]').inputValue();
+  await page.reload();
+  await page.getByText('Saved purchase drafts', { exact: true }).click();
+  await page.getByRole('button', { name: 'Resume draft', exact: true }).click();
+  await expect(purchase.locator('input[name="billNo"]')).toHaveValue('DSB-1');
+  await expect(purchase.locator('input[name="date"]')).toHaveValue(
+    olderDate.toISOString().slice(0, 10),
+  );
+  await expect(purchase.locator('select[name="partyId"]')).toHaveValue(originalSupplier);
+  await expect(purchase.locator('input[name="discount"]')).toHaveValue('5');
+  await expect(purchase.locator('input[name="extra"]')).toHaveValue('5');
+  await expect(purchase.locator('input[name="qty"]')).toHaveValue('2');
+  await expect(purchase.locator('input[name="price"]')).toHaveValue('120.00');
+  await expect(purchase.getByRole('button', { name: 'Post purchase', exact: true })).toBeDisabled();
+  await purchase.getByRole('button', { name: 'Update line', exact: true }).click();
   await purchase.getByRole('button', { name: 'Post purchase', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Purchase posted' })).toContainText(
     'Purchase posted',

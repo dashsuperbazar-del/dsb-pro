@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   addItemBarcode,
   createItem,
   createParty,
   getCurrentMembership,
+  getSession,
+  onAuthStateChange,
   getPurchaseDetail,
   listPurchaseHistory,
   type PurchaseRecord,
@@ -38,6 +40,17 @@ import { TaskTabs } from '../components/TaskTabs';
 import { appRoute } from '../lib/paths';
 import { clearPendingIntent, loadPendingIntent, savePendingIntent } from '../lib/pendingIntent';
 
+import {
+  purchaseDraftPrefix,
+  listPurchaseDrafts,
+  savePurchaseDraft,
+  removePurchaseDraft,
+  clearPurchaseDrafts,
+  restorePurchaseDraft,
+  type PurchaseDraft,
+  type SavedPurchaseDraft,
+} from '../lib/purchaseDraft';
+
 const paise = (rupees: string) => parseRupeesToPaise(rupees || '0');
 
 export function InventoryScreen({
@@ -68,6 +81,26 @@ export function InventoryScreen({
   const [stock, setStock] = useState<StockRow[]>([]);
   const [shopId, setShopId] = useState('');
   const [tenantId, setTenantId] = useState('');
+  const [draftPrefix, setDraftPrefix] = useState('');
+  const draftUser = useRef('');
+  const [accountChanged, setAccountChanged] = useState(false);
+  useEffect(
+    () =>
+      onAuthStateChange((session) => {
+        if (draftUser.current && session?.user.id !== draftUser.current) {
+          refreshGeneration.current++;
+          setDraftPrefix('');
+          setSavedDrafts([]);
+          setAccountChanged(true);
+        }
+      }),
+    [],
+  );
+  const draftWriter = useRef(crypto.randomUUID());
+  const [savedDrafts, setSavedDrafts] = useState<SavedPurchaseDraft[]>([]);
+  const [draftError, setDraftError] = useState('');
+  const [draftStatus, setDraftStatus] = useState('');
+  const [draftTouched, setDraftTouched] = useState(false);
   const [businessDate, setBusinessDate] = useState('');
   const [selected, setSelected] = useState('');
   const selectedRef = useRef(selected);
@@ -100,7 +133,7 @@ export function InventoryScreen({
   partiesRef.current = parties;
   const [contextBusy, setContextBusy] = useState(false);
   const [editingPurchaseLine, setEditingPurchaseLine] = useState<number | null>(null);
-  const [purchaseClientId, setPurchaseClientId] = useState(() => crypto.randomUUID());
+  const [purchaseClientId, setPurchaseClientId] = useState<string>(() => crypto.randomUUID());
   // After a failure whose outcome is unknown (offline/server), the bill may already be posted. The
   // form stays frozen so a retry resends the SAME request id and payload; the server returns the
   // stored bill if it was committed (and refuses a changed payload).
@@ -136,9 +169,14 @@ export function InventoryScreen({
     const membership = await getCurrentMembership();
     if (!membership) throw new Error('No tenant membership.');
     const shop = await getDefaultShopId();
+    const session = await getSession();
     if (generation !== refreshGeneration.current) return;
     setTenantId(membership.tenantId);
     setShopId(shop);
+    if (session && ['owner', 'manager'].includes(membership.role)) {
+      draftUser.current = session.user.id;
+      setDraftPrefix(purchaseDraftPrefix(session.user.id, shop));
+    }
     const [i, p, s, d] = await Promise.all([
       listItems(),
       listParties(),
@@ -239,7 +277,8 @@ export function InventoryScreen({
     }
     contextApplied.current = intent;
     if (
-      (purchaseCart.length ||
+      (draftTouched ||
+        purchaseCart.length ||
         purchaseBillNo ||
         purchaseDiscount ||
         purchaseExtra ||
@@ -311,6 +350,117 @@ export function InventoryScreen({
     purchaseLocked,
     purchaseStorageBlocked,
   ]);
+  function refreshDrafts() {
+    if (!draftPrefix) return;
+    try {
+      setSavedDrafts(listPurchaseDrafts(draftPrefix));
+      setDraftError('');
+    } catch (e) {
+      setDraftError(`Draft recovery unavailable: ${String(e)}. Existing drafts have been kept.`);
+    }
+  }
+  useEffect(() => {
+    if (!draftPrefix) return;
+    refreshDrafts();
+    const changed = (event: StorageEvent) => {
+      if (event.key === null || event.key.startsWith(draftPrefix)) refreshDrafts();
+    };
+    window.addEventListener('storage', changed);
+    return () => window.removeEventListener('storage', changed);
+  }, [draftPrefix]);
+  const draftSnapshot: PurchaseDraft = {
+    version: 1,
+    clientId: purchaseClientId,
+    savedAt: Date.now(),
+    supplier: purchaseSupplier,
+    billNo: purchaseBillNo,
+    businessDate,
+    discount: purchaseDiscount,
+    extra: purchaseExtra,
+    cart: purchaseCart,
+    search: purchaseItemSearch,
+    lineItem: items.find((i) => i.id === purchaseLineItemId) ?? null,
+    unitLevel: purchaseLineUnitLevel,
+    qty: purchaseLineQty,
+    price: purchaseLinePrice,
+    editingLine: editingPurchaseLine,
+  };
+  // Layout effect runs after each committed edit, without a debounce that could lose picker/reload work.
+  useLayoutEffect(() => {
+    if (accountChanged || !draftPrefix || !catalogLoaded || contextBusy || purchaseLocked) return;
+    if (!(
+      draftTouched ||
+      purchaseCart.length ||
+      purchaseBillNo ||
+      purchaseDiscount ||
+      purchaseExtra ||
+      purchaseLineItemId ||
+      purchaseLineQty ||
+      purchaseLinePrice
+    ))
+      return;
+    try {
+      savePurchaseDraft(draftPrefix, draftWriter.current, draftSnapshot);
+      setDraftStatus('Draft saved on this device · not posted');
+      setSavedDrafts(listPurchaseDrafts(draftPrefix));
+      setDraftError('');
+    } catch (e) {
+      setDraftStatus('');
+      setDraftError(`Draft not saved: ${String(e)}. Keep this page open until storage works.`);
+    }
+  }, [
+    accountChanged,
+    draftPrefix,
+    catalogLoaded,
+    contextBusy,
+    purchaseLocked,
+    draftTouched,
+    purchaseClientId,
+    purchaseSupplier,
+    purchaseBillNo,
+    businessDate,
+    purchaseDiscount,
+    purchaseExtra,
+    purchaseCart,
+    purchaseItemSearch,
+    purchaseLineItemId,
+    purchaseLineUnitLevel,
+    purchaseLineQty,
+    purchaseLinePrice,
+    editingPurchaseLine,
+  ]);
+  function resumeDraft(saved: SavedPurchaseDraft) {
+    if (lockedPurchase.current || purchaseBusy || contextBusy || purchaseStorageBlocked) return;
+    if (
+      (draftTouched || purchaseCart.length || purchaseBillNo || purchaseLineItemId) &&
+      !confirm('Switch to this saved draft? Your current draft stays saved on this device.')
+    )
+      return;
+    try {
+      const d = restorePurchaseDraft(saved.draft, items, parties);
+      contextApplied.current = purchaseSupplierId + ':' + purchaseRepeatId;
+      contextNeedsReset.current = false;
+      setPurchaseClientId(d.clientId);
+      setPurchaseSupplier(d.supplier);
+      setPurchaseBillNo(d.billNo);
+      setBusinessDate(d.businessDate);
+      setPurchaseDiscount(d.discount);
+      setPurchaseExtra(d.extra);
+      setPurchaseCart(d.cart);
+      setPurchaseItemSearch(d.search);
+      setPurchaseLineItemId(d.lineItem?.id ?? '');
+      setPurchaseLineUnitLevel(d.unitLevel);
+      setPurchaseLineQty(d.qty);
+      setPurchaseLinePrice(d.price);
+      setEditingPurchaseLine(d.editingLine);
+      setDraftTouched(true);
+      setView('purchase');
+      setError('');
+      setMessage('Saved purchase draft restored. Review it before posting.');
+    } catch (e) {
+      setError(String(e));
+    }
+  }
   const selectedItem = items.find((i) => i.id === selected);
   const purchaseLineItem = items.find((i) => i.id === purchaseLineItemId);
   const selectedStock = useMemo(
@@ -456,6 +606,7 @@ export function InventoryScreen({
       await refresh();
       if (purchaseOnly) {
         setPurchaseSupplier(party.id);
+        setDraftTouched(true);
         const disclosure = form.closest('details');
         if (disclosure) disclosure.open = false;
       }
@@ -506,7 +657,7 @@ export function InventoryScreen({
   }
   async function addPurchase(ev: Event) {
     ev.preventDefault();
-    if (purchaseBusy || contextBusy) return;
+    if (purchaseBusy || contextBusy || accountChanged) return;
     setError('');
     if (!purchaseLocked && editingPurchaseLine !== null) {
       setError('Update or cancel the line edit before posting this purchase.');
@@ -519,6 +670,14 @@ export function InventoryScreen({
     if (!purchaseCart.length && !(purchaseLocked && lockedPurchase.current)) {
       setError('Add at least one purchase line.');
       return;
+    }
+    if (!purchaseLocked) {
+      try {
+        restorePurchaseDraft(draftSnapshot, items, parties);
+      } catch (e) {
+        setError(String(e));
+        return;
+      }
     }
     const f = new FormData(ev.currentTarget as HTMLFormElement);
     const lineCount =
@@ -568,7 +727,7 @@ export function InventoryScreen({
       lockedPurchase.current = null;
       setPurchaseLocked(false);
       clearPendingIntent(pendingKey(request.shopId), request.clientId);
-      setPurchaseClientId(crypto.randomUUID());
+      if (request.clientId === purchaseClientId) setPurchaseClientId(crypto.randomUUID());
       // Another window's unconfirmed purchase may still be stored: lock onto it next, same id (VF-009).
       const next = loadPendingIntent<PurchaseRequest>(pendingKey(request.shopId));
       const another = Boolean(next.ok && next.value);
@@ -581,6 +740,14 @@ export function InventoryScreen({
         : '';
       if (outcome.kind === 'rejected') {
         // The database refused and rolled back: nothing posted; the cart stays for correction.
+        if (draftPrefix && request.clientId === purchaseClientId) {
+          try {
+            clearPurchaseDrafts(draftPrefix, request.clientId);
+            refreshDrafts();
+          } catch (e) {
+            setDraftError(`Old rejected draft could not be removed: ${String(e)}.`);
+          }
+        }
         setError(`Not posted: ${outcome.message}.${anotherNote}`);
         return;
       }
@@ -597,6 +764,20 @@ export function InventoryScreen({
         setPurchaseLineQty('');
         setPurchaseLinePrice('');
         contextNeedsReset.current = true;
+      }
+      if (draftPrefix) {
+        try {
+          clearPurchaseDrafts(draftPrefix, request.clientId);
+          refreshDrafts();
+        } catch (e) {
+          setDraftError(
+            `Purchase confirmed, but its old draft could not be removed: ${String(e)}.`,
+          );
+        }
+      }
+      if (request.clientId === purchaseClientId) {
+        setDraftTouched(false);
+        setDraftStatus('');
       }
       onPurchasePosted?.();
       // Refresh before announcing, as before: the screen is settled when the message appears.
@@ -663,6 +844,12 @@ export function InventoryScreen({
     }
   }
 
+  if (accountChanged)
+    return (
+      <p role="alert">
+        Your signed-in account changed. Reload to open purchases for the current account.
+      </p>
+    );
   const Container = purchaseOnly ? 'section' : 'main';
   return (
     <Container>
@@ -968,8 +1155,61 @@ export function InventoryScreen({
           </form>
         </details>
       )}
-      <section hidden={view !== 'purchase'}>
+      <section
+        hidden={view !== 'purchase'}
+        onInput={() => setDraftTouched(true)}
+        onChange={() => setDraftTouched(true)}
+      >
         <h2>Post purchase</h2>
+        {draftError && <p role="alert">{draftError}</p>}
+        {draftStatus && (
+          <p class="muted" aria-live="polite">
+            {draftStatus}
+          </p>
+        )}
+        {savedDrafts.some((s) => s.draft.clientId !== purchaseClientId) && (
+          <details class="card" aria-label="Saved purchase drafts">
+            <summary>Saved purchase drafts</summary>
+            <p class="muted">
+              Unposted work on this device, for your account and this shop. Resume to review;
+              nothing posts automatically.
+            </p>
+            {savedDrafts
+              .filter((s) => s.draft.clientId !== purchaseClientId)
+              .map((s) => (
+                <div class="context-actions" key={s.key}>
+                  <span>
+                    {s.draft.billNo || 'Untitled purchase'} · {s.draft.businessDate} ·{' '}
+                    {s.draft.cart.length} lines
+                  </span>
+                  <button
+                    type="button"
+                    disabled={
+                      purchaseLocked || contextBusy || !catalogLoaded || !!purchaseStorageBlocked
+                    }
+                    onClick={() => resumeDraft(s)}
+                  >
+                    Resume draft
+                  </button>
+                  <button
+                    type="button"
+                    disabled={purchaseLocked || contextBusy}
+                    onClick={() => {
+                      if (!confirm('Discard this unposted draft snapshot?')) return;
+                      try {
+                        removePurchaseDraft(s.key);
+                        refreshDrafts();
+                      } catch (e) {
+                        setDraftError(`Draft could not be discarded: ${String(e)}.`);
+                      }
+                    }}
+                  >
+                    Discard draft
+                  </button>
+                </div>
+              ))}
+          </details>
+        )}
         <form onSubmit={addPurchase}>
           {purchaseLocked && (
             <p class="alert" role="alert">
@@ -1020,7 +1260,10 @@ export function InventoryScreen({
                     <button
                       type="button"
                       aria-pressed={purchaseSupplier === p.id}
-                      onClick={() => setPurchaseSupplier(p.id)}
+                      onClick={() => {
+                        setPurchaseSupplier(p.id);
+                        setDraftTouched(true);
+                      }}
                     >
                       {p.name}
                     </button>
