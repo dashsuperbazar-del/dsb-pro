@@ -38,7 +38,7 @@ import {
 } from '../lib/offlineSync';
 import { TaskTabs } from '../components/TaskTabs';
 import { appRoute } from '../lib/paths';
-import { rupees } from '../lib/money';
+import { rupees, paiseToDecimal } from '../lib/money';
 import { t } from '../lib/i18n';
 
 export { rupees };
@@ -86,7 +86,18 @@ function sender(attempt: FinancialAttempt): Promise<SupplierWriteOutcome> {
 const lookup = (a: FinancialAttempt) =>
   lookupSupplierRequest(a.shopId, a.operation as SupplierOperation, a.id);
 
-export function SuppliersScreen() {
+export function SuppliersScreen({ url }: { url?: string } = {}) {
+  const context = new URL(url ?? window.location.href, window.location.origin).searchParams;
+  const contextSupplier = context.get('supplier') || '';
+  const contextBill = context.get('bill') || '';
+  const contextView =
+    context.get('view') === 'payment'
+      ? 'payment'
+      : context.get('view') === 'ledger'
+        ? 'ledger'
+        : 'bills';
+  const contextUsed = useRef('');
+  const targetBillUsed = useRef('');
   const [supplierSearch, setSupplierSearch] = useState('');
   const [view, setView] = useState<'bills' | 'payment' | 'history' | 'ledger'>('bills');
   const [role, setRole] = useState<Role | null>(null);
@@ -184,6 +195,56 @@ export function SuppliersScreen() {
     void refreshParty().catch((e) => setError(String(e)));
   }, [shopId, partyId]);
 
+  useEffect(() => {
+    if (!shopId || !contextSupplier || !allParties.some((p) => p.id === contextSupplier)) return;
+    const key = contextSupplier + ':' + contextBill + ':' + contextView;
+    if (contextUsed.current === key) return;
+    contextUsed.current = key;
+    void changeParty(contextSupplier)
+      .then(() => setView(contextView))
+      .catch((e) => setError(String(e)));
+  }, [shopId, allParties, contextSupplier, contextBill, contextView]);
+  useEffect(() => {
+    if (!contextBill || loadedParty !== contextSupplier || targetBillUsed.current === contextBill)
+      return;
+    targetBillUsed.current = contextBill;
+    if (draft || open.length || amount || Object.keys(alloc).length) {
+      setMessage('Your existing payment draft is kept. Review its allocation before recording.');
+      return;
+    }
+    const bill = bills.find((b) => b.purchase_bill_id === contextBill);
+    if (bill && BigInt(bill.outstanding_paise) > 0n) {
+      const value = paiseToDecimal(bill.outstanding_paise);
+      setAmount(value);
+      setAlloc({ [contextBill]: value });
+      setMessage('This bill is selected for payment. Review the amount you actually paid.');
+    }
+  }, [loadedParty, bills, draft, open, contextSupplier, contextBill]);
+  function autoAllocate() {
+    try {
+      let remaining = BigInt(toPaiseText(amount));
+      const next: Record<string, string> = {};
+      for (const bill of [...bills].sort(
+        (a, b) =>
+          a.business_date.localeCompare(b.business_date) ||
+          a.purchase_bill_id.localeCompare(b.purchase_bill_id),
+      )) {
+        const due = BigInt(bill.outstanding_paise);
+        const take = remaining < due ? remaining : due;
+        if (take > 0n) {
+          next[bill.purchase_bill_id] = paiseToDecimal(take.toString());
+          remaining -= take;
+        }
+      }
+      setAlloc(next);
+      setConfirming(false);
+      setMessage(
+        'Oldest-first allocation prepared. Review before recording; any remainder stays as advance.',
+      );
+    } catch (e) {
+      setError(String(e));
+    }
+  }
   function payload(): RecordPayload {
     return {
       shopId,
@@ -420,6 +481,14 @@ export function SuppliersScreen() {
 
       {partyId && (
         <>
+          {canPost && (
+            <p class="context-actions">
+              <a href={appRoute.purchases + '?new=1&supplier=' + encodeURIComponent(partyId)}>
+                New purchase for this supplier
+              </a>
+              <a href={appRoute.purchases}>Purchase bills</a>
+            </p>
+          )}
           <TaskTabs
             label="Supplier tasks"
             value={view}
@@ -468,6 +537,15 @@ export function SuppliersScreen() {
 
           <section class="mobile-records" hidden={view !== 'bills' && view !== 'payment'}>
             <h2>Open bills</h2>
+            {canPost && view === 'payment' && (
+              <button
+                type="button"
+                disabled={busy || confirming || !amount || unresolved.length > 0}
+                onClick={autoAllocate}
+              >
+                Auto · oldest first
+              </button>
+            )}
             <table>
               <thead>
                 <tr>
@@ -492,18 +570,43 @@ export function SuppliersScreen() {
                     {canPost && (
                       <td>
                         {b.outstanding_paise > 0 && (
-                          <input
-                            inputMode="decimal"
-                            aria-label={`Allocate to ${b.bill_no ?? b.purchase_bill_id}`}
-                            value={alloc[b.purchase_bill_id] ?? ''}
-                            disabled={confirming || unresolved.length > 0}
-                            onInput={(e) =>
-                              setAlloc({
-                                ...alloc,
-                                [b.purchase_bill_id]: (e.target as HTMLInputElement).value,
-                              })
-                            }
-                          />
+                          <>
+                            <input
+                              inputMode="decimal"
+                              aria-label={`Allocate to ${b.bill_no ?? b.purchase_bill_id}`}
+                              value={alloc[b.purchase_bill_id] ?? ''}
+                              disabled={confirming || unresolved.length > 0}
+                              onInput={(e) =>
+                                setAlloc({
+                                  ...alloc,
+                                  [b.purchase_bill_id]: (e.target as HTMLInputElement).value,
+                                })
+                              }
+                            />
+                            <button
+                              type="button"
+                              disabled={busy || confirming || unresolved.length > 0}
+                              onClick={() => {
+                                try {
+                                  const next = {
+                                    ...alloc,
+                                    [b.purchase_bill_id]: paiseToDecimal(b.outstanding_paise),
+                                  };
+                                  const total = Object.values(next).reduce(
+                                    (sum, v) => sum + BigInt(toPaiseText(v || '0')),
+                                    0n,
+                                  );
+                                  setAlloc(next);
+                                  setAmount(paiseToDecimal(total.toString()));
+                                  setConfirming(false);
+                                } catch (e) {
+                                  setError(String(e));
+                                }
+                              }}
+                            >
+                              Full
+                            </button>
+                          </>
                         )}
                       </td>
                     )}

@@ -2,16 +2,16 @@
 Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/COMPLETE_REMAINING_BUILD_PLAN.md` v1.1.
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 ## Current
-- `main` verified: `4c1be81` (MU1a #68; fetched 2026-10-12). Migrations 0001–0057 immutable.
-- MU1/MU1a CI and deploy run 38225164664 PASS. User rejected MU1's oversized visual design.
-- PD1 professional design: user requested research first, then authorized build on 2026-10-12.
-  Compact blue/slate system; Home/Billing/Parties/Stock/More; retained purchase/payment/report tasks and checkout; themes.
-  Financial RPC payloads, request IDs, immutable ledgers and money calculations unchanged.
-  Risks: lost draft/input identity; hidden unknown outcomes; stale prices; unreadable print; private navigation. CI covers recovery.
-  Local lint/typecheck/build + 310 unit tests PASS. Fresh independent review PASS (2 rounds); CI #795 found 9 navigation/selector failures, fixed.
-  PR #69: CI #796–798 green (54 browser + 20 repeats); final item-specific price/barcode draft guard pending.
-  Synthetic browser screenshots are visual evidence only. No migration; production deploy stays manual on new main SHA.
-  H3 + clean shop week remain NOT GO pending dated evidence.
+- `main` verified: `4a4c172` (PD1 #69; fetched 2026-10-12). Migrations 0001–0057 immutable.
+- PD1 #69 deployed: CI #801 / run 38280419051 PASS on main 4a4c172; Cloudflare + GitHub Pages.
+- DW1 DSB workflow access/purchase speed: user authorized build 2026-10-13 after pinned legacy audit.
+  Home/Purchases/Sales/Ledger/More; purchase bills/detail, snapshot-safe repeat into fresh draft,
+  supplier/recent item shortcuts, inline supplier creation, bill-to-payment/ledger, Full + Auto allocations.
+  Risks before implementation: silent unit/cost mismatch on repeat, duplicate post/UNKNOWN replacement,
+  stale supplier/bill replies, unseen line edits, lost draft on task navigation, purchase-cost role leakage.
+  Local lint/typecheck/build + 319 unit tests PASS. Fresh review PASS (2 rounds); repeat lifecycle/edit guards fixed.
+  Final-head full CI/browser screenshots required before merge.
+  H3 + clean shop week remain NOT GO pending dated real-device evidence.
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
   partial returns carry item value, capped so a bill's returns never exceed what was billed for its
   items (total - extra charges). Extra charges still stay with the shop.

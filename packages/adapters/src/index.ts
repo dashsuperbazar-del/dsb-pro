@@ -1,4 +1,6 @@
 export { getSupabaseClient } from './client';
+export { listPurchaseHistory, getPurchaseDetail } from './purchases';
+export type { PurchaseRecord, PurchaseHistoryLine, PurchaseBalance } from './purchases';
 export type { ErrorClass } from './errors';
 export { classifyError, errorMessage } from './errors';
 export { signUp, signIn, signOut, getSession, ensureFreshSession, onAuthStateChange, isEmailVerified, resendVerificationEmail, resetPasswordForEmail } from './auth';

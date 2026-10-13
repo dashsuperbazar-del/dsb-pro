@@ -54,7 +54,7 @@ test('owner creates a real invite and a new user accepts it through the deep lin
   await expect(invitePage.getByText(/Signed in · cashier/i)).toBeVisible();
   const nav = invitePage.getByRole('navigation', { name: 'Quick navigation' });
   await expect(nav.getByRole('link', { name: 'Stock', exact: true })).toHaveCount(0);
-  await nav.getByRole('link', { name: 'Parties', exact: true }).click();
+  await nav.getByRole('link', { name: 'Ledger', exact: true }).click();
   await expect(invitePage.getByRole('heading', { name: 'Customers & ledger' })).toBeVisible();
   await expect(
     invitePage

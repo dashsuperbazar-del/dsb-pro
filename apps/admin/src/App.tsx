@@ -9,6 +9,7 @@ import { NoTenantScreen } from './screens/NoTenantScreen';
 import { JoinInviteScreen } from './screens/JoinInviteScreen';
 import { TeamScreen } from './screens/TeamScreen';
 import { DevicesScreen } from './screens/DevicesScreen';
+import { PurchasesScreen } from './screens/PurchasesScreen';
 import { InventoryScreen } from './screens/InventoryScreen';
 import { PosScreen } from './screens/PosScreen';
 import { CustomersScreen } from './screens/CustomersScreen';
@@ -77,6 +78,7 @@ export function App() {
         <Route path={appRoute.join} component={JoinInviteScreen} />
         <Route path={appRoute.team} component={TeamScreen} />
         <Route path={appRoute.devices} component={DevicesScreen} />
+        <Route path={appRoute.purchases} component={PurchasesScreen} />
         <Route path={appRoute.inventory} component={InventoryScreen} />
         <Route path={appRoute.pos} component={PosScreen} />
         <Route path={appRoute.customers} component={CustomersScreen} />
@@ -137,7 +139,7 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
         <nav class="quick-entry" aria-label="Quick entry">
           {session.membership.role !== 'cashier' && (
             <>
-              <a href={appRoute.inventory + '?view=purchase'}>
+              <a href={appRoute.purchases + '?new=1'}>
                 <Icon name="purchase" />
                 <span>Purchase</span>
               </a>
@@ -149,12 +151,12 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
           )}
           <a href={appRoute.pos}>
             <Icon name="bill" />
-            <span>New bill</span>
+            <span>New sale</span>
           </a>
           {session.membership.role !== 'cashier' && (
-            <a href={appRoute.expenses}>
-              <Icon name="expense" />
-              <span>Expense</span>
+            <a href={appRoute.inventory}>
+              <Icon name="stock" />
+              <span>Stock</span>
             </a>
           )}
         </nav>
@@ -166,9 +168,9 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
             <Icon name="arrow" />
           </a>
           {session.membership.role !== 'cashier' && (
-            <a href={appRoute.inventory}>
-              <Icon name="stock" />
-              <strong>Inventory & purchases</strong>
+            <a href={appRoute.purchases}>
+              <Icon name="purchase" />
+              <strong>Purchase bills</strong>
               <Icon name="arrow" />
             </a>
           )}

@@ -13,6 +13,7 @@ export const appRoute = {
   team: appPath('/team'),
   devices: appPath('/devices'),
   inventory: appPath('/inventory'),
+  purchases: appPath('/purchases'),
   pos: appPath('/pos'),
   customers: appPath('/customers'),
   salesHistory: appPath('/sales-history'),

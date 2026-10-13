@@ -4,6 +4,9 @@ import {
   createItem,
   createParty,
   getCurrentMembership,
+  getPurchaseDetail,
+  listPurchaseHistory,
+  type PurchaseRecord,
   getDefaultShopId,
   getShopBusinessDate,
   importLegacyDsbMaster,
@@ -28,6 +31,8 @@ import {
   quantityTimesPaise,
   type LegacyDsbImportPlan,
 } from '@dsb-pro/core';
+import { repeatPurchase, rankedPurchaseParties } from '../lib/purchaseWorkflow';
+import { paiseToDecimal, rupees } from '../lib/money';
 import { compressItemImage } from '../lib/compressImage';
 import { TaskTabs } from '../components/TaskTabs';
 import { appRoute } from '../lib/paths';
@@ -35,11 +40,27 @@ import { clearPendingIntent, loadPendingIntent, savePendingIntent } from '../lib
 
 const paise = (rupees: string) => parseRupeesToPaise(rupees || '0');
 
-export function InventoryScreen() {
+export function InventoryScreen({
+  purchaseOnly = false,
+  purchaseContextActive = true,
+  purchaseSupplierId = '',
+  purchaseRepeatId = '',
+  onPurchasePosted,
+}: {
+  purchaseOnly?: boolean;
+  purchaseContextActive?: boolean;
+  purchaseSupplierId?: string;
+  purchaseRepeatId?: string;
+  onPurchasePosted?: () => void;
+} = {}) {
   type View = 'items' | 'purchase' | 'suppliers' | 'advanced';
   const initial = new URLSearchParams(window.location.search).get('view');
   const [view, setView] = useState<View>(
-    initial === 'purchase' || initial === 'suppliers' || initial === 'advanced' ? initial : 'items',
+    purchaseOnly
+      ? 'purchase'
+      : initial === 'purchase' || initial === 'suppliers' || initial === 'advanced'
+        ? initial
+        : 'items',
   );
   const [itemSearch, setItemSearch] = useState('');
   const [items, setItems] = useState<Item[]>([]);
@@ -61,6 +82,24 @@ export function InventoryScreen() {
   const [purchaseCart, setPurchaseCart] = useState<
     { item: Item; unitLevel: 1 | 2 | 3; qty: string; unitPricePaise: number }[]
   >([]);
+  const [purchaseSupplier, setPurchaseSupplier] = useState('');
+  const [purchaseBillNo, setPurchaseBillNo] = useState('');
+  const [purchaseDiscount, setPurchaseDiscount] = useState('');
+  const [purchaseExtra, setPurchaseExtra] = useState('');
+  const [purchaseItemSearch, setPurchaseItemSearch] = useState('');
+  const [recentBills, setRecentBills] = useState<PurchaseRecord[]>([]);
+  const [recentDetail, setRecentDetail] = useState<Awaited<
+    ReturnType<typeof getPurchaseDetail>
+  > | null>(null);
+  const contextApplied = useRef('');
+  const contextNeedsReset = useRef(false);
+  const [catalogLoaded, setCatalogLoaded] = useState(false);
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const partiesRef = useRef(parties);
+  partiesRef.current = parties;
+  const [contextBusy, setContextBusy] = useState(false);
+  const [editingPurchaseLine, setEditingPurchaseLine] = useState<number | null>(null);
   const [purchaseClientId, setPurchaseClientId] = useState(() => crypto.randomUUID());
   // After a failure whose outcome is unknown (offline/server), the bill may already be posted. The
   // form stays frozen so a retry resends the SAME request id and payload; the server returns the
@@ -110,7 +149,8 @@ export function InventoryScreen() {
     setItems(i);
     setParties(p);
     setStock(s);
-    setBusinessDate(d);
+    setCatalogLoaded(true);
+    setBusinessDate((value) => value || d);
   }
   useEffect(() => {
     void refresh().catch((e) => setError(String(e)));
@@ -146,6 +186,131 @@ export function InventoryScreen() {
       cancelled = true;
     };
   }, [selected]);
+  useEffect(() => {
+    if (!shopId || !purchaseOnly) return;
+    let active = true;
+    void listPurchaseHistory(shopId)
+      .then((b) => {
+        if (active) setRecentBills(b);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [shopId, purchaseOnly]);
+  useEffect(() => {
+    setRecentDetail(null);
+    if (!shopId || !purchaseSupplier || !purchaseOnly) return;
+    const latest = recentBills.find(
+      (b) => b.party_id === purchaseSupplier && b.status === 'POSTED',
+    );
+    if (!latest) return;
+    let active = true;
+    void getPurchaseDetail(shopId, latest.id)
+      .then((d) => {
+        if (active) setRecentDetail(d);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [shopId, purchaseSupplier, recentBills, purchaseOnly]);
+  useEffect(() => {
+    const intent = purchaseSupplierId + ':' + purchaseRepeatId;
+    if (
+      (!purchaseContextActive || intent !== contextApplied.current) &&
+      contextNeedsReset.current
+    ) {
+      contextApplied.current = '';
+      contextNeedsReset.current = false;
+    }
+    if (
+      !purchaseOnly ||
+      !purchaseContextActive ||
+      !shopId ||
+      !catalogLoaded ||
+      contextNeedsReset.current
+    )
+      return;
+    if (contextApplied.current === intent) return;
+    if (lockedPurchase.current || purchaseStorageBlocked) {
+      setError('Resolve the pending purchase before starting or repeating another bill.');
+      return;
+    }
+    contextApplied.current = intent;
+    if (
+      (purchaseCart.length ||
+        purchaseBillNo ||
+        purchaseDiscount ||
+        purchaseExtra ||
+        purchaseLineQty ||
+        purchaseLinePrice) &&
+      !confirm('Replace this unfinished purchase with the selected new draft?')
+    ) {
+      contextNeedsReset.current = true;
+      return;
+    }
+    let active = true;
+    let completed = false;
+    setContextBusy(true);
+    void (async () => {
+      try {
+        const newDate = await getShopBusinessDate(shopId);
+        if (!active) return;
+        if (purchaseRepeatId) {
+          const d = await getPurchaseDetail(shopId, purchaseRepeatId);
+          const cart = repeatPurchase(d.bill, d.lines, itemsRef.current);
+          if (!active) return;
+          if (d.bill.party_id && !partiesRef.current.some((p) => p.id === d.bill.party_id))
+            throw new Error('The original supplier is unavailable. Start a new purchase manually.');
+          setPurchaseSupplier(d.bill.party_id || '');
+          setPurchaseCart(cart);
+          setPurchaseDiscount(paiseToDecimal(d.bill.discount_paise));
+          setPurchaseExtra(paiseToDecimal(d.bill.extra_charges_paise));
+          setMessage(
+            `Draft repeated from ${d.bill.bill_no || d.bill.id.slice(0, 8)} (${d.bill.business_date}). Historical costs and adjustments copied — review them. This is a new purchase, not posted yet.`,
+          );
+        } else {
+          if (purchaseSupplierId && !partiesRef.current.some((p) => p.id === purchaseSupplierId))
+            throw new Error('Supplier is unavailable.');
+          setPurchaseSupplier(purchaseSupplierId);
+          setPurchaseCart([]);
+          setPurchaseDiscount('');
+          setPurchaseExtra('');
+        }
+        setBusinessDate(newDate);
+        setPurchaseBillNo('');
+        setEditingPurchaseLine(null);
+        setPurchaseItemSearch('');
+        setPurchaseLineItemId('');
+        setPurchaseLineQty('');
+        setPurchaseLinePrice('');
+        setPurchaseClientId(crypto.randomUUID());
+        completed = true;
+      } catch (e) {
+        if (active) {
+          setError(String(e));
+          contextNeedsReset.current = true;
+        }
+      } finally {
+        if (active) setContextBusy(false);
+      }
+    })();
+    return () => {
+      active = false;
+      if (!completed) contextApplied.current = '';
+      setContextBusy(false);
+    };
+  }, [
+    shopId,
+    catalogLoaded,
+    purchaseSupplierId,
+    purchaseRepeatId,
+    purchaseOnly,
+    purchaseContextActive,
+    purchaseLocked,
+    purchaseStorageBlocked,
+  ]);
   const selectedItem = items.find((i) => i.id === selected);
   const purchaseLineItem = items.find((i) => i.id === purchaseLineItemId);
   const selectedStock = useMemo(
@@ -156,6 +321,13 @@ export function InventoryScreen() {
     () => purchaseCart.reduce((sum, l) => sum + quantityTimesPaise(l.qty, l.unitPricePaise), 0),
     [purchaseCart],
   );
+  const payablePreview = (() => {
+    try {
+      return rupees(purchaseTotalPaise - paise(purchaseDiscount) + paise(purchaseExtra));
+    } catch {
+      return 'Check amounts';
+    }
+  })();
   const unitLabel = (item: Item, unitLevel: 1 | 2 | 3) =>
     unitLevel === 1
       ? item.unit1
@@ -282,6 +454,7 @@ export function InventoryScreen() {
       });
       form.reset();
       await refresh();
+      if (purchaseOnly) setPurchaseSupplier(party.id);
       setMessage(`Created supplier ${party.name}.`);
     } catch (e) {
       setError(String(e));
@@ -307,7 +480,14 @@ export function InventoryScreen() {
       setError('Enter a unit cost.');
       return;
     }
-    setPurchaseCart((v) => [...v, { item, unitLevel: purchaseLineUnitLevel, qty, unitPricePaise }]);
+    const line = { item, unitLevel: purchaseLineUnitLevel, qty, unitPricePaise };
+    setPurchaseCart((v) =>
+      editingPurchaseLine === null
+        ? [...v, line]
+        : v.map((old, n) => (n === editingPurchaseLine ? line : old)),
+    );
+    setEditingPurchaseLine(null);
+    setPurchaseItemSearch('');
     setPurchaseLineItemId('');
     setPurchaseLineUnitLevel(1);
     setPurchaseLineQty('');
@@ -315,11 +495,19 @@ export function InventoryScreen() {
   }
   function removePurchaseLine(index: number) {
     setPurchaseCart((v) => v.filter((_, i) => i !== index));
+    setEditingPurchaseLine(null);
+    setPurchaseLineItemId('');
+    setPurchaseLineQty('');
+    setPurchaseLinePrice('');
   }
   async function addPurchase(ev: Event) {
     ev.preventDefault();
-    if (purchaseBusy) return;
+    if (purchaseBusy || contextBusy) return;
     setError('');
+    if (!purchaseLocked && editingPurchaseLine !== null) {
+      setError('Update or cancel the line edit before posting this purchase.');
+      return;
+    }
     if (!shopId || !businessDate) {
       setError('Shop data is still loading.');
       return;
@@ -394,7 +582,19 @@ export function InventoryScreen() {
       }
       // Only a purchase built from this cart (it carries the cart's id) clears the cart when it posts;
       // a restored entry from another window leaves the user's cart intact (Codex P2).
-      if (request.clientId === purchaseClientId) setPurchaseCart([]);
+      if (request.clientId === purchaseClientId) {
+        setPurchaseCart([]);
+        setPurchaseBillNo('');
+        setPurchaseDiscount('');
+        setPurchaseExtra('');
+        setEditingPurchaseLine(null);
+        setPurchaseLineItemId('');
+        setPurchaseItemSearch('');
+        setPurchaseLineQty('');
+        setPurchaseLinePrice('');
+        contextNeedsReset.current = true;
+      }
+      onPurchasePosted?.();
       // Refresh before announcing, as before: the screen is settled when the message appears.
       let refreshNote = '';
       await refresh().catch((e) => (refreshNote = ` (Refresh failed: ${String(e)})`));
@@ -459,23 +659,26 @@ export function InventoryScreen() {
     }
   }
 
+  const Container = purchaseOnly ? 'section' : 'main';
   return (
-    <main>
-      <p>
+    <Container>
+      <p hidden={purchaseOnly}>
         <a href={appRoute.home}>← Home</a>
       </p>
-      <h1>Inventory & purchases</h1>
-      <TaskTabs
-        label="Stock tasks"
-        value={view}
-        onChange={setView}
-        options={[
-          { value: 'items', label: 'Items' },
-          { value: 'purchase', label: 'Purchases' },
-          { value: 'suppliers', label: 'Suppliers' },
-          { value: 'advanced', label: 'Advanced' },
-        ]}
-      />
+      {!purchaseOnly && <h1>Inventory & purchases</h1>}
+      {!purchaseOnly && (
+        <TaskTabs
+          label="Stock tasks"
+          value={view}
+          onChange={setView}
+          options={[
+            { value: 'items', label: 'Items' },
+            { value: 'purchase', label: 'Purchases' },
+            { value: 'suppliers', label: 'Suppliers' },
+            { value: 'advanced', label: 'Advanced' },
+          ]}
+        />
+      )}
       {(purchaseLocked || purchaseStorageBlocked) && (
         <p role="alert">
           A purchase needs attention.{' '}
@@ -484,7 +687,7 @@ export function InventoryScreen() {
           </button>
         </p>
       )}
-      <section class="card" hidden={view !== 'items'} aria-label="Stock items">
+      <section class="card" hidden={purchaseOnly || view !== 'items'} aria-label="Stock items">
         <label class="search-field">
           Find stock item
           <input
@@ -519,353 +722,24 @@ export function InventoryScreen() {
                     document
                       .getElementById('stock-item-details')
                       ?.scrollIntoView({ block: 'start' }),
-                  );
-                }}
-              >
-                <span>
-                  <strong>{item.name}</strong>
-                  <small>{item.sku || 'No SKU'}</small>
-                </span>
-                <span class="record-value">
-                  {stock.find((row) => row.item_id === item.id)?.qty_base ?? '—'}
-                  <small>{item.unit3 || item.unit2 || item.unit1}</small>
-                </span>
-              </button>
-            ))}
-        </div>
-        <p class="muted">Showing up to 50 matches · {items.length} items</p>
-      </section>
-      {error && <p role="alert">{error}</p>}
-      {message && <p role="status">{message}</p>}
-      <section hidden={view !== 'advanced'} aria-label="Import old DSB backup">
-        <h2>Import old DSB backup</h2>
-        <p class="muted">
-          Shop-test setup only. This imports the current item master, sale prices, current stock,
-          suppliers and real customers. It does not copy historical purchase bills, sales invoices
-          or payments.
-        </p>
-        <input
-          aria-label="Choose DSB backup JSON"
-          type="file"
-          accept=".json,application/json"
-          onChange={chooseLegacyBackup}
-        />
-        {legacyPlan && (
-          <div class="card">
-            <strong>{legacyFileName}</strong>
-            <br />
-            Ready: {legacyPlan.items.length} items · {legacyPlan.parties.length} suppliers ·{' '}
-            {legacyPlan.customers.length} customers ·{' '}
-            {legacyPlan.items.reduce((n, i) => n + i.prices.length, 0)} price rows ·{' '}
-            {legacyPlan.items.filter((i) => i.openingStockSmallest > 0).length} positive stock
-            balances.
-            {legacyPlan.warnings.length > 0 && (
-              <>
-                <p>
-                  <strong>{legacyPlan.warnings.length} warnings</strong> (nothing is silently
-                  guessed):
-                </p>
-                <ul>
-                  {legacyPlan.warnings.slice(0, 6).map((w, n) => (
-                    <li key={n}>{w}</li>
-                  ))}
-                </ul>
-                {legacyPlan.warnings.length > 6 && (
-                  <p>
-                    …and {legacyPlan.warnings.length - 6} more. Items without a usable sale price
-                    remain unsellable until a price is added.
-                  </p>
-                )}
-              </>
-            )}
-            <p>
-              <button
-                type="button"
-                class="primary"
-                disabled={legacyBusy || !shopId}
-                onClick={() => void runLegacyImport()}
-              >
-                {legacyBusy ? 'Importing…' : 'Import checked backup'}
-              </button>
-            </p>
-          </div>
-        )}
-      </section>
-      <section id="stock-item-details" hidden={view !== 'items'}>
-        <h2>Item setup</h2>
-        <p>
-          Unit order follows DSB: big → small → piece. Stock is stored in the smallest configured
-          unit.
-        </p>
-        <details id="stock-add-item">
-          <summary>Add item</summary>
-          <form onSubmit={addItem}>
-            <label>
-              Item name <input name="name" placeholder="Item name" required />
-            </label>{' '}
-            <label>
-              SKU <input name="sku" placeholder="SKU" />
-            </label>{' '}
-            <label>
-              Big unit (e.g. case){' '}
-              <input name="unit1" placeholder="Big unit (e.g. case)" required />
-            </label>{' '}
-            <label>
-              Small unit (e.g. pack) <input name="unit2" placeholder="Small unit (e.g. pack)" />
-            </label>{' '}
-            <label>
-              Small units per big{' '}
-              <input
-                name="conv1"
-                type="number"
-                min="0"
-                step="any"
-                placeholder="Small units per big"
-              />
-            </label>{' '}
-            <label>
-              Piece unit (optional) <input name="unit3" placeholder="Piece unit (optional)" />
-            </label>{' '}
-            <label>
-              Pieces per small{' '}
-              <input name="conv2" type="number" min="0" step="any" placeholder="Pieces per small" />
-            </label>{' '}
-            <button disabled={!tenantId}>Create item</button>
-          </form>
-        </details>
-        <label>
-          Item details{' '}
-          <select
-            value={selected}
-            onChange={(e) => setSelected((e.currentTarget as HTMLSelectElement).value)}
-          >
-            <option value="">Choose…</option>
-            {items.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        {selectedItem && (
-          <div aria-label="item peek">
-            <strong>{selectedItem.name}</strong> · Stock {selectedStock}{' '}
-            {selectedItem.unit3 || selectedItem.unit2 || selectedItem.unit1}
-            <br />
-            Current prices:{' '}
-            {pricesLoading
-              ? 'Loading…'
-              : pricesFailed
-                ? 'Unavailable'
-                : prices.length
-                  ? prices.map((p) => `${p.kind} ₹${(p.price_paise / 100).toFixed(2)}`).join(' · ')
-                  : 'none'}
-            <br />
-            Reorder at: {selectedItem.min_stock}{' '}
-            {selectedItem.unit3 || selectedItem.unit2 || selectedItem.unit1}
-            <br />
-            <input type="file" accept="image/*" onChange={changeImage} />
-          </div>
-        )}
-        {selectedItem && (
-          <form onSubmit={changeMinStock}>
-            <label>
-              Reorder threshold ({selectedItem.unit3 || selectedItem.unit2 || selectedItem.unit1}){' '}
-              <input
-                name="minStock"
-                type="number"
-                min="0"
-                step="any"
-                defaultValue={selectedItem.min_stock}
-                key={selectedItem.id}
-              />
-            </label>{' '}
-            <button disabled={!shopId}>Save reorder threshold</button>
-          </form>
-        )}
-        {selectedItem && (
-          <form key={`barcode:${selectedItem.id}`} onSubmit={addBarcode}>
-            <label>
-              Barcode <input name="barcode" placeholder="Barcode" required />
-            </label>{' '}
-            <select aria-label="Unit" name="unitLevel">
-              <option value="1">{selectedItem.unit1}</option>
-              {selectedItem.unit2 && <option value="2">{selectedItem.unit2}</option>}
-              {selectedItem.unit3 && <option value="3">{selectedItem.unit3}</option>}
-            </select>{' '}
-            <button disabled={!tenantId}>Link barcode</button>
-          </form>
-        )}
-        {selectedItem && (
-          <form key={`price:${selectedItem.id}`} onSubmit={changePrice}>
-            <select name="kind">
-              <option value="retail">Retail</option>
-              <option value="wholesale">Wholesale</option>
-              <option value="mrp">MRP</option>
-              <option value="cost_last">Last cost</option>
-            </select>{' '}
-            <select aria-label="Unit" name="unitLevel">
-              <option value="1">{selectedItem.unit1}</option>
-              {selectedItem.unit2 && <option value="2">{selectedItem.unit2}</option>}
-              {selectedItem.unit3 && <option value="3">{selectedItem.unit3}</option>}
-            </select>{' '}
-            <label>
-              ₹ price{' '}
-              <input
-                name="price"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="₹ price"
-                required
-              />
-            </label>{' '}
-            <button disabled={!shopId}>Set price</button>
-          </form>
-        )}
-      </section>
-      <section hidden={view !== 'suppliers'}>
-        <h2>Suppliers</h2>
-        <form onSubmit={addParty}>
-          <label>
-            Supplier name <input name="name" placeholder="Supplier name" required />
-          </label>{' '}
-          <label>
-            Phone <input name="phone" placeholder="Phone" />
-          </label>{' '}
-          <label>
-            GSTIN <input name="gstin" placeholder="GSTIN" />
-          </label>{' '}
-          <button disabled={!tenantId}>Create supplier</button>
-        </form>
-      </section>
-      <section hidden={view !== 'purchase'}>
-        <h2>Post purchase</h2>
-        <form onSubmit={addPurchase}>
-          {purchaseLocked && (
-            <p class="alert" role="alert">
-              The last purchase may already be saved. Editing is locked: press “Retry same purchase”
-              — it never posts the bill twice.
-            </p>
-          )}
-          <fieldset disabled={purchaseLocked} class="plain">
-            <label>
-              Bill no. <input name="billNo" placeholder="Bill no." />
-            </label>{' '}
-            <label>
-              Business date
-              <input
-                name="date"
-                type="date"
-                value={businessDate}
-                onInput={(e) => setBusinessDate((e.currentTarget as HTMLInputElement).value)}
-                required
-              />
-            </label>{' '}
-            <label>
-              Supplier
-              <select name="partyId">
-                <option value="">No supplier</option>
-                {parties.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </label>{' '}
-            <label>
-              Discount ₹{' '}
-              <input name="discount" type="number" min="0" step="0.01" placeholder="Discount ₹" />
-            </label>{' '}
-            <label>
-              Extra ₹ <input name="extra" type="number" min="0" step="0.01" placeholder="Extra ₹" />
-            </label>
-            <fieldset>
-              <legend>Add purchase line</legend>
-              <select
-                aria-label="Purchase item"
-                name="itemId"
-                value={purchaseLineItemId}
-                onChange={(e) => {
-                  setPurchaseLineItemId((e.currentTarget as HTMLSelectElement).value);
-                  setPurchaseLineUnitLevel(1);
-                }}
-              >
-                <option value="">Item…</option>
-                {items.map((i) => (
-                  <option key={i.id} value={i.id}>
-                    {i.name}
-                  </option>
-                ))}
-              </select>{' '}
-              <select
-                aria-label="Unit"
-                name="unitLevel"
-                disabled={!purchaseLineItem}
-                value={purchaseLineUnitLevel}
-                onChange={(e) =>
-                  setPurchaseLineUnitLevel(
-                    Number((e.currentTarget as HTMLSelectElement).value) as 1 | 2 | 3,
-                  )
-                }
-              >
-                <option value="1">{purchaseLineItem?.unit1 || 'Big unit'}</option>
-                {purchaseLineItem?.unit2 && <option value="2">{purchaseLineItem.unit2}</option>}
-                {purchaseLineItem?.unit3 && <option value="3">{purchaseLineItem.unit3}</option>}
-              </select>{' '}
-              <label>
-                Quantity
-                <input
-                  name="qty"
-                  type="number"
-                  min="0.000001"
-                  step="any"
-                  placeholder="Qty"
-                  value={purchaseLineQty}
-                  onInput={(e) => setPurchaseLineQty((e.currentTarget as HTMLInputElement).value)}
-                />
-              </label>{' '}
-              <label>
-                Unit cost ₹
-                <input
-                  name="price"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="Unit cost ₹"
-                  value={purchaseLinePrice}
-                  onInput={(e) => setPurchaseLinePrice((e.currentTarget as HTMLInputElement).value)}
-                />
-              </label>{' '}
-              <button type="button" onClick={addPurchaseLine}>
-                Add line
-              </button>
-            </fieldset>
-            {purchaseCart.length > 0 && (
-              <div class="table-wrap mobile-records" aria-label="Purchase cart">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Item</th>
-                      <th>Qty</th>
-                      <th>Unit cost</th>
-                      <th>Line total</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {purchaseCart.map((l, n) => (
-                      <tr key={n}>
-                        <td class="record-title" data-label="Item">
-                          {l.item.name}
-                          <small> {unitLabel(l.item, l.unitLevel)}</small>
-                        </td>
-                        <td data-label="Quantity">{l.qty}</td>
-                        <td data-label="Unit cost">₹{(l.unitPricePaise / 100).toFixed(2)}</td>
-                        <td data-label="Line total">
-                          ₹{(quantityTimesPaise(l.qty, l.unitPricePaise) / 100).toFixed(2)}
-                        </td>
+   …4678 tokens truncated…                    </td>
                         <td>
+                          {purchaseOnly && (
+                            <button
+                              type="button"
+                              aria-label={`Edit purchase line ${n + 1}`}
+                              onClick={() => {
+                                setEditingPurchaseLine(n);
+                                setPurchaseItemSearch(l.item.name);
+                                setPurchaseLineItemId(l.item.id);
+                                setPurchaseLineUnitLevel(l.unitLevel);
+                                setPurchaseLineQty(l.qty);
+                                setPurchaseLinePrice(paiseToDecimal(l.unitPricePaise));
+                              }}
+                            >
+                              Edit
+                            </button>
+                          )}
                           <button
                             type="button"
                             aria-label={`Remove purchase line ${n + 1}`}
@@ -878,20 +752,28 @@ export function InventoryScreen() {
                     ))}
                   </tbody>
                 </table>
-                <p>Lines total: ₹{(purchaseTotalPaise / 100).toFixed(2)}</p>
+                <p>Lines total: {rupees(purchaseTotalPaise)}</p>
+                <p>
+                  <strong>Payable preview: {payablePreview}</strong>
+                </p>
               </div>
             )}
           </fieldset>
           <button
             class="primary"
             disabled={
-              purchaseBusy || !shopId || !businessDate || (!purchaseCart.length && !purchaseLocked)
+              purchaseBusy ||
+              contextBusy ||
+              (!purchaseLocked && editingPurchaseLine !== null) ||
+              !shopId ||
+              !businessDate ||
+              (!purchaseCart.length && !purchaseLocked)
             }
           >
             {purchaseBusy ? 'Posting…' : purchaseLocked ? 'Retry same purchase' : 'Post purchase'}
           </button>
         </form>
       </section>
-    </main>
+    </Container>
   );
 }

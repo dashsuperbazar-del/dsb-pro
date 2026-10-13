@@ -413,7 +413,7 @@ test('phone navigation and checkout stay readable at narrow widths', async ({ pa
   );
   await actions.getByRole('link', { name: /Sales POS/ }).click();
   const nav = page.getByRole('navigation', { name: 'Quick navigation' });
-  await expect(nav.getByRole('link', { name: 'Billing', exact: true })).toHaveAttribute(
+  await expect(nav.getByRole('link', { name: 'Sales', exact: true })).toHaveAttribute(
     'aria-current',
     'page',
   );
