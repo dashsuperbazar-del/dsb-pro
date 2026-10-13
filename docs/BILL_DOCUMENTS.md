@@ -41,7 +41,7 @@ upgrade path and verifies no-op/tamper refusal; live apply stays workflow_dispat
 
 ## Evidence and limits
 
-- Local lint/types, 338 unit tests, production build, formatting, bundle and installability: PASS.
+- Local lint/types, 339 unit tests, production build, formatting, bundle and installability: PASS.
 - Adapter tests cover role/tenant/shop isolation, immutable uploads and lost answers with same-size
   different bytes. Local binary tests cover exact reopen/scoping, overwrite refusal, unavailable
   storage and PDF/type/size validation. DOM proof keeps the full draft durable before uploading,
@@ -79,3 +79,9 @@ A selection-intent notice is stored synchronously before opening the OS picker. 
 before selected bytes can be processed/committed, restoring the draft requires reselecting the file
 or an explicit attachment decision; it cannot silently post without the intended document. Picker
 cancel clears this notice when the browser emits cancel; the explicit decision remains a fallback.
+
+CI #818 exposed a transient Resume button before new-purchase context initialization completed;
+the later initialization could clear the resumed form. Resume now gates both the button and handler
+on context readiness, account and document activity. A MutationObserver regression catches the
+catalogue-to-context gap, fails with the guards removed, and verifies retained bill/date/cart after
+the context settles. The browser reload assertions remain unchanged.

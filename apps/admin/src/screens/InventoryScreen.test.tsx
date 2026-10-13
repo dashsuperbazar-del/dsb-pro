@@ -737,3 +737,84 @@ test('picker eviction preserves the document intent and requires a decision afte
   });
   expect(post.disabled).toBe(false);
 });
+
+test('resume stays disabled through the catalogue-to-new-context gap and preserves the draft afterwards', async () => {
+  localStorage.setItem(
+    'dsb-purchase-draft:user:shop:resume-client:writer',
+    JSON.stringify({
+      version: 1,
+      clientId: 'resume-client',
+      savedAt: 1,
+      supplier: '',
+      billNo: 'RESUME-GAP',
+      businessDate: '2026-10-01',
+      discount: '',
+      extra: '',
+      search: '',
+      lineItem: null,
+      unitLevel: 1,
+      qty: '',
+      price: '',
+      editingLine: null,
+      cart: [
+        {
+          item: { id: 'a', name: 'Item A', unit1: 'piece' },
+          unitLevel: 1,
+          qty: '2',
+          unitPricePaise: 100,
+        },
+      ],
+    }),
+  );
+  let finishCatalogue!: (date: string) => void, finishContext!: (date: string) => void;
+  api.getShopBusinessDate
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishCatalogue = resolve;
+        }),
+    )
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishContext = resolve;
+        }),
+    );
+  let exposed = 0;
+  const observer = new MutationObserver(() => {
+    const resume = [...host.querySelectorAll('button')].find(
+      (b) => b.textContent === 'Resume draft',
+    );
+    const formLoading = host
+      .querySelector<HTMLInputElement>('input[name="billNo"]')
+      ?.closest('fieldset')?.disabled;
+    if (resume && !resume.disabled && formLoading) exposed++;
+  });
+  observer.observe(host, { subtree: true, childList: true, attributes: true });
+  try {
+    await act(async () => {
+      render(<InventoryScreen purchaseOnly />, host);
+    });
+    await vi.waitFor(() => expect(api.getShopBusinessDate).toHaveBeenCalledTimes(1));
+    finishCatalogue('2026-10-12');
+    await vi.waitFor(() => expect(api.getShopBusinessDate).toHaveBeenCalledTimes(2));
+    expect(exposed).toBe(0);
+    const resume = [...host.querySelectorAll('button')].find(
+      (b) => b.textContent === 'Resume draft',
+    )!;
+    expect(resume.disabled).toBe(true);
+    await act(async () => {
+      finishContext('2026-10-12');
+    });
+    await vi.waitFor(() => expect(resume.disabled).toBe(false));
+    await act(async () => {
+      resume.click();
+    });
+    expect(host.querySelector<HTMLInputElement>('input[name="billNo"]')!.value).toBe('RESUME-GAP');
+    expect(host.querySelector<HTMLInputElement>('input[name="date"]')!.value).toBe('2026-10-01');
+    expect(host.querySelector('[aria-label="Purchase cart"]')?.textContent).toContain('₹2.00');
+    expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  } finally {
+    observer.disconnect();
+  }
+});

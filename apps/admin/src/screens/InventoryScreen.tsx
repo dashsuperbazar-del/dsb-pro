@@ -458,6 +458,8 @@ export function InventoryScreen({
       lockedPurchase.current ||
       purchaseBusy ||
       contextBusy ||
+      !purchaseContextReady ||
+      accountChanged ||
       documentBusy ||
       purchaseStorageBlocked
     )
@@ -1235,7 +1237,14 @@ export function InventoryScreen({
                   <button
                     type="button"
                     disabled={
-                      purchaseLocked || contextBusy || !catalogLoaded || !!purchaseStorageBlocked
+                      purchaseLocked ||
+                      purchaseBusy ||
+                      contextBusy ||
+                      !purchaseContextReady ||
+                      accountChanged ||
+                      documentBusy ||
+                      !catalogLoaded ||
+                      !!purchaseStorageBlocked
                     }
                     onClick={() => resumeDraft(s)}
                   >

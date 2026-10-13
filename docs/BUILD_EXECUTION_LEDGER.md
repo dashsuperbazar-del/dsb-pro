@@ -3,7 +3,7 @@
 DW2a draft recovery: PR #71 head `3169f88`, full CI #814 PASS (329 unit, 55 browser,
 20 held-cart repetitions); independent review/merge remain pending. No live change.
 DW2b private bill attachments: IN_PROGRESS, dependent on #71, migration 0058 / billdocs.
-Local 338 tests/lint/types/build PASS; full CI, second validate-only migration run, independent
+Local 339 tests/lint/types/build PASS; full CI, second validate-only migration run, independent
 review and real-device/shop gates remain pending. Contract: [BILL_DOCUMENTS.md](BILL_DOCUMENTS.md).
 Binary object backup/retention follow-up remains open; no attachment disaster-recovery claim.
 
