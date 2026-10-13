@@ -430,3 +430,62 @@ test('a rejected restored payload never rotates its identity into a new potentia
   );
   expect(host.querySelector('[aria-label="Purchase cart"]')?.textContent).toContain('₹2.00');
 });
+
+test('UNKNOWN posting hides the unposted draft label and retains the exact request ahead of draft recovery', async () => {
+  api.getPurchaseDetail.mockResolvedValue({
+    bill: {
+      id: 'unknown-source',
+      status: 'POSTED',
+      party_id: null,
+      bill_no: 'UNKNOWN-SOURCE',
+      business_date: '2026-01-01',
+      discount_paise: '0',
+      extra_charges_paise: '0',
+    },
+    lines: [
+      {
+        item_id: 'a',
+        unit_level: 1,
+        unit_name_snapshot: 'piece',
+        conv1_snapshot: null,
+        conv2_snapshot: null,
+        qty: '2',
+        unit_price_paise: '100',
+      },
+    ],
+  });
+  api.postPurchaseOutcome.mockResolvedValue({ kind: 'unknown', message: 'answer lost' });
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly purchaseRepeatId="unknown-source" />, host);
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('Draft repeated from UNKNOWN-SOURCE'));
+  await vi.waitFor(() => expect(host.textContent).toContain('Draft saved on this device'));
+  await act(async () => {
+    host
+      .querySelector('input[name="billNo"]')!
+      .closest('form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('Not confirmed'));
+  expect(host.textContent).not.toContain('not posted');
+  const first = api.postPurchaseOutcome.mock.calls[0][0];
+  await act(async () => {
+    render(null, host);
+  });
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly />, host);
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('Retry same purchase'));
+  expect(
+    [...host.querySelectorAll('button')].find((b) => b.textContent === 'Resume draft')!.disabled,
+  ).toBe(true);
+  await act(async () => {
+    host
+      .querySelector('input[name="billNo"]')!
+      .closest('form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  });
+  const retry = { ...api.postPurchaseOutcome.mock.calls[1][0] };
+  delete retry.savedAt; // local persistence metadata is never part of the RPC payload
+  expect(retry).toEqual(JSON.parse(JSON.stringify(first)));
+});

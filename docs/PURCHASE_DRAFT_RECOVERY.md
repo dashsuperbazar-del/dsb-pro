@@ -28,7 +28,7 @@ Drafts are scoped locally, not encrypted; browser profiles are still a trusted d
 
 ## Proof and limits
 
-- Local lint/typecheck, 327 unit tests, production build, format, bundle ceiling and installability checks: PASS.
+- Local lint/typecheck, 328 unit tests, production build, format, bundle ceiling and installability checks: PASS.
 - DOM regression restores all monetary/date fields and unfinished editing, asserts no automatic RPC,
   then posts with the original identity and checks exact quantities/costs/adjustments and draft cleanup.
 - Unit regressions: user/shop isolation, simultaneous editor snapshots, exact identity cleanup,

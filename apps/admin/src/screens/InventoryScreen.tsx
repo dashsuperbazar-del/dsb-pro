@@ -715,6 +715,7 @@ export function InventoryScreen({
     lockedPurchase.current = request;
     setPurchaseLocked(true);
     setPurchaseBusy(true);
+    setMessage('');
     try {
       const outcome = await postPurchaseOutcome(request, isRetry);
       if (outcome.kind === 'unknown') {
@@ -1156,7 +1157,7 @@ export function InventoryScreen({
       >
         <h2>Post purchase</h2>
         {draftError && <p role="alert">{draftError}</p>}
-        {draftStatus && (
+        {!purchaseLocked && draftStatus && (
           <p class="muted" aria-live="polite">
             {draftStatus}
           </p>
