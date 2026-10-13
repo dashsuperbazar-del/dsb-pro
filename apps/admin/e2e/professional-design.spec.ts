@@ -32,7 +32,7 @@ test('professional phone workspace preserves drafts across task views and has re
   if ((await health.getAttribute('open')) !== null) await health.locator('summary').first().click();
   await capture('01-home-phone');
   const nav = page.getByRole('navigation', { name: 'Quick navigation' });
-  await nav.getByRole('link', { name: 'Stock', exact: true }).click();
+  await page.goto('/inventory');
   await addItemForm(page);
   await page.getByPlaceholder('Item name').fill('Daily rice');
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
@@ -64,7 +64,7 @@ test('professional phone workspace preserves drafts across task views and has re
   await capture('02-purchase-phone');
   await purchase.getByRole('button', { name: 'Post purchase' }).click();
   await expect(page.getByRole('status')).toContainText('Purchase posted');
-  await nav.getByRole('link', { name: 'Billing', exact: true }).click();
+  await nav.getByRole('link', { name: 'Sales', exact: true }).click();
   await page.getByLabel('Item', { exact: true }).selectOption({ label: 'Daily rice' });
   await page.getByLabel('Quantity', { exact: true }).fill('2');
   await page.getByRole('button', { name: 'Add line' }).click();
@@ -82,7 +82,7 @@ test('professional phone workspace preserves drafts across task views and has re
   await capture('04-checkout-phone');
   await page.getByRole('button', { name: 'Finalize sale' }).click();
   await expect(page.getByRole('status')).toContainText('Sale finalized');
-  await nav.getByRole('link', { name: 'Parties', exact: true }).click();
+  await nav.getByRole('link', { name: 'Ledger', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Suppliers & payments' })).toBeVisible();
   await page.getByLabel('Supplier', { exact: true }).selectOption({ label: 'Daily Traders' });
   const tasks = page.getByRole('navigation', { name: 'Supplier tasks' });
@@ -102,7 +102,7 @@ test('professional phone workspace preserves drafts across task views and has re
   await capture('05b-supplier-payment-phone', false);
   await page.getByRole('button', { name: 'Confirm and record', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('confirmed by the server');
-  await nav.getByRole('link', { name: 'Stock', exact: true }).click();
+  await page.goto('/inventory');
   await expect(page.getByRole('button', { name: /Daily rice/ }).first()).toBeVisible();
   await capture('06-stock-phone');
   await page

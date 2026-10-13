@@ -27,7 +27,7 @@ async function createItem(page: import('@playwright/test').Page, name: string) {
 
 test('a single supplier bill can carry more than one purchase line', async ({ page }) => {
   await createOwnerShop(page);
-  await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await page.goto('/inventory');
   await createItem(page, 'Purchase Line Item A');
   await createItem(page, 'Purchase Line Item B');
 
@@ -82,7 +82,7 @@ test('a purchase whose answer is lost is retried as the same bill, never posted 
   page,
 }) => {
   await createOwnerShop(page);
-  await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await page.goto('/inventory');
   await createItem(page, 'Retry Item');
   await stockTask(page, 'Purchases');
   const purchase = page

@@ -20,7 +20,7 @@ async function createOwnerShop(page: import('@playwright/test').Page) {
 }
 
 async function seedOfflineItem(page: import('@playwright/test').Page) {
-  await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await page.goto('/inventory');
   await addItemForm(page);
   await page.getByPlaceholder('Item name').fill('Offline E2E Item');
   await page.getByPlaceholder('SKU', { exact: true }).fill(`OFF-${Date.now()}`);

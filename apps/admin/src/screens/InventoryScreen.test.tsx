@@ -14,6 +14,9 @@ const api = vi.hoisted(() => ({
   listParties: vi.fn().mockResolvedValue([]),
   listStock: vi.fn().mockResolvedValue([]),
   listCurrentPrices: vi.fn(),
+  listPurchaseHistory: vi.fn().mockResolvedValue([]),
+  getPurchaseDetail: vi.fn(),
+  postPurchaseOutcome: vi.fn(),
 }));
 vi.mock('@dsb-pro/adapters', () => api);
 const host = document.createElement('div');
@@ -99,4 +102,159 @@ test('item-specific price and barcode edits stay on the same item and cannot car
   );
   expect(host.querySelector<HTMLInputElement>('input[placeholder="₹ price"]')!.value).toBe('');
   expect(host.querySelector<HTMLInputElement>('input[name="barcode"]')!.value).toBe('');
+});
+
+test('new purchase shortcuts never replace an exact request awaiting confirmation', async () => {
+  localStorage.setItem(
+    'dsb-pending-purchase:shop',
+    JSON.stringify({
+      clientId: 'frozen',
+      shopId: 'shop',
+      partyId: 'p',
+      billNo: 'pending',
+      businessDate: '2026-10-01',
+      lines: [{ itemId: 'a', unitLevel: 1, qty: '2', unitPricePaise: 100 }],
+    }),
+  );
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly purchaseRepeatId="old" />, host);
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('Retry same purchase'));
+  expect(api.getPurchaseDetail).not.toHaveBeenCalled();
+  expect(host.textContent).toContain('Resolve the pending purchase');
+});
+test('editing a repeated purchase line updates one row rather than duplicating stock entry', async () => {
+  api.getPurchaseDetail.mockResolvedValue({
+    bill: {
+      id: 'old',
+      status: 'POSTED',
+      party_id: null,
+      bill_no: 'OLD',
+      business_date: '2026-01-01',
+      discount_paise: '0',
+      extra_charges_paise: '0',
+    },
+    lines: [
+      {
+        item_id: 'a',
+        unit_level: 1,
+        unit_name_snapshot: 'piece',
+        conv1_snapshot: null,
+        conv2_snapshot: null,
+        qty: '2',
+        unit_price_paise: '100',
+      },
+    ],
+  });
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly purchaseRepeatId="old" />, host);
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('Draft repeated from OLD'));
+  await act(async () => {
+    (host.querySelector('[aria-label="Edit purchase line 1"]') as HTMLButtonElement).click();
+  });
+  const post = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Post purchase')!;
+  expect(post.disabled).toBe(true);
+  const qty = host.querySelector<HTMLInputElement>('input[name="qty"]')!;
+  await act(async () => {
+    qty.value = '3';
+    qty.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const update = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Update line')!;
+  await act(async () => {
+    update.click();
+  });
+  expect(post.disabled).toBe(false);
+  expect(host.querySelectorAll('[aria-label^="Edit purchase line"]')).toHaveLength(1);
+  expect(host.querySelector('[aria-label="Purchase cart"]')?.textContent).toContain('₹3.00');
+});
+
+test('opening the purchase bill list preserves the repeated draft without a replacement prompt', async () => {
+  api.getPurchaseDetail.mockResolvedValue({
+    bill: {
+      id: 'old',
+      status: 'POSTED',
+      party_id: null,
+      bill_no: 'OLD',
+      business_date: '2026-01-01',
+      discount_paise: '0',
+      extra_charges_paise: '0',
+    },
+    lines: [
+      {
+        item_id: 'a',
+        unit_level: 1,
+        unit_name_snapshot: 'piece',
+        conv1_snapshot: null,
+        conv2_snapshot: null,
+        qty: '2',
+        unit_price_paise: '100',
+      },
+    ],
+  });
+  const prompt = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  try {
+    await act(async () => {
+      render(<InventoryScreen purchaseOnly purchaseRepeatId="old" />, host);
+    });
+    await vi.waitFor(() => expect(host.textContent).toContain('Draft repeated from OLD'));
+    await act(async () => {
+      render(<InventoryScreen purchaseOnly purchaseContextActive={false} />, host);
+    });
+    expect(prompt).not.toHaveBeenCalled();
+    expect(host.querySelector('[aria-label="Purchase cart"]')?.textContent).toContain('₹2.00');
+    await act(async () => {
+      render(<InventoryScreen purchaseOnly purchaseRepeatId="old" />, host);
+    });
+    expect(prompt).not.toHaveBeenCalled();
+    expect(host.querySelector('[aria-label="Purchase cart"]')?.textContent).toContain('₹2.00');
+  } finally {
+    prompt.mockRestore();
+  }
+});
+
+test('a cancelled slow repeat can be loaded again when its purchase task is reopened', async () => {
+  let finish!: (v: unknown) => void;
+  api.getPurchaseDetail.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly purchaseRepeatId="slow" />, host);
+  });
+  await vi.waitFor(() => expect(api.getPurchaseDetail).toHaveBeenCalledTimes(1));
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly purchaseContextActive={false} />, host);
+  });
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly purchaseRepeatId="slow" />, host);
+  });
+  await vi.waitFor(() => expect(api.getPurchaseDetail).toHaveBeenCalledTimes(2));
+  await act(async () => {
+    finish({
+      bill: {
+        id: 'slow',
+        status: 'POSTED',
+        party_id: null,
+        bill_no: 'SLOW',
+        business_date: '2026-01-01',
+        discount_paise: '0',
+        extra_charges_paise: '0',
+      },
+      lines: [
+        {
+          item_id: 'a',
+          unit_level: 1,
+          unit_name_snapshot: 'piece',
+          conv1_snapshot: null,
+          conv2_snapshot: null,
+          qty: '2',
+          unit_price_paise: '100',
+        },
+      ],
+    });
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('Draft repeated from SLOW'));
 });

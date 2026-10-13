@@ -131,7 +131,7 @@ test('purchase: a crash after commit keeps the bill locked; the retry posts it o
   page,
 }) => {
   await createOwnerShop(page);
-  await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await page.goto('/inventory');
   await addItemForm(page);
   await page.getByPlaceholder('Item name').fill('Rice bag');
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
@@ -412,7 +412,7 @@ test('purchase without a supplier: a 502 after commit is retried in the same win
   page,
 }) => {
   await createOwnerShop(page);
-  await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await page.goto('/inventory');
   await addItemForm(page);
   await page.getByPlaceholder('Item name').fill('Loose item');
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');

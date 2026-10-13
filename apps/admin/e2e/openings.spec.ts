@@ -19,7 +19,7 @@ test('owner records a supplier opening, sees it in balances, voids it and re-ent
   await page.getByRole('button', { name: 'Create your shop' }).click();
   await expect(page.getByText(/Overview/)).toBeVisible();
 
-  await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await page.goto('/inventory');
   await stockTask(page, 'Suppliers');
   await page.getByPlaceholder('Supplier name').fill('Opening Traders');
   await page.getByRole('button', { name: 'Create supplier' }).click();

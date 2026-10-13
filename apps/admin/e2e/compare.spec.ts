@@ -19,7 +19,7 @@ test('compare page shows day totals, supplier balance and stock, and exports CSV
   await page.getByRole('button', { name: 'Create your shop' }).click();
   await expect(page.getByText(/Overview/)).toBeVisible();
 
-  await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await page.goto('/inventory');
   await stockTask(page, 'Suppliers');
   await page.getByPlaceholder('Supplier name').fill('Compare Traders');
   await page.getByRole('button', { name: 'Create supplier' }).click();

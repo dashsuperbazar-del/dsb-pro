@@ -53,7 +53,7 @@ test('cart lines edit in place, and a held cart survives being parked and comes 
   test.setTimeout(60000);
   await page.setViewportSize({ width: 390, height: 844 });
   await createOwnerShop(page);
-  await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await page.goto('/inventory');
   await createItemWithStock(page, 'Cart Edit Item A', '10', '5');
   await createItemWithStock(page, 'Cart Edit Item B', '20', '5');
 
@@ -151,7 +151,7 @@ test('an online sale finalized during an in-flight sync cycle is posted, not lef
 }) => {
   test.setTimeout(60000);
   await createOwnerShop(page);
-  await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await page.goto('/inventory');
   await createItemWithStock(page, 'Race Item', '10', '5');
   // Let the start-up sync cycle cache the item and finish before the race is set up.
   await page.goto('/sync');

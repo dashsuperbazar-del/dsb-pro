@@ -953,3 +953,66 @@ body {
   font-size: 12px;
   color: var(--muted);
 }
+
+/* Daily DSB workflows: concise lists, contextual actions and shortcuts. */
+.context-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin: 12px 0;
+}
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 14px;
+  border-radius: 8px;
+  text-decoration: none;
+  min-height: 44px;
+}
+.button-link.primary {
+  background: var(--accent);
+  color: white;
+  font-weight: 700;
+}
+.shortcut-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 12px;
+}
+.shortcut-chips button {
+  font-size: 13px;
+  border-radius: 18px;
+  padding: 8px 12px;
+  min-height: 40px;
+}
+.shortcut-chips button[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--surface-2);
+}
+.purchase-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.purchase-line span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.purchase-line small {
+  display: block;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.purchase-line > strong {
+  white-space: nowrap;
+}
+.purchase-workspace h1 {
+  margin: 0;
+}

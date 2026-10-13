@@ -15,6 +15,7 @@ export function MoreScreen({ role }: { role: Role | null }) {
     ...(role === 'cashier'
       ? []
       : ([
+          [appRoute.inventory, 'Stock & items', 'stock'],
           [appRoute.expenses, 'Expenses', 'expense'],
           [appRoute.reports, 'Reports & recovery', 'report'],
         ] as [string, string, IconName][])),
