@@ -33,6 +33,10 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase', exact: true }) })
     .last();
+  const currentBusinessDate = await purchase.locator('input[name="date"]').inputValue();
+  const olderDate = new Date(currentBusinessDate + 'T12:00:00Z');
+  olderDate.setUTCDate(olderDate.getUTCDate() - 1);
+  await purchase.locator('input[name="date"]').fill(olderDate.toISOString().slice(0, 10));
   await purchase.locator('input[name="billNo"]').fill('DSB-1');
   await expect(purchase.locator('select[name="partyId"]')).toHaveValue(/.+/);
   await purchase.getByLabel('Purchase item', { exact: true }).selectOption({ label: 'Daily oil' });
@@ -60,6 +64,7 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
   await detail.getByRole('link', { name: 'Repeat into new draft' }).click();
   await expect(page.getByRole('status')).toContainText('Draft repeated from DSB-1');
   await expect(purchase.locator('input[name="billNo"]')).toHaveValue('');
+  await expect(purchase.locator('input[name="date"]')).toHaveValue(currentBusinessDate);
   await expect(purchase).toContainText('Daily oil');
   await purchase.locator('input[name="billNo"]').fill('DSB-2');
   await capture('13-repeat-purchase-phone');
