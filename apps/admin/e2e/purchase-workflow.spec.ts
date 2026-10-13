@@ -48,8 +48,9 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
   await expect(detail).toContainText('Due ₹240.00');
   async function capture(name: string) {
     const health = page.locator('.health-summary');
-    await expect(health.locator('summary')).not.toContainText('Checking…');
-    if ((await health.getAttribute('open')) !== null) await health.locator('summary').click();
+    await expect(health.locator(':scope > summary')).not.toContainText('Checking…');
+    if ((await health.getAttribute('open')) !== null)
+      await health.locator(':scope > summary').click();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
