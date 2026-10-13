@@ -722,7 +722,475 @@ export function InventoryScreen({
                     document
                       .getElementById('stock-item-details')
                       ?.scrollIntoView({ block: 'start' }),
-   …4678 tokens truncated…                    </td>
+                  );
+                }}
+              >
+                <span>
+                  <strong>{item.name}</strong>
+                  <small>{item.sku || 'No SKU'}</small>
+                </span>
+                <span class="record-value">
+                  {stock.find((row) => row.item_id === item.id)?.qty_base ?? '—'}
+                  <small>{item.unit3 || item.unit2 || item.unit1}</small>
+                </span>
+              </button>
+            ))}
+        </div>
+        <p class="muted">Showing up to 50 matches · {items.length} items</p>
+      </section>
+      {error && <p role="alert">{error}</p>}
+      {message && <p role="status">{message}</p>}
+      <section hidden={purchaseOnly || view !== 'advanced'} aria-label="Import old DSB backup">
+        <h2>Import old DSB backup</h2>
+        <p class="muted">
+          Shop-test setup only. This imports the current item master, sale prices, current stock,
+          suppliers and real customers. It does not copy historical purchase bills, sales invoices
+          or payments.
+        </p>
+        <input
+          aria-label="Choose DSB backup JSON"
+          type="file"
+          accept=".json,application/json"
+          onChange={chooseLegacyBackup}
+        />
+        {legacyPlan && (
+          <div class="card">
+            <strong>{legacyFileName}</strong>
+            <br />
+            Ready: {legacyPlan.items.length} items · {legacyPlan.parties.length} suppliers ·{' '}
+            {legacyPlan.customers.length} customers ·{' '}
+            {legacyPlan.items.reduce((n, i) => n + i.prices.length, 0)} price rows ·{' '}
+            {legacyPlan.items.filter((i) => i.openingStockSmallest > 0).length} positive stock
+            balances.
+            {legacyPlan.warnings.length > 0 && (
+              <>
+                <p>
+                  <strong>{legacyPlan.warnings.length} warnings</strong> (nothing is silently
+                  guessed):
+                </p>
+                <ul>
+                  {legacyPlan.warnings.slice(0, 6).map((w, n) => (
+                    <li key={n}>{w}</li>
+                  ))}
+                </ul>
+                {legacyPlan.warnings.length > 6 && (
+                  <p>
+                    …and {legacyPlan.warnings.length - 6} more. Items without a usable sale price
+                    remain unsellable until a price is added.
+                  </p>
+                )}
+              </>
+            )}
+            <p>
+              <button
+                type="button"
+                class="primary"
+                disabled={legacyBusy || !shopId}
+                onClick={() => void runLegacyImport()}
+              >
+                {legacyBusy ? 'Importing…' : 'Import checked backup'}
+              </button>
+            </p>
+          </div>
+        )}
+      </section>
+      <section id="stock-item-details" hidden={purchaseOnly || view !== 'items'}>
+        <h2>Item setup</h2>
+        <p>
+          Unit order follows DSB: big → small → piece. Stock is stored in the smallest configured
+          unit.
+        </p>
+        <details id="stock-add-item">
+          <summary>Add item</summary>
+          <form onSubmit={addItem}>
+            <label>
+              Item name <input name="name" placeholder="Item name" required />
+            </label>{' '}
+            <label>
+              SKU <input name="sku" placeholder="SKU" />
+            </label>{' '}
+            <label>
+              Big unit (e.g. case){' '}
+              <input name="unit1" placeholder="Big unit (e.g. case)" required />
+            </label>{' '}
+            <label>
+              Small unit (e.g. pack) <input name="unit2" placeholder="Small unit (e.g. pack)" />
+            </label>{' '}
+            <label>
+              Small units per big{' '}
+              <input
+                name="conv1"
+                type="number"
+                min="0"
+                step="any"
+                placeholder="Small units per big"
+              />
+            </label>{' '}
+            <label>
+              Piece unit (optional) <input name="unit3" placeholder="Piece unit (optional)" />
+            </label>{' '}
+            <label>
+              Pieces per small{' '}
+              <input name="conv2" type="number" min="0" step="any" placeholder="Pieces per small" />
+            </label>{' '}
+            <button disabled={!tenantId}>Create item</button>
+          </form>
+        </details>
+        <label>
+          Item details{' '}
+          <select
+            value={selected}
+            onChange={(e) => setSelected((e.currentTarget as HTMLSelectElement).value)}
+          >
+            <option value="">Choose…</option>
+            {items.map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {selectedItem && (
+          <div aria-label="item peek">
+            <strong>{selectedItem.name}</strong> · Stock {selectedStock}{' '}
+            {selectedItem.unit3 || selectedItem.unit2 || selectedItem.unit1}
+            <br />
+            Current prices:{' '}
+            {pricesLoading
+              ? 'Loading…'
+              : pricesFailed
+                ? 'Unavailable'
+                : prices.length
+                  ? prices.map((p) => `${p.kind} ₹${(p.price_paise / 100).toFixed(2)}`).join(' · ')
+                  : 'none'}
+            <br />
+            Reorder at: {selectedItem.min_stock}{' '}
+            {selectedItem.unit3 || selectedItem.unit2 || selectedItem.unit1}
+            <br />
+            <input type="file" accept="image/*" onChange={changeImage} />
+          </div>
+        )}
+        {selectedItem && (
+          <form onSubmit={changeMinStock}>
+            <label>
+              Reorder threshold ({selectedItem.unit3 || selectedItem.unit2 || selectedItem.unit1}){' '}
+              <input
+                name="minStock"
+                type="number"
+                min="0"
+                step="any"
+                defaultValue={selectedItem.min_stock}
+                key={selectedItem.id}
+              />
+            </label>{' '}
+            <button disabled={!shopId}>Save reorder threshold</button>
+          </form>
+        )}
+        {selectedItem && (
+          <form key={`barcode:${selectedItem.id}`} onSubmit={addBarcode}>
+            <label>
+              Barcode <input name="barcode" placeholder="Barcode" required />
+            </label>{' '}
+            <select aria-label="Unit" name="unitLevel">
+              <option value="1">{selectedItem.unit1}</option>
+              {selectedItem.unit2 && <option value="2">{selectedItem.unit2}</option>}
+              {selectedItem.unit3 && <option value="3">{selectedItem.unit3}</option>}
+            </select>{' '}
+            <button disabled={!tenantId}>Link barcode</button>
+          </form>
+        )}
+        {selectedItem && (
+          <form key={`price:${selectedItem.id}`} onSubmit={changePrice}>
+            <select name="kind">
+              <option value="retail">Retail</option>
+              <option value="wholesale">Wholesale</option>
+              <option value="mrp">MRP</option>
+              <option value="cost_last">Last cost</option>
+            </select>{' '}
+            <select aria-label="Unit" name="unitLevel">
+              <option value="1">{selectedItem.unit1}</option>
+              {selectedItem.unit2 && <option value="2">{selectedItem.unit2}</option>}
+              {selectedItem.unit3 && <option value="3">{selectedItem.unit3}</option>}
+            </select>{' '}
+            <label>
+              ₹ price{' '}
+              <input
+                name="price"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="₹ price"
+                required
+              />
+            </label>{' '}
+            <button disabled={!shopId}>Set price</button>
+          </form>
+        )}
+      </section>
+      <section hidden={purchaseOnly || view !== 'suppliers'}>
+        <h2>Suppliers</h2>
+        <form onSubmit={addParty}>
+          <label>
+            Supplier name <input name="name" placeholder="Supplier name" required />
+          </label>{' '}
+          <label>
+            Phone <input name="phone" placeholder="Phone" />
+          </label>{' '}
+          <label>
+            GSTIN <input name="gstin" placeholder="GSTIN" />
+          </label>{' '}
+          <button disabled={!tenantId}>Create supplier</button>
+        </form>
+      </section>
+      {purchaseOnly && (
+        <details class="card">
+          <summary>Add a supplier</summary>
+          <form onSubmit={addParty}>
+            <label>
+              Supplier name
+              <input name="name" placeholder="New supplier name" required />
+            </label>
+            <label>
+              Phone
+              <input name="phone" type="tel" />
+            </label>
+            <label>
+              GSTIN
+              <input name="gstin" />
+            </label>
+            <button disabled={purchaseLocked || contextBusy || !tenantId}>
+              Create & select supplier
+            </button>
+          </form>
+        </details>
+      )}
+      <section hidden={view !== 'purchase'}>
+        <h2>Post purchase</h2>
+        <form onSubmit={addPurchase}>
+          {purchaseLocked && (
+            <p class="alert" role="alert">
+              The last purchase may already be saved. Editing is locked: press “Retry same purchase”
+              — it never posts the bill twice.
+            </p>
+          )}
+          <fieldset disabled={purchaseLocked || contextBusy} class="plain">
+            <label>
+              Bill no.{' '}
+              <input
+                name="billNo"
+                placeholder="Bill no."
+                value={purchaseBillNo}
+                onInput={(e) => setPurchaseBillNo(e.currentTarget.value)}
+              />
+            </label>{' '}
+            <label>
+              Business date
+              <input
+                name="date"
+                type="date"
+                value={businessDate}
+                onInput={(e) => setBusinessDate((e.currentTarget as HTMLInputElement).value)}
+                required
+              />
+            </label>{' '}
+            <label>
+              Supplier
+              <select
+                name="partyId"
+                value={purchaseSupplier}
+                onChange={(e) => setPurchaseSupplier(e.currentTarget.value)}
+              >
+                <option value="">No supplier</option>
+                {parties.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>{' '}
+            {purchaseOnly && (
+              <div class="shortcut-chips" aria-label="Recent suppliers">
+                {rankedPurchaseParties(parties, recentBills, businessDate)
+                  .slice(0, 6)
+                  .map((p) => (
+                    <button
+                      type="button"
+                      aria-pressed={purchaseSupplier === p.id}
+                      onClick={() => setPurchaseSupplier(p.id)}
+                    >
+                      {p.name}
+                    </button>
+                  ))}
+              </div>
+            )}
+            {purchaseOnly && recentDetail && (
+              <div class="shortcut-chips" aria-label="Recent supplier items">
+                {recentDetail.lines.slice(0, 8).map((l) => (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      try {
+                        const line = repeatPurchase(recentDetail.bill, [l], items)[0];
+                        setPurchaseCart((c) => [...c, line]);
+                        setMessage(
+                          'Added from the last supplier bill. Review quantity and historical cost.',
+                        );
+                      } catch (e) {
+                        setError(String(e));
+                      }
+                    }}
+                  >
+                    {l.item_name_snapshot} · {rupees(l.unit_price_paise)}/{l.unit_name_snapshot}
+                  </button>
+                ))}
+              </div>
+            )}
+            <label>
+              Discount ₹{' '}
+              <input
+                name="discount"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Discount ₹"
+                value={purchaseDiscount}
+                onInput={(e) => setPurchaseDiscount(e.currentTarget.value)}
+              />
+            </label>{' '}
+            <label>
+              Extra ₹{' '}
+              <input
+                name="extra"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Extra ₹"
+                value={purchaseExtra}
+                onInput={(e) => setPurchaseExtra(e.currentTarget.value)}
+              />
+            </label>
+            <fieldset>
+              <legend>Add purchase line</legend>
+              {purchaseOnly && (
+                <label>
+                  Find purchase item
+                  <input
+                    placeholder="Item name or SKU"
+                    value={purchaseItemSearch}
+                    onInput={(e) => {
+                      setPurchaseItemSearch(e.currentTarget.value);
+                      setPurchaseLineItemId('');
+                      setPurchaseLineQty('');
+                      setPurchaseLinePrice('');
+                    }}
+                  />
+                </label>
+              )}
+              <select
+                aria-label="Purchase item"
+                name="itemId"
+                value={purchaseLineItemId}
+                onChange={(e) => {
+                  setPurchaseLineItemId((e.currentTarget as HTMLSelectElement).value);
+                  setPurchaseLineUnitLevel(1);
+                  setPurchaseLineQty('');
+                  setPurchaseLinePrice('');
+                }}
+              >
+                <option value="">Item…</option>
+                {items
+                  .filter((i) =>
+                    (i.name + ' ' + (i.sku || ''))
+                      .toLowerCase()
+                      .includes(purchaseItemSearch.toLowerCase()),
+                  )
+                  .slice(0, purchaseOnly ? 50 : items.length)
+                  .map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.name}
+                    </option>
+                  ))}
+              </select>{' '}
+              <select
+                aria-label="Unit"
+                name="unitLevel"
+                disabled={!purchaseLineItem}
+                value={purchaseLineUnitLevel}
+                onChange={(e) =>
+                  setPurchaseLineUnitLevel(
+                    Number((e.currentTarget as HTMLSelectElement).value) as 1 | 2 | 3,
+                  )
+                }
+              >
+                <option value="1">{purchaseLineItem?.unit1 || 'Big unit'}</option>
+                {purchaseLineItem?.unit2 && <option value="2">{purchaseLineItem.unit2}</option>}
+                {purchaseLineItem?.unit3 && <option value="3">{purchaseLineItem.unit3}</option>}
+              </select>{' '}
+              <label>
+                Quantity
+                <input
+                  name="qty"
+                  type="number"
+                  min="0.000001"
+                  step="any"
+                  placeholder="Qty"
+                  value={purchaseLineQty}
+                  onInput={(e) => setPurchaseLineQty((e.currentTarget as HTMLInputElement).value)}
+                />
+              </label>{' '}
+              <label>
+                Unit cost ₹
+                <input
+                  name="price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Unit cost ₹"
+                  value={purchaseLinePrice}
+                  onInput={(e) => setPurchaseLinePrice((e.currentTarget as HTMLInputElement).value)}
+                />
+              </label>{' '}
+              <button type="button" onClick={addPurchaseLine}>
+                {editingPurchaseLine === null ? 'Add line' : 'Update line'}
+              </button>
+              {editingPurchaseLine !== null && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingPurchaseLine(null);
+                    setPurchaseLineItemId('');
+                    setPurchaseLineQty('');
+                    setPurchaseLinePrice('');
+                  }}
+                >
+                  Cancel line edit
+                </button>
+              )}
+            </fieldset>
+            {purchaseCart.length > 0 && (
+              <div class="table-wrap mobile-records" aria-label="Purchase cart">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Item</th>
+                      <th>Qty</th>
+                      <th>Unit cost</th>
+                      <th>Line total</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {purchaseCart.map((l, n) => (
+                      <tr key={n}>
+                        <td class="record-title" data-label="Item">
+                          {l.item.name}
+                          <small> {unitLabel(l.item, l.unitLevel)}</small>
+                        </td>
+                        <td data-label="Quantity">{l.qty}</td>
+                        <td data-label="Unit cost">₹{(l.unitPricePaise / 100).toFixed(2)}</td>
+                        <td data-label="Line total">
+                          ₹{(quantityTimesPaise(l.qty, l.unitPricePaise) / 100).toFixed(2)}
+                        </td>
                         <td>
                           {purchaseOnly && (
                             <button
