@@ -47,3 +47,6 @@ export type { AccountOpening } from './outcomes';
 export { recordOpeningOutcome, voidOpeningOutcome, listOpenings } from './outcomes';
 export type { SettlementOptions } from './outcomes';
 export { settleOpeningOutcome, voidSettlementOutcome, getSettlementOptions } from './outcomes';
+
+export { billDocumentPath, billDocumentHash, readBillDocument, uploadBillDocument, BILL_DOCUMENT_PATH } from './billDocuments';
+export type { BillDocument } from './billDocuments';

@@ -754,9 +754,28 @@ jobs:
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c \
             "update app_migration_receipts set checksum_sha256 = '$expected_checksum' where version = '0057'"
           assert_state '5:2:5:2:3:4:1:2:2:2:2:2:2:2:2:2:2:2:2'
-          # Last receipt-tracked group: nothing may be left to apply.
-          grep -Fx 'needs_upgrade=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
           echo 'DISPOSABLE PACKET D3A EXPORT REQUEST LEDGER UPGRADE: PASS'
+      - name: Prove private bill documents upgrade (apply, immutable wrapper body, no-op, partial/tamper refusal)
+        env:
+          PROOF_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          grep -Fx 'needs_billdocs=true' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" billdocs
+          grep -Fx 'needs_billdocs=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" billdocs
+          expected_checksum=$(sha256sum supabase/migrations/0058_bill_documents.sql | cut -d' ' -f1)
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update app_migration_receipts set checksum_sha256=repeat('0',64) where version='0058'"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo '0058 tamper accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update app_migration_receipts set checksum_sha256='$expected_checksum' where version='0058'"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update storage.buckets set public=true where id='bill-documents'"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Public bill bucket drift accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update storage.buckets set public=false where id='bill-documents'"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update pg_proc set prosrc=prosrc||E'\n-- billdocs drift' where oid='public.post_purchase(uuid,uuid,text,date,bigint,bigint,text,jsonb,text)'::regprocedure"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Changed purchase wrapper body accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update pg_proc set prosrc=regexp_replace(prosrc,E'\n-- billdocs drift$','') where oid='public.post_purchase(uuid,uuid,text,date,bigint,bigint,text,jsonb,text)'::regprocedure"
+          grep -Fx 'needs_upgrade=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          echo 'DISPOSABLE BILL DOCUMENTS UPGRADE: PASS'
       - name: Stop and erase the disposable target
         if: always()
         run: supabase stop --workdir "$PROOF_ROOT" --no-backup
@@ -1400,6 +1419,11 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" d3a
+      - name: Apply private bill documents atomically
+        if: steps.preflight.outputs.needs_billdocs == 'true'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" billdocs
       - name: Verify live Batch B contract
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}

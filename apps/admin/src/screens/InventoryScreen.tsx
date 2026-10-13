@@ -25,6 +25,7 @@ import {
   type Party,
   type StockRow,
   type PurchaseRequest,
+  type BillDocument,
 } from '@dsb-pro/adapters';
 import {
   buildLegacyDsbImportPlan,
@@ -36,6 +37,8 @@ import {
 import { repeatPurchase, rankedPurchaseParties } from '../lib/purchaseWorkflow';
 import { paiseToDecimal, rupees } from '../lib/money';
 import { compressItemImage } from '../lib/compressImage';
+import { BillAttachmentEditor } from '../components/BillAttachmentEditor';
+import { removeLocalDocument } from '../lib/billDocumentStore';
 import { TaskTabs } from '../components/TaskTabs';
 import { appRoute } from '../lib/paths';
 import { clearPendingIntent, loadPendingIntent, savePendingIntent } from '../lib/pendingIntent';
@@ -101,6 +104,9 @@ export function InventoryScreen({
   const [draftError, setDraftError] = useState('');
   const [draftStatus, setDraftStatus] = useState('');
   const [draftTouched, setDraftTouched] = useState(false);
+  const [billDocument, setBillDocument] = useState<BillDocument | null>(null);
+  const [documentBusy, setDocumentBusy] = useState(false);
+  const [documentSaveError, setDocumentSaveError] = useState('');
   const [businessDate, setBusinessDate] = useState('');
   const [selected, setSelected] = useState('');
   const selectedRef = useRef(selected);
@@ -135,6 +141,8 @@ export function InventoryScreen({
   const [purchaseContextReady, setPurchaseContextReady] = useState(!purchaseOnly);
   const [editingPurchaseLine, setEditingPurchaseLine] = useState<number | null>(null);
   const [purchaseClientId, setPurchaseClientId] = useState<string>(() => crypto.randomUUID());
+  const purchaseClientRef = useRef(purchaseClientId);
+  purchaseClientRef.current = purchaseClientId;
   // After a failure whose outcome is unknown (offline/server), the bill may already be posted. The
   // form stays frozen so a retry resends the SAME request id and payload; the server returns the
   // stored bill if it was committed (and refuses a changed payload).
@@ -278,7 +286,8 @@ export function InventoryScreen({
     }
     contextApplied.current = intent;
     if (
-      (draftTouched ||
+      (billDocument ||
+        draftTouched ||
         purchaseCart.length ||
         purchaseBillNo ||
         purchaseDiscount ||
@@ -322,6 +331,9 @@ export function InventoryScreen({
         }
         setBusinessDate(newDate);
         setPurchaseBillNo('');
+        setBillDocument(null);
+        setDocumentBusy(false);
+        setDocumentSaveError('');
         setEditingPurchaseLine(null);
         setPurchaseItemSearch('');
         setPurchaseLineItemId('');
@@ -390,11 +402,13 @@ export function InventoryScreen({
     qty: purchaseLineQty,
     price: purchaseLinePrice,
     editingLine: editingPurchaseLine,
+    document: billDocument,
   };
   // Layout effect runs after each committed edit, without a debounce that could lose picker/reload work.
   useLayoutEffect(() => {
     if (accountChanged || !draftPrefix || !catalogLoaded || contextBusy || purchaseLocked) return;
     if (!(
+      billDocument ||
       draftTouched ||
       purchaseCart.length ||
       purchaseBillNo ||
@@ -434,9 +448,17 @@ export function InventoryScreen({
     purchaseLineQty,
     purchaseLinePrice,
     editingPurchaseLine,
+    billDocument,
   ]);
   function resumeDraft(saved: SavedPurchaseDraft) {
-    if (lockedPurchase.current || purchaseBusy || contextBusy || purchaseStorageBlocked) return;
+    if (
+      lockedPurchase.current ||
+      purchaseBusy ||
+      contextBusy ||
+      documentBusy ||
+      purchaseStorageBlocked
+    )
+      return;
     if (
       (draftTouched || purchaseCart.length || purchaseBillNo || purchaseLineItemId) &&
       !confirm('Switch to this saved draft? Your current draft stays saved on this device.')
@@ -447,6 +469,9 @@ export function InventoryScreen({
       contextApplied.current = purchaseSupplierId + ':' + purchaseRepeatId;
       contextNeedsReset.current = false;
       setPurchaseClientId(d.clientId);
+      setBillDocument(d.document ?? null);
+      setDocumentBusy(false);
+      setDocumentSaveError('');
       setPurchaseSupplier(d.supplier);
       setPurchaseBillNo(d.billNo);
       setBusinessDate(d.businessDate);
@@ -666,6 +691,13 @@ export function InventoryScreen({
     if (purchaseBusy || contextBusy || (!purchaseLocked && !purchaseContextReady) || accountChanged)
       return;
     setError('');
+    if (
+      !purchaseLocked &&
+      (documentBusy || documentSaveError || (billDocument && !billDocument.uploaded))
+    ) {
+      setError('Confirm the document upload, or explicitly remove the attachment, before posting.');
+      return;
+    }
     if (!purchaseLocked && editingPurchaseLine !== null) {
       setError('Update or cancel the line edit before posting this purchase.');
       return;
@@ -700,6 +732,7 @@ export function InventoryScreen({
       discountPaise: paise(String(f.get('discount'))),
       extraChargesPaise: paise(String(f.get('extra'))),
       clientId: purchaseClientId,
+      billImagePath: billDocument?.path,
       lines: purchaseCart.map((l) => ({
         itemId: l.item.id,
         unitLevel: l.unitLevel,
@@ -756,6 +789,10 @@ export function InventoryScreen({
       // a restored entry from another window leaves the user's cart intact (Codex P2).
       if (request.clientId === purchaseClientId) {
         setPurchaseClientId(crypto.randomUUID());
+        if (billDocument) void removeLocalDocument(draftPrefix, billDocument.id).catch(() => {});
+        setBillDocument(null);
+        setDocumentBusy(false);
+        setDocumentSaveError('');
         setPurchaseCart([]);
         setPurchaseBillNo('');
         setPurchaseDiscount('');
@@ -1227,7 +1264,72 @@ export function InventoryScreen({
               — it never posts the bill twice.
             </p>
           )}
-          <fieldset disabled={purchaseLocked || contextBusy || !purchaseContextReady} class="plain">
+          {draftPrefix && (
+            <BillAttachmentEditor
+              key={purchaseClientId}
+              scope={draftPrefix}
+              tenantId={tenantId}
+              shopId={shopId}
+              clientId={purchaseClientId}
+              document={billDocument}
+              disabled={purchaseLocked || contextBusy || !purchaseContextReady || accountChanged}
+              onBusy={(busy) => {
+                if (purchaseClientRef.current === purchaseClientId) setDocumentBusy(busy);
+              }}
+              beforePicker={() => {
+                if (
+                  lockedPurchase.current ||
+                  contextBusy ||
+                  documentBusy ||
+                  !purchaseContextReady ||
+                  accountChanged
+                )
+                  return false;
+                try {
+                  savePurchaseDraft(draftPrefix, draftWriter.current, draftSnapshot);
+                  return true;
+                } catch (e) {
+                  setDocumentSaveError(
+                    `Draft could not be kept before opening the picker: ${String(e)}`,
+                  );
+                  return false;
+                }
+              }}
+              onChange={(doc) => {
+                if (purchaseClientRef.current !== purchaseClientId || lockedPurchase.current)
+                  return;
+                try {
+                  savePurchaseDraft(draftPrefix, draftWriter.current, {
+                    ...draftSnapshot,
+                    document: doc,
+                    savedAt: Date.now(),
+                  });
+                  setBillDocument(doc);
+                  setDraftTouched(true);
+                  setDocumentSaveError('');
+                } catch (e) {
+                  setDocumentSaveError(String(e));
+                  throw e;
+                }
+              }}
+            />
+          )}
+          {documentSaveError && (
+            <div role="alert">
+              <p>{documentSaveError}</p>
+              <button
+                type="button"
+                disabled={purchaseLocked || documentBusy}
+                onClick={() => setDocumentSaveError('')}
+              >
+                {billDocument ? 'Keep current attachment' : 'Continue without attachment'}
+              </button>
+            </div>
+          )}
+          <fieldset
+            disabled={purchaseLocked || contextBusy || documentBusy || !purchaseContextReady}
+            class="plain"
+          >
             <label>
               Bill no.{' '}
               <input
@@ -1489,7 +1591,11 @@ export function InventoryScreen({
             disabled={
               purchaseBusy ||
               contextBusy ||
-              (!purchaseLocked && !purchaseContextReady) ||
+              (!purchaseLocked &&
+                (!purchaseContextReady ||
+                  documentBusy ||
+                  !!documentSaveError ||
+                  (!!billDocument && !billDocument.uploaded))) ||
               (!purchaseLocked && editingPurchaseLine !== null) ||
               !shopId ||
               !businessDate ||

@@ -1,9 +1,11 @@
 # Build Execution Ledger
 
-DW2a purchase draft recovery (2026-10-14 IST): IN_PROGRESS on `codex/dw2-purchase-draft-recovery`,
-based on DW1 merged main `41dfd4b`. No migration; explicit user/shop draft restore and retained
-posting identity. Local proof and CI/review limits: [PURCHASE_DRAFT_RECOVERY.md](PURCHASE_DRAFT_RECOVERY.md).
-This entry does not close bill-photo work or human acceptance gates.
+DW2a draft recovery: PR #71 head `3169f88`, full CI #814 PASS (329 unit, 55 browser,
+20 held-cart repetitions); independent review/merge remain pending. No live change.
+DW2b private bill attachments: IN_PROGRESS, dependent on #71, migration 0058 / billdocs.
+Local 336 tests/lint/types/build PASS; full CI, second validate-only migration run, independent
+review and real-device/shop gates remain pending. Contract: [BILL_DOCUMENTS.md](BILL_DOCUMENTS.md).
+Binary object backup/retention follow-up remains open; no attachment disaster-recovery claim.
 
 Packet-state tracker for `docs/COMPLETE_REMAINING_BUILD_PLAN.md` v1.1, per that plan's §4.1 and
 §0.4 execution protocol. States: `NOT_STARTED` / `IN_PROGRESS` / `CODE_REVIEW` / `CI_PASSED` /

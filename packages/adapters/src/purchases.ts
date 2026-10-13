@@ -6,6 +6,7 @@ export type PurchaseRecord = {
   id: string;
   party_id: string | null;
   bill_no: string | null;
+  bill_image_path: string | null;
   business_date: string;
   created_at: string;
   status: 'POSTED' | 'VOID';
@@ -34,7 +35,7 @@ export type PurchaseBalance = {
   returned_paise: string;
 };
 const header =
-  'id,party_id,bill_no,business_date,created_at,status,subtotal_paise::text,discount_paise::text,extra_charges_paise::text,total_paise::text';
+  'id,party_id,bill_no,business_date,created_at,status,bill_image_path,subtotal_paise::text,discount_paise::text,extra_charges_paise::text,total_paise::text';
 async function authorize(shopId: string) {
   const m = await getCurrentMembership();
   if (!m || !['owner', 'manager', 'accountant'].includes(m.role) || !m.shopIds.includes(shopId))

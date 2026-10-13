@@ -45,6 +45,7 @@ export const ALLOWED_GROUPS = Object.freeze([
   'o2',
   'd2b',
   'd3a',
+  'billdocs',
 ]);
 
 const VERSION_RE = /^[0-9]{4}$/;
@@ -105,6 +106,7 @@ const EXPECTED_LEGACY_ENTRIES = Object.freeze({
 // checksum) once it has actually merged to `main`.
 const EXPECTED_IN_FLIGHT_GROUP_AND_PATH = Object.freeze({
   '0057': ['d3a', 'supabase/migrations/0057_export_requests.sql'],
+  '0058': ['billdocs', 'supabase/migrations/0058_bill_documents.sql'],
 });
 
 /**

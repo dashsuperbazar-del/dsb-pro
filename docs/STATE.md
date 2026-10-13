@@ -8,12 +8,16 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
   Home/Purchases/Sales/Ledger/More; purchase bills/detail, snapshot-safe repeat into fresh draft,
   supplier/recent item shortcuts, inline supplier creation, bill-to-payment/ledger, Full + Auto allocations.
   Production publication of DW1 remains pending per saved verifier log; not independently dispatched here.
-- DW2a purchase draft recovery: IN_PROGRESS on `codex/dw2-purchase-draft-recovery`.
-  Full editable purchase state saved per user/shop; explicit Resume/Discard; original posting identity retained.
-  Frozen UNKNOWN requests take precedence; changed/missing item units refuse restore without deleting drafts.
-  Per-editor snapshots preserve parallel-window work. Account changes hide the previous editor.
-  No migration. Local validation and final-head full CI tracked in docs/PURCHASE_DRAFT_RECOVERY.md.
-  Bill-photo/document work remains DW2b; no full legacy-parity or daily-usability claim.
+- DW2a PR #71 remains DRAFT, head `3169f88`; full CI #814 PASS, 329 unit tests,
+  55 browser passes + 1 scale-only skip, 20 held-cart repetitions. Independent review/merge pending.
+- DW2b private bill attachments: IN_PROGRESS on `codex/dw2b-bill-attachments`, based on #71.
+  One photo/PDF; Camera/Gallery; full draft + binary continuity; immutable upload/retry; history viewer.
+  New migration 0058, group billdocs (not applied live). Historical migrations 0001–0057 unchanged.
+  Local lint/types/336 tests/build/format/bundle/installability PASS; full CI/second validate/review pending.
+  Risks: cost leakage through item storage, lost picker state, upload/UNKNOWN races, stale async completion,
+  duplicate request identity, deleting a posted original. Contracts: docs/BILL_DOCUMENTS.md.
+  Object-byte backup/restore and orphan cleanup remain follow-up work; no attachment DR claim.
+  Bill photo publishing requires this storage migration; no merge/apply/deploy authorized by these checks.
   H3 + clean shop week remain NOT GO pending dated real-device evidence.
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
   partial returns carry item value, capped so a bill's returns never exceed what was billed for its
