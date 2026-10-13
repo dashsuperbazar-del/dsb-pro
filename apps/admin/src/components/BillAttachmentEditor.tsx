@@ -166,6 +166,7 @@ export function BillAttachmentEditor({
           accept="image/jpeg,image/png,image/webp"
           capture="environment"
           onChange={choose}
+          onCancel={() => onProblem('')}
         />
         <input
           hidden
@@ -174,6 +175,7 @@ export function BillAttachmentEditor({
           aria-label="Choose bill image"
           accept="image/jpeg,image/png,image/webp"
           onChange={choose}
+          onCancel={() => onProblem('')}
         />
         <input
           hidden
@@ -182,6 +184,7 @@ export function BillAttachmentEditor({
           aria-label="Choose bill PDF"
           accept="application/pdf,.pdf"
           onChange={choose}
+          onCancel={() => onProblem('')}
         />
         {busy && <p aria-live="polite">Saving or checking document… Keep this page open.</p>}
         {error && <p role="alert">{error}</p>}

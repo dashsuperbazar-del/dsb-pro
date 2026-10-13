@@ -404,6 +404,7 @@ export function InventoryScreen({
     price: purchaseLinePrice,
     editingLine: editingPurchaseLine,
     document: billDocument,
+    documentIssue: documentSaveError,
   };
   // Layout effect runs after each committed edit, without a debounce that could lose picker/reload work.
   useLayoutEffect(() => {
@@ -450,6 +451,7 @@ export function InventoryScreen({
     purchaseLinePrice,
     editingPurchaseLine,
     billDocument,
+    documentSaveError,
   ]);
   function resumeDraft(saved: SavedPurchaseDraft) {
     if (
@@ -472,7 +474,7 @@ export function InventoryScreen({
       setPurchaseClientId(d.clientId);
       setBillDocument(d.document ?? null);
       setDocumentBusy(false);
-      setDocumentSaveError('');
+      setDocumentSaveError(d.documentIssue ?? '');
       setPurchaseSupplier(d.supplier);
       setPurchaseBillNo(d.billNo);
       setBusinessDate(d.businessDate);
@@ -1298,7 +1300,14 @@ export function InventoryScreen({
                 )
                   return false;
                 try {
-                  savePurchaseDraft(draftPrefix, draftWriter.current, draftSnapshot);
+                  const notice =
+                    'Document selection needs review. Select the file again, or explicitly continue with the current attachment.';
+                  savePurchaseDraft(draftPrefix, draftWriter.current, {
+                    ...draftSnapshot,
+                    documentIssue: notice,
+                    savedAt: Date.now(),
+                  });
+                  setDocumentSaveError(notice);
                   return true;
                 } catch (e) {
                   setDocumentSaveError(
@@ -1314,6 +1323,7 @@ export function InventoryScreen({
                   savePurchaseDraft(draftPrefix, draftWriter.current, {
                     ...draftSnapshot,
                     document: doc,
+                    documentIssue: '',
                     savedAt: Date.now(),
                   });
                   setBillDocument(doc);

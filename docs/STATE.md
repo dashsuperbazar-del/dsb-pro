@@ -1,7 +1,10 @@
 # DSB Pro — STATE (read this instead of HANDOVER.md)
+
 Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/COMPLETE_REMAINING_BUILD_PLAN.md` v1.1.
 Always verify the SHA below with `git log origin/main -1` before trusting it.
+
 ## Current
+
 - `main` verified: `41dfd4b6e4202a3fc90de29a143247d6f82e9885` (DW1 #70; fetched 2026-10-14 IST). Migrations 0001–0057 immutable.
 - DW1 #70 merged after final-head CI #809 / run 38359193865 PASS: 320 unit tests,
   55 browser tests passed + 1 scale-only skip, 20 held-cart repetitions passed.
@@ -13,7 +16,7 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
 - DW2b private bill attachments: IN_PROGRESS on `codex/dw2b-bill-attachments`, based on #71.
   One photo/PDF; Camera/Gallery; full draft + binary continuity; immutable upload/retry; history viewer.
   New migration 0058, group billdocs (not applied live). Historical migrations 0001–0057 unchanged.
-  Local lint/types/337 tests/build/format/bundle/installability PASS; full CI/second validate/review pending.
+  Local lint/types/338 tests/build/format/bundle/installability PASS; full CI/second validate/review pending.
   Risks: cost leakage through item storage, lost picker state, upload/UNKNOWN races, stale async completion,
   duplicate request identity, deleting a posted original. Contracts: docs/BILL_DOCUMENTS.md.
   Object-byte backup/restore and orphan cleanup remain follow-up work; no attachment DR claim.
@@ -59,18 +62,24 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
   settlement retry stays a rejection and says so; never shown as settled. F1 stays deferred (2 Oct).
 - M1 gate (daily-usable): O1 ✓ + H3 (user, offline→restart→reconnect, each entry once) + first clean
   real-data week (Compare page + invariants). Waiting on the user for H3 and the cutover date.
+
 ## Workflow (single builder)
+
 failing tests → migration → adapters/UI → `pnpm lint && pnpm typecheck && pnpm test` (+pgTAP) →
 fresh sub-agent review (BLOCKER/MAJOR fixed, max 2 rounds) → PR → CI → 5-line summary → user says `merge`.
 CI gate: UI/no-migration packet = one green full run on final head. Migration packet = PR run +
 `workflow_dispatch operation=validate`, both on the unchanged final head. Squash-merge is the ratified practice.
 Ask the user only for: merge, live migration/deploy approval, money/data-loss trade-off.
 Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it applies all pending groups).
+
 ## Local environment
+
 - This session lacks Docker/local Chromium; full Supabase/browser proofs run in CI (CLI 2.116.0).
 - After migrations reset DB and regenerate `packages/db/src/types.ts`; CI rejects stale types.
 - `pnpm exec prettier --check "apps/**/*.{ts,tsx,css,json,html}"` (config `.prettierrc.json`).
+
 ## Open risks / debts
+
 - D1-lite: old `get_customer_aging_report` (current-state balances labelled as-of) stays for compatibility but the
   UI no longer calls it. 100k-invoice EXPLAIN not done (one shop; revisit at S1). Cash counts as assigned only
   when allocated/linked to a document in the same as-of set, so stranded allocations show as unassigned cash.
@@ -104,7 +113,9 @@ Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it
 - Every gate H1–H9 from Phase 3 on is NOT GO; needs dated real-shop evidence. H3 needs an explicit
   offline→restart→reconnect device test. Returns/offline returns/Batch B are now live on the DB, so these matter.
 - P1 deferred follow-ups 1–6 (see ledger P1 row) are moved to M2.
+
 ## Decisions log
+
 - 2026-10-01: USER DECISION (B1) — item values stay in exact paise; the BILL total rounds to the nearest rupee
   (half-up, as old DSB) with a separate round-off amount. New packet R0 (migration). Old/queued sales stay exact.
 - 2026-10-01: U1 daily-entry forms (expense, stock adjust, purchase) freeze the request after an unconfirmed

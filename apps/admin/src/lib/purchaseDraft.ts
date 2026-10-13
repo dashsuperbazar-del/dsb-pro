@@ -19,6 +19,7 @@ export type PurchaseDraft = {
   price: string;
   editingLine: number | null;
   document?: BillDocument | null;
+  documentIssue?: string;
 };
 export type SavedPurchaseDraft = { key: string; draft: PurchaseDraft };
 export function purchaseDraftPrefix(userId: string, shopId: string) {
@@ -58,6 +59,8 @@ function checked(value: unknown): PurchaseDraft {
     )
   )
     throw new Error('A saved purchase draft is unreadable. It has been kept on this device.');
+  if (d.documentIssue !== undefined && typeof d.documentIssue !== 'string')
+    throw new Error('Saved document selection state is unreadable. The draft has been kept.');
   if (d.document) {
     const photo = d.document,
       parts = BILL_DOCUMENT_PATH.exec(photo.path);

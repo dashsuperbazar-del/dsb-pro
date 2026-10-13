@@ -26,7 +26,14 @@ select throws_like($$select pg_temp.post_doc(null)$$,'DSB_PAYLOAD_MISMATCH%','nu
 select throws_like($$select pg_temp.post_doc(current_setting('bd.path'),'bd000000-0000-0000-0000-000000000097')$$,'DSB_BILL_DOCUMENT_INVALID%','another purchase cannot bind this request image');
 select is((select count(*) from purchase_bills where client_id=current_setting('bd.client')),1::bigint,'one purchase only after retries');
 select is((select qty_base::numeric from stock_current where shop_id=current_setting('bd.shop')::uuid and item_id=(select id from items where client_id='billdocs-item')),2::numeric,'stock moved once');
-select results_eq($$with changed as(update storage.objects set metadata='{}' where bucket_id='bill-documents' returning id) select count(*) from changed$$,$$values(0::bigint)$$,'owner cannot overwrite an uploaded original');
+create function pg_temp.try_update_doc() returns bigint language plpgsql as $$
+declare changed bigint;
+begin
+ update storage.objects set metadata='{}' where bucket_id='bill-documents';
+ get diagnostics changed = row_count;
+ return changed;
+end $$;
+select is(pg_temp.try_update_doc(),0::bigint,'owner cannot overwrite an uploaded original');
 reset role;
 select is((select public from storage.buckets where id='bill-documents'),false,'bill bucket is private');
 select is((select count(*) from pg_policies where schemaname='storage' and tablename='objects' and policyname like 'bill_documents_%' and cmd in ('UPDATE','DELETE','ALL')),0::bigint,'there is no destructive client policy');

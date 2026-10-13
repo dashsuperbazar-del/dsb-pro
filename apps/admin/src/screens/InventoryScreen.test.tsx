@@ -677,3 +677,63 @@ test('a failed document preparation cannot silently post without the intended at
   });
   expect(post.disabled).toBe(false);
 });
+
+test('picker eviction preserves the document intent and requires a decision after restoring the complete draft', async () => {
+  api.getPurchaseDetail.mockResolvedValue({
+    bill: {
+      id: 'picker-source',
+      status: 'POSTED',
+      party_id: null,
+      bill_no: 'PICKER-SOURCE',
+      business_date: '2026-01-01',
+      discount_paise: '0',
+      extra_charges_paise: '0',
+    },
+    lines: [
+      {
+        item_id: 'a',
+        unit_level: 1,
+        unit_name_snapshot: 'piece',
+        conv1_snapshot: null,
+        conv2_snapshot: null,
+        qty: '2',
+        unit_price_paise: '100',
+      },
+    ],
+  });
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly purchaseRepeatId="picker-source" />, host);
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('Draft repeated from PICKER-SOURCE'));
+  await enter(host, 'billNo', 'PICKER-DRAFT');
+  await act(async () => {
+    [...host.querySelectorAll('button')].find((b) => b.textContent === 'Gallery')!.click();
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('Document selection needs review'));
+  await act(async () => {
+    render(null, host);
+  });
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly />, host);
+  });
+  await vi.waitFor(() =>
+    expect(
+      [...host.querySelectorAll('button')].find((b) => b.textContent === 'Resume draft')?.disabled,
+    ).toBe(false),
+  );
+  await act(async () => {
+    [...host.querySelectorAll('button')].find((b) => b.textContent === 'Resume draft')!.click();
+  });
+  expect(host.querySelector<HTMLInputElement>('input[name="billNo"]')!.value).toBe('PICKER-DRAFT');
+  expect(host.querySelector('[aria-label="Purchase cart"]')?.textContent).toContain('₹2.00');
+  expect(host.textContent).toContain('Document selection needs review');
+  const post = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Post purchase')!;
+  expect(post.disabled).toBe(true);
+  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  await act(async () => {
+    [...host.querySelectorAll('button')]
+      .find((b) => b.textContent === 'Continue without attachment')!
+      .click();
+  });
+  expect(post.disabled).toBe(false);
+});
