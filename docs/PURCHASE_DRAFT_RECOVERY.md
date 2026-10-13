@@ -13,7 +13,8 @@ This device-local draft is neither a backup nor a server-confirmed purchase; cle
 
 UNKNOWN requests remain separate, exact and frozen. Resume and discard controls are disabled while a
 request awaits confirmation. Confirmation removes only drafts with the confirmed request identity;
-another window's pending request cannot clear the current cart. Definitive rejection keeps editable work.
+another window's pending request cannot clear the current cart. Definitive rejection keeps editable work and its original identity, including a payload mismatch
+from a concurrently posted copy; it cannot silently become a second bill with a new identity.
 
 Each mounted editor writes a separate snapshot. Restoring keeps the same posting identity, preventing
 parallel restored copies from creating duplicate purchases. Distinct payloads using one identity are
@@ -27,7 +28,7 @@ Drafts are scoped locally, not encrypted; browser profiles are still a trusted d
 
 ## Proof and limits
 
-- Local lint/typecheck, 326 unit tests, production build, format, bundle ceiling and installability checks: pending final run.
+- Local lint/typecheck, 327 unit tests, production build, format, bundle ceiling and installability checks: PASS.
 - DOM regression restores all monetary/date fields and unfinished editing, asserts no automatic RPC,
   then posts with the original identity and checks exact quantities/costs/adjustments and draft cleanup.
 - Unit regressions: user/shop isolation, simultaneous editor snapshots, exact identity cleanup,

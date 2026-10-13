@@ -727,7 +727,6 @@ export function InventoryScreen({
       lockedPurchase.current = null;
       setPurchaseLocked(false);
       clearPendingIntent(pendingKey(request.shopId), request.clientId);
-      if (request.clientId === purchaseClientId) setPurchaseClientId(crypto.randomUUID());
       // Another window's unconfirmed purchase may still be stored: lock onto it next, same id (VF-009).
       const next = loadPendingIntent<PurchaseRequest>(pendingKey(request.shopId));
       const another = Boolean(next.ok && next.value);
@@ -740,20 +739,15 @@ export function InventoryScreen({
         : '';
       if (outcome.kind === 'rejected') {
         // The database refused and rolled back: nothing posted; the cart stays for correction.
-        if (draftPrefix && request.clientId === purchaseClientId) {
-          try {
-            clearPurchaseDrafts(draftPrefix, request.clientId);
-            refreshDrafts();
-          } catch (e) {
-            setDraftError(`Old rejected draft could not be removed: ${String(e)}.`);
-          }
-        }
+        // Keep this identity after rejection too: another editor may already have posted
+        // a different payload under it. Rotating would turn a mismatch into a duplicate bill.
         setError(`Not posted: ${outcome.message}.${anotherNote}`);
         return;
       }
       // Only a purchase built from this cart (it carries the cart's id) clears the cart when it posts;
       // a restored entry from another window leaves the user's cart intact (Codex P2).
       if (request.clientId === purchaseClientId) {
+        setPurchaseClientId(crypto.randomUUID());
         setPurchaseCart([]);
         setPurchaseBillNo('');
         setPurchaseDiscount('');

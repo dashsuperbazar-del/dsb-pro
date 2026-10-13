@@ -381,3 +381,52 @@ test('a signed-in account change hides prior drafts and blocks the old editor', 
   );
   api.onAuthStateChange.mockReturnValue(() => {});
 });
+
+test('a rejected restored payload never rotates its identity into a new potentially duplicate bill', async () => {
+  api.getPurchaseDetail.mockResolvedValue({
+    bill: {
+      id: 'source',
+      status: 'POSTED',
+      party_id: null,
+      bill_no: 'SOURCE',
+      business_date: '2026-01-01',
+      discount_paise: '0',
+      extra_charges_paise: '0',
+    },
+    lines: [
+      {
+        item_id: 'a',
+        unit_level: 1,
+        unit_name_snapshot: 'piece',
+        conv1_snapshot: null,
+        conv2_snapshot: null,
+        qty: '2',
+        unit_price_paise: '100',
+      },
+    ],
+  });
+  api.postPurchaseOutcome.mockResolvedValue({
+    kind: 'rejected',
+    message: 'DSB_PAYLOAD_MISMATCH: client_id already used for a different purchase',
+  });
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly purchaseRepeatId="source" />, host);
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('Draft repeated from SOURCE'));
+  const submit = async () =>
+    act(async () => {
+      host
+        .querySelector('input[name="billNo"]')!
+        .closest('form')!
+        .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+  await submit();
+  await vi.waitFor(() => expect(host.textContent).toContain('DSB_PAYLOAD_MISMATCH'));
+  await enter(host, 'billNo', 'changed-but-same-draft');
+  await submit();
+  expect(api.postPurchaseOutcome).toHaveBeenCalledTimes(2);
+  expect(api.postPurchaseOutcome.mock.calls[1][0].clientId).toBe(
+    api.postPurchaseOutcome.mock.calls[0][0].clientId,
+  );
+  expect(host.querySelector('[aria-label="Purchase cart"]')?.textContent).toContain('₹2.00');
+});
