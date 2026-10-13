@@ -64,6 +64,7 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
+    await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: testInfo.outputPath(name + '.png'), fullPage: true });
   }
   await capture('12-purchases-phone');
@@ -102,6 +103,9 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
   await expect(
     page.getByRole('status').filter({ hasText: 'confirmed by the server' }),
   ).toContainText('confirmed by the server');
+  await expect(
+    page.getByRole('heading', { name: 'Summary', exact: true }).locator('..'),
+  ).toContainText('₹380.00');
   await capture('14-context-payment-phone');
   await page.goto('/purchases');
   await page.getByRole('button', { name: /Daily Supplier.*DSB-1/ }).click();

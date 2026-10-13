@@ -454,7 +454,11 @@ export function InventoryScreen({
       });
       form.reset();
       await refresh();
-      if (purchaseOnly) setPurchaseSupplier(party.id);
+      if (purchaseOnly) {
+        setPurchaseSupplier(party.id);
+        const disclosure = form.closest('details');
+        if (disclosure) disclosure.open = false;
+      }
       setMessage(`Created supplier ${party.name}.`);
     } catch (e) {
       setError(String(e));
