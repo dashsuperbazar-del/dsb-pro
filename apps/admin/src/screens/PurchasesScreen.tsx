@@ -35,9 +35,10 @@ export function PurchasesScreen({ url }: { url?: string }) {
     setLoading(true);
     setError('');
     try {
-      const bills = await listPurchaseHistory(shopId);
+      const [bills, suppliers] = await Promise.all([listPurchaseHistory(shopId), listParties()]);
       if (token !== listGeneration.current) return;
       setRows(bills);
+      setParties(suppliers);
       setMore(bills.length === 50);
     } catch (e) {
       if (token === listGeneration.current) setError(String(e));
@@ -87,7 +88,8 @@ export function PurchasesScreen({ url }: { url?: string }) {
       if (token === generation.current) setLoading(false);
     }
   }
-  const name = (id: string | null) => parties.find((p) => p.id === id)?.name ?? 'No supplier';
+  const name = (id: string | null) =>
+    parties.find((p) => p.id === id)?.name ?? (id ? 'Supplier unavailable' : 'No supplier');
   const visible = rows
     .filter(
       (b) =>

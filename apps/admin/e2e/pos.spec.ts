@@ -37,7 +37,7 @@ test('real browser money path posts stock then finalizes a paid sale', async ({
 }) => {
   test.setTimeout(60000);
   await createOwnerShop(page);
-  await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await page.goto('/inventory');
   await addItemForm(page);
   await page.getByPlaceholder('Item name').fill('POS E2E Item');
   await page.getByPlaceholder('SKU', { exact: true }).fill(`POS-${Date.now()}`);
@@ -364,7 +364,7 @@ test('bill total rounds to the nearest rupee while the item keeps exact paise (R
 }) => {
   test.setTimeout(60000);
   await createOwnerShop(page);
-  await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await page.goto('/inventory');
   await addItemForm(page);
   await page.getByPlaceholder('Item name').fill('Round Item');
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');

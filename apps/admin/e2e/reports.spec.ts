@@ -56,7 +56,7 @@ test('the missing reports show real low stock, item-wise sales, purchase registe
 }) => {
   test.setTimeout(60000);
   await createOwnerShop(page);
-  await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await page.goto('/inventory');
   await addItemForm(page);
   await page.getByPlaceholder('Item name').fill('Reports E2E Item');
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');

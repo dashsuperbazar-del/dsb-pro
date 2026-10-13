@@ -9,8 +9,8 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
   supplier/recent item shortcuts, inline supplier creation, bill-to-payment/ledger, Full + Auto allocations.
   Risks before implementation: silent unit/cost mismatch on repeat, duplicate post/UNKNOWN replacement,
   stale supplier/bill replies, unseen line edits, lost draft on task navigation, purchase-cost role leakage.
-  Local lint/typecheck/build + 319 unit tests PASS. Fresh review PASS (2 rounds); repeat lifecycle/edit guards fixed.
-  Final-head full CI/browser screenshots required before merge.
+  Local lint/typecheck/build + 320 unit tests PASS. Fresh review PASS (2 rounds); repeat lifecycle/edit guards fixed.
+  CI #803 found old navigation selectors + stale new-supplier labels; fixed. Final-head full CI required before merge.
   H3 + clean shop week remain NOT GO pending dated real-device evidence.
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
   partial returns carry item value, capped so a bill's returns never exceed what was billed for its

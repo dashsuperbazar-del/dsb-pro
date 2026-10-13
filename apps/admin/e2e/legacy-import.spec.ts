@@ -36,7 +36,7 @@ test('owner can import a legacy DSB backup into an empty shop and sell imported 
       await route.fulfill({ response });
     } else await route.continue();
   });
-  await page.getByRole('link', { name: 'Inventory & purchases' }).click();
+  await page.goto('/inventory');
 
   const backup = {
     version: 3,
