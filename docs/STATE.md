@@ -6,36 +6,14 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
 ## Current
 
 - `main` verified: `41dfd4b6e4202a3fc90de29a143247d6f82e9885` (DW1 #70; fetched 2026-10-14 IST). Migrations 0001–0057 immutable.
-- DW1 #70 merged after final-head CI #809 / run 38359193865 PASS: 320 unit tests,
-  55 browser tests passed + 1 scale-only skip, 20 held-cart repetitions passed.
-  Home/Purchases/Sales/Ledger/More; purchase bills/detail, snapshot-safe repeat into fresh draft,
-  supplier/recent item shortcuts, inline supplier creation, bill-to-payment/ledger, Full + Auto allocations.
-  Production publication of DW1 remains pending per saved verifier log; not independently dispatched here.
-- DW2a PR #71 remains DRAFT, head `3169f88`; full CI #814 PASS, 329 unit tests,
-  55 browser passes + 1 scale-only skip, 20 held-cart repetitions. Independent review/merge pending.
-- DW2b private bill attachments: IN_PROGRESS on `codex/dw2b-bill-attachments`, based on #71.
-  One photo/PDF; Camera/Gallery; full draft + binary continuity; immutable upload/retry; history viewer.
-  New migration 0058, group billdocs (not applied live). Historical migrations 0001–0057 unchanged.
-  Local lint/types/338 tests/build/format/bundle/installability PASS; full CI/second validate/review pending.
-  Risks: cost leakage through item storage, lost picker state, upload/UNKNOWN races, stale async completion,
-  duplicate request identity, deleting a posted original. Contracts: docs/BILL_DOCUMENTS.md.
-  Object-byte backup/restore and orphan cleanup remain follow-up work; no attachment DR claim.
-  Bill photo publishing requires this storage migration; no merge/apply/deploy authorized by these checks.
-  H3 + clean shop week remain NOT GO pending dated real-device evidence.
-- Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off;
-  partial returns carry item value, capped so a bill's returns never exceed what was billed for its
-  items (total - extra charges). Extra charges still stay with the shop.
-- Live DB: D1 applied 2026-10-01 (run 36894777286, only group `d1` pending; verify green). Fully upgraded.
-  D1 deployed after the apply (run 36897126086, green).
-- Verifier log V003 (2026-10-02): VF-005/006/008 CLOSED. Open MAJORs fixed in V4: VF-007 follow-up
-  (a finished action repainted/voided the previous customer) and VF-009 (two stored intents blocked
-  each other's retry).
-- FIXED (S1, 2026-10-03): an online sale/return finalized while a background sync cycle was in flight
-  joined that cycle, which had already read the outbox, so it showed "Saved locally" and posted only on
-  the next cycle (held-cart repeat, runs 36909385562 and 758). One fresh cycle now runs if it is still
-  QUEUED; a deterministic e2e holds the cycle's ack. Never a money risk (exactly-once outbox).
-- Watch: daily-entry 'expense answer lost' timed out once locally under full parallel load (button
-  click); 6/6 alone on main and on S1 — same pattern as the suppliers-form watch item.
+- DW1 #70 merged after final-head CI #809 / run 38359193865 PASS: 320 unit tests, 55 browser tests passed + 1 scale-only skip, 20 held-cart repetitions passed. Home/Purchases/Sales/Ledger/More; purchase bills/detail, snapshot-safe repeat into fresh draft, supplier/recent item shortcuts, inline supplier creation, bill-to-payment/ledger, Full + Auto allocations. Production publication of DW1 remains pending per saved verifier log; not independently dispatched here.
+- DW2a PR #71 remains DRAFT, head `3169f88`; full CI #814 PASS, 329 unit tests, 55 browser passes + 1 scale-only skip, 20 held-cart repetitions. Independent review/merge pending.
+- DW2b private bill attachments: IN_PROGRESS on `codex/dw2b-bill-attachments`, based on #71. One photo/PDF; Camera/Gallery; full draft + binary continuity; immutable upload/retry; history viewer. New migration 0058, group billdocs (not applied live). Historical migrations 0001–0057 unchanged. Local lint/types/338 tests/build/format/bundle/installability PASS; full CI/second validate/review pending. Risks: cost leakage through item storage, lost picker state, upload/UNKNOWN races, stale async completion, duplicate request identity, deleting a posted original. Contracts: docs/BILL_DOCUMENTS.md. Object-byte backup/restore and orphan cleanup remain follow-up work; no attachment DR claim. Bill photo publishing requires this storage migration; no merge/apply/deploy authorized by these checks. H3 + clean shop week remain NOT GO pending dated real-device evidence.
+- Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off; partial returns carry item value, capped so a bill's returns never exceed what was billed for its items (total - extra charges). Extra charges still stay with the shop.
+- Live DB: D1 applied 2026-10-01 (run 36894777286, only group `d1` pending; verify green). Fully upgraded. D1 deployed after the apply (run 36897126086, green).
+- Verifier log V003 (2026-10-02): VF-005/006/008 CLOSED. Open MAJORs fixed in V4: VF-007 follow-up (a finished action repainted/voided the previous customer) and VF-009 (two stored intents blocked each other's retry).
+- FIXED (S1, 2026-10-03): an online sale/return finalized while a background sync cycle was in flight joined that cycle, which had already read the outbox, so it showed "Saved locally" and posted only on the next cycle (held-cart repeat, runs 36909385562 and 758). One fresh cycle now runs if it is still QUEUED; a deterministic e2e holds the cycle's ack. Never a money risk (exactly-once outbox).
+- Watch: daily-entry 'expense answer lost' timed out once locally under full parallel load (button click); 6/6 alone on main and on S1 — same pattern as the suppliers-form watch item.
 - V2 residual closed by V3: receipt/payment check+create+send is serialized per account across windows
   (Web Locks). Browsers without Web Locks keep the unserialized check.
 - Rule (V2): every money/stock write stores its exact request on the device BEFORE sending (fail

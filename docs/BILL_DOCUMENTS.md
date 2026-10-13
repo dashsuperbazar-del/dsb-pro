@@ -69,6 +69,8 @@ so valid owner uploads were denied). Qualified `storage.objects.name` preserves 
 tenant and shop limits. The owner upload pgTAP/browser cases remain, with no weakened assertions.
 The wrapper drift proof uses normal CREATE OR REPLACE from saved disposable function DDL; direct
 catalogue writes are not permitted in this Supabase PostgreSQL role. It still proves drift refusal.
+The immutable-update assertion executes as the authenticated owner and checks ROW_COUNT = 0;
+pgTAP's results_eq cursor cannot execute a data-modifying CTE. The policy assertions are retained.
 Attachment controls now start collapsed, open on selection/recovery, and an exact pending request
 can view its bound original. Local preparation/read/storage errors block posting until repaired or
 an explicit attachment decision. Later async error/busy callbacks are guarded by current request ID.
