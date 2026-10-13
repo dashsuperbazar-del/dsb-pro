@@ -630,3 +630,50 @@ test('bill bytes and complete draft are durable before upload; reload resumes th
     clientId: (storedAtUpload as { clientId: string }).clientId,
   });
 });
+
+test('a failed document preparation cannot silently post without the intended attachment', async () => {
+  api.getPurchaseDetail.mockResolvedValue({
+    bill: {
+      id: 'bad-file-source',
+      status: 'POSTED',
+      party_id: null,
+      bill_no: 'BAD-FILE-SOURCE',
+      business_date: '2026-01-01',
+      discount_paise: '0',
+      extra_charges_paise: '0',
+    },
+    lines: [
+      {
+        item_id: 'a',
+        unit_level: 1,
+        unit_name_snapshot: 'piece',
+        conv1_snapshot: null,
+        conv2_snapshot: null,
+        qty: '2',
+        unit_price_paise: '100',
+      },
+    ],
+  });
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly purchaseRepeatId="bad-file-source" />, host);
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('Draft repeated from BAD-FILE-SOURCE'));
+  const picker = host.querySelector<HTMLInputElement>('input[aria-label="Choose bill PDF"]')!;
+  Object.defineProperty(picker, 'files', {
+    configurable: true,
+    value: [new File(['not a PDF'], 'bad.pdf', { type: 'application/pdf' })],
+  });
+  await act(async () => {
+    picker.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('Choose a valid PDF'));
+  const post = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Post purchase')!;
+  expect(post.disabled).toBe(true);
+  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  await act(async () => {
+    [...host.querySelectorAll('button')]
+      .find((b) => b.textContent === 'Continue without attachment')!
+      .click();
+  });
+  expect(post.disabled).toBe(false);
+});

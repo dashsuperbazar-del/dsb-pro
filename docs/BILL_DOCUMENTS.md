@@ -41,7 +41,7 @@ upgrade path and verifies no-op/tamper refusal; live apply stays workflow_dispat
 
 ## Evidence and limits
 
-- Local lint/types, 336 unit tests, production build, formatting, bundle and installability: PASS.
+- Local lint/types, 337 unit tests, production build, formatting, bundle and installability: PASS.
 - Adapter tests cover role/tenant/shop isolation, immutable uploads and lost answers with same-size
   different bytes. Local binary tests cover exact reopen/scoping, overwrite refusal, unavailable
   storage and PDF/type/size validation. DOM proof keeps the full draft durable before uploading,
@@ -60,3 +60,15 @@ unused-object retention cleanup remain follow-up work before claiming attachment
 Browser data clearing loses unsent local drafts/files; this is continuity, not a backup. Failed/replaced
 unposted uploads can remain as private orphan objects because immutable retention is deliberately safer
 than racing deletion with a purchase. Multiple attachments and statement/receipt sharing are later work.
+
+## Review/CI follow-up
+
+Initial transfer dropped executable modes on two shell scripts; restored before final evidence.
+CI #816 exposed an unqualified outer `name` in the storage-policy shop lookup (binding the shop name,
+so valid owner uploads were denied). Qualified `storage.objects.name` preserves the intended role,
+tenant and shop limits. The owner upload pgTAP/browser cases remain, with no weakened assertions.
+The wrapper drift proof uses normal CREATE OR REPLACE from saved disposable function DDL; direct
+catalogue writes are not permitted in this Supabase PostgreSQL role. It still proves drift refusal.
+Attachment controls now start collapsed, open on selection/recovery, and an exact pending request
+can view its bound original. Local preparation/read/storage errors block posting until repaired or
+an explicit attachment decision. Later async error/busy callbacks are guarded by current request ID.

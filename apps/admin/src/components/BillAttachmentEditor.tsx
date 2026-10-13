@@ -20,6 +20,7 @@ export function BillAttachmentEditor({
   beforePicker,
   onChange,
   onBusy,
+  onProblem,
 }: {
   scope: string;
   tenantId: string;
@@ -30,17 +31,22 @@ export function BillAttachmentEditor({
   beforePicker: () => boolean;
   onChange: (doc: BillDocument | null) => void;
   onBusy: (busy: boolean) => void;
+  onProblem: (message: string) => void;
 }) {
   const [blob, setBlob] = useState<Blob | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
+  const [expanded, setExpanded] = useState(Boolean(document));
+  useEffect(() => {
+    if (document) setExpanded(true);
+  }, [document?.id]);
   const mounted = useRef(true);
   const camera = useRef<HTMLInputElement>(null),
     gallery = useRef<HTMLInputElement>(null),
     pdf = useRef<HTMLInputElement>(null);
-  const props = useRef({ onChange, onBusy });
-  props.current = { onChange, onBusy };
+  const props = useRef({ onChange, onBusy, onProblem });
+  props.current = { onChange, onBusy, onProblem };
   useEffect(
     () => () => {
       mounted.current = false;
@@ -73,7 +79,10 @@ export function BillAttachmentEditor({
           if (active) props.current.onChange({ ...document, uploaded: true });
         }
       } catch (e) {
-        if (active) setError(String(e));
+        if (active) {
+          setError(String(e));
+          props.current.onProblem(String(e));
+        }
       } finally {
         if (active) {
           setBusy(false);
@@ -90,6 +99,7 @@ export function BillAttachmentEditor({
       file = input.files?.[0];
     input.value = ''; // Selecting the same file again must still fire change.
     if (!file || disabled || busy || !beforePicker()) return;
+    setExpanded(true);
     setBusy(true);
     onBusy(true);
     setError('');
@@ -109,7 +119,10 @@ export function BillAttachmentEditor({
       await saveLocalDocument(scope, id, body);
       if (mounted.current) onChange(doc); // Parent persists the metadata and complete form before upload.
     } catch (e) {
-      if (mounted.current) setError(String(e));
+      if (mounted.current) {
+        setError(String(e));
+        onProblem(String(e));
+      }
     } finally {
       if (mounted.current) {
         setBusy(false);
@@ -121,84 +134,92 @@ export function BillAttachmentEditor({
     if (!disabled && !busy && beforePicker()) ref.current?.click();
   }
   return (
-    <section class="bill-attachment" aria-label="Bill attachment">
-      <h3>Bill photo or PDF</h3>
-      <p class="muted">
-        One document per bill. Photos are compressed for readability; PDFs up to 5 MB. Upload must
-        be confirmed before posting.
-      </p>
-      <div class="context-actions">
-        <button type="button" disabled={disabled || busy} onClick={() => pick(camera)}>
-          Camera
-        </button>
-        <button type="button" disabled={disabled || busy} onClick={() => pick(gallery)}>
-          Gallery
-        </button>
-        <button type="button" disabled={disabled || busy} onClick={() => pick(pdf)}>
-          Choose PDF
-        </button>
-      </div>
-      <input
-        hidden
-        ref={camera}
-        type="file"
-        aria-label="Capture bill photo"
-        accept="image/jpeg,image/png,image/webp"
-        capture="environment"
-        onChange={choose}
-      />
-      <input
-        hidden
-        ref={gallery}
-        type="file"
-        aria-label="Choose bill image"
-        accept="image/jpeg,image/png,image/webp"
-        onChange={choose}
-      />
-      <input
-        hidden
-        ref={pdf}
-        type="file"
-        aria-label="Choose bill PDF"
-        accept="application/pdf,.pdf"
-        onChange={choose}
-      />
-      {busy && <p aria-live="polite">Saving or checking document… Keep this page open.</p>}
-      {error && <p role="alert">{error}</p>}
-      {document && (
-        <>
-          <p>
-            {document.name} · {Math.ceil(document.size / 1024)} KB ·{' '}
-            {document.uploaded ? 'Upload confirmed' : 'Upload not confirmed'}
-          </p>
-          <div class="context-actions">
-            {blob && <BillDocumentPreview blob={blob} name={document.name} />}
-            {!document.uploaded && (
+    <details
+      class="bill-attachment"
+      open={expanded}
+      onToggle={(e) => setExpanded(e.currentTarget.open)}
+    >
+      <summary>
+        Bill photo or PDF{document ? ` · ${document.uploaded ? 'Attached' : 'Upload pending'}` : ''}
+      </summary>
+      <section aria-label="Bill attachment">
+        <p class="muted">
+          One document per bill. Photos are compressed for readability; PDFs up to 5 MB. Upload must
+          be confirmed before posting.
+        </p>
+        <div class="context-actions">
+          <button type="button" disabled={disabled || busy} onClick={() => pick(camera)}>
+            Camera
+          </button>
+          <button type="button" disabled={disabled || busy} onClick={() => pick(gallery)}>
+            Gallery
+          </button>
+          <button type="button" disabled={disabled || busy} onClick={() => pick(pdf)}>
+            Choose PDF
+          </button>
+        </div>
+        <input
+          hidden
+          ref={camera}
+          type="file"
+          aria-label="Capture bill photo"
+          accept="image/jpeg,image/png,image/webp"
+          capture="environment"
+          onChange={choose}
+        />
+        <input
+          hidden
+          ref={gallery}
+          type="file"
+          aria-label="Choose bill image"
+          accept="image/jpeg,image/png,image/webp"
+          onChange={choose}
+        />
+        <input
+          hidden
+          ref={pdf}
+          type="file"
+          aria-label="Choose bill PDF"
+          accept="application/pdf,.pdf"
+          onChange={choose}
+        />
+        {busy && <p aria-live="polite">Saving or checking document… Keep this page open.</p>}
+        {error && <p role="alert">{error}</p>}
+        {document && (
+          <>
+            <p>
+              {document.name} · {Math.ceil(document.size / 1024)} KB ·{' '}
+              {document.uploaded ? 'Upload confirmed' : 'Upload not confirmed'}
+            </p>
+            <div class="context-actions">
+              {blob && <BillDocumentPreview blob={blob} name={document.name} />}
+              {!document.uploaded && (
+                <button
+                  type="button"
+                  disabled={disabled || busy}
+                  onClick={() => setRetry((n) => n + 1)}
+                >
+                  Retry document upload
+                </button>
+              )}
               <button
                 type="button"
                 disabled={disabled || busy}
-                onClick={() => setRetry((n) => n + 1)}
-              >
-                Retry document upload
-              </button>
-            )}
-            <button
-              type="button"
-              disabled={disabled || busy}
-              onClick={() => {
-                if (
-                  confirm(
-                    'Remove this attachment from the unposted draft? The stored original is retained.',
+                onClick={() => {
+                  if (
+                    confirm(
+                      'Remove this attachment from the unposted draft? The stored original is retained.',
+                    )
                   )
-                )
-                  onChange(null);
-              }}
-            >
-              Remove attachment
-            </button>
-          </div>
-        </>
-      )}
-    </section>
+                    onChange(null);
+                }}
+              >
+                Remove attachment
+              </button>
+            </div>
+          </>
+        )}
+      </section>
+    </details>
   );
 }

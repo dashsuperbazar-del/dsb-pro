@@ -771,9 +771,16 @@ jobs:
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update storage.buckets set public=true where id='bill-documents'"
           if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Public bill bucket drift accepted'; exit 1; fi
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update storage.buckets set public=false where id='bill-documents'"
-          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update pg_proc set prosrc=prosrc||E'\n-- billdocs drift' where oid='public.post_purchase(uuid,uuid,text,date,bigint,bigint,text,jsonb,text)'::regprocedure"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -At -c "select pg_get_functiondef('public.post_purchase(uuid,uuid,text,date,bigint,bigint,text,jsonb,text)'::regprocedure)" > "$RUNNER_TEMP/billdocs-original.sql"
+          BILLDOCS_ORIGINAL="$RUNNER_TEMP/billdocs-original.sql" BILLDOCS_CHANGED="$RUNNER_TEMP/billdocs-changed.sql" node --input-type=module <<'JS'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const original = readFileSync(process.env.BILLDOCS_ORIGINAL, 'utf8');
+          if (!original.includes('$function$')) throw new Error('Purchase wrapper body delimiter missing');
+          writeFileSync(process.env.BILLDOCS_CHANGED, original.replace('$function$', '$function$\n-- billdocs drift\n'));
+          JS
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -f "$RUNNER_TEMP/billdocs-changed.sql"
           if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Changed purchase wrapper body accepted'; exit 1; fi
-          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update pg_proc set prosrc=regexp_replace(prosrc,E'\n-- billdocs drift$','') where oid='public.post_purchase(uuid,uuid,text,date,bigint,bigint,text,jsonb,text)'::regprocedure"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -f "$RUNNER_TEMP/billdocs-original.sql"
           grep -Fx 'needs_upgrade=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
           echo 'DISPOSABLE BILL DOCUMENTS UPGRADE: PASS'
       - name: Stop and erase the disposable target

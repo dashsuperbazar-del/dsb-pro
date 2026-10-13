@@ -13,7 +13,7 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
 - DW2b private bill attachments: IN_PROGRESS on `codex/dw2b-bill-attachments`, based on #71.
   One photo/PDF; Camera/Gallery; full draft + binary continuity; immutable upload/retry; history viewer.
   New migration 0058, group billdocs (not applied live). Historical migrations 0001–0057 unchanged.
-  Local lint/types/336 tests/build/format/bundle/installability PASS; full CI/second validate/review pending.
+  Local lint/types/337 tests/build/format/bundle/installability PASS; full CI/second validate/review pending.
   Risks: cost leakage through item storage, lost picker state, upload/UNKNOWN races, stale async completion,
   duplicate request identity, deleting a posted original. Contracts: docs/BILL_DOCUMENTS.md.
   Object-byte backup/restore and orphan cleanup remain follow-up work; no attachment DR claim.

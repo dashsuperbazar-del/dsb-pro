@@ -37,6 +37,7 @@ import {
 import { repeatPurchase, rankedPurchaseParties } from '../lib/purchaseWorkflow';
 import { paiseToDecimal, rupees } from '../lib/money';
 import { compressItemImage } from '../lib/compressImage';
+import { BillDocumentPreview } from '../components/BillDocumentPreview';
 import { BillAttachmentEditor } from '../components/BillAttachmentEditor';
 import { removeLocalDocument } from '../lib/billDocumentStore';
 import { TaskTabs } from '../components/TaskTabs';
@@ -1259,10 +1260,18 @@ export function InventoryScreen({
         )}
         <form onSubmit={addPurchase}>
           {purchaseLocked && (
-            <p class="alert" role="alert">
-              The last purchase may already be saved. Editing is locked: press “Retry same purchase”
-              — it never posts the bill twice.
-            </p>
+            <div class="alert" role="alert">
+              <p>
+                The last purchase may already be saved. Editing is locked: press “Retry same
+                purchase” — it never posts the bill twice.
+              </p>
+              {lockedPurchase.current?.billImagePath && (
+                <BillDocumentPreview
+                  key={lockedPurchase.current.clientId}
+                  path={lockedPurchase.current.billImagePath}
+                />
+              )}
+            </div>
           )}
           {draftPrefix && (
             <BillAttachmentEditor
@@ -1273,6 +1282,9 @@ export function InventoryScreen({
               clientId={purchaseClientId}
               document={billDocument}
               disabled={purchaseLocked || contextBusy || !purchaseContextReady || accountChanged}
+              onProblem={(message) => {
+                if (purchaseClientRef.current === purchaseClientId) setDocumentSaveError(message);
+              }}
               onBusy={(busy) => {
                 if (purchaseClientRef.current === purchaseClientId) setDocumentBusy(busy);
               }}
