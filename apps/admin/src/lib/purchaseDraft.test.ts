@@ -6,6 +6,7 @@ import {
   listPurchaseDrafts,
   savePurchaseDraft,
   clearPurchaseDrafts,
+  scanPurchaseDrafts,
   restorePurchaseDraft,
   type PurchaseDraft,
 } from './purchaseDraft';
@@ -69,6 +70,23 @@ test('storage denial, discarded writes and malformed data never claim durable su
   expect(() => savePurchaseDraft(prefix, 'one', draft())).toThrow('quota');
   write.mockRestore();
   localStorage.setItem(prefix + 'broken', '{');
-  expect(() => listPurchaseDrafts(prefix)).toThrow();
   expect(localStorage.getItem(prefix + 'broken')).toBe('{');
+});
+
+test('VF-016: an unreadable snapshot is reported apart and never hides readable drafts', () => {
+  const prefix = purchaseDraftPrefix('u', 's');
+  savePurchaseDraft(prefix, 'one', draft());
+  localStorage.setItem(prefix + 'broken:w', '{');
+  localStorage.setItem(prefix + 'old:w', JSON.stringify({ ...draft(), version: 9 }));
+  const scan = scanPurchaseDrafts(prefix);
+  expect(scan.drafts.map((d) => d.draft.clientId)).toEqual(['request']);
+  expect(scan.unreadable).toEqual([prefix + 'broken:w', prefix + 'old:w']);
+  expect(listPurchaseDrafts(prefix)).toHaveLength(1);
+  // Nothing is deleted by scanning.
+  expect(localStorage.getItem(prefix + 'broken:w')).toBe('{');
+});
+test('VF-016: a save succeeds and returns its key even beside an unreadable snapshot', () => {
+  const prefix = purchaseDraftPrefix('u', 's');
+  localStorage.setItem(prefix + 'broken:w', '{');
+  expect(savePurchaseDraft(prefix, 'one', draft())).toBe(prefix + 'request:one');
 });
