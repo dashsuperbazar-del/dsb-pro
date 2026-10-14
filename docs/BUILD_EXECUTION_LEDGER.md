@@ -4,10 +4,13 @@ VF-016/017 verifier patch integrated into #71 from 3169f88: unreadable snapshots
 
 DW2a draft recovery: PR #71 head `3169f88`, full CI #814 PASS (329 unit, 55 browser,
 20 held-cart repetitions); independent review/merge remain pending. No live change.
-DW2b private bill attachments: IN_PROGRESS, dependent on #71, migration 0058 / billdocs.
-Local 339 tests/lint/types/build PASS; full CI, second validate-only migration run, independent
-review and real-device/shop gates remain pending. Contract: [BILL_DOCUMENTS.md](BILL_DOCUMENTS.md).
-Binary object backup/retention follow-up remains open; no attachment disaster-recovery claim.
+DW2b PR #72 head `0b11bb4`, full CI #820 and performance #52 PASS; independent review,
+second validate, merge and real-device/shop gates pending. Migration 0058 not applied live.
+DW2c document backup: BUILD / VERIFY, dependent on #72; no new migration. Snapshot-bound dump/files,
+encrypted nightly third artifact, disposable immutable restore and report-only retention.
+Local 339 unit + 17 archive tests/lint/types/build PASS; exact nightly scripts/second-target proof
+and final CI pending. No live operation or document disaster-recovery claim.
+Contract: [BILL_DOCUMENT_BACKUP.md](BILL_DOCUMENT_BACKUP.md).
 
 Packet-state tracker for `docs/COMPLETE_REMAINING_BUILD_PLAN.md` v1.1, per that plan's §4.1 and
 §0.4 execution protocol. States: `NOT_STARTED` / `IN_PROGRESS` / `CODE_REVIEW` / `CI_PASSED` /
@@ -203,3 +206,5 @@ P1 is MERGED as `81ac0d1` (PR #38, squash). Dual-builder protocol retired; packe
 | DW1 DSB workflow access and purchase speed | BUILD / VERIFY | `codex/dsb-workflow-access` from `4a4c172` | none | lint/typecheck/build + 320 unit tests PASS | final-head full CI required; new 390px purchase/repeat/context payment flow | not required | fresh review PASS (2 rounds); repeat lifecycle + uncommitted edit findings fixed | no live changes | H3 + shop week open | Snapshot-safe repeat; preserve exact UNKNOWN requests; loaded-page search explicit |
 
 | 14 October release integration | IN PROGRESS | #71 merged as 7840cfb; #72 rebased onto main | 0058 unchanged / billdocs pending live | #71 exact-head CI #834 PASS | #72 fresh CI and separate validate pending | Separate phase6_db_preflight reports all live pending groups without apply | Codex builder; other AI verifier, independent approval not claimed | User: Merge and deploy | Live apply/deploy and H3/shop evidence not yet completed | #72→#75 ordered squash merges with fresh CI; retest #76 against final schema |
+
+| 14 October #72 release | MERGED | a1a1751 / exact head a661280 | 0058 immutable; pending live | 342 unit; 940 pgTAP; private upload/browser/upgrade/build proofs | PR #844 PASS + separate dispatch #845 PASS | Inspection-only live preflight prepared | Codex builder; no independent approval claimed | User merge/deploy authorization | #73→#76 fresh CI before release; H3/shop gates open | No live apply/deploy |

@@ -16,6 +16,12 @@ jobs:
     permissions: {}
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - name: Install tools
         run: |
           bash scripts/remove-chrome-apt-source.sh
@@ -49,11 +55,18 @@ jobs:
         run: |
           RUN_ID=$(psql "${{ secrets.SUPABASE_DB_URL }}" -t -A -c "insert into backup_runs(started_at,status) values(now(),'running') returning id;" | head -n1)
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
-      - name: Dump portable business data
+      - name: Capture matching business snapshot and private document bytes
+        env:
+          DOCUMENT_SOURCE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          DOCUMENT_DUMP_DB_URL: ${{ secrets.BACKUP_RO_DATABASE_URL }}
+          DOCUMENT_SOURCE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          DOCUMENT_SOURCE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          docker run --rm -v "$PWD:/dump" postgres:17 pg_dump --format=custom --schema=public "${{ secrets.BACKUP_RO_DATABASE_URL }}" -f /dump/public.pgcustom
-          sudo chown "$(id -u):$(id -g)" public.pgcustom
+          set -euo pipefail
+          node scripts/bill-document-backup-cli.mjs backup document-backup public.pgcustom
+          node scripts/bill-document-backup-cli.mjs verify document-backup public.pgcustom
           test "$(stat -c%s public.pgcustom)" -ge 1000
+          tar -czf documents.tar.gz -C document-backup .
       - name: Dump Supabase Auth separately
         run: |
           # Supabase Auth sign-in state spans the auth schema (including users,
@@ -62,13 +75,16 @@ jobs:
           docker run --rm -v "$PWD:/dump" postgres:17 pg_dump --format=custom --data-only --schema=auth "${{ secrets.SUPABASE_DB_URL }}" -f /dump/auth.pgcustom
           sudo chown "$(id -u):$(id -g)" auth.pgcustom
           test "$(stat -c%s auth.pgcustom)" -ge 500
-      - name: Encrypt and checksum both layers
+      - name: Encrypt and checksum all three layers
         id: checksum
         run: |
           age -r "${{ vars.AGE_PUBLIC_KEY }}" -o public.pgcustom.age public.pgcustom
           age -r "${{ vars.AGE_PUBLIC_KEY }}" -o auth.pgcustom.age auth.pgcustom
+          age -r "${{ vars.AGE_PUBLIC_KEY }}" -o documents.tar.gz.age documents.tar.gz
           echo "public_sha=$(sha256sum public.pgcustom.age|cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
           echo "auth_sha=$(sha256sum auth.pgcustom.age|cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "documents_sha=$(sha256sum documents.tar.gz.age|cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "name=$(date +%F)-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
       - name: Assert live tenant invariants
         run: |
           psql "${{ secrets.SUPABASE_DB_URL }}" -v ON_ERROR_STOP=1 <<'SQL'
@@ -92,22 +108,19 @@ jobs:
             end loop;
           end $verify$;
           SQL
-      - name: Build financial manifest
+      - name: Build financial manifest from the captured snapshot
         id: manifest
         run: |
-          MANIFEST=$(psql "${{ secrets.BACKUP_RO_DATABASE_URL }}" -At -c "select quote_literal(json_build_object(
-            'scope','public','authArtifact','separate','invariants','pass',
-            'sale_count',(select count(*) from sale_invoices),'sale_total',(select coalesce(sum(total_paise),0) from sale_invoices where status='FINALIZED'),
-            'payment_count',(select count(*) from payments),'payment_total',(select coalesce(sum(amount_paise),0) from payments where status='POSTED'),
-            'purchase_count',(select count(*) from purchase_bills),'purchase_total',(select coalesce(sum(total_paise),0) from purchase_bills where status='POSTED'),
-            'stock_movement_count',(select count(*) from stock_movements),
-            'expense_count',(select count(*) from expenses),'expense_total',(select coalesce(sum(amount_paise),0) from expenses where status='POSTED')
-          )::text);" | head -n1)
-          echo "json=$MANIFEST" >> "$GITHUB_OUTPUT"
-      - name: Upload both artifacts to B2 and R2 and verify
+          node --input-type=module <<'JS'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const m=JSON.parse(readFileSync('document-backup/manifest.json','utf8'));
+          writeFileSync('backup-record.json',JSON.stringify({...m.summary,liveInvariants:'pass',documents:{installed:m.installed,count:m.objects.length,references:m.references.length,unusedRetained:m.unusedUploads.length,publicDumpSha256:m.publicDumpSha256}}),{mode:0o600});
+          JS
+      - name: Upload all three artifacts to B2 and R2 and verify
         run: |
-          DATE=$(date +%F)
-          for pair in "public.pgcustom.age:backup-$DATE.pgcustom.age:${{ steps.checksum.outputs.public_sha }}" "auth.pgcustom.age:auth-$DATE.pgcustom.age:${{ steps.checksum.outputs.auth_sha }}"; do
+          set -euo pipefail
+          SET_NAME="${{ steps.checksum.outputs.name }}"
+          for pair in "public.pgcustom.age:backup-$SET_NAME.pgcustom.age:${{ steps.checksum.outputs.public_sha }}" "auth.pgcustom.age:auth-$SET_NAME.pgcustom.age:${{ steps.checksum.outputs.auth_sha }}" "documents.tar.gz.age:documents-$SET_NAME.tar.gz.age:${{ steps.checksum.outputs.documents_sha }}"; do
             IFS=: read SRC NAME SHA <<< "$pair"
             rclone copyto "$SRC" "b2:APD-BB/$NAME"
             test "$(rclone cat "b2:APD-BB/$NAME"|sha256sum|cut -d' ' -f1)" = "$SHA"
@@ -118,9 +131,10 @@ jobs:
         if: success()
         env:
           RUN_ID: ${{ steps.start.outputs.run_id }}
-          MANIFEST_LITERAL: ${{ steps.manifest.outputs.json }}
           PUBLIC_SHA: ${{ steps.checksum.outputs.public_sha }}
           AUTH_SHA: ${{ steps.checksum.outputs.auth_sha }}
+          DOCUMENTS_SHA: ${{ steps.checksum.outputs.documents_sha }}
+          BACKUP_NAME: ${{ steps.checksum.outputs.name }}
           APP_VERSION: ${{ github.sha }}
           DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
@@ -135,28 +149,38 @@ jobs:
           # involved. It also records a per-artifact row, which the old
           # two-element array could not express now that Auth is dumped
           # separately.
+          MANIFEST_JSON=$(cat backup-record.json)
           psql "$DB_URL" -v ON_ERROR_STOP=1 \
             -v run_id="$RUN_ID" \
             -v public_sha="$PUBLIC_SHA" \
             -v auth_sha="$AUTH_SHA" \
+            -v documents_sha="$DOCUMENTS_SHA" \
+            -v backup_name="$BACKUP_NAME" \
             -v app_version="$APP_VERSION" \
-            -v manifest="$MANIFEST_LITERAL" <<'SQL'
+            -v manifest="$MANIFEST_JSON" <<'SQL'
           update backup_runs
              set finished_at    = now(),
                  status         = 'success',
                  sha256         = :'public_sha',
                  destinations   = json_build_array(
-                     json_build_object('name','b2','artifact','public','verified',true,'sha256',:'public_sha'),
-                     json_build_object('name','r2','artifact','public','verified',true,'sha256',:'public_sha'),
-                     json_build_object('name','b2','artifact','auth','verified',true,'sha256',:'auth_sha'),
-                     json_build_object('name','r2','artifact','auth','verified',true,'sha256',:'auth_sha')
+                     json_build_object('name','b2','artifact','public','verified',true,'sha256',:'public_sha','file','backup-'||:'backup_name'||'.pgcustom.age'),
+                     json_build_object('name','r2','artifact','public','verified',true,'sha256',:'public_sha','file','backup-'||:'backup_name'||'.pgcustom.age'),
+                     json_build_object('name','b2','artifact','auth','verified',true,'sha256',:'auth_sha','file','auth-'||:'backup_name'||'.pgcustom.age'),
+                     json_build_object('name','r2','artifact','auth','verified',true,'sha256',:'auth_sha','file','auth-'||:'backup_name'||'.pgcustom.age'),
+                     json_build_object('name','b2','artifact','documents','verified',true,'sha256',:'documents_sha','file','documents-'||:'backup_name'||'.tar.gz.age'),
+                     json_build_object('name','r2','artifact','documents','verified',true,'sha256',:'documents_sha','file','documents-'||:'backup_name'||'.tar.gz.age')
                    )::jsonb,
                  app_version    = :'app_version',
-                 schema_version = 3,
-                 manifest       = (:manifest)::jsonb
+                 schema_version = 4,
+                 manifest       = :'manifest'::jsonb || jsonb_build_object('artifactSet',:'backup_name')
            where id = :'run_id';
           SQL
       - name: Mark backup failed
         if: failure()
         run: |
           psql "${{ secrets.SUPABASE_DB_URL }}" -c "update backup_runs set finished_at=now(),status='failed',error='CI job failed — see Actions run ${{ github.run_id }}' where id='${{ steps.start.outputs.run_id }}';" || true
+      - name: Remove plaintext business/Auth/document files
+        if: always()
+        run: |
+          rm -f public.pgcustom auth.pgcustom documents.tar.gz backup-record.json
+          rm -rf document-backup

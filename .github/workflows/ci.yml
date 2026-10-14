@@ -69,6 +69,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
+      - name: Private document archive failure tests
+        run: node --test scripts/test-bill-document-backup.mjs
 
   pgtap:
     runs-on: ubuntu-latest
@@ -111,6 +113,58 @@ jobs:
         run: node scripts/test-supplier-payment-concurrency.mjs
       - name: Prove fixed-point TypeScript/PostgreSQL parity
         run: node scripts/test-fixed-point-parity.mjs
+
+  document_backup_proof:
+    # Synthetic data only. A second loopback target proves actual bytes, Auth and
+    # financial snapshot restoration without any repository production secrets.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions: {}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.116.0
+      - name: Install disposable encryption and PostgreSQL tools
+        run: |
+          bash scripts/remove-chrome-apt-source.sh
+          sudo apt-get update
+          sudo apt-get install -y age rclone
+          docker pull postgres:17
+      - name: Start source and a separate disposable target
+        run: |
+          set -euo pipefail
+          supabase start --exclude studio,imgproxy,inbucket,logflare,vector,supavisor
+          supabase db reset
+          supabase status -o json > "$RUNNER_TEMP/document-source.json"
+          TARGET_ROOT="$RUNNER_TEMP/document-restore-target"
+          mkdir -p "$TARGET_ROOT/supabase"
+          cp -r supabase/migrations "$TARGET_ROOT/supabase/migrations"
+          cp supabase/config.toml "$TARGET_ROOT/supabase/config.toml"
+          python3 - "$TARGET_ROOT/supabase/config.toml" <<'PYCONFIG'
+          from pathlib import Path
+          import sys
+          p=Path(sys.argv[1]);s=p.read_text().replace('project_id = "phase-0-foundations"','project_id = "document-restore-target"')
+          for port in range(54320,54330): s=s.replace(str(port),str(port+1000))
+          s=s.replace('sql_paths = ["./seed.sql"]','sql_paths = []')
+          p.write_text(s)
+          PYCONFIG
+          echo "DOCUMENT_TARGET_ROOT=$TARGET_ROOT" >> "$GITHUB_ENV"
+          supabase start --workdir "$TARGET_ROOT" --exclude studio,imgproxy,inbucket,logflare,vector,supavisor
+          supabase status --workdir "$TARGET_ROOT" -o json > "$RUNNER_TEMP/document-target.json"
+      - name: Prove snapshot-bound private document backup and restore
+        run: node scripts/prove-bill-document-restore.mjs "$RUNNER_TEMP/document-source.json" "$RUNNER_TEMP/document-target.json"
+      - name: Stop only these disposable projects
+        if: always()
+        run: |
+          supabase stop --no-backup
+          if test -n "${DOCUMENT_TARGET_ROOT:-}"; then supabase stop --workdir "$DOCUMENT_TARGET_ROOT" --no-backup; fi
 
   phase6_db_upgrade_proof:
     # This is deliberately a disposable local database with no repository
@@ -869,7 +923,8 @@ jobs:
       - run: pnpm audit --audit-level high
 
   build:
-    needs: [lint, typecheck, test, pgtap, phase6_db_upgrade_proof, e2e, audit]
+    needs:
+      [lint, typecheck, test, pgtap, phase6_db_upgrade_proof, document_backup_proof, e2e, audit]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
