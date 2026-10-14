@@ -2,7 +2,7 @@
 // prefixed with an apostrophe; numeric cells are written as-is so negative amounts stay numbers.
 export type Cell = { text: string } | { num: string };
 
-const FORMULA = /^[=+\-@\t\r]/;
+const FORMULA = /^(?:\s*[=+\-@]|[\t\r\n])/;
 function cell(c: Cell): string {
   const raw = 'num' in c ? c.num : FORMULA.test(c.text) ? `'${c.text}` : c.text;
   return /[",\r\n]/.test(raw) ? `"${raw.replace(/"/g, '""')}"` : raw;

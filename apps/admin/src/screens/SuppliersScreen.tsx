@@ -6,7 +6,6 @@ import {
   getDefaultShopId,
   getShopBusinessDate,
   listParties,
-  getSupplierLedger,
   getSupplierOutstanding,
   listSupplierAllocations,
   listSupplierBills,
@@ -17,7 +16,6 @@ import {
   voidSupplierPayment,
   type PaymentMode,
   type SupplierBill,
-  type SupplierLedger,
   type SupplierOperation,
   type SupplierOutstandingRow,
   type SupplierPayment,
@@ -37,6 +35,7 @@ import {
   type FinancialAttempt,
 } from '../lib/offlineSync';
 import { TaskTabs } from '../components/TaskTabs';
+import { SupplierStatement } from '../components/SupplierStatement';
 import { appRoute } from '../lib/paths';
 import { rupees, paiseToDecimal } from '../lib/money';
 import { t } from '../lib/i18n';
@@ -110,7 +109,6 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
   const partyRef = useRef('');
   const [bills, setBills] = useState<SupplierBill[]>([]);
   const [payments, setPayments] = useState<SupplierPayment[]>([]);
-  const [ledger, setLedger] = useState<SupplierLedger | null>(null);
   const [open, setOpen] = useState<FinancialAttempt[]>([]);
   const [draft, setDraft] = useState<FinancialAttempt | null>(null);
   const [amount, setAmount] = useState('');
@@ -153,23 +151,20 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
     if (!shop || !party) {
       setBills([]);
       setPayments([]);
-      setLedger(null);
       setOpen([]);
       setDraft(null);
       return;
     }
     await waitForOfflineRuntime();
-    const [b, p, l, o, drafts] = await Promise.all([
+    const [b, p, o, drafts] = await Promise.all([
       listSupplierBills(shop, party),
       listSupplierPayments(shop, party),
-      getSupplierLedger(shop, party),
       listOpenFinancialAttempts(shop, party),
       listFinancialDrafts(shop, party),
     ]);
     if (current.current !== key) return; // a newer selection owns the screen
     setBills(b);
     setPayments(p);
-    setLedger(l);
     setOpen(o);
     const d = drafts.find((x) => x.operation === 'supplier.record.v1') ?? null;
     setDraft(d);
@@ -290,7 +285,6 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
     setLoadedParty('');
     setBills([]);
     setPayments([]);
-    setLedger(null);
     setOpen([]);
     setDraft(null);
     current.current = '';
@@ -388,7 +382,7 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
   const allocTotal = pl.allocations.reduce((s, a) => s + Number(a.amountPaise), 0);
 
   return (
-    <main>
+    <main class="supplier-screen">
       <div class="row">
         <h1>{t('suppliers')}</h1>
         <nav class="party-tabs" aria-label="Party type">
@@ -753,35 +747,16 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
             </table>
           </section>
 
-          {ledger && (
-            <section class="mobile-records" hidden={view !== 'ledger'}>
+          {view === 'ledger' && shopId && partyId && businessDate && (
+            <section class="supplier-ledger">
               <h2>Ledger (this shop)</h2>
-              <p>
-                Opening {rupees(ledger.openingBalancePaise)} · Closing{' '}
-                {rupees(ledger.closingBalancePaise)} (positive = owed to supplier)
-              </p>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Entry</th>
-                    <th>Document</th>
-                    <th>Amount</th>
-                    <th>Balance</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ledger.entries.map((e) => (
-                    <tr key={`${e.kind}-${e.id}`}>
-                      <td data-label="Date">{e.date}</td>
-                      <td data-label="Entry">{e.kind}</td>
-                      <td data-label="Document">{e.document}</td>
-                      <td data-label="Amount">{rupees(e.amountPaise)}</td>
-                      <td data-label="Balance">{rupees(e.runningBalancePaise)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <SupplierStatement
+                key={`${shopId}:${partyId}`}
+                shopId={shopId}
+                partyId={partyId}
+                supplierName={allParties.find((p) => p.id === partyId)?.name ?? ''}
+                businessDate={businessDate}
+              />
             </section>
           )}
           <RejectedCopy shopId={shopId} partyId={partyId} onCopied={() => void refreshParty()} />
