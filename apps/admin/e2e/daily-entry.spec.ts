@@ -65,6 +65,8 @@ test('an expense whose answer is lost is retried as the same expense, never post
 }) => {
   await createOwnerShop(page);
   await page.goto('/expenses');
+  // Install fault injection only after the bootstrap date request has settled.
+  await expect(page.getByLabel('Date', { exact: true })).toHaveValue(/\d{4}-\d{2}-\d{2}/);
   let calls = 0;
   await page.route('**/rpc/post_expense', async (route) => {
     if (calls++ === 0) {
