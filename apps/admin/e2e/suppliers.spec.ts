@@ -102,7 +102,9 @@ test.describe('supplier statements', () => {
     await expect(statement.getByLabel('Prepared supplier statement')).toContainText(
       'Closing ₹70.00',
     );
-    await expect(statement.locator('tbody tr')).toHaveCount(2);
+    await expect(
+      statement.getByLabel('Prepared supplier statement').locator('tbody tr'),
+    ).toHaveCount(2);
     await statement.getByRole('button', { name: 'Share text' }).click();
     const shared = await page.evaluate(() => (window as unknown as { shared: ShareData }).shared);
     expect(shared.text).toContain('Supplier Pay Shop');
@@ -144,7 +146,11 @@ test.describe('supplier statements', () => {
     await expect(printed.locator('tbody tr')).toHaveCount(2);
     await expect(printed).toContainText('Closing: ₹70.00');
     await expect(
-      statement.getByRole('button', { name: 'Prepare statement', exact: true }),
+      statement.getByRole('button', {
+        name: 'Prepare statement',
+        exact: true,
+        includeHidden: true,
+      }),
     ).toBeHidden();
     expect(await printed.evaluate((el) => getComputedStyle(el).fontFamily)).toContain('system-ui');
     await page.screenshot({
