@@ -2,7 +2,14 @@ name: CI
 
 on:
   push:
-    branches: [main, phase-4-pos-customers-payments, phase-5-offline-sync, phase-6-ledgers-reports-dr, phase-6-5-returns]
+    branches:
+      [
+        main,
+        phase-4-pos-customers-payments,
+        phase-5-offline-sync,
+        phase-6-ledgers-reports-dr,
+        phase-6-5-returns,
+      ]
   pull_request:
   schedule:
     # Scheduled workflows execute only from the default branch. Keeping the
@@ -61,6 +68,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
+      - name: D3b exact JSON and target guards
+        run: node --test scripts/restore-business-json.test.mjs
 
   pgtap:
     runs-on: ubuntu-latest
@@ -103,6 +112,8 @@ jobs:
         run: node scripts/test-supplier-payment-concurrency.mjs
       - name: Prove fixed-point TypeScript/PostgreSQL parity
         run: node scripts/test-fixed-point-parity.mjs
+      - name: Prove D3b business JSON restore (real-RPC shop -> empty target, exact rows, replay)
+        run: node scripts/test-restore-business-json.mjs
 
   phase6_db_upgrade_proof:
     # This is deliberately a disposable local database with no repository
@@ -975,7 +986,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy apps/admin/dist --project-name=dsb-pro --branch=phase-4-pos-customers-payments
 
-
   phase5_db_upgrade:
     needs: [build]
     if: github.ref == 'refs/heads/phase-5-offline-sync' && github.event_name == 'push'
@@ -1169,7 +1179,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy apps/admin/dist --project-name=dsb-pro --branch=phase-5-offline-sync
 
-
   deploy:
     needs: [build]
     # Production publishing must be a separate human action. A merge/push to
@@ -1219,7 +1228,6 @@ jobs:
         with:
           path: apps/admin/dist
       - uses: actions/deploy-pages@v4
-
 
   phase6_db_upgrade:
     needs: [build]
