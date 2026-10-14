@@ -68,16 +68,17 @@ test('supplier statement shares/downloads complete server history and prints the
   await context.grantPermissions(['local-network-access'], { origin: 'http://localhost:4173' });
   const headers = await readFile(new URL('../dist/_headers', import.meta.url), 'utf8');
   const csp = headers.match(/Content-Security-Policy: (.+)/)![1];
-  let policyApplied = false;
+  let policyApplied = 0;
   // Preview normally omits hosting headers. Exercise the real production CSP, including the
   // inherited blank print window: inline/data CSS must not be required.
-  await page.route('**/signup', async (route) => {
+  await page.route('http://localhost:4173/**', async (route) => {
+    if (!route.request().isNavigationRequest()) return route.continue();
     const response = await route.fetch();
     await route.fulfill({
       response,
       headers: { ...response.headers(), 'content-security-policy': csp },
     });
-    policyApplied = true;
+    policyApplied++;
   });
   await context.addInitScript(() => {
     Object.defineProperty(navigator, 'share', {
@@ -86,12 +87,18 @@ test('supplier statement shares/downloads complete server history and prints the
         (window as unknown as { shared: ShareData }).shared = value;
       },
     });
-    window.print = () => {
-      (window as unknown as { printed: boolean }).printed = true;
+    const open = window.open;
+    window.open = (...args: Parameters<typeof window.open>) => {
+      const popup = open.apply(window, args);
+      if (popup)
+        popup.print = () => {
+          (popup as unknown as { printed: boolean }).printed = true;
+        };
+      return popup;
     };
   });
   await ownerWithBill(page);
-  expect(policyApplied).toBe(true); // SPA navigation keeps the initial document's policy.
+  expect(policyApplied).toBeGreaterThanOrEqual(4); // Signup, Home, Stock, Home; SPA routes retain it.
   await record(page, '30');
   await expect(page.getByRole('status')).toContainText('confirmed by the server');
   const statement = await ledgerTask(page);
@@ -132,9 +139,12 @@ test('supplier statement shares/downloads complete server history and prints the
   ).toBeVisible();
   await expect(popup.locator('tbody tr')).toHaveCount(2);
   expect(await popup.evaluate(() => window.opener)).toBeNull();
-  expect(await popup.evaluate(() => (window as unknown as { printed: boolean }).printed)).toBe(
-    true,
-  );
+  await expect
+    .poll(() => popup.evaluate(() => (window as unknown as { printed: boolean }).printed))
+    .toBe(true);
+  expect(
+    await popup.locator('body').evaluate((body) => getComputedStyle(body).fontFamily),
+  ).toContain('system-ui');
   await popup.setViewportSize({ width: 1100, height: 800 });
   await popup.emulateMedia({ media: 'print' });
   await popup.screenshot({
