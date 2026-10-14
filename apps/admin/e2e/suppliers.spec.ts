@@ -90,14 +90,8 @@ test.describe('supplier statements', () => {
           (window as unknown as { shared: ShareData }).shared = value;
         },
       });
-      const open = window.open;
-      window.open = (...args: Parameters<typeof window.open>) => {
-        const popup = open.apply(window, args);
-        if (popup)
-          popup.print = () => {
-            (popup as unknown as { printed: boolean }).printed = true;
-          };
-        return popup;
+      window.print = () => {
+        (window as unknown as { printed: boolean }).printed = true;
       };
     });
     await ownerWithBill(page);
@@ -136,27 +130,28 @@ test.describe('supplier statements', () => {
     await page.screenshot({
       path: testInfo.outputPath('supplier-statement-phone.png'),
     });
-    const popupPromise = context.waitForEvent('page');
     await statement.getByRole('button', { name: 'Print A4 / PDF' }).click();
-    const popup = await popupPromise;
+    expect(await page.evaluate(() => (window as unknown as { printed: boolean }).printed)).toBe(
+      true,
+    );
+    await page.setViewportSize({ width: 1100, height: 800 });
+    await page.emulateMedia({ media: 'print' });
+    const printed = page.getByLabel('Printable supplier statement');
+    await expect(printed).toBeVisible();
     await expect(
-      popup.getByRole('heading', { name: 'Supplier statement: Acme Traders' }),
+      printed.getByRole('heading', { name: 'Supplier statement: Acme Traders' }),
     ).toBeVisible();
-    await expect(popup.locator('tbody tr')).toHaveCount(2);
-    expect(await popup.evaluate(() => window.opener)).toBeNull();
-    await expect
-      .poll(() => popup.evaluate(() => (window as unknown as { printed: boolean }).printed))
-      .toBe(true);
-    expect(
-      await popup.locator('body').evaluate((body) => getComputedStyle(body).fontFamily),
-    ).toContain('system-ui');
-    await popup.setViewportSize({ width: 1100, height: 800 });
-    await popup.emulateMedia({ media: 'print' });
-    await popup.screenshot({
+    await expect(printed.locator('tbody tr')).toHaveCount(2);
+    await expect(printed).toContainText('Closing: ₹70.00');
+    await expect(
+      statement.getByRole('button', { name: 'Prepare statement', exact: true }),
+    ).toBeHidden();
+    expect(await printed.evaluate((el) => getComputedStyle(el).fontFamily)).toContain('system-ui');
+    await page.screenshot({
       path: testInfo.outputPath('supplier-statement-desktop.png'),
       fullPage: true,
     });
-    await popup.close();
+    await page.emulateMedia({ media: 'screen' });
 
     const today = await statement.getByLabel('Statement through').inputValue();
     const tomorrow = new Date(`${today}T12:00:00Z`);

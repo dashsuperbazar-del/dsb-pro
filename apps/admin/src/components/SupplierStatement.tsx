@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { getShopSettings, getSupplierLedger } from '@dsb-pro/adapters';
 import { rupees } from '../lib/money';
-import statementStyles from '../supplier-statement.css?url&no-inline';
 import {
   prepareSupplierStatement,
   statementCsv,
-  statementHtml,
   statementKind,
   statementPeriod,
   statementText,
@@ -135,30 +133,13 @@ export function SupplierStatement({
   }
   function print() {
     if (!statement) return;
-    const popup = window.open('', '_blank', 'popup');
-    if (!popup) {
-      setError('Print window blocked. Allow popups for this app and try again.');
-      return;
+    try {
+      window.print();
+    } catch {
+      setError(
+        'Printing is unavailable in this browser. Download the statement or use a browser with printing.',
+      );
     }
-    popup.opener = null;
-    // A blank window inherits the app CSP: load same-origin CSS, never relax style-src.
-    popup.document.write(
-      statementHtml(statement, new URL(statementStyles, window.location.href).href),
-    );
-    // document.write may implicitly open the document and remove earlier Window listeners.
-    popup.addEventListener(
-      'load',
-      () => {
-        if (!popup.document.styleSheets.length) {
-          setError('Print styles could not be loaded. Close the print window and try again.');
-          return;
-        }
-        popup.focus();
-        popup.print();
-      },
-      { once: true },
-    );
-    popup.document.close();
   }
   return (
     <section aria-label="Supplier statement" class="supplier-statement">
@@ -230,28 +211,7 @@ export function SupplierStatement({
             {rupees(statement.closingBalancePaise)}
           </p>
           {statement.entries.length === 0 && <p>No posted entries in this period.</p>}
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Entry</th>
-                <th>Document</th>
-                <th>Change</th>
-                <th>Balance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {statement.entries.map((e) => (
-                <tr key={`${e.kind}:${e.id}`}>
-                  <td data-label="Date">{e.date}</td>
-                  <td data-label="Entry">{statementKind(e.kind)}</td>
-                  <td data-label="Document">{e.document}</td>
-                  <td data-label="Change">{rupees(e.amountPaise)}</td>
-                  <td data-label="Balance">{rupees(e.runningBalancePaise)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <StatementTable statement={statement} />
           {manualText && (
             <label>
               Statement text
@@ -265,6 +225,61 @@ export function SupplierStatement({
           )}
         </div>
       )}
+      {statement && (
+        <section
+          class="receipt-print receipt-a4 supplier-statement-print"
+          aria-label="Printable supplier statement"
+        >
+          <h1>{statement.shopName}</h1>
+          {statement.address && <p>{statement.address}</p>}
+          {statement.gstin && <p>GSTIN {statement.gstin}</p>}
+          <h2>Supplier statement: {statement.supplierName}</h2>
+          <p>
+            Period: {statementPeriod(statement)}
+            <br />
+            Retrieved UTC: {statement.retrievedAt}
+          </p>
+          <p>{STATEMENT_NOTE}</p>
+          <p>Opening: {rupees(statement.openingBalancePaise)}</p>
+          <StatementTable statement={statement} />
+          {statement.entries.length === 0 && <p>No posted entries in this period.</p>}
+          <p>
+            <strong>Closing: {rupees(statement.closingBalancePaise)}</strong>
+          </p>
+          <footer>
+            Shop ID: {statement.shopId}
+            <br />
+            Supplier ID: {statement.partyId}
+          </footer>
+        </section>
+      )}
     </section>
+  );
+}
+
+function StatementTable({ statement }: { statement: Statement }) {
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Entry</th>
+          <th>Document</th>
+          <th>Change</th>
+          <th>Balance</th>
+        </tr>
+      </thead>
+      <tbody>
+        {statement.entries.map((e) => (
+          <tr key={`${e.kind}:${e.id}`}>
+            <td data-label="Date">{e.date}</td>
+            <td data-label="Entry">{statementKind(e.kind)}</td>
+            <td data-label="Document">{e.document}</td>
+            <td data-label="Change">{rupees(e.amountPaise)}</td>
+            <td data-label="Balance">{rupees(e.runningBalancePaise)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

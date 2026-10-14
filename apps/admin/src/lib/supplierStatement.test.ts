@@ -1,10 +1,5 @@
 import { expect, test } from 'vitest';
-import {
-  prepareSupplierStatement,
-  statementCsv,
-  statementHtml,
-  statementText,
-} from './supplierStatement';
+import { prepareSupplierStatement, statementCsv, statementText } from './supplierStatement';
 
 const scope = { shopId: 'shop', partyId: 'supplier', from: '2026-10-01', to: '2026-10-14' };
 const ledger = {
@@ -69,9 +64,6 @@ test('server balances above the safe integer limit stay exact in every output', 
   const s = make();
   expect(statementText(s)).toContain('₹9,00,71,99,25,47,409.43');
   expect(statementCsv(s)).toContain('90071992547409.43');
-  expect(statementHtml(s, 'https://example.test/assets/statement.css')).toContain(
-    '₹9,00,71,99,25,47,409.43',
-  );
   expect(statementText(s)).toContain('Opening');
   expect(statementText(s)).toContain('Voids restate history');
 });
@@ -102,7 +94,7 @@ test('malformed, missing, rounded, duplicate or out-of-range rows cannot be expo
   expect(() => make({ ...ledger, entries: [...ledger.entries, ...ledger.entries] })).toThrow();
 });
 
-test('negative credit and an empty period keep the server opening/closing; outputs escape free text', () => {
+test('negative credit and an empty period keep the server opening/closing in text and safe CSV', () => {
   const s = make({
     ...ledger,
     openingBalancePaise: '-1200',
@@ -110,13 +102,6 @@ test('negative credit and an empty period keep the server opening/closing; outpu
     entries: [],
   });
   expect(statementText(s)).toContain('−₹12.00');
-  expect(statementHtml(s, 'https://example.test/assets/statement.css')).toContain(
-    '&lt;img src=x onerror=alert(1)&gt;',
-  );
-  expect(statementHtml(s, 'https://example.test/assets/statement.css')).not.toContain('<img');
-  expect(statementHtml(s, 'https://example.test/assets/statement.css')).toContain(
-    'No posted entries in this period',
-  );
   expect(statementCsv(s)).toContain("'@Supplier");
   expect(statementCsv(make())).toContain("'=HYPERLINK");
 });

@@ -9,7 +9,7 @@ DW2c #73 head `67bea96`, final CI #822 / run 38496419650 PASS: 339 app + 17 arch
 Review/source activation/physical recovery remain pending; no live operation or production DR claim.
 DW3 supplier statements: BUILD / VERIFY, dependent on #73; no migration or money writer change.
 Exact date-bound server ledger, fresh identity, text sharing/download, safe CSV and CSP-compatible
-A4/PDF print; source scope/arithmetic and async lifecycle checked. Independent review/final CI and
+Pro A4/PDF receipt printing; source scope/arithmetic and async lifecycle checked. Independent review/final CI and
 browser screenshots pending. Contract: [SUPPLIER_STATEMENTS.md](SUPPLIER_STATEMENTS.md).
 
 Packet-state tracker for `docs/COMPLETE_REMAINING_BUILD_PLAN.md` v1.1, per that plan's §4.1 and

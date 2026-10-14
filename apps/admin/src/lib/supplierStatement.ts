@@ -157,12 +157,3 @@ export function statementCsv(s: SupplierStatement): string {
     ].map((row) => Array.from({ length: 5 }, (_, i) => row[i] ?? text(''))),
   );
 }
-const escape = (v: string) =>
-  v.replace(
-    /[&<>"']/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!,
-  );
-// Only escaped text is interpolated. No scripts, remote assets, attachments or account credentials.
-export function statementHtml(s: SupplierStatement, stylesheetUrl: string): string {
-  return `<!doctype html><html lang="en"><meta charset="utf-8"><title>Supplier statement — ${escape(s.supplierName)}</title><link rel="stylesheet" href="${escape(stylesheetUrl)}"><body><h1>${escape(s.shopName)}</h1>${s.address ? `<p>${escape(s.address)}</p>` : ''}${s.gstin ? `<p>GSTIN ${escape(s.gstin)}</p>` : ''}<h2>Supplier statement: ${escape(s.supplierName)}</h2><p>Period: ${escape(statementPeriod(s))}<br>Retrieved UTC: ${escape(s.retrievedAt)}</p><p class="basis">${escape(STATEMENT_NOTE)}</p><p>Opening: ${escape(rupees(s.openingBalancePaise))}</p><table><thead><tr><th>Date</th><th>Entry</th><th>Document</th><th>Change</th><th>Balance</th></tr></thead><tbody>${s.entries.map((e) => `<tr><td>${escape(e.date)}</td><td>${escape(statementKind(e.kind))}</td><td>${escape(e.document)}</td><td>${escape(rupees(e.amountPaise))}</td><td>${escape(rupees(e.runningBalancePaise))}</td></tr>`).join('')}</tbody></table>${s.entries.length ? '' : '<p>No posted entries in this period.</p>'}<p><strong>Closing: ${escape(rupees(s.closingBalancePaise))}</strong></p><footer class="basis">Shop ID: ${escape(s.shopId)}<br>Supplier ID: ${escape(s.partyId)}</footer></body></html>`;
-}

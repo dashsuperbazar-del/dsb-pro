@@ -26,13 +26,15 @@ formula-like free text (including whitespace prefixes), preserves signed numeric
 quotes commas/newlines. CSV bytes preserve arbitrary-size amounts; spreadsheet software can impose
 its own precision limits. Download names use IDs and dates, not free-text filenames.
 
-Print A4 / PDF opens a detached window from the user's click, renders escaped text only, loads a
-same-origin hashed stylesheet and waits for load before opening the browser print dialog. The asset
-uses Vite `?url&no-inline` so hosting's `style-src 'self'` remains intact. No scripts, remote images or
-bill originals enter the window. PDF is the browser's Save as PDF option. Popup/CSS failures are
-reported. Physical printer/device/share-provider acceptance remains a human gate.
-The load handler registers after writing the document: implicit document opening can erase earlier
-Window listeners ([HTML Standard](https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-open-steps)).
+Print A4 / PDF uses Pro's existing A4 receipt layout and the browser's print dialog / Save as PDF.
+A print-only receipt renders the same prepared immutable statement as the preview, with a shared
+table renderer and Preact's text escaping. Includes full shop/supplier identities, source basis,
+period, client-retrieved UTC time, opening, all rows and closing. On-screen controls and other shop
+content are hidden in print; long references wrap and table headers repeat. The prepared receipt
+is already rendered before the user clicks Print, with no asynchronous data/asset/window setup.
+The existing compiled app stylesheet and strict hosting CSP remain; no new popup, script, image,
+file download or security-policy relaxation is involved. Unavailable printing is reported and text
+download remains available. Physical printer/device/share-provider acceptance remains a human gate.
 
 Silent output-corruption risks before crashes: rounded aggregate amounts, partial history labelled
 complete, wrong-party/date late response, stale output after failed refresh, omitted credits/openings,
@@ -45,14 +47,14 @@ streaming statement service is later work if that payload becomes too large. A f
 partial statement is complete. Statements are generated online and not persisted on the device.
 
 Verification: pure exact-money/malformed-scope/incomplete-ledger/text-escaping/CSV tests; component
-late-result/date-edit/failed-refresh/share-cancel/fallback/blocked-print tests; a negative control
+late-result/date-edit/failed-refresh/share-cancel/fallback/unavailable-print tests; a negative control
 removing the request guard must fail. Real-browser fixture posts ₹100 then pays ₹30, requires two
-server rows and ₹70 closing in shared/downloaded text/CSV/printed document, prepares an empty later
+server rows and ₹70 closing in shared/downloaded text/CSV/the actual A4 print area, prepares an empty later
 period carrying ₹70 opening, and denies exports after a failed refresh. Production CSP is injected
-into the fixture's supplier document and inherited by its print window. Phone and print screenshots
+into the fixture's supplier document through every full navigation. Phone and print screenshots
 are CI artifacts. CI evidence is recorded in the PR and verifier log after freezing the head.
 Only this online browser fixture blocks service-worker navigation (to prevent cached HTML bypassing
 injected hosting headers) and grants access to the disposable loopback API. Existing offline tests
-retain their service workers. It requires the real print CSS to load and the print callback to run.
+retain their service workers. It requires the real A4 receipt layout and native print callback.
 
 Stacked draft after #73; review, merge and rollout are separate. No live action is performed.

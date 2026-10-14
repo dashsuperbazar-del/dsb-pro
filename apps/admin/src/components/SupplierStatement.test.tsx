@@ -125,38 +125,26 @@ test('clipboard rejection gives complete selectable text, while share cancellati
   await act(async () => button('Share text').click());
   expect(host.querySelector('[role="alert"]')).toBeNull();
 });
-test('printing opens only the escaped prepared statement and handles popup denial', async () => {
+test('prints the exact prepared statement through the existing A4 receipt layout and reports unavailable printing', async () => {
+  const large = data();
+  large.openingBalancePaise = '9007199254740993';
+  large.closingBalancePaise = '9007199254750993';
+  large.entries[0].runningBalancePaise = '9007199254750993';
+  api.getSupplierLedger.mockResolvedValueOnce(large);
   await mount();
   await ready();
-  let onLoad: (() => void) | undefined;
-  // Writing a completed blank document implicitly opens it and removes Window listeners.
-  const write = vi.fn<(html: string) => void>(() => {
-    onLoad = undefined;
+  const print = vi.spyOn(window, 'print').mockImplementation(() => {});
+  await act(async () => button('Print A4 / PDF').click());
+  expect(print).toHaveBeenCalledOnce();
+  const target = host.querySelector('[aria-label="Printable supplier statement"]')!;
+  expect(target.textContent).toContain('Corner Store');
+  expect(target.textContent).toContain('Acme');
+  expect(target.textContent).toContain('Closing: ₹9,00,71,99,25,47,509.93');
+  expect(target.innerHTML).toContain('&lt;img');
+  expect(target.querySelector('img')).toBeNull();
+  print.mockImplementation(() => {
+    throw new Error('Unavailable');
   });
-  const print = vi.fn();
-  const popup = {
-    opener: window,
-    document: { write, close: vi.fn(), styleSheets: [{}] },
-    addEventListener: vi.fn((_type: string, callback: () => void) => {
-      onLoad = callback;
-    }),
-    focus: vi.fn(),
-    print,
-  };
-  vi.spyOn(window, 'open').mockReturnValue(popup as unknown as Window);
   await act(async () => button('Print A4 / PDF').click());
-  expect(popup.opener).toBeNull();
-  expect(write.mock.calls[0][0]).toContain('&lt;img');
-  expect(write.mock.calls[0][0]).not.toContain('<img');
-  expect(print).not.toHaveBeenCalled();
-  onLoad?.();
-  expect(print).toHaveBeenCalledOnce();
-  popup.document.styleSheets = [];
-  await act(async () => button('Print A4 / PDF').click());
-  await act(async () => onLoad?.());
-  expect(host.textContent).toContain('Print styles could not be loaded');
-  expect(print).toHaveBeenCalledOnce();
-  vi.mocked(window.open).mockReturnValue(null);
-  await act(async () => button('Print A4 / PDF').click());
-  expect(host.textContent).toContain('Print window blocked');
+  expect(host.textContent).toContain('Printing is unavailable in this browser');
 });
