@@ -853,6 +853,24 @@ body {
   margin: 12mm;
 }
 @media print {
+  .supplier-screen > :not(.supplier-ledger),
+  .supplier-ledger > h2,
+  .supplier-statement > :not(.supplier-statement-print) {
+    display: none !important;
+  }
+  .supplier-screen,
+  .supplier-ledger,
+  .supplier-statement {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    max-width: none;
+    width: auto;
+  }
+  .supplier-screen .receipt-print {
+    position: static;
+  }
   .supplier-statement-print table {
     table-layout: fixed;
     width: 100%;

@@ -382,7 +382,7 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
   const allocTotal = pl.allocations.reduce((s, a) => s + Number(a.amountPaise), 0);
 
   return (
-    <main>
+    <main class="supplier-screen">
       <div class="row">
         <h1>{t('suppliers')}</h1>
         <nav class="party-tabs" aria-label="Party type">
@@ -748,7 +748,7 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
           </section>
 
           {view === 'ledger' && shopId && partyId && businessDate && (
-            <section>
+            <section class="supplier-ledger">
               <h2>Ledger (this shop)</h2>
               <SupplierStatement
                 key={`${shopId}:${partyId}`}
