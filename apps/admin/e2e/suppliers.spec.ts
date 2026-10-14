@@ -74,7 +74,7 @@ test.describe('supplier statements', () => {
     let policyApplied = 0;
     // Preview normally omits hosting headers. Exercise the real production CSP, including the
     // inherited blank print window: inline/data CSS must not be required.
-    await page.route('http://localhost:4173/**', async (route) => {
+    await context.route('http://localhost:4173/**', async (route) => {
       if (!route.request().isNavigationRequest()) return route.continue();
       const response = await route.fetch();
       await route.fulfill({
