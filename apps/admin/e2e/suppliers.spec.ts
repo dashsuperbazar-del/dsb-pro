@@ -63,6 +63,9 @@ test('supplier statement shares/downloads complete server history and prints the
   page,
   context,
 }, testInfo) => {
+  // The fulfilled document loses its normal loopback address-space classification in Chromium.
+  // Permit this disposable local API for this context; the production CSP itself stays exact.
+  await context.grantPermissions(['local-network-access'], { origin: 'http://localhost:4173' });
   const headers = await readFile(new URL('../dist/_headers', import.meta.url), 'utf8');
   const csp = headers.match(/Content-Security-Policy: (.+)/)![1];
   let policyApplied = false;
