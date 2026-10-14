@@ -63,23 +63,39 @@ function checked(value: unknown): PurchaseDraft {
   }
   return d;
 }
-export function listPurchaseDrafts(prefix: string): SavedPurchaseDraft[] {
-  const out: SavedPurchaseDraft[] = [];
+// VF-016: one unreadable snapshot must not hide the readable ones. Each key is parsed on its own;
+// unreadable keys are reported separately (kept, never deleted silently) so the user can discard them.
+export function scanPurchaseDrafts(prefix: string): {
+  drafts: SavedPurchaseDraft[];
+  unreadable: string[];
+} {
+  const drafts: SavedPurchaseDraft[] = [];
+  const unreadable: string[] = [];
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (!key?.startsWith(prefix)) continue;
     const raw = localStorage.getItem(key);
-    if (raw) out.push({ key, draft: checked(JSON.parse(raw)) });
+    if (!raw) continue;
+    try {
+      drafts.push({ key, draft: checked(JSON.parse(raw)) });
+    } catch {
+      unreadable.push(key);
+    }
   }
-  return out.sort((a, b) => b.draft.savedAt - a.draft.savedAt);
+  drafts.sort((a, b) => b.draft.savedAt - a.draft.savedAt);
+  return { drafts, unreadable: unreadable.sort() };
+}
+export function listPurchaseDrafts(prefix: string): SavedPurchaseDraft[] {
+  return scanPurchaseDrafts(prefix).drafts;
 }
 // Each mounted editor writes its own snapshot, so another window cannot erase its work.
 // Restored snapshots keep their posting identity: two windows cannot post the same draft twice.
-export function savePurchaseDraft(prefix: string, writer: string, draft: PurchaseDraft) {
+export function savePurchaseDraft(prefix: string, writer: string, draft: PurchaseDraft): string {
   const key = `${prefix}${draft.clientId}:${writer}`;
   const text = JSON.stringify(checked(draft));
   localStorage.setItem(key, text);
   if (localStorage.getItem(key) !== text) throw new Error('This device did not keep the draft.');
+  return key;
 }
 export function removePurchaseDraft(key: string) {
   localStorage.removeItem(key);

@@ -42,7 +42,7 @@ import { clearPendingIntent, loadPendingIntent, savePendingIntent } from '../lib
 
 import {
   purchaseDraftPrefix,
-  listPurchaseDrafts,
+  scanPurchaseDrafts,
   savePurchaseDraft,
   removePurchaseDraft,
   clearPurchaseDrafts,
@@ -99,6 +99,7 @@ export function InventoryScreen({
   const draftWriter = useRef(crypto.randomUUID());
   const [savedDrafts, setSavedDrafts] = useState<SavedPurchaseDraft[]>([]);
   const [draftError, setDraftError] = useState('');
+  const [unreadableDrafts, setUnreadableDrafts] = useState<string[]>([]);
   const [draftStatus, setDraftStatus] = useState('');
   const [draftTouched, setDraftTouched] = useState(false);
   const [businessDate, setBusinessDate] = useState('');
@@ -359,7 +360,9 @@ export function InventoryScreen({
   function refreshDrafts() {
     if (!draftPrefix) return;
     try {
-      setSavedDrafts(listPurchaseDrafts(draftPrefix));
+      const scan = scanPurchaseDrafts(draftPrefix);
+      setSavedDrafts(scan.drafts);
+      setUnreadableDrafts(scan.unreadable);
       setDraftError('');
     } catch (e) {
       setDraftError(`Draft recovery unavailable: ${String(e)}. Existing drafts have been kept.`);
@@ -406,9 +409,12 @@ export function InventoryScreen({
     ))
       return;
     try {
-      savePurchaseDraft(draftPrefix, draftWriter.current, draftSnapshot);
+      // VF-016/017: the save result stands on its own, and only this snapshot is updated in the
+      // list (no full rescan and re-parse of every snapshot on each edit).
+      const key = savePurchaseDraft(draftPrefix, draftWriter.current, draftSnapshot);
+      const saved = { key, draft: draftSnapshot };
+      setSavedDrafts((prev) => [saved, ...prev.filter((d) => d.key !== key)]);
       setDraftStatus('Draft saved on this device · not posted');
-      setSavedDrafts(listPurchaseDrafts(draftPrefix));
       setDraftError('');
     } catch (e) {
       setDraftStatus('');
@@ -1176,6 +1182,33 @@ export function InventoryScreen({
           <p class="muted" aria-live="polite">
             {draftStatus}
           </p>
+        )}
+        {unreadableDrafts.length > 0 && (
+          <div class="card" role="alert" aria-label="Unreadable purchase drafts">
+            <p>
+              {unreadableDrafts.length} saved draft
+              {unreadableDrafts.length === 1 ? ' is' : 's are'} unreadable on this device. It cannot
+              be resumed; your other drafts are listed normally.
+            </p>
+            {unreadableDrafts.map((key) => (
+              <button
+                type="button"
+                key={key}
+                disabled={purchaseLocked || contextBusy}
+                onClick={() => {
+                  if (!confirm('Discard this unreadable draft? It cannot be recovered.')) return;
+                  try {
+                    removePurchaseDraft(key);
+                    refreshDrafts();
+                  } catch (e) {
+                    setDraftError(`Draft could not be discarded: ${String(e)}.`);
+                  }
+                }}
+              >
+                Discard unreadable draft
+              </button>
+            ))}
+          </div>
         )}
         {savedDrafts.some((s) => s.draft.clientId !== purchaseClientId) && (
           <details class="card" aria-label="Saved purchase drafts">
