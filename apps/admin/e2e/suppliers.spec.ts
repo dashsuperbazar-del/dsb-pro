@@ -1,5 +1,6 @@
 import { stockTask, addItemForm } from './design-helpers';
 import { test, expect, type Page } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 
 const PASSWORD = 'TestOnly-2026!pw';
 const email = () => `suppliers-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`;
@@ -40,6 +41,9 @@ async function ownerWithBill(page: Page) {
   await page.goto('/');
   await page.getByRole('link', { name: 'Suppliers & payments' }).click();
   await page.getByLabel('Supplier', { exact: true }).selectOption({ label: 'Acme Traders' });
+  // Finish the initial account reads before a case enables write-failure interception.
+  // Keep fault injection after a fully loaded baseline, including payment history and drafts.
+  await expect(bills(page).locator('tbody tr')).toHaveCount(1);
 }
 const bills = (page: Page) =>
   page
@@ -49,6 +53,141 @@ const history = (page: Page) =>
   page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Payment history', includeHidden: true }) });
+
+async function ledgerTask(page: Page) {
+  await page
+    .getByRole('navigation', { name: 'Supplier tasks' })
+    .getByRole('button', { name: 'Ledger', exact: true })
+    .click();
+  return page.getByRole('region', { name: 'Supplier statement', exact: true });
+}
+
+test.describe('supplier statements', () => {
+  // Keep cached navigation shells from bypassing the fixture's hosting response headers.
+  test.use({ serviceWorkers: 'block' });
+  test('supplier statement shares/downloads complete server history and prints the selected period', async ({
+    page,
+    context,
+  }, testInfo) => {
+    // The fulfilled document loses its normal loopback address-space classification in Chromium.
+    // Permit this disposable local API for this context; the production CSP itself stays exact.
+    await context.grantPermissions(['local-network-access'], { origin: 'http://localhost:4173' });
+    const headers = await readFile(new URL('../dist/_headers', import.meta.url), 'utf8');
+    const csp = headers.match(/Content-Security-Policy: (.+)/)![1];
+    let policyApplied = 0;
+    // Preview normally omits hosting headers. Exercise the real production CSP, including the
+    // inherited blank print window: inline/data CSS must not be required.
+    await context.route('http://localhost:4173/**', async (route) => {
+      if (!route.request().isNavigationRequest()) return route.continue();
+      const response = await route.fetch();
+      await route.fulfill({
+        response,
+        headers: { ...response.headers(), 'content-security-policy': csp },
+      });
+      policyApplied++;
+    });
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, 'share', {
+        configurable: true,
+        value: async (value: ShareData) => {
+          (window as unknown as { shared: ShareData }).shared = value;
+        },
+      });
+      window.print = () => {
+        (window as unknown as { printed: boolean }).printed = true;
+      };
+    });
+    await ownerWithBill(page);
+    expect(policyApplied).toBeGreaterThanOrEqual(4); // Signup, Home, Stock, Home; SPA routes retain it.
+    await record(page, '30');
+    await expect(page.getByRole('status')).toContainText('confirmed by the server');
+    const statement = await ledgerTask(page);
+    await expect(statement.getByLabel('Prepared supplier statement')).toContainText(
+      'Closing ₹70.00',
+    );
+    await expect(
+      statement.getByLabel('Prepared supplier statement').locator('tbody tr'),
+    ).toHaveCount(2);
+    await statement.getByRole('button', { name: 'Share text' }).click();
+    const shared = await page.evaluate(() => (window as unknown as { shared: ShareData }).shared);
+    expect(shared.text).toContain('Supplier Pay Shop');
+    expect(shared.text).toContain('Acme Traders');
+    expect(shared.text).toContain('ACME-1');
+    expect(shared.text).toContain('Payment made');
+    expect(shared.text).toContain('Closing: ₹70.00');
+
+    const downloadPromise = page.waitForEvent('download');
+    await statement.getByRole('button', { name: 'Download CSV' }).click();
+    const download = await downloadPromise;
+    const csv = await readFile((await download.path())!, 'utf8');
+    expect(csv).toContain('Purchase,ACME-1,100.00,100.00');
+    expect(csv).toContain(',-30.00,70.00');
+    expect(csv).toContain('Closing,,0.00,70.00');
+    expect(download.suggestedFilename()).toMatch(/^supplier-statement-.*\.csv$/);
+    const textDownloadPromise = page.waitForEvent('download');
+    await statement.getByRole('button', { name: 'Download text' }).click();
+    const textDownload = await textDownloadPromise;
+    expect(await readFile((await textDownload.path())!, 'utf8')).toContain(shared.text!);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await statement.scrollIntoViewIfNeeded();
+    await statement.evaluate((el) => window.scrollBy(0, el.getBoundingClientRect().top - 90));
+    await page.screenshot({
+      path: testInfo.outputPath('supplier-statement-phone.png'),
+    });
+    await statement.getByRole('button', { name: 'Print A4 / PDF' }).click();
+    expect(await page.evaluate(() => (window as unknown as { printed: boolean }).printed)).toBe(
+      true,
+    );
+    await page.setViewportSize({ width: 1100, height: 800 });
+    await page.emulateMedia({ media: 'print' });
+    const printed = page.getByLabel('Printable supplier statement');
+    await expect(printed).toBeVisible();
+    await expect(
+      printed.getByRole('heading', { name: 'Supplier statement: Acme Traders' }),
+    ).toBeVisible();
+    await expect(printed.locator('tbody tr')).toHaveCount(2);
+    await expect(printed).toContainText('Closing: ₹70.00');
+    await expect(
+      statement.getByRole('button', {
+        name: 'Prepare statement',
+        exact: true,
+        includeHidden: true,
+      }),
+    ).toBeHidden();
+    expect(await printed.evaluate((el) => getComputedStyle(el).fontFamily)).toContain('system-ui');
+    await page.screenshot({
+      path: testInfo.outputPath('supplier-statement-desktop.png'),
+      fullPage: true,
+    });
+    await page.emulateMedia({ media: 'screen' });
+
+    const today = await statement.getByLabel('Statement through').inputValue();
+    const tomorrow = new Date(`${today}T12:00:00Z`);
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    const next = tomorrow.toISOString().slice(0, 10);
+    await statement.getByLabel('Statement through').fill(next);
+    await statement.getByLabel('Statement from').fill(next);
+    await expect(statement.getByRole('button', { name: 'Download CSV' })).toBeDisabled();
+    await statement.getByRole('button', { name: 'Prepare statement', exact: true }).click();
+    await expect(statement.getByLabel('Prepared supplier statement')).toContainText(
+      'Opening ₹70.00 · Closing ₹70.00',
+    );
+    await expect(statement.getByLabel('Prepared supplier statement')).toContainText(
+      'No posted entries in this period',
+    );
+    await statement.getByRole('button', { name: 'Share text' }).click();
+    const emptyText = await page.evaluate(
+      () => (window as unknown as { shared: ShareData }).shared.text,
+    );
+    expect(emptyText).toContain('Opening: ₹70.00');
+    expect(emptyText).not.toContain('ACME-1');
+    await page.route('**/rpc/get_party_ledger_v2', (route) => route.abort('internetdisconnected'));
+    await statement.getByRole('button', { name: 'Prepare statement', exact: true }).click();
+    await expect(statement.getByRole('alert')).toBeVisible();
+    await expect(statement.getByRole('button', { name: 'Print A4 / PDF' })).toBeDisabled();
+  });
+});
 
 async function record(page: Page, amount: string, toBill?: string) {
   await page
