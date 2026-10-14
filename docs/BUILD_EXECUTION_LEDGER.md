@@ -1,5 +1,11 @@
 # Build Execution Ledger
 
+## Current release integration — 14 October 2026
+
+User authorized merge and deploy. Codex builds; other AI verifies. #71–#75 are merged: 7840cfb, a1a1751, 1a9d094, 183c2b6, f1a550c. Final-head full CI passed for every packet; #72 also passed separate unchanged-head validate #845. #76 is integrated onto f1a550c with schema 0058, exact JSON scripts retained, six local guard/precision regressions PASS and fresh complete CI pending. Live 0058/preflight/apply/deploy remain pending; last production deploy #801 is 4a4c172. Physical/device/shop and hosted recovery gates are open. Earlier packet notes below describe their historical build checkpoints; accepted release rows record subsequent merges.
+
+## Earlier packet notes (historical)
+
 VF-016/017 verifier patch integrated into #71 from 3169f88: unreadable snapshots remain visible apart from recoverable drafts; autosave updates only its own entry. Regression cases pass; final-head CI and review pending. Codex remains builder; other AI verifier. No money RPC/migration/live change.
 
 DW2a draft recovery: PR #71 head `3169f88`, full CI #814 PASS (329 unit, 55 browser,
@@ -216,3 +222,5 @@ P1 is MERGED as `81ac0d1` (PR #38, squash). Dual-builder protocol retired; packe
 | 14 October #73 release | MERGED | 1a9d094 / exact head 510de2a | none | 342 unit + 17 archive; 940 pgTAP; exact private/Auth/financial recovery | Full CI #848 / 38543056524 PASS; 55 browser + 1 scale skip, 20 repetitions | Inspection-only live preflight retained | Codex builder; independent approval not claimed | User merge/deploy authorization | #74→#76 pending; hosted/human recovery open | No live apply/deploy |
 
 | 14 October #74 release | MERGED | 183c2b6 / exact head 5950a29 | none | 355 unit + 17 archive; 940 pgTAP; both recovery proofs | Full CI #851 / 38543991414 PASS; 56 browser + 1 scale skip, 20 repetitions | Inspection-only preflight retained | Codex builder; no independent/device approval claimed | User merge/deploy authorization | #75 payment correction must merge before deploy; #76 integration CI pending | No live apply/deploy |
+
+| 14 October #75 release | MERGED | f1a550c / exact head c8ff907 | none | 358 unit + 17 archive; 940 pgTAP; both recovery proofs | Full CI #854 / 38545121484 PASS; 56 browser + 1 scale skip, 20 repetitions | Full preserves cash/advance; explicit linked-bill cash | Codex builder; independent/human approval not claimed | User merge/deploy authorization | #76 combined restore CI pending; live preflight/apply/deploy next | No live apply/deploy |

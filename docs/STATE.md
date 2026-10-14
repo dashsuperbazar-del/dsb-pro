@@ -5,9 +5,11 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
 
-- 14 October release: user authorized merge/deploy. Codex builds; other AI verifies. #71–#74 squash-merged on green exact-head CI; #72 also passed separate validate #845. #75 prepared on resulting main; fresh CI pending. #76 needs final integration CI. No live apply/deploy yet; H3/shop gates open.
+- D3b #76 integrated on merged #75/schema 0058: exact numeric business JSON restore into empty same-schema target; endpoint guards, locked emptiness/full-row/FK/invariant/replay checks. Six precision/target regressions and combined formatting PASS; fresh full CI/real SQL proof pending. JSON scripts unchanged; both archive and JSON proof steps retained. No migration; hosted Auth/private bytes are separate. Contract: docs/BUSINESS_JSON_RESTORE.md.
 
-- `main` verified: `183c2b64c79ee401daca9b8ff4f3d5cafb77f0d5` (DW3 #74; fetched 14 October). Migrations 0001–0058 immutable. 0058 pending live; last production deploy #801 remains `4a4c172`.
+- 14 October release: user authorized merge/deploy. Codex builds; other AI verifies. #71–#75 squash-merged after green exact-head CI; #72 also passed separate validate #845. #76 integrated on resulting main/schema 0058; fresh full CI pending. Live preflight/apply/deploy next; H3/shop gates open.
+
+- `main` verified: `f1a550cf101573fc6579787da779225d464fd999` (V006 #75; fetched 14 October). Migrations 0001–0058 immutable. 0058 pending live; last production deploy #801 remains `4a4c172`.
 - DW1 #70 merged after final-head CI #809 / run 38359193865 PASS: 320 unit tests, 55 browser tests passed + 1 scale-only skip, 20 held-cart repetitions passed. Home/Purchases/Sales/Ledger/More; purchase bills/detail, snapshot-safe repeat into fresh draft, supplier/recent item shortcuts, inline supplier creation, bill-to-payment/ledger, Full + Auto allocations. Production publication of DW1 remains pending per saved verifier log; not independently dispatched here.
 - DW2a #71 including VF-016/017 MERGED as `7840cfb`; unchanged-head CI #834 / run 38522081829 PASS (332 app tests). User authorized merge; no independent approval claimed.
 - DW2b #72 MERGED as a1a1751: private photo/PDF, durable draft/binary, immutable upload/retry, viewer; 0058 / billdocs. Exact-head CI #844 / 38539868090 and validate #845 / 38541928845 PASS at a661280 (342 app tests, 940 pgTAP, browser/upgrade/build). Separate inspection-only phase6_db_preflight reports every live pending group. Live storage apply, camera/device acceptance and independent approval not claimed. Contract: docs/BILL_DOCUMENTS.md.
@@ -41,7 +43,7 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
 - M1 gate (daily-usable): O1 ✓ + H3 (user, offline→restart→reconnect, each entry once) + first clean
   real-data week (Compare page + invariants). Waiting on the user for H3 and the cutover date.
 
-- V006 #75 prepared on merged #74: Full preserves actual paid cash and advance; linked bill requires explicit cash. Three actual-screen regressions and app/changed-file formatting PASS. Fresh full CI pending. Root formatting debt remains disclosed; no migration/money RPC change. Do not deploy before this fix merges. Details: docs/V006_REVIEW.md.
+- V006 #75 MERGED as f1a550c after full CI #854 / 38545121484 PASS at c8ff907: 358 app + 17 archive tests, 940 pgTAP, 56 browser passes + 1 scale skip, 20 repetitions, both recovery proofs/build. Full preserves paid cash/advance; linked bill requires explicit cash. App/changed-file formatting enforced; root debt disclosed. No money RPC/migration change. Contract: docs/V006_REVIEW.md.
 
 ## Workflow (single builder)
 
