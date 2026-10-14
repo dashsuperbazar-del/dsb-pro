@@ -65,14 +65,16 @@ test('supplier statement shares/downloads complete server history and prints the
 }, testInfo) => {
   const headers = await readFile(new URL('../dist/_headers', import.meta.url), 'utf8');
   const csp = headers.match(/Content-Security-Policy: (.+)/)![1];
+  let policyApplied = false;
   // Preview normally omits hosting headers. Exercise the real production CSP, including the
   // inherited blank print window: inline/data CSS must not be required.
-  await page.route('**/suppliers', async (route) => {
+  await page.route('**/signup', async (route) => {
     const response = await route.fetch();
     await route.fulfill({
       response,
       headers: { ...response.headers(), 'content-security-policy': csp },
     });
+    policyApplied = true;
   });
   await context.addInitScript(() => {
     Object.defineProperty(navigator, 'share', {
@@ -86,6 +88,7 @@ test('supplier statement shares/downloads complete server history and prints the
     };
   });
   await ownerWithBill(page);
+  expect(policyApplied).toBe(true); // SPA navigation keeps the initial document's policy.
   await record(page, '30');
   await expect(page.getByRole('status')).toContainText('confirmed by the server');
   const statement = await ledgerTask(page);
