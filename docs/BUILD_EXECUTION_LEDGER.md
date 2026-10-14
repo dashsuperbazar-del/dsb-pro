@@ -2,10 +2,13 @@
 
 DW2a draft recovery: PR #71 head `3169f88`, full CI #814 PASS (329 unit, 55 browser,
 20 held-cart repetitions); independent review/merge remain pending. No live change.
-DW2b private bill attachments: IN_PROGRESS, dependent on #71, migration 0058 / billdocs.
-Local 339 tests/lint/types/build PASS; full CI, second validate-only migration run, independent
-review and real-device/shop gates remain pending. Contract: [BILL_DOCUMENTS.md](BILL_DOCUMENTS.md).
-Binary object backup/retention follow-up remains open; no attachment disaster-recovery claim.
+DW2b PR #72 head `0b11bb4`, full CI #820 and performance #52 PASS; independent review,
+second validate, merge and real-device/shop gates pending. Migration 0058 not applied live.
+DW2c document backup: BUILD / VERIFY, dependent on #72; no new migration. Snapshot-bound dump/files,
+encrypted nightly third artifact, disposable immutable restore and report-only retention.
+Local 339 unit + 15 archive tests/lint/types/build PASS; exact nightly scripts/second-target proof
+and final CI pending. No live operation or document disaster-recovery claim.
+Contract: [BILL_DOCUMENT_BACKUP.md](BILL_DOCUMENT_BACKUP.md).
 
 Packet-state tracker for `docs/COMPLETE_REMAINING_BUILD_PLAN.md` v1.1, per that plan's §4.1 and
 §0.4 execution protocol. States: `NOT_STARTED` / `IN_PROGRESS` / `CODE_REVIEW` / `CI_PASSED` /
