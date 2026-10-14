@@ -8,6 +8,7 @@
   },
   "scripts": {
     "lint": "eslint .",
+    "format:check": "node scripts/check-format.mjs",
     "typecheck": "pnpm -r --if-present run typecheck",
     "test": "pnpm -r --if-present run test",
     "build": "pnpm --filter @dsb-pro/admin run build",
