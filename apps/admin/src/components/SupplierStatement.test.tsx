@@ -128,12 +128,18 @@ test('clipboard rejection gives complete selectable text, while share cancellati
 test('printing opens only the escaped prepared statement and handles popup denial', async () => {
   await mount();
   await ready();
-  const write = vi.fn();
+  let onLoad: (() => void) | undefined;
+  // Writing a completed blank document implicitly opens it and removes Window listeners.
+  const write = vi.fn<(html: string) => void>(() => {
+    onLoad = undefined;
+  });
   const print = vi.fn();
   const popup = {
     opener: window,
     document: { write, close: vi.fn(), styleSheets: [{}] },
-    addEventListener: vi.fn(),
+    addEventListener: vi.fn((_type: string, callback: () => void) => {
+      onLoad = callback;
+    }),
     focus: vi.fn(),
     print,
   };
@@ -143,7 +149,12 @@ test('printing opens only the escaped prepared statement and handles popup denia
   expect(write.mock.calls[0][0]).toContain('&lt;img');
   expect(write.mock.calls[0][0]).not.toContain('<img');
   expect(print).not.toHaveBeenCalled();
-  popup.addEventListener.mock.calls[0][1]();
+  onLoad?.();
+  expect(print).toHaveBeenCalledOnce();
+  popup.document.styleSheets = [];
+  await act(async () => button('Print A4 / PDF').click());
+  await act(async () => onLoad?.());
+  expect(host.textContent).toContain('Print styles could not be loaded');
   expect(print).toHaveBeenCalledOnce();
   vi.mocked(window.open).mockReturnValue(null);
   await act(async () => button('Print A4 / PDF').click());

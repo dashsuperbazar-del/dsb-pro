@@ -31,6 +31,8 @@ same-origin hashed stylesheet and waits for load before opening the browser prin
 uses Vite `?url&no-inline` so hosting's `style-src 'self'` remains intact. No scripts, remote images or
 bill originals enter the window. PDF is the browser's Save as PDF option. Popup/CSS failures are
 reported. Physical printer/device/share-provider acceptance remains a human gate.
+The load handler registers after writing the document: implicit document opening can erase earlier
+Window listeners ([HTML Standard](https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-open-steps)).
 
 Silent output-corruption risks before crashes: rounded aggregate amounts, partial history labelled
 complete, wrong-party/date late response, stale output after failed refresh, omitted credits/openings,
@@ -49,5 +51,8 @@ server rows and ₹70 closing in shared/downloaded text/CSV/printed document, pr
 period carrying ₹70 opening, and denies exports after a failed refresh. Production CSP is injected
 into the fixture's supplier document and inherited by its print window. Phone and print screenshots
 are CI artifacts. CI evidence is recorded in the PR and verifier log after freezing the head.
+Only this online browser fixture blocks service-worker navigation (to prevent cached HTML bypassing
+injected hosting headers) and grants access to the disposable loopback API. Existing offline tests
+retain their service workers. It requires the real print CSS to load and the print callback to run.
 
 Stacked draft after #73; review, merge and rollout are separate. No live action is performed.

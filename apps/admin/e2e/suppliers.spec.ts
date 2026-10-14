@@ -59,124 +59,130 @@ async function ledgerTask(page: Page) {
   return page.getByRole('region', { name: 'Supplier statement', exact: true });
 }
 
-test('supplier statement shares/downloads complete server history and prints the selected period', async ({
-  page,
-  context,
-}, testInfo) => {
-  // The fulfilled document loses its normal loopback address-space classification in Chromium.
-  // Permit this disposable local API for this context; the production CSP itself stays exact.
-  await context.grantPermissions(['local-network-access'], { origin: 'http://localhost:4173' });
-  const headers = await readFile(new URL('../dist/_headers', import.meta.url), 'utf8');
-  const csp = headers.match(/Content-Security-Policy: (.+)/)![1];
-  let policyApplied = 0;
-  // Preview normally omits hosting headers. Exercise the real production CSP, including the
-  // inherited blank print window: inline/data CSS must not be required.
-  await page.route('http://localhost:4173/**', async (route) => {
-    if (!route.request().isNavigationRequest()) return route.continue();
-    const response = await route.fetch();
-    await route.fulfill({
-      response,
-      headers: { ...response.headers(), 'content-security-policy': csp },
+test.describe('supplier statements', () => {
+  // Keep cached navigation shells from bypassing the fixture's hosting response headers.
+  test.use({ serviceWorkers: 'block' });
+  test('supplier statement shares/downloads complete server history and prints the selected period', async ({
+    page,
+    context,
+  }, testInfo) => {
+    // The fulfilled document loses its normal loopback address-space classification in Chromium.
+    // Permit this disposable local API for this context; the production CSP itself stays exact.
+    await context.grantPermissions(['local-network-access'], { origin: 'http://localhost:4173' });
+    const headers = await readFile(new URL('../dist/_headers', import.meta.url), 'utf8');
+    const csp = headers.match(/Content-Security-Policy: (.+)/)![1];
+    let policyApplied = 0;
+    // Preview normally omits hosting headers. Exercise the real production CSP, including the
+    // inherited blank print window: inline/data CSS must not be required.
+    await page.route('http://localhost:4173/**', async (route) => {
+      if (!route.request().isNavigationRequest()) return route.continue();
+      const response = await route.fetch();
+      await route.fulfill({
+        response,
+        headers: { ...response.headers(), 'content-security-policy': csp },
+      });
+      policyApplied++;
     });
-    policyApplied++;
-  });
-  await context.addInitScript(() => {
-    Object.defineProperty(navigator, 'share', {
-      configurable: true,
-      value: async (value: ShareData) => {
-        (window as unknown as { shared: ShareData }).shared = value;
-      },
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, 'share', {
+        configurable: true,
+        value: async (value: ShareData) => {
+          (window as unknown as { shared: ShareData }).shared = value;
+        },
+      });
+      const open = window.open;
+      window.open = (...args: Parameters<typeof window.open>) => {
+        const popup = open.apply(window, args);
+        if (popup)
+          popup.print = () => {
+            (popup as unknown as { printed: boolean }).printed = true;
+          };
+        return popup;
+      };
     });
-    const open = window.open;
-    window.open = (...args: Parameters<typeof window.open>) => {
-      const popup = open.apply(window, args);
-      if (popup)
-        popup.print = () => {
-          (popup as unknown as { printed: boolean }).printed = true;
-        };
-      return popup;
-    };
-  });
-  await ownerWithBill(page);
-  expect(policyApplied).toBeGreaterThanOrEqual(4); // Signup, Home, Stock, Home; SPA routes retain it.
-  await record(page, '30');
-  await expect(page.getByRole('status')).toContainText('confirmed by the server');
-  const statement = await ledgerTask(page);
-  await expect(statement.getByLabel('Prepared supplier statement')).toContainText('Closing ₹70.00');
-  await expect(statement.locator('tbody tr')).toHaveCount(2);
-  await statement.getByRole('button', { name: 'Share text' }).click();
-  const shared = await page.evaluate(() => (window as unknown as { shared: ShareData }).shared);
-  expect(shared.text).toContain('Supplier Pay Shop');
-  expect(shared.text).toContain('Acme Traders');
-  expect(shared.text).toContain('ACME-1');
-  expect(shared.text).toContain('Payment made');
-  expect(shared.text).toContain('Closing: ₹70.00');
+    await ownerWithBill(page);
+    expect(policyApplied).toBeGreaterThanOrEqual(4); // Signup, Home, Stock, Home; SPA routes retain it.
+    await record(page, '30');
+    await expect(page.getByRole('status')).toContainText('confirmed by the server');
+    const statement = await ledgerTask(page);
+    await expect(statement.getByLabel('Prepared supplier statement')).toContainText(
+      'Closing ₹70.00',
+    );
+    await expect(statement.locator('tbody tr')).toHaveCount(2);
+    await statement.getByRole('button', { name: 'Share text' }).click();
+    const shared = await page.evaluate(() => (window as unknown as { shared: ShareData }).shared);
+    expect(shared.text).toContain('Supplier Pay Shop');
+    expect(shared.text).toContain('Acme Traders');
+    expect(shared.text).toContain('ACME-1');
+    expect(shared.text).toContain('Payment made');
+    expect(shared.text).toContain('Closing: ₹70.00');
 
-  const downloadPromise = page.waitForEvent('download');
-  await statement.getByRole('button', { name: 'Download CSV' }).click();
-  const download = await downloadPromise;
-  const csv = await readFile((await download.path())!, 'utf8');
-  expect(csv).toContain('Purchase,ACME-1,100.00,100.00');
-  expect(csv).toContain(',-30.00,70.00');
-  expect(csv).toContain('Closing,,0.00,70.00');
-  expect(download.suggestedFilename()).toMatch(/^supplier-statement-.*\.csv$/);
-  const textDownloadPromise = page.waitForEvent('download');
-  await statement.getByRole('button', { name: 'Download text' }).click();
-  const textDownload = await textDownloadPromise;
-  expect(await readFile((await textDownload.path())!, 'utf8')).toContain(shared.text!);
+    const downloadPromise = page.waitForEvent('download');
+    await statement.getByRole('button', { name: 'Download CSV' }).click();
+    const download = await downloadPromise;
+    const csv = await readFile((await download.path())!, 'utf8');
+    expect(csv).toContain('Purchase,ACME-1,100.00,100.00');
+    expect(csv).toContain(',-30.00,70.00');
+    expect(csv).toContain('Closing,,0.00,70.00');
+    expect(download.suggestedFilename()).toMatch(/^supplier-statement-.*\.csv$/);
+    const textDownloadPromise = page.waitForEvent('download');
+    await statement.getByRole('button', { name: 'Download text' }).click();
+    const textDownload = await textDownloadPromise;
+    expect(await readFile((await textDownload.path())!, 'utf8')).toContain(shared.text!);
 
-  await page.setViewportSize({ width: 390, height: 844 });
-  await statement.scrollIntoViewIfNeeded();
-  await page.screenshot({
-    path: testInfo.outputPath('supplier-statement-phone.png'),
-    fullPage: true,
-  });
-  const popupPromise = context.waitForEvent('page');
-  await statement.getByRole('button', { name: 'Print A4 / PDF' }).click();
-  const popup = await popupPromise;
-  await expect(
-    popup.getByRole('heading', { name: 'Supplier statement: Acme Traders' }),
-  ).toBeVisible();
-  await expect(popup.locator('tbody tr')).toHaveCount(2);
-  expect(await popup.evaluate(() => window.opener)).toBeNull();
-  await expect
-    .poll(() => popup.evaluate(() => (window as unknown as { printed: boolean }).printed))
-    .toBe(true);
-  expect(
-    await popup.locator('body').evaluate((body) => getComputedStyle(body).fontFamily),
-  ).toContain('system-ui');
-  await popup.setViewportSize({ width: 1100, height: 800 });
-  await popup.emulateMedia({ media: 'print' });
-  await popup.screenshot({
-    path: testInfo.outputPath('supplier-statement-desktop.png'),
-    fullPage: true,
-  });
-  await popup.close();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await statement.scrollIntoViewIfNeeded();
+    await statement.evaluate((el) => window.scrollBy(0, el.getBoundingClientRect().top - 90));
+    await page.screenshot({
+      path: testInfo.outputPath('supplier-statement-phone.png'),
+    });
+    const popupPromise = context.waitForEvent('page');
+    await statement.getByRole('button', { name: 'Print A4 / PDF' }).click();
+    const popup = await popupPromise;
+    await expect(
+      popup.getByRole('heading', { name: 'Supplier statement: Acme Traders' }),
+    ).toBeVisible();
+    await expect(popup.locator('tbody tr')).toHaveCount(2);
+    expect(await popup.evaluate(() => window.opener)).toBeNull();
+    await expect
+      .poll(() => popup.evaluate(() => (window as unknown as { printed: boolean }).printed))
+      .toBe(true);
+    expect(
+      await popup.locator('body').evaluate((body) => getComputedStyle(body).fontFamily),
+    ).toContain('system-ui');
+    await popup.setViewportSize({ width: 1100, height: 800 });
+    await popup.emulateMedia({ media: 'print' });
+    await popup.screenshot({
+      path: testInfo.outputPath('supplier-statement-desktop.png'),
+      fullPage: true,
+    });
+    await popup.close();
 
-  const today = await statement.getByLabel('Statement through').inputValue();
-  const tomorrow = new Date(`${today}T12:00:00Z`);
-  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-  const next = tomorrow.toISOString().slice(0, 10);
-  await statement.getByLabel('Statement through').fill(next);
-  await statement.getByLabel('Statement from').fill(next);
-  await expect(statement.getByRole('button', { name: 'Download CSV' })).toBeDisabled();
-  await statement.getByRole('button', { name: 'Prepare statement', exact: true }).click();
-  await expect(statement.getByLabel('Prepared supplier statement')).toContainText(
-    'Opening ₹70.00 · Closing ₹70.00',
-  );
-  await expect(statement.getByLabel('Prepared supplier statement')).toContainText(
-    'No posted entries in this period',
-  );
-  await statement.getByRole('button', { name: 'Share text' }).click();
-  const emptyText = await page.evaluate(
-    () => (window as unknown as { shared: ShareData }).shared.text,
-  );
-  expect(emptyText).toContain('Opening: ₹70.00');
-  expect(emptyText).not.toContain('ACME-1');
-  await page.route('**/rpc/get_party_ledger_v2', (route) => route.abort('internetdisconnected'));
-  await statement.getByRole('button', { name: 'Prepare statement', exact: true }).click();
-  await expect(statement.getByRole('alert')).toBeVisible();
-  await expect(statement.getByRole('button', { name: 'Print A4 / PDF' })).toBeDisabled();
+    const today = await statement.getByLabel('Statement through').inputValue();
+    const tomorrow = new Date(`${today}T12:00:00Z`);
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    const next = tomorrow.toISOString().slice(0, 10);
+    await statement.getByLabel('Statement through').fill(next);
+    await statement.getByLabel('Statement from').fill(next);
+    await expect(statement.getByRole('button', { name: 'Download CSV' })).toBeDisabled();
+    await statement.getByRole('button', { name: 'Prepare statement', exact: true }).click();
+    await expect(statement.getByLabel('Prepared supplier statement')).toContainText(
+      'Opening ₹70.00 · Closing ₹70.00',
+    );
+    await expect(statement.getByLabel('Prepared supplier statement')).toContainText(
+      'No posted entries in this period',
+    );
+    await statement.getByRole('button', { name: 'Share text' }).click();
+    const emptyText = await page.evaluate(
+      () => (window as unknown as { shared: ShareData }).shared.text,
+    );
+    expect(emptyText).toContain('Opening: ₹70.00');
+    expect(emptyText).not.toContain('ACME-1');
+    await page.route('**/rpc/get_party_ledger_v2', (route) => route.abort('internetdisconnected'));
+    await statement.getByRole('button', { name: 'Prepare statement', exact: true }).click();
+    await expect(statement.getByRole('alert')).toBeVisible();
+    await expect(statement.getByRole('button', { name: 'Print A4 / PDF' })).toBeDisabled();
+  });
 });
 
 async function record(page: Page, amount: string, toBill?: string) {

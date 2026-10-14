@@ -142,6 +142,10 @@ export function SupplierStatement({
     }
     popup.opener = null;
     // A blank window inherits the app CSP: load same-origin CSS, never relax style-src.
+    popup.document.write(
+      statementHtml(statement, new URL(statementStyles, window.location.href).href),
+    );
+    // document.write may implicitly open the document and remove earlier Window listeners.
     popup.addEventListener(
       'load',
       () => {
@@ -153,9 +157,6 @@ export function SupplierStatement({
         popup.print();
       },
       { once: true },
-    );
-    popup.document.write(
-      statementHtml(statement, new URL(statementStyles, window.location.href).href),
     );
     popup.document.close();
   }
