@@ -210,9 +210,8 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
     const bill = bills.find((b) => b.purchase_bill_id === contextBill);
     if (bill && BigInt(bill.outstanding_paise) > 0n) {
       const value = paiseToDecimal(bill.outstanding_paise);
-      setAmount(value);
       setAlloc({ [contextBill]: value });
-      setMessage('This bill is selected for payment. Review the amount you actually paid.');
+      setMessage('This bill is selected for payment. Enter the amount you actually paid.');
     }
   }, [loadedParty, bills, draft, open, contextSupplier, contextBill]);
   function autoAllocate() {
@@ -586,13 +585,11 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
                                     ...alloc,
                                     [b.purchase_bill_id]: paiseToDecimal(b.outstanding_paise),
                                   };
-                                  const total = Object.values(next).reduce(
-                                    (sum, v) => sum + BigInt(toPaiseText(v || '0')),
-                                    0n,
-                                  );
                                   setAlloc(next);
-                                  setAmount(paiseToDecimal(total.toString()));
                                   setConfirming(false);
+                                  setMessage(
+                                    'Full bill allocation selected. Enter or check the amount you actually paid.',
+                                  );
                                 } catch (e) {
                                   setError(String(e));
                                 }
@@ -613,6 +610,10 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
           {canPost && loadedParty === partyId && (
             <section hidden={view !== 'payment'}>
               <h2>{t('recordPaymentMade')}</h2>
+              <p class="hint">
+                Enter the amount already paid. Full fills a bill allocation; any remainder stays as
+                advance.
+              </p>
               {unresolved.length > 0 ? (
                 <p>Blocked until the payments above are resolved.</p>
               ) : !confirming ? (
