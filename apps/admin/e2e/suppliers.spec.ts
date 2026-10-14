@@ -41,6 +41,9 @@ async function ownerWithBill(page: Page) {
   await page.goto('/');
   await page.getByRole('link', { name: 'Suppliers & payments' }).click();
   await page.getByLabel('Supplier', { exact: true }).selectOption({ label: 'Acme Traders' });
+  // Finish the initial account reads before a case enables write-failure interception.
+  // Keep fault injection after a fully loaded baseline, including payment history and drafts.
+  await expect(bills(page).locator('tbody tr')).toHaveCount(1);
 }
 const bills = (page: Page) =>
   page
