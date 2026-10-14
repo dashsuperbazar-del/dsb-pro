@@ -123,6 +123,8 @@ const src = await client(source);
 const req = {};
 let raw;
 const exactOpenings = [];
+let exactQuantityBill;
+const exactQuantity = '123456789012.123456';
 try {
   await src.query('insert into auth.users(id) values($1)', [ownerId]);
   await src.query('begin');
@@ -203,9 +205,8 @@ try {
     advance,
     randomUUID(),
   ]);
-  // Export as PostgreSQL text, and prove real restored bigint values beyond JS's
-  // safe integer range in both directions, not a comparison to a rounded JS object.
-  for (const amount of ['9007199254740993', '-9007199254740993']) {
+  // Respect the account-opening ceiling while covering both signs near that limit.
+  for (const amount of ['99999999999999', '-99999999999999']) {
     const exactCustomer = await one(
       `insert into customers(tenant_id,name,client_id) values($1,'Exact opening customer',$2) returning id`,
       [t, `exact-customer-${randomUUID()}`],
@@ -216,6 +217,12 @@ try {
     );
     exactOpenings.push({ id, amount });
   }
+  // A valid numeric(18,6) quantity that loses digits through JS Number conversion.
+  req.exactPurchase = [s, party, 'EXACT-QTY', randomUUID(), line(exactQuantity, 1)];
+  exactQuantityBill = await one(
+    `select post_purchase($1::uuid,$2::uuid,$3,current_date,0,0,$4,$5::jsonb,null)`,
+    req.exactPurchase,
+  );
   raw = (await src.query('select phase6_export_tenant($1::uuid)::text e', [s])).rows[0].e;
   const inv = (await src.query('select check_invariants() v')).rows[0].v;
   assert(inv.ok === true, 'source invariants pass before export', inv);
@@ -330,11 +337,26 @@ const report = await restore({ raw, target, expectSha256: goodSha, createAuthStu
           [id],
         )
       ).rows[0];
-      assert(restored?.amount === amount, 'real restored opening preserves exact signed bigint', {
-        expected: amount,
-        actual: restored?.amount,
-      });
+      assert(
+        restored?.amount === amount,
+        'real restored opening preserves its exact valid signed amount',
+        {
+          expected: amount,
+          actual: restored?.amount,
+        },
+      );
     }
+    const quantity = (
+      await exactClient.query(
+        'select qty::text qty from public.purchase_bill_items where purchase_bill_id=$1',
+        [exactQuantityBill],
+      )
+    ).rows[0];
+    assert(
+      quantity?.qty === exactQuantity,
+      'real restored purchase preserves exact fractional quantity',
+      { expected: exactQuantity, actual: quantity?.qty },
+    );
   } finally {
     await exactClient.end();
   }
@@ -382,6 +404,10 @@ try {
   await tc.query(
     `select post_purchase($1::uuid,$2::uuid,$3,current_date,0,0,$4,$5::jsonb,null)`,
     req.purchase,
+  );
+  await tc.query(
+    `select post_purchase($1::uuid,$2::uuid,$3,current_date,0,0,$4,$5::jsonb,null)`,
+    req.exactPurchase,
   );
   await tc.query('commit');
   assert(sale === doc.sales[0].id, 'sale replay returns the original sale id');

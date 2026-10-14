@@ -39,7 +39,8 @@ integers and decimal tokens, imported-function target enforcement, and source/co
 The disposable proof builds purchases, sales, receipts, supplier payments, returns, expenses,
 openings and a settlement through real RPCs, exports them, checks checksum/coverage/shape/tenant/
 coercion refusals and rollback, restores and compares full rows/FKs/invariants. Positive and negative
-opening values beyond JS's safe integer range are checked directly as exact SQL text after restore.
+opening values near their permitted limit and a large fractional stock quantity are checked directly
+as exact SQL text after restore. The stock quantity would lose digits through JS Number conversion.
 Replaying the original sale/receipt/purchase IDs adds no rows. The fresh target includes public,
 auth and storage schema definitions for dependency compatibility; attachment bytes are not restored.
 
