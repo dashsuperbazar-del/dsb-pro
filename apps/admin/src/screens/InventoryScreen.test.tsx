@@ -2,8 +2,18 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
+import 'fake-indexeddb/auto';
 import { InventoryScreen } from './InventoryScreen';
 const api = vi.hoisted(() => ({
+  BILL_DOCUMENT_PATH:
+    /^([0-9a-f-]{36})\/([0-9a-f-]{36})\/([0-9a-f-]{36})\/([0-9a-f-]{36})\.(webp|pdf)$/,
+  billDocumentPath: vi.fn(
+    (tenant, shop, client, id, mime) =>
+      `${tenant}/${shop}/${client}/${id}.${mime === 'application/pdf' ? 'pdf' : 'webp'}`,
+  ),
+  billDocumentHash: vi.fn().mockResolvedValue('a'.repeat(64)),
+  uploadBillDocument: vi.fn(),
+  readBillDocument: vi.fn(),
   onAuthStateChange: vi.fn().mockReturnValue(() => {}),
   getSession: vi.fn().mockResolvedValue({ user: { id: 'user' } }),
   getCurrentMembership: vi.fn().mockResolvedValue({ tenantId: 'tenant', role: 'owner' }),
@@ -23,6 +33,8 @@ const api = vi.hoisted(() => ({
 vi.mock('@dsb-pro/adapters', () => api);
 const host = document.createElement('div');
 beforeEach(() => {
+  api.getCurrentMembership.mockResolvedValue({ tenantId: 'tenant', role: 'owner' });
+  api.getDefaultShopId.mockResolvedValue('shop');
   vi.spyOn(window, 'confirm').mockReturnValue(true);
 });
 afterEach(() => {
@@ -517,6 +529,296 @@ test('purchase controls cannot accept a click during the transient initial conte
     host.querySelector<HTMLInputElement>('input[name="billNo"]')!.closest('fieldset')!.disabled,
   ).toBe(false);
 });
+
+test('bill bytes and complete draft are durable before upload; reload resumes the same document and blocks premature posting', async () => {
+  const tenant = 'a0000000-0000-0000-0000-000000000001',
+    shop = 'a0000000-0000-0000-0000-000000000002';
+  api.getCurrentMembership.mockResolvedValue({ tenantId: tenant, role: 'owner' });
+  api.getDefaultShopId.mockResolvedValue(shop);
+  api.getPurchaseDetail.mockResolvedValue({
+    bill: {
+      id: 'photo-source',
+      status: 'POSTED',
+      party_id: null,
+      bill_no: 'PHOTO-SOURCE',
+      business_date: '2026-01-01',
+      discount_paise: '0',
+      extra_charges_paise: '0',
+    },
+    lines: [
+      {
+        item_id: 'a',
+        unit_level: 1,
+        unit_name_snapshot: 'piece',
+        conv1_snapshot: null,
+        conv2_snapshot: null,
+        qty: '2',
+        unit_price_paise: '100',
+      },
+    ],
+  });
+  let finish!: () => void;
+  let storedAtUpload: unknown;
+  api.uploadBillDocument
+    .mockImplementationOnce((doc) => {
+      const key = Object.keys(localStorage).find(
+        (k) =>
+          k.startsWith('dsb-purchase-draft:') &&
+          JSON.parse(localStorage.getItem(k)!).document?.id === doc.id,
+      )!;
+      storedAtUpload = JSON.parse(localStorage.getItem(key)!);
+      return new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+    })
+    .mockResolvedValue(undefined);
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly purchaseRepeatId="photo-source" />, host);
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('Draft repeated from PHOTO-SOURCE'));
+  await enter(host, 'billNo', 'PHOTO-DRAFT');
+  const picker = host.querySelector<HTMLInputElement>('input[aria-label="Choose bill PDF"]')!;
+  Object.defineProperty(picker, 'files', {
+    configurable: true,
+    value: [new File(['%PDF-1.7 sample'], 'bill.pdf', { type: 'application/pdf' })],
+  });
+  await act(async () => {
+    picker.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await vi.waitFor(() => expect(api.uploadBillDocument).toHaveBeenCalledTimes(1));
+  expect(storedAtUpload).toMatchObject({
+    billNo: 'PHOTO-DRAFT',
+    cart: [{ qty: '2', unitPricePaise: 100 }],
+    document: { uploaded: false, name: 'bill.pdf' },
+  });
+  expect(
+    [...host.querySelectorAll('button')].find((b) => b.textContent === 'Post purchase')!.disabled,
+  ).toBe(true);
+  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  const original = api.uploadBillDocument.mock.calls[0][0];
+  await act(async () => {
+    render(null, host);
+  });
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly />, host);
+  });
+  await vi.waitFor(() =>
+    expect(
+      [...host.querySelectorAll('button')].find((b) => b.textContent === 'Resume draft')?.disabled,
+    ).toBe(false),
+  );
+  await act(async () => {
+    [...host.querySelectorAll('button')].find((b) => b.textContent === 'Resume draft')!.click();
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('Upload confirmed'));
+  expect(api.uploadBillDocument.mock.calls[1][0].path).toBe(original.path);
+  expect(host.querySelector<HTMLInputElement>('input[name="billNo"]')!.value).toBe('PHOTO-DRAFT');
+  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  await act(async () => {
+    finish();
+  });
+  api.postPurchaseOutcome.mockResolvedValue({ kind: 'confirmed', value: {} });
+  await act(async () => {
+    host
+      .querySelector('input[name="billNo"]')!
+      .closest('form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('Purchase posted'));
+  expect(api.postPurchaseOutcome.mock.calls[0][0]).toMatchObject({
+    billImagePath: original.path,
+    clientId: (storedAtUpload as { clientId: string }).clientId,
+  });
+});
+
+test('a failed document preparation cannot silently post without the intended attachment', async () => {
+  api.getPurchaseDetail.mockResolvedValue({
+    bill: {
+      id: 'bad-file-source',
+      status: 'POSTED',
+      party_id: null,
+      bill_no: 'BAD-FILE-SOURCE',
+      business_date: '2026-01-01',
+      discount_paise: '0',
+      extra_charges_paise: '0',
+    },
+    lines: [
+      {
+        item_id: 'a',
+        unit_level: 1,
+        unit_name_snapshot: 'piece',
+        conv1_snapshot: null,
+        conv2_snapshot: null,
+        qty: '2',
+        unit_price_paise: '100',
+      },
+    ],
+  });
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly purchaseRepeatId="bad-file-source" />, host);
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('Draft repeated from BAD-FILE-SOURCE'));
+  const picker = host.querySelector<HTMLInputElement>('input[aria-label="Choose bill PDF"]')!;
+  Object.defineProperty(picker, 'files', {
+    configurable: true,
+    value: [new File(['not a PDF'], 'bad.pdf', { type: 'application/pdf' })],
+  });
+  await act(async () => {
+    picker.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('Choose a valid PDF'));
+  const post = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Post purchase')!;
+  expect(post.disabled).toBe(true);
+  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  await act(async () => {
+    [...host.querySelectorAll('button')]
+      .find((b) => b.textContent === 'Continue without attachment')!
+      .click();
+  });
+  expect(post.disabled).toBe(false);
+});
+
+test('picker eviction preserves the document intent and requires a decision after restoring the complete draft', async () => {
+  api.getPurchaseDetail.mockResolvedValue({
+    bill: {
+      id: 'picker-source',
+      status: 'POSTED',
+      party_id: null,
+      bill_no: 'PICKER-SOURCE',
+      business_date: '2026-01-01',
+      discount_paise: '0',
+      extra_charges_paise: '0',
+    },
+    lines: [
+      {
+        item_id: 'a',
+        unit_level: 1,
+        unit_name_snapshot: 'piece',
+        conv1_snapshot: null,
+        conv2_snapshot: null,
+        qty: '2',
+        unit_price_paise: '100',
+      },
+    ],
+  });
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly purchaseRepeatId="picker-source" />, host);
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('Draft repeated from PICKER-SOURCE'));
+  await enter(host, 'billNo', 'PICKER-DRAFT');
+  await act(async () => {
+    [...host.querySelectorAll('button')].find((b) => b.textContent === 'Gallery')!.click();
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('Document selection needs review'));
+  await act(async () => {
+    render(null, host);
+  });
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly />, host);
+  });
+  await vi.waitFor(() =>
+    expect(
+      [...host.querySelectorAll('button')].find((b) => b.textContent === 'Resume draft')?.disabled,
+    ).toBe(false),
+  );
+  await act(async () => {
+    [...host.querySelectorAll('button')].find((b) => b.textContent === 'Resume draft')!.click();
+  });
+  expect(host.querySelector<HTMLInputElement>('input[name="billNo"]')!.value).toBe('PICKER-DRAFT');
+  expect(host.querySelector('[aria-label="Purchase cart"]')?.textContent).toContain('₹2.00');
+  expect(host.textContent).toContain('Document selection needs review');
+  const post = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Post purchase')!;
+  expect(post.disabled).toBe(true);
+  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  await act(async () => {
+    [...host.querySelectorAll('button')]
+      .find((b) => b.textContent === 'Continue without attachment')!
+      .click();
+  });
+  expect(post.disabled).toBe(false);
+});
+
+test('resume stays disabled through the catalogue-to-new-context gap and preserves the draft afterwards', async () => {
+  localStorage.setItem(
+    'dsb-purchase-draft:user:shop:resume-client:writer',
+    JSON.stringify({
+      version: 1,
+      clientId: 'resume-client',
+      savedAt: 1,
+      supplier: '',
+      billNo: 'RESUME-GAP',
+      businessDate: '2026-10-01',
+      discount: '',
+      extra: '',
+      search: '',
+      lineItem: null,
+      unitLevel: 1,
+      qty: '',
+      price: '',
+      editingLine: null,
+      cart: [
+        {
+          item: { id: 'a', name: 'Item A', unit1: 'piece' },
+          unitLevel: 1,
+          qty: '2',
+          unitPricePaise: 100,
+        },
+      ],
+    }),
+  );
+  let finishCatalogue!: (date: string) => void, finishContext!: (date: string) => void;
+  api.getShopBusinessDate
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishCatalogue = resolve;
+        }),
+    )
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishContext = resolve;
+        }),
+    );
+  let exposed = 0;
+  const observer = new MutationObserver(() => {
+    const resume = [...host.querySelectorAll('button')].find(
+      (b) => b.textContent === 'Resume draft',
+    );
+    const formLoading = host
+      .querySelector<HTMLInputElement>('input[name="billNo"]')
+      ?.closest('fieldset')?.disabled;
+    if (resume && !resume.disabled && formLoading) exposed++;
+  });
+  observer.observe(host, { subtree: true, childList: true, attributes: true });
+  try {
+    await act(async () => {
+      render(<InventoryScreen purchaseOnly />, host);
+    });
+    await vi.waitFor(() => expect(api.getShopBusinessDate).toHaveBeenCalledTimes(1));
+    finishCatalogue('2026-10-12');
+    await vi.waitFor(() => expect(api.getShopBusinessDate).toHaveBeenCalledTimes(2));
+    expect(exposed).toBe(0);
+    const resume = [...host.querySelectorAll('button')].find(
+      (b) => b.textContent === 'Resume draft',
+    )!;
+    expect(resume.disabled).toBe(true);
+    await act(async () => {
+      finishContext('2026-10-12');
+    });
+    await vi.waitFor(() => expect(resume.disabled).toBe(false));
+    await act(async () => {
+      resume.click();
+    });
+    expect(host.querySelector<HTMLInputElement>('input[name="billNo"]')!.value).toBe('RESUME-GAP');
+    expect(host.querySelector<HTMLInputElement>('input[name="date"]')!.value).toBe('2026-10-01');
+    expect(host.querySelector('[aria-label="Purchase cart"]')?.textContent).toContain('₹2.00');
+    expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  } finally {
+    observer.disconnect();
+  }
+});
+
 test('VF-016: an unreadable snapshot is listed apart, discardable, and never hides or fails a real draft', async () => {
   const { purchaseDraftPrefix, savePurchaseDraft } = await import('../lib/purchaseDraft');
   const prefix = purchaseDraftPrefix('user', 'shop');

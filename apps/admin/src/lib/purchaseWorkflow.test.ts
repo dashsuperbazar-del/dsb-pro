@@ -14,6 +14,7 @@ const item = {
   image_path: null,
 };
 const bill = {
+  bill_image_path: null,
   id: 'b',
   party_id: 'p',
   bill_no: 'old',

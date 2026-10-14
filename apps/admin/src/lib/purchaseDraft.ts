@@ -1,5 +1,5 @@
 import { canonicalQuantity, quantityTimesPaise } from '@dsb-pro/core';
-import type { Item, Party } from '@dsb-pro/adapters';
+import { BILL_DOCUMENT_PATH, type Item, type Party, type BillDocument } from '@dsb-pro/adapters';
 import type { PurchaseDraftLine } from './purchaseWorkflow';
 
 export type PurchaseDraft = {
@@ -18,6 +18,8 @@ export type PurchaseDraft = {
   qty: string;
   price: string;
   editingLine: number | null;
+  document?: BillDocument | null;
+  documentIssue?: string;
 };
 export type SavedPurchaseDraft = { key: string; draft: PurchaseDraft };
 export function purchaseDraftPrefix(userId: string, shopId: string) {
@@ -57,6 +59,25 @@ function checked(value: unknown): PurchaseDraft {
     )
   )
     throw new Error('A saved purchase draft is unreadable. It has been kept on this device.');
+  if (d.documentIssue !== undefined && typeof d.documentIssue !== 'string')
+    throw new Error('Saved document selection state is unreadable. The draft has been kept.');
+  if (d.document) {
+    const photo = d.document,
+      parts = BILL_DOCUMENT_PATH.exec(photo.path);
+    if (
+      !parts ||
+      parts[3] !== d.clientId ||
+      parts[4] !== photo.id ||
+      typeof photo.name !== 'string' ||
+      !['image/webp', 'application/pdf'].includes(photo.mime) ||
+      typeof photo.uploaded !== 'boolean' ||
+      !Number.isSafeInteger(photo.size) ||
+      photo.size <= 0 ||
+      photo.size > 5242880 ||
+      !/^[0-9a-f]{64}$/.test(photo.sha256)
+    )
+      throw new Error('Saved bill attachment metadata is unreadable. The draft has been kept.');
+  }
   for (const line of d.cart) {
     canonicalQuantity(line.qty);
     quantityTimesPaise(line.qty, line.unitPricePaise);

@@ -503,11 +503,48 @@ if [[ "$d3a" == "2" ]]; then
   fi
 fi
 
+# DW2b is an additive classifier field; preserve the historical 19-part observed_state contract.
+billdocs_body_md5=$(node "$repo_root/scripts/billdocs-body-md5.mjs")
+billdocs_probe=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -F' ' -v billdocs_body_md5="$billdocs_body_md5" <<'SQL'
+do $$ begin
+ create temp table _billdocs_receipt (present boolean);
+ if to_regclass('public.app_migration_receipts') is not null then
+   insert into _billdocs_receipt select exists(select 1 from public.app_migration_receipts where version='0058');
+ else insert into _billdocs_receipt values(false); end if;
+end $$;
+select (select present from _billdocs_receipt),
+ (select count(*) from (values
+   (exists(select 1 from storage.buckets where id='bill-documents' and not public and file_size_limit=5242880
+      and allowed_mime_types=array['image/webp','image/jpeg','image/png','application/pdf'])),
+   (exists(select 1 from pg_policies where schemaname='storage' and tablename='objects' and policyname='bill_documents_read')),
+   (exists(select 1 from pg_policies where schemaname='storage' and tablename='objects' and policyname='bill_documents_insert')),
+   (exists(select 1 from pg_proc where oid='public.post_purchase(uuid,uuid,text,date,bigint,bigint,text,jsonb,text)'::regprocedure
+      and md5(prosrc)=:'billdocs_body_md5'))
+ ) p(ok) where ok);
+SQL
+)
+read -r billdocs_receipt billdocs_anchors <<<"$(tail -n 1 <<<"$billdocs_probe")"
+case "$billdocs_receipt:$billdocs_anchors" in
+ f:0) billdocs=0; needs_billdocs=true ;;
+ f:4) billdocs=1; needs_billdocs=true ;;
+ t:4) billdocs=2; needs_billdocs=false ;;
+ *) echo "Bill documents partial/drift state ($billdocs_receipt/$billdocs_anchors). Refusing migration." >&2; exit 1 ;;
+esac
+if [[ "$billdocs" == '2' ]]; then
+ billdocs_expected=$(sha256sum "$repo_root/supabase/migrations/0058_bill_documents.sql" | cut -d' ' -f1)
+ billdocs_recorded=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -c "select checksum_sha256 from public.app_migration_receipts where version='0058'")
+ [[ "$billdocs_expected" == "$billdocs_recorded" ]] || { echo '0058 receipt checksum mismatch. Refusing migration.' >&2; exit 1; }
+fi
+# A later packet is not allowed to appear ahead of its predecessor, except a full reset awaiting receipts.
+if [[ "$billdocs" != '0' && "$d3a" != '2' && ! ( "$billdocs" == '1' && "$d3a" == '1' ) ]]; then
+ echo 'Bill documents appear ahead of completed D3a. Refusing migration.' >&2; exit 1
+fi
+
 emit_state() {
   local needs_foundation=$1 needs_hardening=$2 needs_phase65=$3 needs_batcha=$4 needs_batchb=$5 needs_p1=$6 needs_p2=$7 needs_c0=$8 needs_c1=$9 needs_c2=${10} needs_c3=${11} needs_c3b=${12} needs_r0=${13} needs_d1=${14} needs_r0b=${15} needs_o1=${16} needs_o2=${17} needs_d2b=${18} needs_d3a=${19}
   local needs_upgrade=true
   if [[ "$needs_foundation:$needs_hardening:$needs_phase65:$needs_batcha:$needs_batchb:$needs_p1:$needs_p2:$needs_c0:$needs_c1:$needs_c2:$needs_c3:$needs_c3b:$needs_r0:$needs_d1:$needs_r0b:$needs_o1:$needs_o2:$needs_d2b:$needs_d3a" == "false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false" ]]; then
-    needs_upgrade=false
+    if [[ "$needs_billdocs" == "false" ]]; then needs_upgrade=false; fi
   fi
   printf 'observed_state=%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s\n' "$foundation" "$hardening" "$phase65" "$batcha" "$batchb" "$p1" "$p2" "$c0" "$c1" "$c2" "$c3" "$c3b" "$r0" "$d1" "$r0b" "$o1" "$o2" "$d2b" "$d3a"
   printf 'needs_upgrade=%s\n' "$needs_upgrade"
@@ -530,6 +567,8 @@ emit_state() {
   printf 'needs_o2=%s\n' "$needs_o2"
   printf 'needs_d2b=%s\n' "$needs_d2b"
   printf 'needs_d3a=%s\n' "$needs_d3a"
+  printf 'billdocs_state=%s\n' "$billdocs"
+  printf 'needs_billdocs=%s\n' "$needs_billdocs"
 }
 
 # Legacy (0030-0043) classification is unchanged from before Packet P1: the

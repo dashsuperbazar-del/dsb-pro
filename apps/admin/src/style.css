@@ -1016,3 +1016,53 @@ body {
 .purchase-workspace h1 {
   margin: 0;
 }
+
+.bill-attachment {
+  border-block: 1px solid var(--border);
+  padding: 12px 0;
+  margin: 12px 0;
+  overflow-wrap: anywhere;
+}
+.bill-photo-panel {
+  position: fixed;
+  z-index: 60;
+  right: 12px;
+  top: 12px;
+  width: min(420px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 10px;
+  box-shadow: 0 8px 30px #0005;
+}
+.bill-photo-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+.bill-photo-toolbar strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.bill-photo-toolbar button:first-child {
+  touch-action: none;
+}
+.bill-photo-image {
+  overflow: auto;
+  max-height: 55dvh;
+  margin-top: 8px;
+}
+.bill-photo-image img {
+  display: block;
+  height: auto;
+}
+@media print {
+  .bill-photo-panel {
+    display: none;
+  }
+}

@@ -5,21 +5,17 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
 
-- 14 October integration: VF-016/017 patch applied to #71 (base 3169f88); unreadable snapshots are listed separately, never silently deleted; autosave updates only its own entry. Local regressions PASS; final-head CI/review pending. Codex builds; the other AI verifies.
-- `main` verified: `41dfd4b6e4202a3fc90de29a143247d6f82e9885` (DW1 #70; fetched 2026-10-14 IST). Migrations 0001–0057 immutable.
+- 14 October release authorization: user said "Merge and deploy". Codex builds; the other AI verifies. #71 squash-merged after final-head CI #834 PASS; #72 rebased onto resulting main and fresh CI/unchanged-head validate pending. Release order remains #72 → #73 → #74 → #75, then rebased/retested #76. No live apply/deploy yet; H3/shop gates remain open.
+
+- `main` verified: `7840cfb61b1ac1d2d2df4c2297b88c23c2dc04d9` (DW2a #71; fetched 2026-10-14 IST). Migrations 0001–0057 immutable. Production remains #801 at `4a4c172`.
 - DW1 #70 merged after final-head CI #809 / run 38359193865 PASS: 320 unit tests, 55 browser tests passed + 1 scale-only skip, 20 held-cart repetitions passed. Home/Purchases/Sales/Ledger/More; purchase bills/detail, snapshot-safe repeat into fresh draft, supplier/recent item shortcuts, inline supplier creation, bill-to-payment/ledger, Full + Auto allocations. Production publication of DW1 remains pending per saved verifier log; not independently dispatched here.
-- DW2a purchase draft recovery: IN_PROGRESS on `codex/dw2-purchase-draft-recovery`. Full editable purchase state saved per user/shop; explicit Resume/Discard; original posting identity retained. Frozen UNKNOWN requests take precedence; changed/missing item units refuse restore without deleting drafts. Per-editor snapshots preserve parallel-window work. Account changes hide the previous editor. No migration. Local validation and final-head full CI tracked in docs/PURCHASE_DRAFT_RECOVERY.md. Bill-photo/document work remains DW2b; no full legacy-parity or daily-usability claim. H3 + clean shop week remain NOT GO pending dated real-device evidence.
+- DW2a #71 including VF-016/017 MERGED as `7840cfb`; unchanged-head CI #834 / run 38522081829 PASS (332 app tests). User authorized merge; no independent approval claimed.
+- DW2b private bill attachments: IN_PROGRESS on `codex/dw2b-bill-attachments`, based on #71. One photo/PDF; Camera/Gallery; full draft + binary continuity; immutable upload/retry; history viewer. New migration 0058, group billdocs (not applied live). Historical migrations 0001–0057 unchanged. Local lint/types/339 tests/build/format/bundle/installability PASS; full CI/second validate/review pending. Risks: cost leakage through item storage, lost picker state, upload/UNKNOWN races, stale async completion, duplicate request identity, deleting a posted original. Contracts: docs/BILL_DOCUMENTS.md. Object-byte backup/restore and orphan cleanup remain follow-up work; no attachment DR claim. Bill photo publishing requires this storage migration; User authorized release on 14 October; fresh exact-head CI plus separate validate are still required. H3 + clean shop week remain NOT GO pending dated real-device evidence.
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off; partial returns carry item value, capped so a bill's returns never exceed what was billed for its items (total - extra charges). Extra charges still stay with the shop.
-- Historical D1 apply/deploy: runs 36894777286 / 36897126086. Latest recorded production deploy is #801 at 4a4c172; DW1 is not live. 0058 reserved by draft #72, not applied here.
-- Verifier log V003 (2026-10-02): VF-005/006/008 CLOSED. Open MAJORs fixed in V4: VF-007 follow-up
-  (a finished action repainted/voided the previous customer) and VF-009 (two stored intents blocked
-  each other's retry).
-- FIXED (S1, 2026-10-03): an online sale/return finalized while a background sync cycle was in flight
-  joined that cycle, which had already read the outbox, so it showed "Saved locally" and posted only on
-  the next cycle (held-cart repeat, runs 36909385562 and 758). One fresh cycle now runs if it is still
-  QUEUED; a deterministic e2e holds the cycle's ack. Never a money risk (exactly-once outbox).
-- Watch: daily-entry 'expense answer lost' timed out once locally under full parallel load (button
-  click); 6/6 alone on main and on S1 — same pattern as the suppliers-form watch item.
+- Historical D1 apply/deploy: runs 36894777286 / 36897126086. Latest recorded deploy #801 at 4a4c172; DW1 is not live. 0058 reserved by #72, not applied here.
+- Verifier log V003 (2026-10-02): VF-005/006/008 CLOSED. Open MAJORs fixed in V4: VF-007 follow-up (a finished action repainted/voided the previous customer) and VF-009 (two stored intents blocked each other's retry).
+- FIXED (S1, 2026-10-03): an online sale/return finalized while a background sync cycle was in flight joined that cycle, which had already read the outbox, so it showed "Saved locally" and posted only on the next cycle (held-cart repeat, runs 36909385562 and 758). One fresh cycle now runs if it is still QUEUED; a deterministic e2e holds the cycle's ack. Never a money risk (exactly-once outbox).
+- Watch: daily-entry 'expense answer lost' timed out once locally under full parallel load (button click); 6/6 alone on main and on S1 — same pattern as the suppliers-form watch item.
 - V2 residual closed by V3: receipt/payment check+create+send is serialized per account across windows
   (Web Locks). Browsers without Web Locks keep the unserialized check.
 - Rule (V2): persist every exact money/stock request BEFORE sending; only definitive DB rejection unlocks it. Use `rpcOutcome`/`*Outcome`, never `classifyError`, to decide outcomes.
