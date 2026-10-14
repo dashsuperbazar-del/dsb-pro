@@ -6,21 +6,21 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
 ## Current
 
 - `main` verified: `41dfd4b6e4202a3fc90de29a143247d6f82e9885` (DW1 #70; fetched 2026-10-14 IST). Migrations 0001–0057 immutable.
+- Latest production deploy: CI #801 / run 38280419051, `4a4c172` (12 October); confirmed from latest dispatch metadata. DW1 on main is not live.
+- Builder ownership (14 October user): Codex builds, other AI verifies. Ordered drafts #71 → #72 → #73 → #74 → V006 correction; rebase/retarget and re-test each dependent after squash merge. 0058 reserved by #72; D3b patch/rebase/tests pending.
 - DW1 #70 merged after final-head CI #809 / run 38359193865 PASS: 320 unit tests, 55 browser tests passed + 1 scale-only skip, 20 held-cart repetitions passed. Home/Purchases/Sales/Ledger/More; purchase bills/detail, snapshot-safe repeat into fresh draft, supplier/recent item shortcuts, inline supplier creation, bill-to-payment/ledger, Full + Auto allocations. Production publication of DW1 remains pending per saved verifier log; not independently dispatched here.
 - DW2a PR #71 remains DRAFT, head `3169f88`; full CI #814 PASS, 329 unit tests, 55 browser passes + 1 scale-only skip, 20 held-cart repetitions. Independent review/merge pending.
 - DW2b PR #72 remains DRAFT at `0b11bb4`; full CI #820 + performance #52 PASS (339 unit, 940 pgTAP, 55 browser + 1 skip, 20 repetitions). Migration 0058 / billdocs not applied live; independent review/second validate pending. Contract: docs/BILL_DOCUMENTS.md.
 - DW2c PR #73 remains DRAFT at `67bea96`; final CI #822 / run 38496419650 PASS (339 app unit + 17 archive tests, 940 pgTAP, 55 browser + 1 skip, 20 repetitions, two-target encrypted document proof). Dependent on #72; no new migration/live action. Independent review/source activation/physical recovery pending. Contract: docs/BILL_DOCUMENT_BACKUP.md.
-- DW3 supplier statements: BUILD / VERIFY on `codex/dw3-supplier-statements`, dependent on #73. Date-range exact server ledger with fresh shop header, text share/copy/download, safe CSV, existing Pro A4/PDF receipt layout. Scope/late-response/date-change/failed-refresh guards; restated posted-history basis explicit. No migration/money write/live operation. Local tests pass; final CI/browser visual acceptance and independent review pending. Contract: docs/SUPPLIER_STATEMENTS.md.
+- DW3 PR #74 remains DRAFT at `f2d965c`; final full CI #832 / run 38505404467 PASS (352 app + 17 archive tests, 940 pgTAP, 56 browser + 1 skip, 20 repetitions). Phone/A4 artifacts inspected; independent review/device acceptance pending. Contract: docs/SUPPLIER_STATEMENTS.md.
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off; partial returns carry item value, capped so a bill's returns never exceed what was billed for its items (total - extra charges). Extra charges still stay with the shop.
-- Live DB: D1 applied 2026-10-01 (run 36894777286, only group `d1` pending; verify green). Fully upgraded. D1 deployed after the apply (run 36897126086, green).
+- Historical D1 apply: 2026-10-01, run 36894777286; deployed run 36897126086. This does not attest latest live migration state; 0058 has not been applied here.
 - Verifier log V003 (2026-10-02): VF-005/006/008 CLOSED. Open MAJORs fixed in V4: VF-007 follow-up (a finished action repainted/voided the previous customer) and VF-009 (two stored intents blocked each other's retry).
 - FIXED (S1, 2026-10-03): an online sale/return finalized while a background sync cycle was in flight joined that cycle, which had already read the outbox, so it showed "Saved locally" and posted only on the next cycle (held-cart repeat, runs 36909385562 and 758). One fresh cycle now runs if it is still QUEUED; a deterministic e2e holds the cycle's ack. Never a money risk (exactly-once outbox).
 - Watch: daily-entry 'expense answer lost' timed out once locally under full parallel load (button click); 6/6 alone on main and on S1 — same pattern as the suppliers-form watch item.
 - V2 residual closed by V3: receipt/payment check+create+send is serialized per account across windows
   (Web Locks). Browsers without Web Locks keep the unserialized check.
-- Rule (V2): every money/stock write stores its exact request on the device BEFORE sending (fail
-  closed) and only a definitive DB rejection unlocks it; use `rpcOutcome`/`*Outcome` adapters, never
-  `classifyError` to decide an outcome.
+- Rule (V2): every money/stock write stores its exact request on the device BEFORE sending (fail closed); only definitive DB rejection unlocks it. Use `rpcOutcome`/`*Outcome`, never `classifyError` to decide an outcome.
 - Decision 2026-10-02 (user): old DSB is retired; no legacy import, no shadow run. DSB Pro goes live
   with real data once daily-usable, then is patched in use. F0/F3 dropped; F1 (fiscal numbering) later.
 - O1 design: one POSTED opening per account (signed paise; customer + = owes shop, supplier + = shop
@@ -43,6 +43,8 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
 - M1 gate (daily-usable): O1 ✓ + H3 (user, offline→restart→reconnect, each entry once) + first clean
   real-data week (Compare page + invariants). Waiting on the user for H3 and the cutover date.
 
+- V006 correction: Full preserves actual cash; linked bill requires explicit cash. CI enforces app/changed-file formatting; older root-wide debt remains. No migration/live change; final CI/review pending. Details: docs/V006_REVIEW.md.
+
 ## Workflow (single builder)
 
 failing tests → migration → adapters/UI → `pnpm lint && pnpm typecheck && pnpm test` (+pgTAP) →
@@ -56,7 +58,7 @@ Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it
 
 - This session lacks Docker/local Chromium; full Supabase/browser proofs run in CI (CLI 2.116.0).
 - After migrations reset DB and regenerate `packages/db/src/types.ts`; CI rejects stale types.
-- `pnpm exec prettier --check "apps/**/*.{ts,tsx,css,json,html}"` (config `.prettierrc.json`).
+- `pnpm format:check`: all documented app files plus supported changed files; CI uses the PR base SHA. Unrelated root formatting debt is tracked separately.
 
 ## Open risks / debts
 

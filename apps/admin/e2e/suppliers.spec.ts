@@ -201,10 +201,22 @@ async function record(page: Page, amount: string, toBill?: string) {
   await page.getByRole('button', { name: 'Confirm and record' }).click();
 }
 
-test('partial bill + advance, allocate the advance, release the match, void', async ({ page }) => {
+test('Full keeps cash plus advance; release the match and void', async ({ page }) => {
   await ownerWithBill(page);
   await expect(bills(page).locator('tbody tr')).toContainText('₹100.00');
 
+  await page
+    .getByRole('navigation', { name: 'Supplier tasks' })
+    .getByRole('button', { name: 'Record payment', exact: true })
+    .click();
+  await page.getByLabel('Amount paid ₹').fill('120');
+  await bills(page).getByRole('button', { name: 'Full', exact: true }).click();
+  await expect(page.getByLabel('Amount paid ₹')).toHaveValue('120');
+  await expect(page.getByLabel('Allocate to ACME-1')).toHaveValue('100.00');
+  await page.getByRole('button', { name: 'Review' }).click();
+  await expect(page.getByLabel('Confirm payment')).toContainText('remaining advance ₹20.00');
+  // Keep the existing partial-allocation/advance lifecycle coverage as well.
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
   await record(page, '100', '40');
   await expect(page.getByRole('status')).toContainText('confirmed by the server');
   await expect(bills(page).locator('tbody tr')).toContainText('₹60.00');

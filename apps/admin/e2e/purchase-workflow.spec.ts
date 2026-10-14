@@ -180,7 +180,7 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
   await photo.getByRole('button', { name: 'Close bill viewer' }).click();
   await detail.getByRole('link', { name: 'Record payment', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Suppliers & payments' })).toBeVisible();
-  await expect(page.getByLabel('Amount paid ₹')).toHaveValue('240.00');
+  await expect(page.getByLabel('Amount paid ₹')).toHaveValue('');
   await expect(page.getByLabel('Allocate to DSB-2')).toHaveValue('240.00');
   await page.getByLabel('Amount paid ₹').fill('100');
   await page.getByRole('button', { name: 'Auto · oldest first' }).click();

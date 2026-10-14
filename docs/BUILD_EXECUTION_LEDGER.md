@@ -7,10 +7,12 @@ second validate, merge and real-device/shop gates pending. Migration 0058 not ap
 DW2c #73 head `67bea96`, final CI #822 / run 38496419650 PASS: 339 app + 17 archive tests,
 940 pgTAP, 55 browser + 1 skip, 20 repetitions, actual two-target encrypted document proof.
 Review/source activation/physical recovery remain pending; no live operation or production DR claim.
-DW3 supplier statements: BUILD / VERIFY, dependent on #73; no migration or money writer change.
-Exact date-bound server ledger, fresh identity, text sharing/download, safe CSV and CSP-compatible
-Pro A4/PDF receipt printing; source scope/arithmetic and async lifecycle checked. Independent review/final CI and
-browser screenshots pending. Contract: [SUPPLIER_STATEMENTS.md](SUPPLIER_STATEMENTS.md).
+DW3 #74 final head `f2d965c`, full CI #832 / run 38505404467 PASS (352 app + 17 archive,
+940 pgTAP, 56 browser + 1 skip, 20 repetitions). Phone/A4 artifacts inspected; review/device gates pending.
+V006 correction: BUILD / VERIFY after #74. Full preserves actual paid amount; linked bills require
+explicit cash; CI enforces app/changed-file formatting. STATE/release sequence refreshed.
+Codex builds, other AI verifies; 0058 reserved by #72; D3b patch is not available here.
+No migration/live action. Final-head CI and independent review pending. Contract: [V006_REVIEW.md](V006_REVIEW.md).
 
 Packet-state tracker for `docs/COMPLETE_REMAINING_BUILD_PLAN.md` v1.1, per that plan's §4.1 and
 §0.4 execution protocol. States: `NOT_STARTED` / `IN_PROGRESS` / `CODE_REVIEW` / `CI_PASSED` /
