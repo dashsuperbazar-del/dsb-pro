@@ -20,4 +20,15 @@ describe('compare CSV', () => {
     expect(paiseToDecimal('900719925474099300')).toBe('9007199254740993.00');
     expect(paiseToDecimal(1050)).toBe('10.50');
   });
+  it('neutralizes whitespace-prefixed formulas and newline text without changing negative numbers', () => {
+    expect(
+      toCsv(
+        ['Text', 'Number'],
+        [
+          [{ text: '  =1+2' }, { num: '-0.50' }],
+          [{ text: '\n@SUM(1)' }, { num: '0' }],
+        ],
+      ),
+    ).toContain('\'  =1+2,-0.50\r\n"\'\n@SUM(1)",0');
+  });
 });

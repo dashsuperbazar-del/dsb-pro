@@ -4,11 +4,13 @@ DW2a draft recovery: PR #71 head `3169f88`, full CI #814 PASS (329 unit, 55 brow
 20 held-cart repetitions); independent review/merge remain pending. No live change.
 DW2b PR #72 head `0b11bb4`, full CI #820 and performance #52 PASS; independent review,
 second validate, merge and real-device/shop gates pending. Migration 0058 not applied live.
-DW2c document backup: BUILD / VERIFY, dependent on #72; no new migration. Snapshot-bound dump/files,
-encrypted nightly third artifact, disposable immutable restore and report-only retention.
-Local 339 unit + 17 archive tests/lint/types/build PASS; exact nightly scripts/second-target proof
-and final CI pending. No live operation or document disaster-recovery claim.
-Contract: [BILL_DOCUMENT_BACKUP.md](BILL_DOCUMENT_BACKUP.md).
+DW2c #73 head `67bea96`, final CI #822 / run 38496419650 PASS: 339 app + 17 archive tests,
+940 pgTAP, 55 browser + 1 skip, 20 repetitions, actual two-target encrypted document proof.
+Review/source activation/physical recovery remain pending; no live operation or production DR claim.
+DW3 supplier statements: BUILD / VERIFY, dependent on #73; no migration or money writer change.
+Exact date-bound server ledger, fresh identity, text sharing/download, safe CSV and CSP-compatible
+A4/PDF print; source scope/arithmetic and async lifecycle checked. Independent review/final CI and
+browser screenshots pending. Contract: [SUPPLIER_STATEMENTS.md](SUPPLIER_STATEMENTS.md).
 
 Packet-state tracker for `docs/COMPLETE_REMAINING_BUILD_PLAN.md` v1.1, per that plan's §4.1 and
 §0.4 execution protocol. States: `NOT_STARTED` / `IN_PROGRESS` / `CODE_REVIEW` / `CI_PASSED` /
