@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pgDockerEnvironment } from './bill-document-backup-cli.mjs';
 import {
   capture,
   verify,
@@ -40,6 +41,7 @@ function inventory() {
 function fakeDb(data = inventory()) {
   const calls = [];
   return {
+    connectionParameters: { host: '127.0.0.1' },
     calls,
     query: async (sql) => {
       calls.push(sql);
@@ -309,4 +311,40 @@ test('lost upload answers/existing identical objects reconcile by bytes, never b
     }),
     /different bytes/,
   );
+});
+
+test('direct restore-helper callers cannot pair a local API with a remote database', async (t) => {
+  const f = await fixture(t);
+  await capture(f.args);
+  const db = fakeDb();
+  db.connectionParameters.host = 'db.production.supabase.test';
+  let calls = 0;
+  await assert.rejects(
+    restoreLocal({
+      ...f,
+      db,
+      target: 'http://127.0.0.1:55321',
+      key: 'test',
+      disposable: true,
+      request: async () => {
+        calls++;
+        return response();
+      },
+    }),
+    /loopback/,
+  );
+  assert.equal(db.calls.length, 0);
+  assert.equal(calls, 0);
+});
+
+test('snapshot dump passes encoded credentials through environment and normalizes IPv6 hosts', () => {
+  const env = pgDockerEnvironment(
+    'postgresql://backup_ro:test%3Aonly%40pw@[::1]:55322/backup%20db?sslmode=require',
+  );
+  assert.equal(env.PGHOST, '::1');
+  assert.equal(env.PGPORT, '55322');
+  assert.equal(env.PGUSER, 'backup_ro');
+  assert.equal(env.PGPASSWORD, 'test:only@pw');
+  assert.equal(env.PGDATABASE, 'backup db');
+  assert.equal(env.PGSSLMODE, 'require');
 });

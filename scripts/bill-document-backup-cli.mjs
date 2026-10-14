@@ -15,7 +15,7 @@ export function pgDockerEnvironment(connectionString) {
   const url = new URL(connectionString);
   return {
     ...process.env,
-    PGHOST: url.hostname,
+    PGHOST: url.hostname.replace(/^\[|\]$/g, ''),
     PGPORT: url.port || '5432',
     PGUSER: decodeURIComponent(url.username),
     PGPASSWORD: decodeURIComponent(url.password),

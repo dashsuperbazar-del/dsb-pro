@@ -14,7 +14,7 @@ age recipient and verifies ciphertext checksums in both existing destinations be
 success. Each run uses unique filenames to avoid mixing same-day reruns. Source access is read-only.
 
 Restore verifies every local file and the matching public dump before any upload. It requires a
-loopback Supabase target, explicit disposable-target acknowledgement, the private bucket settings,
+loopback Supabase API and database target, explicit disposable-target acknowledgement, the private bucket settings,
 and exactly matching restored purchase references. It never overwrites: an existing/lost-answer
 object is accepted only if its downloaded bytes match. Production/hosted restore is deliberately
 outside this packet. Existing financial/Auth restore and reconciliation remain separate requirements.
@@ -46,3 +46,9 @@ incremental backup at larger volumes; timeout/failure must never be relabelled a
 
 Snapshot contract: [PostgreSQL 17 pg_dump](https://www.postgresql.org/docs/17/app-pgdump.html)
 and [snapshot synchronization](https://www.postgresql.org/docs/17/functions-admin.html#FUNCTIONS-SNAPSHOT-SYNCHRONIZATION).
+
+Both the CLI and the underlying restore helper enforce local database connection parameters before
+any query or file-policy change; a local API paired with a remote database is refused. The source
+endpoint comparison treats localhost/IPv4/IPv6 loopback aliases at the same port as the same target.
+This cannot authorize tunnelling a live system through loopback: the disposable-target acknowledgement
+is an operator contract, and this packet never performs a production restore.

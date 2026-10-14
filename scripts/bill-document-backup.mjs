@@ -8,7 +8,7 @@ const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const PATH = new RegExp(`^(${UUID})/(${UUID})/(${UUID})/(${UUID})\\.(webp|jpg|png|pdf)$`);
 const MIME = { webp: 'image/webp', jpg: 'image/jpeg', png: 'image/png', pdf: 'application/pdf' };
 export const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
-export const loopback = (host) => ['127.0.0.1', 'localhost', '[::1]'].includes(host);
+export const loopback = (host) => ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(host);
 const endpoint = (base) => {
   const url = new URL(base);
   return `${loopback(url.hostname) ? 'loopback' : url.hostname}:${url.port || (url.protocol === 'https:' ? '443' : '80')}`;
@@ -310,7 +310,11 @@ export async function restoreLocal({
   request = globalThis.fetch,
 }) {
   const base = origin(target);
-  if (disposable !== true || !loopback(new URL(base).hostname))
+  if (
+    disposable !== true ||
+    !loopback(new URL(base).hostname) ||
+    !loopback(db?.connectionParameters?.host)
+  )
     throw new Error('Restore requires an explicitly acknowledged loopback disposable target.');
   const manifest = await verify(directory, publicDump); // All bytes before any target write.
   if (manifest.objects.length) headers(key);

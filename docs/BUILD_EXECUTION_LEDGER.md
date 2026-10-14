@@ -6,7 +6,7 @@ DW2b PR #72 head `0b11bb4`, full CI #820 and performance #52 PASS; independent r
 second validate, merge and real-device/shop gates pending. Migration 0058 not applied live.
 DW2c document backup: BUILD / VERIFY, dependent on #72; no new migration. Snapshot-bound dump/files,
 encrypted nightly third artifact, disposable immutable restore and report-only retention.
-Local 339 unit + 15 archive tests/lint/types/build PASS; exact nightly scripts/second-target proof
+Local 339 unit + 17 archive tests/lint/types/build PASS; exact nightly scripts/second-target proof
 and final CI pending. No live operation or document disaster-recovery claim.
 Contract: [BILL_DOCUMENT_BACKUP.md](BILL_DOCUMENT_BACKUP.md).
 
