@@ -2,10 +2,12 @@
 
 VF-016/017 verifier patch integrated into #71 from 3169f88: unreadable snapshots remain visible apart from recoverable drafts; autosave updates only its own entry. Regression cases pass; final-head CI and review pending. Codex remains builder; other AI verifier. No money RPC/migration/live change.
 
-DW2a purchase draft recovery (2026-10-14 IST): IN_PROGRESS on `codex/dw2-purchase-draft-recovery`,
-based on DW1 merged main `41dfd4b`. No migration; explicit user/shop draft restore and retained
-posting identity. Local proof and CI/review limits: [PURCHASE_DRAFT_RECOVERY.md](PURCHASE_DRAFT_RECOVERY.md).
-This entry does not close bill-photo work or human acceptance gates.
+DW2a draft recovery: PR #71 head `3169f88`, full CI #814 PASS (329 unit, 55 browser,
+20 held-cart repetitions); independent review/merge remain pending. No live change.
+DW2b private bill attachments: IN_PROGRESS, dependent on #71, migration 0058 / billdocs.
+Local 339 tests/lint/types/build PASS; full CI, second validate-only migration run, independent
+review and real-device/shop gates remain pending. Contract: [BILL_DOCUMENTS.md](BILL_DOCUMENTS.md).
+Binary object backup/retention follow-up remains open; no attachment disaster-recovery claim.
 
 Packet-state tracker for `docs/COMPLETE_REMAINING_BUILD_PLAN.md` v1.1, per that plan's §4.1 and
 §0.4 execution protocol. States: `NOT_STARTED` / `IN_PROGRESS` / `CODE_REVIEW` / `CI_PASSED` /
@@ -199,3 +201,5 @@ P1 is MERGED as `81ac0d1` (PR #38, squash). Dual-builder protocol retired; packe
 | PD1 professional mobile design | MERGED / DEPLOYED | PR #69 squash `4a4c172` (tested `5b05634`) | none | lint/typecheck/build + 310 unit tests PASS | CI #799 / `38269790522` PASS; 54 browser + 20 repeats; performance #46 PASS | not required | fresh review PASS (2 rounds); late price replies guarded, negative-control test fails without fix | CI #801 / run `38280419051` production release PASS on main `4a4c172` | H3 + shop week open | Retain exact financial requests and mounted drafts across task views |
 
 | DW1 DSB workflow access and purchase speed | BUILD / VERIFY | `codex/dsb-workflow-access` from `4a4c172` | none | lint/typecheck/build + 320 unit tests PASS | final-head full CI required; new 390px purchase/repeat/context payment flow | not required | fresh review PASS (2 rounds); repeat lifecycle + uncommitted edit findings fixed | no live changes | H3 + shop week open | Snapshot-safe repeat; preserve exact UNKNOWN requests; loaded-page search explicit |
+
+| 14 October release integration | IN PROGRESS | #71 merged as 7840cfb; #72 rebased onto main | 0058 unchanged / billdocs pending live | #71 exact-head CI #834 PASS | #72 fresh CI and separate validate pending | Separate phase6_db_preflight reports all live pending groups without apply | Codex builder; other AI verifier, independent approval not claimed | User: Merge and deploy | Live apply/deploy and H3/shop evidence not yet completed | #72→#75 ordered squash merges with fresh CI; retest #76 against final schema |

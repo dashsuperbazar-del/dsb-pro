@@ -75,6 +75,9 @@ importers:
       '@types/node':
         specifier: ^24.13.3
         version: 24.13.3
+      fake-indexeddb:
+        specifier: 6.2.5
+        version: 6.2.5
       typescript:
         specifier: ~6.0.2
         version: 6.0.3

@@ -8,6 +8,7 @@ import {
   type Party,
   type PurchaseRecord,
 } from '@dsb-pro/adapters';
+import { BillDocumentPreview } from '../components/BillDocumentPreview';
 import { InventoryScreen } from './InventoryScreen';
 import { appRoute } from '../lib/paths';
 import { rupees } from '../lib/money';
@@ -229,6 +230,13 @@ export function PurchasesScreen({ url }: { url?: string }) {
                 {rupees(detail.balance.returned_paise)} · Due{' '}
                 {rupees(detail.balance.outstanding_paise)}
               </p>
+            )}
+            {detail.bill.bill_image_path && (
+              <BillDocumentPreview
+                key={detail.bill.id}
+                path={detail.bill.bill_image_path}
+                name={`${detail.bill.bill_no || 'Purchase bill'}.${detail.bill.bill_image_path.endsWith('.pdf') ? 'pdf' : 'webp'}`}
+              />
             )}
             <div class="record-list">
               {detail.lines.map((l) => (

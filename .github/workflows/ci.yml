@@ -2,7 +2,14 @@ name: CI
 
 on:
   push:
-    branches: [main, phase-4-pos-customers-payments, phase-5-offline-sync, phase-6-ledgers-reports-dr, phase-6-5-returns]
+    branches:
+      [
+        main,
+        phase-4-pos-customers-payments,
+        phase-5-offline-sync,
+        phase-6-ledgers-reports-dr,
+        phase-6-5-returns,
+      ]
   pull_request:
   schedule:
     # Scheduled workflows execute only from the default branch. Keeping the
@@ -18,6 +25,7 @@ on:
         options:
           - validate
           - deploy_production
+          - phase6_db_preflight
           - phase6_db_upgrade
           - phase6_dr_proofs
 
@@ -754,9 +762,35 @@ jobs:
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c \
             "update app_migration_receipts set checksum_sha256 = '$expected_checksum' where version = '0057'"
           assert_state '5:2:5:2:3:4:1:2:2:2:2:2:2:2:2:2:2:2:2'
-          # Last receipt-tracked group: nothing may be left to apply.
-          grep -Fx 'needs_upgrade=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
           echo 'DISPOSABLE PACKET D3A EXPORT REQUEST LEDGER UPGRADE: PASS'
+      - name: Prove private bill documents upgrade (apply, immutable wrapper body, no-op, partial/tamper refusal)
+        env:
+          PROOF_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          grep -Fx 'needs_billdocs=true' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" billdocs
+          grep -Fx 'needs_billdocs=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" billdocs
+          expected_checksum=$(sha256sum supabase/migrations/0058_bill_documents.sql | cut -d' ' -f1)
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update app_migration_receipts set checksum_sha256=repeat('0',64) where version='0058'"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo '0058 tamper accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update app_migration_receipts set checksum_sha256='$expected_checksum' where version='0058'"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update storage.buckets set public=true where id='bill-documents'"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Public bill bucket drift accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update storage.buckets set public=false where id='bill-documents'"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -At -c "select pg_get_functiondef('public.post_purchase(uuid,uuid,text,date,bigint,bigint,text,jsonb,text)'::regprocedure)" > "$RUNNER_TEMP/billdocs-original.sql"
+          BILLDOCS_ORIGINAL="$RUNNER_TEMP/billdocs-original.sql" BILLDOCS_CHANGED="$RUNNER_TEMP/billdocs-changed.sql" node --input-type=module <<'JS'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const original = readFileSync(process.env.BILLDOCS_ORIGINAL, 'utf8');
+          if (!original.includes('$function$')) throw new Error('Purchase wrapper body delimiter missing');
+          writeFileSync(process.env.BILLDOCS_CHANGED, original.replace('$function$', '$function$\n-- billdocs drift\n'));
+          JS
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -f "$RUNNER_TEMP/billdocs-changed.sql"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Changed purchase wrapper body accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -f "$RUNNER_TEMP/billdocs-original.sql"
+          grep -Fx 'needs_upgrade=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          echo 'DISPOSABLE BILL DOCUMENTS UPGRADE: PASS'
       - name: Stop and erase the disposable target
         if: always()
         run: supabase stop --workdir "$PROOF_ROOT" --no-backup
@@ -975,7 +1009,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy apps/admin/dist --project-name=dsb-pro --branch=phase-4-pos-customers-payments
 
-
   phase5_db_upgrade:
     needs: [build]
     if: github.ref == 'refs/heads/phase-5-offline-sync' && github.event_name == 'push'
@@ -1169,7 +1202,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy apps/admin/dist --project-name=dsb-pro --branch=phase-5-offline-sync
 
-
   deploy:
     needs: [build]
     # Production publishing must be a separate human action. A merge/push to
@@ -1220,6 +1252,33 @@ jobs:
           path: apps/admin/dist
       - uses: actions/deploy-pages@v4
 
+  phase6_db_preflight:
+    needs: [build]
+    # Inspection is a separate attended operation. It never invokes an apply
+    # wrapper, backup, restore or deployment; report every pending group before
+    # choosing phase6_db_upgrade, which applies all pending groups in order.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.operation == 'phase6_db_preflight'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: {}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Report live Phase 6 pending groups without applying
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SUPABASE_DB_URL" || { echo 'SUPABASE_DB_URL is required'; exit 1; }
+          state=$(scripts/inspect-phase6-upgrade-state.sh "$SUPABASE_DB_URL")
+          printf '%s\n' "$state"
+          printf '### Live upgrade preflight (no apply)\n\n```text\n%s\n```\n' "$state" >> "$GITHUB_STEP_SUMMARY"
 
   phase6_db_upgrade:
     needs: [build]
@@ -1400,6 +1459,11 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" d3a
+      - name: Apply private bill documents atomically
+        if: steps.preflight.outputs.needs_billdocs == 'true'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" billdocs
       - name: Verify live Batch B contract
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
