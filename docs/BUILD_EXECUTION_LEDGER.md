@@ -1,5 +1,7 @@
 # Build Execution Ledger
 
+VF-016/017 verifier patch integrated into #71 from 3169f88: unreadable snapshots remain visible apart from recoverable drafts; autosave updates only its own entry. Regression cases pass; final-head CI and review pending. Codex remains builder; other AI verifier. No money RPC/migration/live change.
+
 DW2a draft recovery: PR #71 head `3169f88`, full CI #814 PASS (329 unit, 55 browser,
 20 held-cart repetitions); independent review/merge remain pending. No live change.
 DW2b PR #72 head `0b11bb4`, full CI #820 and performance #52 PASS; independent review,

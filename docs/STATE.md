@@ -5,22 +5,22 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
 
+- 14 October integration: VF-016/017 patch applied to #71 (base 3169f88); unreadable snapshots are listed separately, never silently deleted; autosave updates only its own entry. Local regressions PASS; final-head CI/review pending. Codex builds; the other AI verifies.
+
 - `main` verified: `41dfd4b6e4202a3fc90de29a143247d6f82e9885` (DW1 #70; fetched 2026-10-14 IST). Migrations 0001–0057 immutable.
 - DW1 #70 merged after final-head CI #809 / run 38359193865 PASS: 320 unit tests, 55 browser tests passed + 1 scale-only skip, 20 held-cart repetitions passed. Home/Purchases/Sales/Ledger/More; purchase bills/detail, snapshot-safe repeat into fresh draft, supplier/recent item shortcuts, inline supplier creation, bill-to-payment/ledger, Full + Auto allocations. Production publication of DW1 remains pending per saved verifier log; not independently dispatched here.
-- DW2a PR #71 remains DRAFT, head `3169f88`; full CI #814 PASS, 329 unit tests, 55 browser passes + 1 scale-only skip, 20 held-cart repetitions. Independent review/merge pending.
-- DW2b PR #72 remains DRAFT at `0b11bb4`; full CI #820 + performance #52 PASS (339 unit, 940 pgTAP, 55 browser + 1 skip, 20 repetitions). Migration 0058 / billdocs not applied live; independent review/second validate pending. Contract: docs/BILL_DOCUMENTS.md.
-- DW2c PR #73 remains DRAFT at `67bea96`; final CI #822 / run 38496419650 PASS (339 app unit + 17 archive tests, 940 pgTAP, 55 browser + 1 skip, 20 repetitions, two-target encrypted document proof). Dependent on #72; no new migration/live action. Independent review/source activation/physical recovery pending. Contract: docs/BILL_DOCUMENT_BACKUP.md.
+- DW2b #72 updated with VF-016/017 at `3af9357`; CI #835/performance #54 PASS. Previous #820/#52 evidence covered 0b11bb4 only. Migration 0058 not live; independent review/second validate pending. Contract: docs/BILL_DOCUMENTS.md.
+- DW2c document backup: BUILD / VERIFY on `codex/dw2c-document-backup`, dependent on #72. Snapshot-bound financial dump + all immutable originals; encrypted third nightly artifact; exact loopback restore + file-RLS rebuild; unused uploads retained/report only. No new migration, money handler, UI change or live operation. Pre-integration #822 covered 67bea96; current local 342 app tests PASS and new CI #836 running. Contracts and configuration: docs/BILL_DOCUMENT_BACKUP.md. Risks: partial/changed bytes, mixed snapshot/dump, public restored storage, wrong target, premature orphan deletion, leaked metadata. No production document backup/DR claim; review, Android/H3/shop gates open. Latest CI status follows the PR checks and verifier log.
+- DW2a #71 includes VF-016/017 at `62636f7`; full CI #834 PASS (332 app tests). Independent review/merge pending.
 - DW3 supplier statements: BUILD / VERIFY on `codex/dw3-supplier-statements`, dependent on #73. Date-range exact server ledger with fresh shop header, text share/copy/download, safe CSV, existing Pro A4/PDF receipt layout. Scope/late-response/date-change/failed-refresh guards; restated posted-history basis explicit. No migration/money write/live operation. Local tests pass; final CI/browser visual acceptance and independent review pending. Contract: docs/SUPPLIER_STATEMENTS.md.
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off; partial returns carry item value, capped so a bill's returns never exceed what was billed for its items (total - extra charges). Extra charges still stay with the shop.
-- Live DB: D1 applied 2026-10-01 (run 36894777286, only group `d1` pending; verify green). Fully upgraded. D1 deployed after the apply (run 36897126086, green).
+- Historical D1 apply/deploy: runs 36894777286 / 36897126086. Latest recorded deploy #801 at 4a4c172; DW1 is not live. 0058 reserved by #72, not applied here.
 - Verifier log V003 (2026-10-02): VF-005/006/008 CLOSED. Open MAJORs fixed in V4: VF-007 follow-up (a finished action repainted/voided the previous customer) and VF-009 (two stored intents blocked each other's retry).
 - FIXED (S1, 2026-10-03): an online sale/return finalized while a background sync cycle was in flight joined that cycle, which had already read the outbox, so it showed "Saved locally" and posted only on the next cycle (held-cart repeat, runs 36909385562 and 758). One fresh cycle now runs if it is still QUEUED; a deterministic e2e holds the cycle's ack. Never a money risk (exactly-once outbox).
 - Watch: daily-entry 'expense answer lost' timed out once locally under full parallel load (button click); 6/6 alone on main and on S1 — same pattern as the suppliers-form watch item.
 - V2 residual closed by V3: receipt/payment check+create+send is serialized per account across windows
   (Web Locks). Browsers without Web Locks keep the unserialized check.
-- Rule (V2): every money/stock write stores its exact request on the device BEFORE sending (fail
-  closed) and only a definitive DB rejection unlocks it; use `rpcOutcome`/`*Outcome` adapters, never
-  `classifyError` to decide an outcome.
+- Rule (V2): persist every exact money/stock request BEFORE sending; only definitive DB rejection unlocks it. Use `rpcOutcome`/`*Outcome`, never `classifyError`, to decide outcomes.
 - Decision 2026-10-02 (user): old DSB is retired; no legacy import, no shadow run. DSB Pro goes live
   with real data once daily-usable, then is patched in use. F0/F3 dropped; F1 (fiscal numbering) later.
 - O1 design: one POSTED opening per account (signed paise; customer + = owes shop, supplier + = shop

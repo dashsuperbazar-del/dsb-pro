@@ -50,3 +50,7 @@ initial business-date request; supplier creation and editable purchase controls 
 context initialization completes. Expense trace had an unsettled bootstrap business-date request
 (status -1), with Post correctly disabled; its fault-injection route is now installed after asserting
 the loaded date. No timeout increase, retry, skipped assertion or weakened financial proof.
+
+## VF-016/017 correction
+
+One unreadable saved snapshot is kept and listed separately, so it cannot hide readable drafts or label a successful save as failed. Only explicit confirmed Discard removes that unreadable key. Autosave updates its own list entry without rescanning/reparsing every saved snapshot. The supplied library/screen regression tests cover mixed readable/unreadable drafts and successful autosave beside a damaged snapshot. No transaction request, posting identity or UNKNOWN recovery behavior changes. Exact-head CI and independent review remain required.
