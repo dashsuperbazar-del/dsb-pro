@@ -208,8 +208,12 @@ try {
   // Respect the account-opening ceiling while covering both signs near that limit.
   for (const amount of ['99999999999999', '-99999999999999']) {
     const exactCustomer = await one(
-      `insert into customers(tenant_id,name,client_id) values($1,'Exact opening customer',$2) returning id`,
-      [t, `exact-customer-${randomUUID()}`],
+      `insert into customers(tenant_id,name,client_id) values($1,$2,$3) returning id`,
+      [
+        t,
+        amount.startsWith('-') ? 'Exact credit customer' : 'Exact debit customer',
+        `exact-customer-${randomUUID()}`,
+      ],
     );
     const id = await one(
       `select record_account_opening($1::uuid,'CUSTOMER',$2::uuid,current_date-30,$3::bigint,'exact restore proof',$4)`,
