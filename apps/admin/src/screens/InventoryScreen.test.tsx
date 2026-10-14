@@ -818,3 +818,44 @@ test('resume stays disabled through the catalogue-to-new-context gap and preserv
     observer.disconnect();
   }
 });
+
+test('VF-016: an unreadable snapshot is listed apart, discardable, and never hides or fails a real draft', async () => {
+  const { purchaseDraftPrefix, savePurchaseDraft } = await import('../lib/purchaseDraft');
+  const prefix = purchaseDraftPrefix('user', 'shop');
+  const item = { id: 'a', name: 'Item A', unit1: 'piece', min_stock: 0 } as never;
+  savePurchaseDraft(prefix, 'other-window', {
+    version: 1,
+    clientId: '11111111-1111-4111-8111-111111111111',
+    savedAt: 1,
+    supplier: '',
+    billNo: 'KEPT',
+    businessDate: '2026-10-12',
+    discount: '',
+    extra: '',
+    cart: [{ item, unitLevel: 1, qty: '1', unitPricePaise: 100 }],
+    search: '',
+    lineItem: null,
+    unitLevel: 1,
+    qty: '',
+    price: '',
+    editingLine: null,
+  });
+  localStorage.setItem(prefix + 'broken:w', '{');
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly />, host);
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('KEPT'));
+  expect(host.textContent).toContain('1 saved draft is unreadable');
+  expect(host.textContent).not.toContain('Draft recovery unavailable');
+  await enter(host, 'billNo', 'NEW');
+  await vi.waitFor(() => expect(host.textContent).toContain('Draft saved on this device'));
+  expect(host.textContent).not.toContain('Draft not saved');
+  await act(async () => {
+    [...host.querySelectorAll('button')]
+      .find((b) => b.textContent === 'Discard unreadable draft')!
+      .click();
+  });
+  expect(localStorage.getItem(prefix + 'broken:w')).toBeNull();
+  expect(host.textContent).not.toContain('unreadable on this device');
+  expect(host.textContent).toContain('KEPT');
+});
