@@ -1,14 +1,17 @@
 // POS paints the device catalog once on entry. On a new device the first sync is still filling that
 // catalog (one page is 1,000 items), so a screen opened mid-sync would keep the partial list until a
-// reload. This watcher reports the device catalog again whenever its size changes. Display only: the
-// catalog never decides a posting, prices and stock are still read and checked where they always were.
+// reload. This watcher re-reads the device catalog whenever it grows. Display only, and additive only:
+// it can add items the screen has not shown but never replaces, edits or removes one, so it cannot
+// overwrite fresher data or bring back an item that was archived while the screen was open. The catalog
+// never decides a posting; prices and stock are read and checked where they always were.
 export function mergeCatalog<T extends { id: string; name: string }>(
-  shown: readonly T[],
+  shown: T[],
   fresh: readonly T[],
 ): T[] {
-  const merged = new Map(shown.map((item) => [item.id, item]));
-  for (const item of fresh) merged.set(item.id, item);
-  return [...merged.values()].sort((a, b) => a.name.localeCompare(b.name));
+  const known = new Set(shown.map((item) => item.id));
+  const added = fresh.filter((item) => !known.has(item.id));
+  if (!added.length) return shown; // same array: nothing to re-render
+  return [...shown, ...added].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export function watchOfflineCatalog<T>(input: {
@@ -26,7 +29,9 @@ export function watchOfflineCatalog<T>(input: {
     try {
       const n = await input.count();
       if (stopped) return;
-      if (last !== -1 && n !== last) {
+      // The first look always loads once (the screen may have painted a smaller catalog than the
+      // device holds by now); after that only growth reloads.
+      if (n > last) {
         const rows = await input.load();
         if (stopped) return;
         last = n;

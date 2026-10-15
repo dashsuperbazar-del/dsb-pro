@@ -4,6 +4,7 @@ Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/CO
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
+
 - 15 October (sole builder = Claude; Codex unavailable; the user verifies): PR #77 head 1e46669 had two SP0 failures. Fixed locally, not yet pushed (session has no GitHub write access): POS kept only the first 1,000 items after a first sync until reload (real display defect, fixed by `lib/catalogWatch.ts`); Customers readiness waited for a button inside a collapsed section. First measured baseline and inventory corrections are in `docs/SPEED_BASELINE.md` and `docs/DSB_PARITY.md`. Needs push, fresh CI and verification.
 
 - `main` verified: `ef880dad401cd12cb470b432edb5444eec46ad66` (#76, fetched 15 October). Migrations 0001–0058 immutable. #76 final full CI #856/#857 and main #858 green.
@@ -19,7 +20,6 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
 - DW3 #74 MERGED as 183c2b6 after exact-head CI #851 / 38543991414 PASS at 5950a29: 355 app + 17 archive tests, 940 pgTAP; 56 browser passes + 1 scale skip, 20 repetitions; two recovery proofs/build. Exact server-ledger text/TXT/CSV and Pro A4/PDF statement output. No migration/money write; real share/printer acceptance open. Contract: docs/SUPPLIER_STATEMENTS.md.
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off; partial returns carry item value, capped so a bill's returns never exceed what was billed for its items (total - extra charges). Extra charges still stay with the shop.
 - Historical D1 apply/deploy: 36894777286 / 36897126086. Current production #861 is ef880da with live schema through 0058 (#860).
-- Verifier log V003 (2026-10-02): VF-005/006/008 CLOSED. Open MAJORs fixed in V4: VF-007 follow-up (a finished action repainted/voided the previous customer) and VF-009 (two stored intents blocked each other's retry).
 - FIXED (S1, 2026-10-03): an online sale/return finalized while a background sync cycle was in flight joined that cycle, which had already read the outbox, so it showed "Saved locally" and posted only on the next cycle (held-cart repeat, runs 36909385562 and 758). One fresh cycle now runs if it is still QUEUED; a deterministic e2e holds the cycle's ack. Never a money risk (exactly-once outbox).
 - V2 residual closed by V3: receipt/payment check+create+send is serialized per account across windows (Web Locks). Browsers without Web Locks keep the unserialized check.
 - Rule (V2): persist every exact money/stock request BEFORE sending; only definitive DB rejection unlocks it. Use `rpcOutcome`/`*Outcome`, never `classifyError`, to decide outcomes.
