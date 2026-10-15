@@ -1,0 +1,5033 @@
+{
+  "source_repository": "dashsuperbazar-del/DSB",
+  "commit": "62e3c30e9ff573ccfaabe06ad6f49759b37a37be",
+  "tree": "9e2abf6e868a62be4be608115d7f1f56304d0cf2",
+  "scope": "Lexical source catalog, not runtime reachability, business correctness or visual acceptance",
+  "files": {
+    "index.html": {
+      "bytes": 588303,
+      "sha256": "b8edc114a49fd7dc47b85b1a7c920367b466f7fd915d1e918d1d773e91a95f34",
+      "git_blob": "46db5d3bdb61bd3a36d19d2e13f31e6ff3b60489",
+      "lines": 10738,
+      "functions": [
+        {
+          "name": "isOwner",
+          "line": 1637
+        },
+        {
+          "name": "sbH",
+          "line": 1641
+        },
+        {
+          "name": "showAuthGate",
+          "line": 1688
+        },
+        {
+          "name": "hideAuthGate",
+          "line": 1694
+        },
+        {
+          "name": "forceReauth",
+          "line": 1700
+        },
+        {
+          "name": "doLogin",
+          "line": 1709
+        },
+        {
+          "name": "doLogout",
+          "line": 1726
+        },
+        {
+          "name": "logStockMovement",
+          "line": 1767
+        },
+        {
+          "name": "binRetentionDays",
+          "line": 1784
+        },
+        {
+          "name": "addTombstone",
+          "line": 1788
+        },
+        {
+          "name": "isTombstoned",
+          "line": 1796
+        },
+        {
+          "name": "removeTombstone",
+          "line": 1797
+        },
+        {
+          "name": "_binSave",
+          "line": 1820
+        },
+        {
+          "name": "binPrune",
+          "line": 1830
+        },
+        {
+          "name": "binPut",
+          "line": 1838
+        },
+        {
+          "name": "binRestore",
+          "line": 1859
+        },
+        {
+          "name": "binPurgeAll",
+          "line": 1904
+        },
+        {
+          "name": "setBinRetention",
+          "line": 1914
+        },
+        {
+          "name": "renderRecycleBin",
+          "line": 1921
+        },
+        {
+          "name": "openRecycleBin",
+          "line": 1941
+        },
+        {
+          "name": "mergeById",
+          "line": 1943
+        },
+        {
+          "name": "syncFromCloud",
+          "line": 1972
+        },
+        {
+          "name": "hardResetDevice",
+          "line": 1979
+        },
+        {
+          "name": "fullSync",
+          "line": 2009
+        },
+        {
+          "name": "startAutoSync",
+          "line": 2135
+        },
+        {
+          "name": "_markPushPending",
+          "line": 2201
+        },
+        {
+          "name": "getUnsyncedRecords",
+          "line": 2225
+        },
+        {
+          "name": "_updateSyncBadgePending",
+          "line": 2240
+        },
+        {
+          "name": "openUnsyncedModal",
+          "line": 2251
+        },
+        {
+          "name": "retryUnsynced",
+          "line": 2266
+        },
+        {
+          "name": "flushOutbox",
+          "line": 2273
+        },
+        {
+          "name": "pushToCloud",
+          "line": 2324
+        },
+        {
+          "name": "tableForId",
+          "line": 2332
+        },
+        {
+          "name": "pushPendingTombstoneDeletes",
+          "line": 2347
+        },
+        {
+          "name": "showSyncBadge",
+          "line": 2358
+        },
+        {
+          "name": "checkBackupReminder",
+          "line": 2410
+        },
+        {
+          "name": "save",
+          "line": 2446
+        },
+        {
+          "name": "seedDemo_DISABLED_DO_NOT_CALL",
+          "line": 2462
+        },
+        {
+          "name": "migrateStockFromBillHistory",
+          "line": 2502
+        },
+        {
+          "name": "clearSearchInput",
+          "line": 2558
+        },
+        {
+          "name": "toast",
+          "line": 2564
+        },
+        {
+          "name": "undoToast",
+          "line": 2578
+        },
+        {
+          "name": "_runUndo",
+          "line": 2586
+        },
+        {
+          "name": "openModal",
+          "line": 2592
+        },
+        {
+          "name": "closeModal",
+          "line": 2602
+        },
+        {
+          "name": "hideAC",
+          "line": 2603
+        },
+        {
+          "name": "showPage",
+          "line": 2608
+        },
+        {
+          "name": "switchLedgerPartiesView",
+          "line": 2623
+        },
+        {
+          "name": "showConfirm",
+          "line": 2656
+        },
+        {
+          "name": "closeConfirm",
+          "line": 2662
+        },
+        {
+          "name": "calcBigEquiv",
+          "line": 2672
+        },
+        {
+          "name": "getPartyOutstanding",
+          "line": 2679
+        },
+        {
+          "name": "getBillBalance",
+          "line": 2695
+        },
+        {
+          "name": "getBillStatus",
+          "line": 2702
+        },
+        {
+          "name": "getLearnedUnits",
+          "line": 2725
+        },
+        {
+          "name": "unitAutocomplete",
+          "line": 2747
+        },
+        {
+          "name": "selectUnitVal",
+          "line": 2767
+        },
+        {
+          "name": "hideUnitAC",
+          "line": 2780
+        },
+        {
+          "name": "acRun",
+          "line": 2785
+        },
+        {
+          "name": "selectACNew",
+          "line": 2822
+        },
+        {
+          "name": "selectACIdx",
+          "line": 2839
+        },
+        {
+          "name": "selectACVal",
+          "line": 2844
+        },
+        {
+          "name": "acKeydown",
+          "line": 2851
+        },
+        {
+          "name": "addExtraCharge",
+          "line": 2868
+        },
+        {
+          "name": "addBillDiscount",
+          "line": 2887
+        },
+        {
+          "name": "addBillItemRow",
+          "line": 2900
+        },
+        {
+          "name": "setBillItemPurchaseMode",
+          "line": 3135
+        },
+        {
+          "name": "onBigRateChange",
+          "line": 3156
+        },
+        {
+          "name": "onSmallRateChange",
+          "line": 3173
+        },
+        {
+          "name": "onPieceRateChange",
+          "line": 3186
+        },
+        {
+          "name": "onTotalCostChange",
+          "line": 3199
+        },
+        {
+          "name": "calcItemRow",
+          "line": 3219
+        },
+        {
+          "name": "itemAutocomplete",
+          "line": 3277
+        },
+        {
+          "name": "billRowAddUnit2",
+          "line": 3298
+        },
+        {
+          "name": "billRowAddUnit3",
+          "line": 3308
+        },
+        {
+          "name": "getUnitSpec",
+          "line": 3319
+        },
+        {
+          "name": "setBillRowPriceUnit",
+          "line": 3348
+        },
+        {
+          "name": "renderBillRowUnits",
+          "line": 3398
+        },
+        {
+          "name": "fillItem",
+          "line": 3476
+        },
+        {
+          "name": "calcBillTotal",
+          "line": 3498
+        },
+        {
+          "name": "openNewBillModal",
+          "line": 3588
+        },
+        {
+          "name": "startNewBillFromDetail",
+          "line": 3600
+        },
+        {
+          "name": "startNewBillFromPartyDetail",
+          "line": 3614
+        },
+        {
+          "name": "renderPayPartyChips",
+          "line": 3623
+        },
+        {
+          "name": "selectPayPartyChip",
+          "line": 3635
+        },
+        {
+          "name": "partyChipOrder",
+          "line": 3657
+        },
+        {
+          "name": "renderPartyChips",
+          "line": 3681
+        },
+        {
+          "name": "selectPartyChip",
+          "line": 3695
+        },
+        {
+          "name": "saveBill",
+          "line": 3721
+        },
+        {
+          "name": "_saveBillInner",
+          "line": 3731
+        },
+        {
+          "name": "resetBillForm",
+          "line": 3929
+        },
+        {
+          "name": "deleteBillFromDetail",
+          "line": 3957
+        },
+        {
+          "name": "toggleRemark",
+          "line": 3984
+        },
+        {
+          "name": "deletePayment",
+          "line": 3994
+        },
+        {
+          "name": "openNewPartyModal",
+          "line": 4030
+        },
+        {
+          "name": "saveParty",
+          "line": 4041
+        },
+        {
+          "name": "deletePartyFromDetail",
+          "line": 4074
+        },
+        {
+          "name": "openMergeParty",
+          "line": 4104
+        },
+        {
+          "name": "renderMergePartyPreview",
+          "line": 4123
+        },
+        {
+          "name": "confirmMergeParty",
+          "line": 4139
+        },
+        {
+          "name": "itemCollapseTiers",
+          "line": 4176
+        },
+        {
+          "name": "itemAddTier",
+          "line": 4186
+        },
+        {
+          "name": "itemRemoveTier",
+          "line": 4200
+        },
+        {
+          "name": "itemUnitTierCheck",
+          "line": 4221
+        },
+        {
+          "name": "refreshCategoryList",
+          "line": 4236
+        },
+        {
+          "name": "openNewItemModal",
+          "line": 4244
+        },
+        {
+          "name": "setItemPriceUnit",
+          "line": 4260
+        },
+        {
+          "name": "calcItemSalePrices",
+          "line": 4273
+        },
+        {
+          "name": "calcItemSalePricesFromBig",
+          "line": 4344
+        },
+        {
+          "name": "updateWholesaleHint",
+          "line": 4345
+        },
+        {
+          "name": "saveItem",
+          "line": 4346
+        },
+        {
+          "name": "deleteItemFromModal",
+          "line": 4417
+        },
+        {
+          "name": "editItem",
+          "line": 4434
+        },
+        {
+          "name": "toggleBillSelection",
+          "line": 4484
+        },
+        {
+          "name": "setPaySelectionAmount",
+          "line": 4494
+        },
+        {
+          "name": "clearPaySelections",
+          "line": 4501
+        },
+        {
+          "name": "updatePaySelectionTotalDisplay",
+          "line": 4507
+        },
+        {
+          "name": "loadPartyBills",
+          "line": 4526
+        },
+        {
+          "name": "previewFIFO",
+          "line": 4571
+        },
+        {
+          "name": "savePayment",
+          "line": 4579
+        },
+        {
+          "name": "_savePaymentInner",
+          "line": 4589
+        },
+        {
+          "name": "renderDashboard",
+          "line": 4663
+        },
+        {
+          "name": "filterLedgerDir",
+          "line": 4738
+        },
+        {
+          "name": "filterLedger",
+          "line": 4745
+        },
+        {
+          "name": "renderLedger",
+          "line": 4752
+        },
+        {
+          "name": "toggleRPDay",
+          "line": 4853
+        },
+        {
+          "name": "renderAutoChecklist",
+          "line": 4859
+        },
+        {
+          "name": "updateAutoPayBtnCount",
+          "line": 4886
+        },
+        {
+          "name": "applyFifoPayment",
+          "line": 4895
+        },
+        {
+          "name": "recordAutoPayment",
+          "line": 4922
+        },
+        {
+          "name": "confirmCheckedAutoPayments",
+          "line": 4927
+        },
+        {
+          "name": "undoAutoPayment",
+          "line": 4939
+        },
+        {
+          "name": "buildOutstandingSummary",
+          "line": 4952
+        },
+        {
+          "name": "quickPayParty",
+          "line": 4973
+        },
+        {
+          "name": "toggleRecentSort",
+          "line": 4993
+        },
+        {
+          "name": "filterBillsByStatus",
+          "line": 5005
+        },
+        {
+          "name": "renderBills",
+          "line": 5011
+        },
+        {
+          "name": "billCard",
+          "line": 5030
+        },
+        {
+          "name": "openBillDetail",
+          "line": 5054
+        },
+        {
+          "name": "payFromDetail",
+          "line": 5134
+        },
+        {
+          "name": "editBillFromDetail",
+          "line": 5143
+        },
+        {
+          "name": "filterParties",
+          "line": 5174
+        },
+        {
+          "name": "renderParties",
+          "line": 5175
+        },
+        {
+          "name": "openPartyDetail",
+          "line": 5209
+        },
+        {
+          "name": "payFromPartyDetail",
+          "line": 5291
+        },
+        {
+          "name": "editPartyFromDetail",
+          "line": 5300
+        },
+        {
+          "name": "filterStockTab",
+          "line": 5327
+        },
+        {
+          "name": "buildItemIndex",
+          "line": 5334
+        },
+        {
+          "name": "togglePaymentDueBanner",
+          "line": 5413
+        },
+        {
+          "name": "toggleLowStockBanner",
+          "line": 5419
+        },
+        {
+          "name": "renderStock",
+          "line": 5423
+        },
+        {
+          "name": "bulkShopCategory",
+          "line": 5491
+        },
+        {
+          "name": "editShopDesc",
+          "line": 5511
+        },
+        {
+          "name": "editShopImage",
+          "line": 5524
+        },
+        {
+          "name": "refreshCategoryDatalist",
+          "line": 5545
+        },
+        {
+          "name": "renderDayBookOrders",
+          "line": 5558
+        },
+        {
+          "name": "orderStockWarnings",
+          "line": 5595
+        },
+        {
+          "name": "orderStatusMessage",
+          "line": 5622
+        },
+        {
+          "name": "notifyOrderCustomer",
+          "line": 5642
+        },
+        {
+          "name": "startOrderWatch",
+          "line": 5654
+        },
+        {
+          "name": "stopOrderWatch",
+          "line": 5663
+        },
+        {
+          "name": "checkNewOrders",
+          "line": 5666
+        },
+        {
+          "name": "orderEntryMode",
+          "line": 5689
+        },
+        {
+          "name": "convertOrderToInvoice",
+          "line": 5695
+        },
+        {
+          "name": "linkOrderToInvoice",
+          "line": 5765
+        },
+        {
+          "name": "ordSetStatus",
+          "line": 5801
+        },
+        {
+          "name": "ordFmtWhen",
+          "line": 5806
+        },
+        {
+          "name": "loadOrders",
+          "line": 5812
+        },
+        {
+          "name": "updateOrdersBadge",
+          "line": 5837
+        },
+        {
+          "name": "filterOrders",
+          "line": 5845
+        },
+        {
+          "name": "ordersForFilter",
+          "line": 5853
+        },
+        {
+          "name": "renderOrders",
+          "line": 5862
+        },
+        {
+          "name": "openOrderDetail",
+          "line": 5889
+        },
+        {
+          "name": "setOrderStatus",
+          "line": 5962
+        },
+        {
+          "name": "advanceOrder",
+          "line": 5977
+        },
+        {
+          "name": "rejectOrder",
+          "line": 5984
+        },
+        {
+          "name": "sfNum",
+          "line": 6007
+        },
+        {
+          "name": "sfSetStatus",
+          "line": 6013
+        },
+        {
+          "name": "openStorefrontSettings",
+          "line": 6017
+        },
+        {
+          "name": "saveStorefrontSettings",
+          "line": 6048
+        },
+        {
+          "name": "shopCustomerUnit",
+          "line": 6108
+        },
+        {
+          "name": "shopPriceProblem",
+          "line": 6119
+        },
+        {
+          "name": "shopIsVisible",
+          "line": 6126
+        },
+        {
+          "name": "openShopListing",
+          "line": 6131
+        },
+        {
+          "name": "filterShopList",
+          "line": 6140
+        },
+        {
+          "name": "shopListVisibleRows",
+          "line": 6148
+        },
+        {
+          "name": "renderShopListing",
+          "line": 6163
+        },
+        {
+          "name": "toggleShopItem",
+          "line": 6200
+        },
+        {
+          "name": "bulkShopList",
+          "line": 6207
+        },
+        {
+          "name": "saveShopListing",
+          "line": 6212
+        },
+        {
+          "name": "openItemDetail",
+          "line": 6235
+        },
+        {
+          "name": "openStockAdjustModal",
+          "line": 6391
+        },
+        {
+          "name": "updateStockAdjPreview",
+          "line": 6401
+        },
+        {
+          "name": "saveStockAdjustment",
+          "line": 6413
+        },
+        {
+          "name": "renderStockAdjHistory",
+          "line": 6440
+        },
+        {
+          "name": "exportCSV",
+          "line": 6456
+        },
+        {
+          "name": "downloadEntrySheet",
+          "line": 6596
+        },
+        {
+          "name": "importEntrySheet",
+          "line": 6639
+        },
+        {
+          "name": "importExcel",
+          "line": 6725
+        },
+        {
+          "name": "compressImageFile",
+          "line": 6862
+        },
+        {
+          "name": "renderBillImageStrip",
+          "line": 6890
+        },
+        {
+          "name": "savePeekGeom",
+          "line": 6928
+        },
+        {
+          "name": "clampPeekRect",
+          "line": 6933
+        },
+        {
+          "name": "renderBillImagePeek",
+          "line": 6944
+        },
+        {
+          "name": "toggleBillPeek",
+          "line": 6979
+        },
+        {
+          "name": "peekStep",
+          "line": 6985
+        },
+        {
+          "name": "beginDrag",
+          "line": 7003
+        },
+        {
+          "name": "onMove",
+          "line": 7013
+        },
+        {
+          "name": "onUp",
+          "line": 7026
+        },
+        {
+          "name": "onMove",
+          "line": 7061
+        },
+        {
+          "name": "onUp",
+          "line": 7070
+        },
+        {
+          "name": "removeBillImage",
+          "line": 7084
+        },
+        {
+          "name": "openLightbox",
+          "line": 7096
+        },
+        {
+          "name": "closeLightbox",
+          "line": 7104
+        },
+        {
+          "name": "lightboxStep",
+          "line": 7109
+        },
+        {
+          "name": "renderLightbox",
+          "line": 7115
+        },
+        {
+          "name": "uploadBillImage",
+          "line": 7125
+        },
+        {
+          "name": "clearBillImage",
+          "line": 7178
+        },
+        {
+          "name": "resetImageField",
+          "line": 7191
+        },
+        {
+          "name": "drawPriceChart",
+          "line": 7199
+        },
+        {
+          "name": "analyzeDemand",
+          "line": 7247
+        },
+        {
+          "name": "renderDemandChart",
+          "line": 7295
+        },
+        {
+          "name": "sharePartyWhatsApp",
+          "line": 7353
+        },
+        {
+          "name": "shareBillWhatsApp",
+          "line": 7369
+        },
+        {
+          "name": "batchShowPage",
+          "line": 7393
+        },
+        {
+          "name": "openBatchEntry",
+          "line": 7398
+        },
+        {
+          "name": "closeBatchEntry",
+          "line": 7414
+        },
+        {
+          "name": "addBatchBill",
+          "line": 7423
+        },
+        {
+          "name": "removeBatchBill",
+          "line": 7482
+        },
+        {
+          "name": "addBatchItem",
+          "line": 7488
+        },
+        {
+          "name": "batchItemKeydown",
+          "line": 7516
+        },
+        {
+          "name": "batchFieldKeydown",
+          "line": 7532
+        },
+        {
+          "name": "batchItemAC",
+          "line": 7539
+        },
+        {
+          "name": "fillBatchItem",
+          "line": 7559
+        },
+        {
+          "name": "batchPartyAC",
+          "line": 7574
+        },
+        {
+          "name": "calcBatchBillTotal",
+          "line": 7593
+        },
+        {
+          "name": "readBatchDraftData",
+          "line": 7607
+        },
+        {
+          "name": "scheduleBatchDraft",
+          "line": 7632
+        },
+        {
+          "name": "loadBatchDraft",
+          "line": 7640
+        },
+        {
+          "name": "updateBatchStatus",
+          "line": 7644
+        },
+        {
+          "name": "saveBatchBills",
+          "line": 7649
+        },
+        {
+          "name": "readBillDraft",
+          "line": 7713
+        },
+        {
+          "name": "saveBillDraft",
+          "line": 7742
+        },
+        {
+          "name": "clearBillDraft",
+          "line": 7754
+        },
+        {
+          "name": "loadBillDraft",
+          "line": 7755
+        },
+        {
+          "name": "restoreBillDraft",
+          "line": 7763
+        },
+        {
+          "name": "beforePicker",
+          "line": 7792
+        },
+        {
+          "name": "markBillDirty",
+          "line": 7797
+        },
+        {
+          "name": "markInvoiceDirty",
+          "line": 7799
+        },
+        {
+          "name": "guardedCloseBill",
+          "line": 7800
+        },
+        {
+          "name": "guardedCloseInvoice",
+          "line": 7808
+        },
+        {
+          "name": "checkPriceAnomaly",
+          "line": 7855
+        },
+        {
+          "name": "checkNegativeStock",
+          "line": 7875
+        },
+        {
+          "name": "renderPartyRecentItems",
+          "line": 7894
+        },
+        {
+          "name": "showAllRecentItems",
+          "line": 7961
+        },
+        {
+          "name": "addRecentItem",
+          "line": 7973
+        },
+        {
+          "name": "repeatLastBill",
+          "line": 7995
+        },
+        {
+          "name": "openDayBook",
+          "line": 8015
+        },
+        {
+          "name": "renderDayBook",
+          "line": 8021
+        },
+        {
+          "name": "openExpenseModal",
+          "line": 8115
+        },
+        {
+          "name": "saveExpense",
+          "line": 8124
+        },
+        {
+          "name": "deleteExpense",
+          "line": 8144
+        },
+        {
+          "name": "getCashBalance",
+          "line": 8169
+        },
+        {
+          "name": "getBankBalance",
+          "line": 8185
+        },
+        {
+          "name": "buildStatementHTML",
+          "line": 8197
+        },
+        {
+          "name": "shareStatementAsImage",
+          "line": 8276
+        },
+        {
+          "name": "openProfitDashboard",
+          "line": 8306
+        },
+        {
+          "name": "getProfitDateRange",
+          "line": 8310
+        },
+        {
+          "name": "computeProfitForPeriod",
+          "line": 8328
+        },
+        {
+          "name": "renderProfitDashboard",
+          "line": 8390
+        },
+        {
+          "name": "logEdit",
+          "line": 8440
+        },
+        {
+          "name": "getAuditLog",
+          "line": 8448
+        },
+        {
+          "name": "openReturnModal",
+          "line": 8462
+        },
+        {
+          "name": "updateReturnAmount",
+          "line": 8496
+        },
+        {
+          "name": "saveReturn",
+          "line": 8515
+        },
+        {
+          "name": "scanBarcode",
+          "line": 8578
+        },
+        {
+          "name": "scanBarcodeForItem",
+          "line": 8628
+        },
+        {
+          "name": "fillItemByBarcode",
+          "line": 8665
+        },
+        {
+          "name": "startVoiceEntry",
+          "line": 8683
+        },
+        {
+          "name": "parseVoiceEntry",
+          "line": 8707
+        },
+        {
+          "name": "closeToolsMenu",
+          "line": 8758
+        },
+        {
+          "name": "toggleToolsMenu",
+          "line": 8762
+        },
+        {
+          "name": "getShopSettings",
+          "line": 8774
+        },
+        {
+          "name": "openShopSettings",
+          "line": 8777
+        },
+        {
+          "name": "saveShopSettings",
+          "line": 8787
+        },
+        {
+          "name": "exportJSONBackup",
+          "line": 8804
+        },
+        {
+          "name": "importJSONBackup",
+          "line": 8814
+        },
+        {
+          "name": "openStoragePanel",
+          "line": 8857
+        },
+        {
+          "name": "openBulkPaymentModal",
+          "line": 8914
+        },
+        {
+          "name": "renderBulkPayList",
+          "line": 8921
+        },
+        {
+          "name": "updateBulkPayTotal",
+          "line": 8943
+        },
+        {
+          "name": "saveBulkPayment",
+          "line": 8948
+        },
+        {
+          "name": "getPaymentDueParties",
+          "line": 8972
+        },
+        {
+          "name": "renderGlobalSearch",
+          "line": 8985
+        },
+        {
+          "name": "printPartyStatement",
+          "line": 9028
+        },
+        {
+          "name": "printBillReceipt",
+          "line": 9082
+        },
+        {
+          "name": "saveAll",
+          "line": 9131
+        },
+        {
+          "name": "syncSalesFromCloud",
+          "line": 9137
+        },
+        {
+          "name": "pushSalesToCloud",
+          "line": 9148
+        },
+        {
+          "name": "getInvoiceBalance",
+          "line": 9155
+        },
+        {
+          "name": "getInvoiceStatus",
+          "line": 9161
+        },
+        {
+          "name": "getCustomerReceivable",
+          "line": 9169
+        },
+        {
+          "name": "nextInvoiceId",
+          "line": 9182
+        },
+        {
+          "name": "filterSalesTab",
+          "line": 9191
+        },
+        {
+          "name": "computeSalesProfitSummary",
+          "line": 9206
+        },
+        {
+          "name": "renderSalesPage",
+          "line": 9268
+        },
+        {
+          "name": "invoiceCard",
+          "line": 9345
+        },
+        {
+          "name": "openNewCustomerModal",
+          "line": 9362
+        },
+        {
+          "name": "saveCustomer",
+          "line": 9368
+        },
+        {
+          "name": "deleteCustomerFromDetail",
+          "line": 9404
+        },
+        {
+          "name": "editCustomerFromDetail",
+          "line": 9417
+        },
+        {
+          "name": "autocompleteCustomer",
+          "line": 9433
+        },
+        {
+          "name": "selectCustomerAC",
+          "line": 9456
+        },
+        {
+          "name": "addCustomerInline",
+          "line": 9462
+        },
+        {
+          "name": "renderInvoiceCustomerChips",
+          "line": 9471
+        },
+        {
+          "name": "selectCustomerChip",
+          "line": 9483
+        },
+        {
+          "name": "addInvoiceItemRow",
+          "line": 9493
+        },
+        {
+          "name": "priceForUnit",
+          "line": 9565
+        },
+        {
+          "name": "priceForUnitFromAnchor",
+          "line": 9582
+        },
+        {
+          "name": "unitTierForItem",
+          "line": 9592
+        },
+        {
+          "name": "applyPriceTypeToRows",
+          "line": 9598
+        },
+        {
+          "name": "invoiceItemAutocomplete",
+          "line": 9624
+        },
+        {
+          "name": "fillInvoiceItem",
+          "line": 9668
+        },
+        {
+          "name": "onInvoiceUnitChange",
+          "line": 9716
+        },
+        {
+          "name": "addInvoiceExtraCharge",
+          "line": 9724
+        },
+        {
+          "name": "calcInvoiceTotal",
+          "line": 9738
+        },
+        {
+          "name": "openNewInvoiceModal",
+          "line": 9768
+        },
+        {
+          "name": "openWalkInSaleModal",
+          "line": 9775
+        },
+        {
+          "name": "openCounterSaleModal",
+          "line": 9793
+        },
+        {
+          "name": "csAddRow",
+          "line": 9804
+        },
+        {
+          "name": "csItemAC",
+          "line": 9845
+        },
+        {
+          "name": "csFillItem",
+          "line": 9865
+        },
+        {
+          "name": "csFillRateFromUnit",
+          "line": 9899
+        },
+        {
+          "name": "csCustomerAC",
+          "line": 9905
+        },
+        {
+          "name": "csCalcTotal",
+          "line": 9919
+        },
+        {
+          "name": "saveCounterSale",
+          "line": 9932
+        },
+        {
+          "name": "_saveCounterSaleInner",
+          "line": 9942
+        },
+        {
+          "name": "resetInvoiceForm",
+          "line": 10018
+        },
+        {
+          "name": "saveInvoice",
+          "line": 10040
+        },
+        {
+          "name": "_saveInvoiceInner",
+          "line": 10050
+        },
+        {
+          "name": "openInvoiceDetail",
+          "line": 10176
+        },
+        {
+          "name": "payFromInvoiceDetail",
+          "line": 10202
+        },
+        {
+          "name": "editInvoiceFromDetail",
+          "line": 10208
+        },
+        {
+          "name": "deleteInvoiceFromDetail",
+          "line": 10224
+        },
+        {
+          "name": "openSalePaymentModal",
+          "line": 10256
+        },
+        {
+          "name": "saveSalePayment",
+          "line": 10275
+        },
+        {
+          "name": "deleteSalePayment",
+          "line": 10302
+        },
+        {
+          "name": "openCustomerDetail",
+          "line": 10323
+        },
+        {
+          "name": "payFromCustomerDetail",
+          "line": 10350
+        },
+        {
+          "name": "buildInvoiceHTML",
+          "line": 10361
+        },
+        {
+          "name": "shareInvoiceWhatsApp",
+          "line": 10443
+        },
+        {
+          "name": "shareInvoiceAsImage",
+          "line": 10456
+        },
+        {
+          "name": "downloadInvoiceImage",
+          "line": 10485
+        },
+        {
+          "name": "shareCustomerStatementWhatsApp",
+          "line": 10493
+        },
+        {
+          "name": "printInvoice",
+          "line": 10504
+        },
+        {
+          "name": "emptyState",
+          "line": 10517
+        },
+        {
+          "name": "nextBillId",
+          "line": 10527
+        },
+        {
+          "name": "genBillId",
+          "line": 10538
+        },
+        {
+          "name": "checkDuplicate",
+          "line": 10541
+        },
+        {
+          "name": "getPartyAgingDays",
+          "line": 10551
+        },
+        {
+          "name": "agingBadge",
+          "line": 10561
+        },
+        {
+          "name": "renderAll",
+          "line": 10568
+        },
+        {
+          "name": "bootAfterAuth",
+          "line": 10705
+        }
+      ],
+      "keyboard_lines": [
+        {
+          "line": 203,
+          "source": "onkeydown=\"if(event.key==='Enter'){event.preventDefault();doLogin();}\""
+        },
+        {
+          "line": 2856,
+          "source": "if (e.key === 'ArrowDown') { acIndex[type] = Math.min(acIndex[type] + 1, els.length - 1); els.forEach((el, i) => el.classList.toggle('highlighted', i === acIndex[type])); e.preventDefault(); }"
+        },
+        {
+          "line": 2857,
+          "source": "if (e.key === 'ArrowUp') { acIndex[type] = Math.max(acIndex[type] - 1, 0); els.forEach((el, i) => el.classList.toggle('highlighted', i === acIndex[type])); e.preventDefault(); }"
+        },
+        {
+          "line": 2858,
+          "source": "if (e.key === 'Enter' && acIndex[type] >= 0) { e.preventDefault(); const si = Math.min(acIndex[type], els.length-1); if (els[si]) els[si].onmousedown(els[si]); acIndex[type] = -1; }"
+        },
+        {
+          "line": 2859,
+          "source": "if (e.key === 'Escape') { hideAC(type); acIndex[type] = -1; }"
+        },
+        {
+          "line": 7518,
+          "source": "if (e.key === 'Enter' || e.key === 'Tab') {"
+        },
+        {
+          "line": 7534,
+          "source": "if (e.key === 'Enter') {"
+        }
+      ],
+      "static_controls": [
+        {
+          "tag": "input",
+          "line": 200,
+          "id": "auth-email",
+          "type": "email",
+          "placeholder": "Email",
+          "events": []
+        },
+        {
+          "tag": "input",
+          "line": 202,
+          "id": "auth-pass",
+          "type": "password",
+          "placeholder": "Password",
+          "events": ["onkeydown"]
+        },
+        {
+          "tag": "button",
+          "line": 205,
+          "id": "auth-btn",
+          "events": ["onclick"],
+          "text": "Sign In"
+        },
+        {
+          "tag": "button",
+          "line": 222,
+          "events": ["onclick"],
+          "text": "Cancel"
+        },
+        {
+          "tag": "button",
+          "line": 223,
+          "id": "confirm-ok-btn",
+          "events": [],
+          "text": "Delete"
+        },
+        {
+          "tag": "button",
+          "line": 237,
+          "events": ["onclick"],
+          "text": "↻"
+        },
+        {
+          "tag": "button",
+          "line": 238,
+          "events": ["onclick"],
+          "text": "⚙️"
+        },
+        {
+          "tag": "button",
+          "line": 239,
+          "events": ["onclick"],
+          "text": "+ Payment"
+        },
+        {
+          "tag": "input",
+          "line": 244,
+          "id": "global-search",
+          "type": "text",
+          "placeholder": "Search everything — bills, parties, items...",
+          "events": ["oninput"]
+        },
+        {
+          "tag": "button",
+          "line": 245,
+          "type": "button",
+          "events": ["onclick"],
+          "text": "✕"
+        },
+        {
+          "tag": "button",
+          "line": 260,
+          "events": ["onclick"],
+          "text": "📦 New Bill"
+        },
+        {
+          "tag": "button",
+          "line": 261,
+          "events": ["onclick"],
+          "text": "⚡ Walk-in Sale"
+        },
+        {
+          "tag": "button",
+          "line": 262,
+          "id": "tools-toggle-btn",
+          "events": ["onclick"],
+          "text": "🛠 Tools ▾"
+        },
+        {
+          "tag": "button",
+          "line": 266,
+          "events": ["onclick"],
+          "text": "📦 Stock"
+        },
+        {
+          "tag": "button",
+          "line": 267,
+          "events": ["onclick"],
+          "text": "🛒 Shop Listing"
+        },
+        {
+          "tag": "button",
+          "line": 268,
+          "events": ["onclick"],
+          "text": "⚙ Storefront"
+        },
+        {
+          "tag": "button",
+          "line": 269,
+          "events": ["onclick"],
+          "text": "⬇ Export Excel"
+        },
+        {
+          "tag": "button",
+          "line": 270,
+          "events": ["onclick"],
+          "text": "📋 Entry Sheet"
+        },
+        {
+          "tag": "button",
+          "line": 271,
+          "events": ["onclick"],
+          "text": "⬆ Import Entry Sheet"
+        },
+        {
+          "tag": "input",
+          "line": 272,
+          "id": "entry-sheet-import",
+          "type": "file",
+          "events": ["onchange"]
+        },
+        {
+          "tag": "button",
+          "line": 273,
+          "events": ["onclick"],
+          "text": "💸 Add Expense"
+        },
+        {
+          "tag": "button",
+          "line": 274,
+          "events": ["onclick"],
+          "text": "⚡ Batch Bills"
+        },
+        {
+          "tag": "button",
+          "line": 275,
+          "events": ["onclick"],
+          "text": "💾 Backup"
+        },
+        {
+          "tag": "button",
+          "line": 276,
+          "events": ["onclick"],
+          "text": "📥 Restore"
+        },
+        {
+          "tag": "input",
+          "line": 277,
+          "id": "backup-restore-input",
+          "type": "file",
+          "events": ["onchange"]
+        },
+        {
+          "tag": "button",
+          "line": 278,
+          "events": ["onclick"],
+          "text": "📊 Storage"
+        },
+        {
+          "tag": "button",
+          "line": 279,
+          "events": ["onclick"],
+          "text": "🗑 Recycle Bin"
+        },
+        {
+          "tag": "button",
+          "line": 280,
+          "events": ["onclick"],
+          "text": "⚠ Reset Device"
+        },
+        {
+          "tag": "button",
+          "line": 281,
+          "events": ["onclick"],
+          "text": "Sign Out"
+        },
+        {
+          "tag": "button",
+          "line": 283,
+          "events": ["onclick"],
+          "text": "⬆ Import Excel"
+        },
+        {
+          "tag": "input",
+          "line": 284,
+          "id": "excel-import-input",
+          "type": "file",
+          "events": ["onchange"]
+        },
+        {
+          "tag": "button",
+          "line": 288,
+          "events": ["onclick"],
+          "text": "📒 Day Book — Today's Summary"
+        },
+        {
+          "tag": "button",
+          "line": 291,
+          "events": ["onclick"],
+          "text": "📈 Profit Report"
+        },
+        {
+          "tag": "button",
+          "line": 309,
+          "events": ["onclick"],
+          "text": "↻"
+        },
+        {
+          "tag": "button",
+          "line": 310,
+          "events": ["onclick"],
+          "text": "⚡ Batch"
+        },
+        {
+          "tag": "button",
+          "line": 311,
+          "events": ["onclick"],
+          "text": "+ New Bill"
+        },
+        {
+          "tag": "input",
+          "line": 316,
+          "id": "bills-search",
+          "type": "text",
+          "placeholder": "Search party, bill ID, amount...",
+          "events": ["oninput"]
+        },
+        {
+          "tag": "button",
+          "line": 317,
+          "type": "button",
+          "events": ["onclick"],
+          "text": "✕"
+        },
+        {
+          "tag": "input",
+          "line": 328,
+          "id": "bills-date-from",
+          "type": "date",
+          "events": ["oninput"]
+        },
+        {
+          "tag": "input",
+          "line": 330,
+          "id": "bills-date-to",
+          "type": "date",
+          "events": ["oninput"]
+        },
+        {
+          "tag": "button",
+          "line": 331,
+          "events": ["onclick"],
+          "text": "Clear"
+        },
+        {
+          "tag": "button",
+          "line": 332,
+          "id": "bills-sort-toggle",
+          "events": ["onclick"],
+          "text": "🕒 Recent"
+        },
+        {
+          "tag": "button",
+          "line": 344,
+          "events": ["onclick"],
+          "text": "↻"
+        },
+        {
+          "tag": "button",
+          "line": 345,
+          "events": ["onclick"],
+          "text": "🛒"
+        },
+        {
+          "tag": "button",
+          "line": 346,
+          "events": ["onclick"],
+          "text": "⚙"
+        },
+        {
+          "tag": "button",
+          "line": 347,
+          "events": ["onclick"],
+          "text": "+ Item"
+        },
+        {
+          "tag": "input",
+          "line": 352,
+          "id": "stock-search",
+          "type": "text",
+          "placeholder": "Search items...",
+          "events": ["oninput"]
+        },
+        {
+          "tag": "button",
+          "line": 353,
+          "type": "button",
+          "events": ["onclick"],
+          "text": "✕"
+        },
+        {
+          "tag": "button",
+          "line": 370,
+          "events": ["onclick"],
+          "text": "↻"
+        },
+        {
+          "tag": "button",
+          "line": 371,
+          "events": ["onclick"],
+          "text": "+ Customer"
+        },
+        {
+          "tag": "button",
+          "line": 372,
+          "events": ["onclick"],
+          "text": "⚡ Walk-in"
+        },
+        {
+          "tag": "button",
+          "line": 373,
+          "events": ["onclick"],
+          "text": "🏪 Counter"
+        },
+        {
+          "tag": "button",
+          "line": 374,
+          "events": ["onclick"],
+          "text": "+ Invoice"
+        },
+        {
+          "tag": "button",
+          "line": 394,
+          "id": "sales-sort-toggle",
+          "events": ["onclick"],
+          "text": "🕒 Recent"
+        },
+        {
+          "tag": "button",
+          "line": 405,
+          "events": ["onclick"],
+          "text": "↻"
+        },
+        {
+          "tag": "button",
+          "line": 406,
+          "events": ["onclick"],
+          "text": "Bulk Pay"
+        },
+        {
+          "tag": "button",
+          "line": 407,
+          "events": ["onclick"],
+          "text": "+ Payment"
+        },
+        {
+          "tag": "button",
+          "line": 410,
+          "events": ["onclick"],
+          "text": "+ Party"
+        },
+        {
+          "tag": "input",
+          "line": 436,
+          "id": "parties-search",
+          "type": "text",
+          "placeholder": "Search party...",
+          "events": ["oninput"]
+        },
+        {
+          "tag": "button",
+          "line": 437,
+          "type": "button",
+          "events": ["onclick"],
+          "text": "✕"
+        },
+        {
+          "tag": "button",
+          "line": 451,
+          "id": "ledger-sort-toggle",
+          "events": ["onclick"],
+          "text": "🕒 Recent"
+        },
+        {
+          "tag": "button",
+          "line": 468,
+          "events": ["onclick"],
+          "text": "←"
+        },
+        {
+          "tag": "select",
+          "line": 471,
+          "id": "profit-period",
+          "events": ["onchange"],
+          "text": "This Month Last Month This Year All Time"
+        },
+        {
+          "tag": "option",
+          "line": 472,
+          "value": "this_month",
+          "events": [],
+          "text": "This Month"
+        },
+        {
+          "tag": "option",
+          "line": 473,
+          "value": "last_month",
+          "events": [],
+          "text": "Last Month"
+        },
+        {
+          "tag": "option",
+          "line": 474,
+          "value": "this_year",
+          "events": [],
+          "text": "This Year"
+        },
+        {
+          "tag": "option",
+          "line": 475,
+          "value": "all",
+          "events": [],
+          "text": "All Time"
+        },
+        {
+          "tag": "button",
+          "line": 503,
+          "events": ["onclick"],
+          "text": "←"
+        },
+        {
+          "tag": "input",
+          "line": 510,
+          "id": "daybook-date-picker",
+          "type": "date",
+          "events": ["onchange"]
+        },
+        {
+          "tag": "button",
+          "line": 564,
+          "events": ["onclick"],
+          "text": "+ Add Expense"
+        },
+        {
+          "tag": "button",
+          "line": 573,
+          "events": ["onclick"],
+          "text": "↻"
+        },
+        {
+          "tag": "button",
+          "line": 590,
+          "events": ["onclick"],
+          "text": "←"
+        },
+        {
+          "tag": "button",
+          "line": 596,
+          "id": "batch-save-btn",
+          "events": ["onclick"],
+          "text": "Save All"
+        },
+        {
+          "tag": "button",
+          "line": 601,
+          "events": ["onclick"],
+          "text": "+ Add Another Bill"
+        },
+        {
+          "tag": "label",
+          "line": 612,
+          "events": [],
+          "text": "Reason"
+        },
+        {
+          "tag": "input",
+          "line": 613,
+          "id": "return-reason",
+          "placeholder": "e.g. Damaged goods, wrong item...",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 617,
+          "events": [],
+          "text": "Date"
+        },
+        {
+          "tag": "input",
+          "line": 618,
+          "id": "return-date",
+          "type": "date",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 621,
+          "events": [],
+          "text": "Credit Amount ₹"
+        },
+        {
+          "tag": "input",
+          "line": 622,
+          "id": "return-amount",
+          "type": "number",
+          "placeholder": "0.00",
+          "events": ["oninput"]
+        },
+        {
+          "tag": "button",
+          "line": 628,
+          "events": ["onclick"],
+          "text": "Save Return"
+        },
+        {
+          "tag": "label",
+          "line": 638,
+          "events": [],
+          "text": "Category"
+        },
+        {
+          "tag": "select",
+          "line": 639,
+          "id": "exp-category",
+          "events": [],
+          "text": "Rent Salary Electricity Transport Food / Tea Repairs Misc"
+        },
+        {
+          "tag": "option",
+          "line": 640,
+          "value": "Rent",
+          "events": [],
+          "text": "Rent"
+        },
+        {
+          "tag": "option",
+          "line": 641,
+          "value": "Salary",
+          "events": [],
+          "text": "Salary"
+        },
+        {
+          "tag": "option",
+          "line": 642,
+          "value": "Electricity",
+          "events": [],
+          "text": "Electricity"
+        },
+        {
+          "tag": "option",
+          "line": 643,
+          "value": "Transport",
+          "events": [],
+          "text": "Transport"
+        },
+        {
+          "tag": "option",
+          "line": 644,
+          "value": "Food",
+          "events": [],
+          "text": "Food / Tea"
+        },
+        {
+          "tag": "option",
+          "line": 645,
+          "value": "Repairs",
+          "events": [],
+          "text": "Repairs"
+        },
+        {
+          "tag": "option",
+          "line": 646,
+          "value": "Misc",
+          "selected": true,
+          "events": [],
+          "text": "Misc"
+        },
+        {
+          "tag": "label",
+          "line": 651,
+          "events": [],
+          "text": "Amount ₹"
+        },
+        {
+          "tag": "input",
+          "line": 652,
+          "id": "exp-amount",
+          "type": "number",
+          "placeholder": "0.00",
+          "min": "0",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 655,
+          "events": [],
+          "text": "Mode"
+        },
+        {
+          "tag": "select",
+          "line": 656,
+          "id": "exp-mode",
+          "events": [],
+          "text": "Cash UPI Bank"
+        },
+        {
+          "tag": "option",
+          "line": 657,
+          "value": "cash",
+          "events": [],
+          "text": "Cash"
+        },
+        {
+          "tag": "option",
+          "line": 658,
+          "value": "upi",
+          "events": [],
+          "text": "UPI"
+        },
+        {
+          "tag": "option",
+          "line": 659,
+          "value": "bank",
+          "events": [],
+          "text": "Bank"
+        },
+        {
+          "tag": "label",
+          "line": 664,
+          "events": [],
+          "text": "Date"
+        },
+        {
+          "tag": "input",
+          "line": 665,
+          "id": "exp-date",
+          "type": "date",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 668,
+          "events": [],
+          "text": "Notes"
+        },
+        {
+          "tag": "input",
+          "line": 669,
+          "id": "exp-notes",
+          "placeholder": "Optional details...",
+          "events": []
+        },
+        {
+          "tag": "button",
+          "line": 671,
+          "events": ["onclick"],
+          "text": "Save Expense"
+        },
+        {
+          "tag": "label",
+          "line": 680,
+          "events": [],
+          "text": "Shop Name"
+        },
+        {
+          "tag": "input",
+          "line": 680,
+          "id": "ss-name",
+          "placeholder": "e.g. DSB Stores",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 681,
+          "events": [],
+          "text": "Address Line 1"
+        },
+        {
+          "tag": "input",
+          "line": 681,
+          "id": "ss-addr1",
+          "placeholder": "Street / Area",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 682,
+          "events": [],
+          "text": "Address Line 2"
+        },
+        {
+          "tag": "input",
+          "line": 682,
+          "id": "ss-addr2",
+          "placeholder": "City, State, PIN",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 683,
+          "events": [],
+          "text": "Phone"
+        },
+        {
+          "tag": "input",
+          "line": 683,
+          "id": "ss-phone",
+          "type": "tel",
+          "placeholder": "Mobile number",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 684,
+          "events": [],
+          "text": "GSTIN (optional)"
+        },
+        {
+          "tag": "input",
+          "line": 684,
+          "id": "ss-gstin",
+          "placeholder": "22AAAAA0000A1Z5",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 685,
+          "events": [],
+          "text": "Invoice Footer Message"
+        },
+        {
+          "tag": "input",
+          "line": 685,
+          "id": "ss-footer",
+          "placeholder": "Thanks for your business!",
+          "events": []
+        },
+        {
+          "tag": "button",
+          "line": 687,
+          "events": ["onclick"],
+          "text": "Cancel"
+        },
+        {
+          "tag": "button",
+          "line": 688,
+          "events": ["onclick"],
+          "text": "Save"
+        },
+        {
+          "tag": "label",
+          "line": 697,
+          "events": [],
+          "text": "Name"
+        },
+        {
+          "tag": "input",
+          "line": 697,
+          "id": "cust-name",
+          "placeholder": "Customer name",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 698,
+          "events": [],
+          "text": "Phone"
+        },
+        {
+          "tag": "input",
+          "line": 698,
+          "id": "cust-phone",
+          "type": "tel",
+          "placeholder": "Optional",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 699,
+          "events": [],
+          "text": "Address"
+        },
+        {
+          "tag": "input",
+          "line": 699,
+          "id": "cust-address",
+          "placeholder": "Optional",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 701,
+          "events": [],
+          "text": "GSTIN"
+        },
+        {
+          "tag": "input",
+          "line": 701,
+          "id": "cust-gstin",
+          "placeholder": "Optional",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 702,
+          "events": [],
+          "text": "Credit Limit ₹"
+        },
+        {
+          "tag": "input",
+          "line": 702,
+          "id": "cust-credit",
+          "type": "number",
+          "placeholder": "0=no limit",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 704,
+          "events": [],
+          "text": "Notes"
+        },
+        {
+          "tag": "input",
+          "line": 704,
+          "id": "cust-notes",
+          "placeholder": "Optional",
+          "events": []
+        },
+        {
+          "tag": "button",
+          "line": 705,
+          "events": ["onclick"],
+          "text": "Save Customer"
+        },
+        {
+          "tag": "label",
+          "line": 716,
+          "events": [],
+          "text": "Customer"
+        },
+        {
+          "tag": "input",
+          "line": 718,
+          "id": "inv-customer",
+          "placeholder": "Type or tap customer below...",
+          "events": ["onblur", "onfocus", "oninput"]
+        },
+        {
+          "tag": "label",
+          "line": 726,
+          "events": [],
+          "text": "Date"
+        },
+        {
+          "tag": "input",
+          "line": 726,
+          "id": "inv-date",
+          "type": "date",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 727,
+          "events": [],
+          "text": "Payment Type"
+        },
+        {
+          "tag": "select",
+          "line": 728,
+          "id": "inv-payment-type",
+          "events": [],
+          "text": "Credit Cash UPI Cheque"
+        },
+        {
+          "tag": "option",
+          "line": 729,
+          "value": "credit",
+          "events": [],
+          "text": "Credit"
+        },
+        {
+          "tag": "option",
+          "line": 730,
+          "value": "cash",
+          "events": [],
+          "text": "Cash"
+        },
+        {
+          "tag": "option",
+          "line": 731,
+          "value": "upi",
+          "events": [],
+          "text": "UPI"
+        },
+        {
+          "tag": "option",
+          "line": 732,
+          "value": "cheque",
+          "events": [],
+          "text": "Cheque"
+        },
+        {
+          "tag": "label",
+          "line": 738,
+          "events": [],
+          "text": "Price Type — applied to items you pick below"
+        },
+        {
+          "tag": "select",
+          "line": 739,
+          "id": "inv-price-type",
+          "events": ["onchange"],
+          "text": "Retail Wholesale"
+        },
+        {
+          "tag": "option",
+          "line": 740,
+          "value": "retail",
+          "events": [],
+          "text": "Retail"
+        },
+        {
+          "tag": "option",
+          "line": 741,
+          "value": "wholesale",
+          "events": [],
+          "text": "Wholesale"
+        },
+        {
+          "tag": "label",
+          "line": 745,
+          "events": [],
+          "text": "Notes"
+        },
+        {
+          "tag": "input",
+          "line": 745,
+          "id": "inv-notes",
+          "placeholder": "Optional",
+          "events": []
+        },
+        {
+          "tag": "button",
+          "line": 749,
+          "events": ["onclick"],
+          "text": "+ Add Item"
+        },
+        {
+          "tag": "button",
+          "line": 757,
+          "events": ["onclick"],
+          "text": "+ Add Charge"
+        },
+        {
+          "tag": "button",
+          "line": 767,
+          "id": "btn-save-invoice",
+          "events": ["onclick"],
+          "text": "Save Invoice"
+        },
+        {
+          "tag": "button",
+          "line": 792,
+          "events": ["onclick"],
+          "text": "Record Payment"
+        },
+        {
+          "tag": "button",
+          "line": 793,
+          "events": ["onclick"],
+          "text": "Edit"
+        },
+        {
+          "tag": "button",
+          "line": 796,
+          "events": ["onclick"],
+          "text": "📸 Share"
+        },
+        {
+          "tag": "button",
+          "line": 797,
+          "events": ["onclick"],
+          "text": "💬 Text"
+        },
+        {
+          "tag": "button",
+          "line": 798,
+          "events": ["onclick"],
+          "text": "🖨 Print"
+        },
+        {
+          "tag": "button",
+          "line": 800,
+          "events": ["onclick"],
+          "text": "↩ Record Sale Return"
+        },
+        {
+          "tag": "button",
+          "line": 801,
+          "events": ["onclick"],
+          "text": "Delete Invoice"
+        },
+        {
+          "tag": "button",
+          "line": 813,
+          "events": ["onclick"],
+          "text": "Edit"
+        },
+        {
+          "tag": "button",
+          "line": 814,
+          "events": ["onclick"],
+          "text": "Delete"
+        },
+        {
+          "tag": "button",
+          "line": 826,
+          "events": ["onclick"],
+          "text": "Record Payment"
+        },
+        {
+          "tag": "button",
+          "line": 827,
+          "events": ["onclick"],
+          "text": "📸 Share Statement"
+        },
+        {
+          "tag": "button",
+          "line": 828,
+          "events": ["onclick"],
+          "text": "💬 Share via Text"
+        },
+        {
+          "tag": "label",
+          "line": 837,
+          "events": [],
+          "text": "Customer"
+        },
+        {
+          "tag": "input",
+          "line": 838,
+          "id": "spay-customer",
+          "placeholder": "Customer name",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 845,
+          "events": [],
+          "text": "Amount ₹"
+        },
+        {
+          "tag": "input",
+          "line": 845,
+          "id": "spay-amount",
+          "type": "number",
+          "placeholder": "0.00",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 846,
+          "events": [],
+          "text": "Mode"
+        },
+        {
+          "tag": "select",
+          "line": 847,
+          "id": "spay-mode",
+          "events": [],
+          "text": "Cash UPI Cheque Bank Transfer"
+        },
+        {
+          "tag": "option",
+          "line": 848,
+          "value": "cash",
+          "events": [],
+          "text": "Cash"
+        },
+        {
+          "tag": "option",
+          "line": 848,
+          "value": "upi",
+          "events": [],
+          "text": "UPI"
+        },
+        {
+          "tag": "option",
+          "line": 848,
+          "value": "cheque",
+          "events": [],
+          "text": "Cheque"
+        },
+        {
+          "tag": "option",
+          "line": 848,
+          "value": "bank",
+          "events": [],
+          "text": "Bank Transfer"
+        },
+        {
+          "tag": "label",
+          "line": 852,
+          "events": [],
+          "text": "Date"
+        },
+        {
+          "tag": "input",
+          "line": 852,
+          "id": "spay-date",
+          "type": "date",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 853,
+          "events": [],
+          "text": "Notes"
+        },
+        {
+          "tag": "input",
+          "line": 853,
+          "id": "spay-notes",
+          "placeholder": "Optional",
+          "events": []
+        },
+        {
+          "tag": "button",
+          "line": 854,
+          "events": ["onclick"],
+          "text": "Save Payment"
+        },
+        {
+          "tag": "button",
+          "line": 859,
+          "events": ["onclick"],
+          "text": "Home"
+        },
+        {
+          "tag": "button",
+          "line": 863,
+          "events": ["onclick"],
+          "text": "Bills"
+        },
+        {
+          "tag": "button",
+          "line": 867,
+          "events": ["onclick"],
+          "text": "Sales"
+        },
+        {
+          "tag": "button",
+          "line": 871,
+          "events": ["onclick"],
+          "text": "Ledger"
+        },
+        {
+          "tag": "button",
+          "line": 875,
+          "events": ["onclick"],
+          "text": "Orders"
+        },
+        {
+          "tag": "button",
+          "line": 888,
+          "type": "button",
+          "events": ["onclick"],
+          "text": "🎤"
+        },
+        {
+          "tag": "label",
+          "line": 892,
+          "events": [],
+          "text": "Party Name"
+        },
+        {
+          "tag": "input",
+          "line": 894,
+          "id": "bill-party",
+          "placeholder": "Type or tap party below...",
+          "events": ["onblur", "onfocus", "oninput", "onkeydown", "onkeyup"]
+        },
+        {
+          "tag": "label",
+          "line": 900,
+          "events": [],
+          "text": "Date"
+        },
+        {
+          "tag": "input",
+          "line": 901,
+          "id": "bill-date",
+          "type": "date",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 904,
+          "events": [],
+          "text": "Payment Type"
+        },
+        {
+          "tag": "select",
+          "line": 905,
+          "id": "bill-payment-type",
+          "events": [],
+          "text": "Credit Cash UPI Cheque"
+        },
+        {
+          "tag": "option",
+          "line": 906,
+          "value": "credit",
+          "events": [],
+          "text": "Credit"
+        },
+        {
+          "tag": "option",
+          "line": 907,
+          "value": "cash",
+          "events": [],
+          "text": "Cash"
+        },
+        {
+          "tag": "option",
+          "line": 908,
+          "value": "upi",
+          "events": [],
+          "text": "UPI"
+        },
+        {
+          "tag": "option",
+          "line": 909,
+          "value": "cheque",
+          "events": [],
+          "text": "Cheque"
+        },
+        {
+          "tag": "label",
+          "line": 914,
+          "events": [],
+          "text": "Bill Image"
+        },
+        {
+          "tag": "button",
+          "line": 916,
+          "type": "button",
+          "events": ["onclick"],
+          "text": "📷 Camera"
+        },
+        {
+          "tag": "button",
+          "line": 919,
+          "type": "button",
+          "events": ["onclick"],
+          "text": "🖼 Gallery"
+        },
+        {
+          "tag": "input",
+          "line": 924,
+          "id": "bill-img-camera",
+          "type": "file",
+          "events": ["onchange"]
+        },
+        {
+          "tag": "input",
+          "line": 925,
+          "id": "bill-img-file",
+          "type": "file",
+          "events": ["onchange"]
+        },
+        {
+          "tag": "input",
+          "line": 931,
+          "id": "bill-image",
+          "type": "hidden",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 934,
+          "events": [],
+          "text": "Notes"
+        },
+        {
+          "tag": "input",
+          "line": 935,
+          "id": "bill-notes",
+          "placeholder": "Optional notes...",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 941,
+          "events": [],
+          "text": "⚡ Quick Bill — total only"
+        },
+        {
+          "tag": "input",
+          "line": 942,
+          "id": "bill-manual-total",
+          "type": "number",
+          "placeholder": "Enter bill total, skip items",
+          "min": "0",
+          "events": ["oninput"]
+        },
+        {
+          "tag": "button",
+          "line": 950,
+          "id": "repeat-bill-btn",
+          "events": ["onclick"],
+          "text": "↺ Repeat"
+        },
+        {
+          "tag": "button",
+          "line": 951,
+          "events": ["onclick"],
+          "text": "+ Add Item"
+        },
+        {
+          "tag": "button",
+          "line": 965,
+          "events": ["onclick"],
+          "text": "+ Add Charge"
+        },
+        {
+          "tag": "button",
+          "line": 974,
+          "events": ["onclick"],
+          "text": "+ Add Discount"
+        },
+        {
+          "tag": "button",
+          "line": 988,
+          "id": "btn-save-bill",
+          "events": ["onclick"],
+          "text": "Save Bill"
+        },
+        {
+          "tag": "label",
+          "line": 997,
+          "events": [],
+          "text": "Party Name"
+        },
+        {
+          "tag": "input",
+          "line": 997,
+          "id": "party-name",
+          "placeholder": "e.g. m.b lal",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 998,
+          "events": [],
+          "text": "Phone"
+        },
+        {
+          "tag": "input",
+          "line": 998,
+          "id": "party-phone",
+          "type": "tel",
+          "placeholder": "Optional",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 1000,
+          "events": [],
+          "text": "Payment Day"
+        },
+        {
+          "tag": "input",
+          "line": 1000,
+          "id": "party-pay-day",
+          "type": "number",
+          "placeholder": "e.g. 10",
+          "min": "1",
+          "max": "31",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 1001,
+          "events": [],
+          "text": "Credit Limit (₹)"
+        },
+        {
+          "tag": "input",
+          "line": 1001,
+          "id": "party-credit-limit",
+          "type": "number",
+          "placeholder": "0 = no limit",
+          "min": "0",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 1003,
+          "events": [],
+          "text": "Notes"
+        },
+        {
+          "tag": "input",
+          "line": 1003,
+          "id": "party-notes",
+          "placeholder": "Optional",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 1006,
+          "events": [],
+          "text": "Fixed Amount ₹"
+        },
+        {
+          "tag": "input",
+          "line": 1006,
+          "id": "party-autopay-amount",
+          "type": "number",
+          "placeholder": "e.g. 5000 — leave blank for none",
+          "min": "0",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 1007,
+          "events": [],
+          "text": "Days party comes for payment"
+        },
+        {
+          "tag": "button",
+          "line": 1009,
+          "type": "button",
+          "events": ["onclick"],
+          "text": "Sun"
+        },
+        {
+          "tag": "button",
+          "line": 1010,
+          "type": "button",
+          "events": ["onclick"],
+          "text": "Mon"
+        },
+        {
+          "tag": "button",
+          "line": 1011,
+          "type": "button",
+          "events": ["onclick"],
+          "text": "Tue"
+        },
+        {
+          "tag": "button",
+          "line": 1012,
+          "type": "button",
+          "events": ["onclick"],
+          "text": "Wed"
+        },
+        {
+          "tag": "button",
+          "line": 1013,
+          "type": "button",
+          "events": ["onclick"],
+          "text": "Thu"
+        },
+        {
+          "tag": "button",
+          "line": 1014,
+          "type": "button",
+          "events": ["onclick"],
+          "text": "Fri"
+        },
+        {
+          "tag": "button",
+          "line": 1015,
+          "type": "button",
+          "events": ["onclick"],
+          "text": "Sat"
+        },
+        {
+          "tag": "button",
+          "line": 1018,
+          "events": ["onclick"],
+          "text": "Save Party"
+        },
+        {
+          "tag": "button",
+          "line": 1030,
+          "events": ["onclick"],
+          "text": "Close"
+        },
+        {
+          "tag": "label",
+          "line": 1044,
+          "events": [],
+          "text": "Shop status"
+        },
+        {
+          "tag": "select",
+          "line": 1045,
+          "id": "sf-open",
+          "events": [],
+          "text": "Open — accepting orders Closed — browsing only"
+        },
+        {
+          "tag": "option",
+          "line": 1046,
+          "value": "1",
+          "events": [],
+          "text": "Open — accepting orders"
+        },
+        {
+          "tag": "option",
+          "line": 1047,
+          "value": "0",
+          "events": [],
+          "text": "Closed — browsing only"
+        },
+        {
+          "tag": "label",
+          "line": 1050,
+          "events": [],
+          "text": "Closed message"
+        },
+        {
+          "tag": "input",
+          "line": 1051,
+          "id": "sf-closedmsg",
+          "placeholder": "We are closed right now.",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 1053,
+          "events": [],
+          "text": "Pickup"
+        },
+        {
+          "tag": "select",
+          "line": 1054,
+          "id": "sf-pickup",
+          "events": [],
+          "text": "Enabled Disabled"
+        },
+        {
+          "tag": "option",
+          "line": 1054,
+          "value": "1",
+          "events": [],
+          "text": "Enabled"
+        },
+        {
+          "tag": "option",
+          "line": 1054,
+          "value": "0",
+          "events": [],
+          "text": "Disabled"
+        },
+        {
+          "tag": "label",
+          "line": 1057,
+          "events": [],
+          "text": "Delivery"
+        },
+        {
+          "tag": "select",
+          "line": 1058,
+          "id": "sf-delivery",
+          "events": [],
+          "text": "Enabled Disabled"
+        },
+        {
+          "tag": "option",
+          "line": 1058,
+          "value": "1",
+          "events": [],
+          "text": "Enabled"
+        },
+        {
+          "tag": "option",
+          "line": 1058,
+          "value": "0",
+          "events": [],
+          "text": "Disabled"
+        },
+        {
+          "tag": "label",
+          "line": 1060,
+          "events": [],
+          "text": "Minimum order — pickup (₹)"
+        },
+        {
+          "tag": "input",
+          "line": 1061,
+          "id": "sf-minpickup",
+          "type": "number",
+          "placeholder": "0",
+          "inputmode": "decimal",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 1062,
+          "events": [],
+          "text": "Minimum order — delivery (₹)"
+        },
+        {
+          "tag": "input",
+          "line": 1063,
+          "id": "sf-mindelivery",
+          "type": "number",
+          "placeholder": "0",
+          "inputmode": "decimal",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 1064,
+          "events": [],
+          "text": "Delivery fee (₹)"
+        },
+        {
+          "tag": "input",
+          "line": 1065,
+          "id": "sf-fee",
+          "type": "number",
+          "placeholder": "0",
+          "inputmode": "decimal",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 1066,
+          "events": [],
+          "text": "Free delivery above (₹) — 0 = never free"
+        },
+        {
+          "tag": "input",
+          "line": 1067,
+          "id": "sf-freeabove",
+          "type": "number",
+          "placeholder": "0",
+          "inputmode": "decimal",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 1068,
+          "events": [],
+          "text": "Delivery slots (comma separated)"
+        },
+        {
+          "tag": "input",
+          "line": 1069,
+          "id": "sf-slots",
+          "placeholder": "Today 5-7 PM, Tomorrow 10-12",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 1070,
+          "events": [],
+          "text": "Shop phone shown to customers"
+        },
+        {
+          "tag": "input",
+          "line": 1071,
+          "id": "sf-phone",
+          "type": "tel",
+          "placeholder": "Mobile number",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 1072,
+          "events": [],
+          "text": "UPI ID (optional) — enables \"Pay now\" on the order confirmation"
+        },
+        {
+          "tag": "input",
+          "line": 1073,
+          "id": "sf-upi",
+          "placeholder": "name@bank",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 1074,
+          "events": [],
+          "text": "Promo banner (shown at the top of the shop)"
+        },
+        {
+          "tag": "input",
+          "line": 1075,
+          "id": "sf-banner",
+          "placeholder": "e.g. Free delivery above ₹500 today!",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 1076,
+          "events": [],
+          "text": "Show promo banner"
+        },
+        {
+          "tag": "select",
+          "line": 1077,
+          "id": "sf-banner-on",
+          "events": [],
+          "text": "Hidden Shown"
+        },
+        {
+          "tag": "option",
+          "line": 1077,
+          "value": "0",
+          "events": [],
+          "text": "Hidden"
+        },
+        {
+          "tag": "option",
+          "line": 1077,
+          "value": "1",
+          "events": [],
+          "text": "Shown"
+        },
+        {
+          "tag": "label",
+          "line": 1078,
+          "events": [],
+          "text": "Shop address (shown to customers)"
+        },
+        {
+          "tag": "textarea",
+          "line": 1079,
+          "id": "sf-address",
+          "placeholder": "Street, landmark, city",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 1080,
+          "events": [],
+          "text": "Opening hours"
+        },
+        {
+          "tag": "input",
+          "line": 1081,
+          "id": "sf-hours",
+          "placeholder": "e.g. 7 AM - 9 PM, all days",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 1082,
+          "events": [],
+          "text": "Google Maps link (optional)"
+        },
+        {
+          "tag": "input",
+          "line": 1083,
+          "id": "sf-map",
+          "placeholder": "https://maps.app.goo.gl/...",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 1084,
+          "events": [],
+          "text": "Licence line (optional) — GSTIN / FSSAI"
+        },
+        {
+          "tag": "input",
+          "line": 1085,
+          "id": "sf-licence",
+          "placeholder": "FSSAI: 12345678901234",
+          "events": []
+        },
+        {
+          "tag": "button",
+          "line": 1088,
+          "events": ["onclick"],
+          "text": "Cancel"
+        },
+        {
+          "tag": "button",
+          "line": 1089,
+          "events": ["onclick"],
+          "text": "Save & Sync"
+        },
+        {
+          "tag": "input",
+          "line": 1103,
+          "id": "shoplist-search",
+          "type": "text",
+          "placeholder": "Search items...",
+          "events": ["oninput"]
+        },
+        {
+          "tag": "button",
+          "line": 1104,
+          "type": "button",
+          "events": ["onclick"],
+          "text": "✕"
+        },
+        {
+          "tag": "input",
+          "line": 1114,
+          "id": "shoplist-cat",
+          "placeholder": "Category for shown items",
+          "events": []
+        },
+        {
+          "tag": "button",
+          "line": 1116,
+          "events": ["onclick"],
+          "text": "Apply"
+        },
+        {
+          "tag": "button",
+          "line": 1120,
+          "events": ["onclick"],
+          "text": "Close"
+        },
+        {
+          "tag": "button",
+          "line": 1121,
+          "events": ["onclick"],
+          "text": "Save & Sync"
+        },
+        {
+          "tag": "input",
+          "line": 1131,
+          "id": "item-edit-id",
+          "type": "hidden",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 1132,
+          "events": [],
+          "text": "Item Name"
+        },
+        {
+          "tag": "input",
+          "line": 1132,
+          "id": "item-name",
+          "placeholder": "e.g. Goodday Biscuit 40/-",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 1134,
+          "events": [],
+          "text": "Barcode optional — for scan-to-add"
+        },
+        {
+          "tag": "input",
+          "line": 1136,
+          "id": "item-barcode",
+          "placeholder": "Scan or type barcode",
+          "events": []
+        },
+        {
+          "tag": "button",
+          "line": 1137,
+          "type": "button",
+          "events": ["onclick"],
+          "text": "📷"
+        },
+        {
+          "tag": "label",
+          "line": 1141,
+          "events": [],
+          "text": "Category optional — used to group items in the customer storefront"
+        },
+        {
+          "tag": "input",
+          "line": 1142,
+          "id": "item-category",
+          "placeholder": "e.g. Grocery, Personal Care",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 1148,
+          "events": [],
+          "text": "Base Unit how you buy it (ctn, bag, kg, pcs…)"
+        },
+        {
+          "tag": "input",
+          "line": 1149,
+          "id": "item-big-unit",
+          "placeholder": "e.g. ctn / bag / kg",
+          "events": ["oninput"]
+        },
+        {
+          "tag": "label",
+          "line": 1152,
+          "events": [],
+          "text": "GST %"
+        },
+        {
+          "tag": "input",
+          "line": 1153,
+          "id": "item-gst",
+          "type": "number",
+          "placeholder": "0 = no GST",
+          "min": "0",
+          "events": ["oninput"]
+        },
+        {
+          "tag": "label",
+          "line": 1161,
+          "events": [],
+          "text": "Unit Name sub-unit label"
+        },
+        {
+          "tag": "input",
+          "line": 1162,
+          "id": "item-small-unit",
+          "placeholder": "e.g. pkt / dozen / litre",
+          "events": ["oninput"]
+        },
+        {
+          "tag": "label",
+          "line": 1165,
+          "events": [],
+          "text": "How many per Base Unit?"
+        },
+        {
+          "tag": "input",
+          "line": 1166,
+          "id": "item-conversion",
+          "type": "number",
+          "placeholder": "e.g. 12",
+          "min": "0",
+          "events": ["oninput"]
+        },
+        {
+          "tag": "label",
+          "line": 1174,
+          "events": [],
+          "text": "Unit Name smallest unit"
+        },
+        {
+          "tag": "input",
+          "line": 1175,
+          "id": "item-unit3",
+          "placeholder": "e.g. pcs / nos",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 1178,
+          "events": [],
+          "text": "How many per Secondary Unit?"
+        },
+        {
+          "tag": "input",
+          "line": 1179,
+          "id": "item-conv2",
+          "type": "number",
+          "placeholder": "e.g. 18",
+          "min": "0",
+          "events": ["oninput"]
+        },
+        {
+          "tag": "button",
+          "line": 1182,
+          "type": "button",
+          "events": ["onclick"],
+          "text": "✕ Remove third unit"
+        },
+        {
+          "tag": "button",
+          "line": 1185,
+          "type": "button",
+          "events": ["onclick"],
+          "text": "+ Add third unit (e.g. pcs inside pkt)"
+        },
+        {
+          "tag": "button",
+          "line": 1187,
+          "type": "button",
+          "events": ["onclick"],
+          "text": "✕ Remove secondary unit"
+        },
+        {
+          "tag": "button",
+          "line": 1190,
+          "type": "button",
+          "events": ["onclick"],
+          "text": "+ Add secondary unit (e.g. pkt inside ctn)"
+        },
+        {
+          "tag": "label",
+          "line": 1192,
+          "events": [],
+          "text": "Purchase Price ₹ per base unit (what you buy at)"
+        },
+        {
+          "tag": "input",
+          "line": 1192,
+          "id": "item-wholesale",
+          "type": "number",
+          "placeholder": "e.g. 1440",
+          "min": "0",
+          "events": ["oninput"]
+        },
+        {
+          "tag": "label",
+          "line": 1198,
+          "events": [],
+          "text": "Prices entered per which unit?"
+        },
+        {
+          "tag": "button",
+          "line": 1200,
+          "id": "item-pu-btn-1",
+          "type": "button",
+          "events": ["onclick"],
+          "text": "Base"
+        },
+        {
+          "tag": "button",
+          "line": 1202,
+          "id": "item-pu-btn-2",
+          "type": "button",
+          "events": ["onclick"],
+          "text": "Secondary"
+        },
+        {
+          "tag": "button",
+          "line": 1204,
+          "id": "item-pu-btn-3",
+          "type": "button",
+          "events": ["onclick"],
+          "text": "Piece"
+        },
+        {
+          "tag": "input",
+          "line": 1207,
+          "id": "item-price-unit",
+          "type": "hidden",
+          "value": "2",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 1212,
+          "id": "item-retail-label",
+          "events": [],
+          "text": "Retail ₹ per Secondary"
+        },
+        {
+          "tag": "input",
+          "line": 1213,
+          "id": "item-retail",
+          "type": "number",
+          "placeholder": "e.g. 5",
+          "min": "0",
+          "events": ["oninput"]
+        },
+        {
+          "tag": "label",
+          "line": 1218,
+          "events": [],
+          "text": "Wholesale: sell for ₹"
+        },
+        {
+          "tag": "input",
+          "line": 1218,
+          "id": "item-wholesale-qty",
+          "type": "number",
+          "placeholder": "qty",
+          "min": "0",
+          "events": ["oninput"]
+        },
+        {
+          "tag": "input",
+          "line": 1218,
+          "id": "item-wholesale-sale",
+          "type": "number",
+          "placeholder": "price",
+          "min": "0",
+          "events": ["oninput"]
+        },
+        {
+          "tag": "label",
+          "line": 1232,
+          "events": [],
+          "text": "Current Stock (Base Units)"
+        },
+        {
+          "tag": "input",
+          "line": 1232,
+          "id": "item-stock",
+          "type": "number",
+          "placeholder": "0",
+          "min": "0",
+          "events": []
+        },
+        {
+          "tag": "button",
+          "line": 1234,
+          "events": ["onclick"],
+          "text": "Save Item"
+        },
+        {
+          "tag": "button",
+          "line": 1235,
+          "id": "item-delete-btn",
+          "events": ["onclick"],
+          "text": "Delete"
+        },
+        {
+          "tag": "label",
+          "line": 1246,
+          "events": [],
+          "text": "Party"
+        },
+        {
+          "tag": "input",
+          "line": 1248,
+          "id": "pay-party",
+          "placeholder": "Type or tap party below...",
+          "events": ["onblur", "onfocus", "oninput", "onkeydown", "onkeyup"]
+        },
+        {
+          "tag": "label",
+          "line": 1259,
+          "events": [],
+          "text": "Amount ₹"
+        },
+        {
+          "tag": "input",
+          "line": 1259,
+          "id": "pay-amount",
+          "type": "number",
+          "placeholder": "0.00",
+          "min": "0",
+          "events": ["oninput"]
+        },
+        {
+          "tag": "label",
+          "line": 1260,
+          "events": [],
+          "text": "Mode"
+        },
+        {
+          "tag": "select",
+          "line": 1261,
+          "id": "pay-mode",
+          "events": [],
+          "text": "Cash UPI Cheque Bank Transfer"
+        },
+        {
+          "tag": "option",
+          "line": 1262,
+          "value": "cash",
+          "events": [],
+          "text": "Cash"
+        },
+        {
+          "tag": "option",
+          "line": 1262,
+          "value": "upi",
+          "events": [],
+          "text": "UPI"
+        },
+        {
+          "tag": "option",
+          "line": 1262,
+          "value": "cheque",
+          "events": [],
+          "text": "Cheque"
+        },
+        {
+          "tag": "option",
+          "line": 1262,
+          "value": "bank",
+          "events": [],
+          "text": "Bank Transfer"
+        },
+        {
+          "tag": "label",
+          "line": 1266,
+          "events": [],
+          "text": "Date"
+        },
+        {
+          "tag": "input",
+          "line": 1266,
+          "id": "pay-date",
+          "type": "date",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 1267,
+          "events": [],
+          "text": "Notes"
+        },
+        {
+          "tag": "input",
+          "line": 1267,
+          "id": "pay-notes",
+          "placeholder": "Optional",
+          "events": []
+        },
+        {
+          "tag": "button",
+          "line": 1268,
+          "id": "btn-save-payment",
+          "events": ["onclick"],
+          "text": "Save Payment"
+        },
+        {
+          "tag": "button",
+          "line": 1295,
+          "events": ["onclick"],
+          "text": "Record Payment"
+        },
+        {
+          "tag": "button",
+          "line": 1296,
+          "events": ["onclick"],
+          "text": "Edit Bill"
+        },
+        {
+          "tag": "button",
+          "line": 1298,
+          "events": ["onclick"],
+          "text": "⚡ New Bill — Same Party"
+        },
+        {
+          "tag": "button",
+          "line": 1300,
+          "events": ["onclick"],
+          "text": "📤 WhatsApp"
+        },
+        {
+          "tag": "button",
+          "line": 1301,
+          "events": ["onclick"],
+          "text": "🖨 Print/PDF"
+        },
+        {
+          "tag": "button",
+          "line": 1303,
+          "events": ["onclick"],
+          "text": "↩ Record Purchase Return"
+        },
+        {
+          "tag": "button",
+          "line": 1304,
+          "events": ["onclick"],
+          "text": "Delete Bill"
+        },
+        {
+          "tag": "button",
+          "line": 1316,
+          "id": "idetail-edit-btn",
+          "events": [],
+          "text": "Edit"
+        },
+        {
+          "tag": "button",
+          "line": 1324,
+          "events": ["onclick"],
+          "text": "Adjust"
+        },
+        {
+          "tag": "label",
+          "line": 1360,
+          "events": [],
+          "text": "Actual Physical Count"
+        },
+        {
+          "tag": "input",
+          "line": 1360,
+          "id": "stockadj-actual",
+          "type": "number",
+          "placeholder": "Count on shelf right now",
+          "min": "0",
+          "events": ["oninput"]
+        },
+        {
+          "tag": "label",
+          "line": 1362,
+          "events": [],
+          "text": "Reason (optional)"
+        },
+        {
+          "tag": "input",
+          "line": 1362,
+          "id": "stockadj-reason",
+          "placeholder": "e.g. damage, theft, miscount",
+          "events": []
+        },
+        {
+          "tag": "button",
+          "line": 1363,
+          "events": ["onclick"],
+          "text": "Save Correction"
+        },
+        {
+          "tag": "label",
+          "line": 1385,
+          "events": [],
+          "text": "Date"
+        },
+        {
+          "tag": "input",
+          "line": 1385,
+          "id": "bulk-pay-date",
+          "type": "date",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 1386,
+          "events": [],
+          "text": "Mode"
+        },
+        {
+          "tag": "select",
+          "line": 1387,
+          "id": "bulk-pay-mode",
+          "events": [],
+          "text": "Cash UPI Cheque Bank Transfer"
+        },
+        {
+          "tag": "option",
+          "line": 1388,
+          "value": "cash",
+          "events": [],
+          "text": "Cash"
+        },
+        {
+          "tag": "option",
+          "line": 1388,
+          "value": "upi",
+          "events": [],
+          "text": "UPI"
+        },
+        {
+          "tag": "option",
+          "line": 1388,
+          "value": "cheque",
+          "events": [],
+          "text": "Cheque"
+        },
+        {
+          "tag": "option",
+          "line": 1388,
+          "value": "bank",
+          "events": [],
+          "text": "Bank Transfer"
+        },
+        {
+          "tag": "input",
+          "line": 1394,
+          "id": "bulk-pay-search",
+          "type": "text",
+          "placeholder": "Search party...",
+          "events": ["oninput"]
+        },
+        {
+          "tag": "button",
+          "line": 1395,
+          "type": "button",
+          "events": ["onclick"],
+          "text": "✕"
+        },
+        {
+          "tag": "button",
+          "line": 1401,
+          "events": ["onclick"],
+          "text": "Record All"
+        },
+        {
+          "tag": "label",
+          "line": 1414,
+          "events": [],
+          "text": "Date"
+        },
+        {
+          "tag": "input",
+          "line": 1415,
+          "id": "cs-date",
+          "type": "date",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 1418,
+          "events": [],
+          "text": "Payment"
+        },
+        {
+          "tag": "select",
+          "line": 1419,
+          "id": "cs-payment",
+          "events": [],
+          "text": "Cash UPI Credit"
+        },
+        {
+          "tag": "option",
+          "line": 1420,
+          "value": "cash",
+          "events": [],
+          "text": "Cash"
+        },
+        {
+          "tag": "option",
+          "line": 1421,
+          "value": "upi",
+          "events": [],
+          "text": "UPI"
+        },
+        {
+          "tag": "option",
+          "line": 1422,
+          "value": "credit",
+          "events": [],
+          "text": "Credit"
+        },
+        {
+          "tag": "label",
+          "line": 1428,
+          "events": [],
+          "text": "Customer (optional — blank = Counter Sale)"
+        },
+        {
+          "tag": "input",
+          "line": 1429,
+          "id": "cs-customer",
+          "placeholder": "Leave blank for anonymous",
+          "events": ["onblur", "oninput"]
+        },
+        {
+          "tag": "button",
+          "line": 1436,
+          "type": "button",
+          "events": ["onclick"],
+          "text": "+ Add Item"
+        },
+        {
+          "tag": "button",
+          "line": 1445,
+          "id": "btn-save-counter-sale",
+          "events": ["onclick"],
+          "text": "Save Counter Sale"
+        },
+        {
+          "tag": "button",
+          "line": 1456,
+          "events": ["onclick"],
+          "text": "Edit"
+        },
+        {
+          "tag": "button",
+          "line": 1457,
+          "events": ["onclick"],
+          "text": "Merge"
+        },
+        {
+          "tag": "button",
+          "line": 1458,
+          "events": ["onclick"],
+          "text": "Delete"
+        },
+        {
+          "tag": "button",
+          "line": 1470,
+          "events": ["onclick"],
+          "text": "Record Payment"
+        },
+        {
+          "tag": "button",
+          "line": 1471,
+          "events": ["onclick"],
+          "text": "⚡ New Bill for this Party"
+        },
+        {
+          "tag": "button",
+          "line": 1472,
+          "events": ["onclick"],
+          "text": "📸 Share Statement"
+        },
+        {
+          "tag": "button",
+          "line": 1473,
+          "events": ["onclick"],
+          "text": "📄 Statement (PDF)"
+        },
+        {
+          "tag": "button",
+          "line": 1474,
+          "events": ["onclick"],
+          "text": "💬 Share via Text"
+        },
+        {
+          "tag": "select",
+          "line": 1488,
+          "id": "mergeparty-target",
+          "events": []
+        },
+        {
+          "tag": "button",
+          "line": 1490,
+          "events": ["onclick"],
+          "text": "Merge & Delete Source"
+        },
+        {
+          "tag": "button",
+          "line": 1491,
+          "events": ["onclick"],
+          "text": "Cancel"
+        },
+        {
+          "tag": "button",
+          "line": 1502,
+          "id": "bill-peek-min-btn",
+          "type": "button",
+          "events": [],
+          "text": "–"
+        },
+        {
+          "tag": "button",
+          "line": 1511,
+          "events": ["onclick"],
+          "text": "✕"
+        },
+        {
+          "tag": "button",
+          "line": 1515,
+          "events": ["onclick"],
+          "text": "‹ Prev"
+        },
+        {
+          "tag": "button",
+          "line": 1516,
+          "events": ["onclick"],
+          "text": "Next ›"
+        },
+        {
+          "tag": "select",
+          "line": 1530,
+          "id": "bin-retention",
+          "events": ["onchange"],
+          "text": "90 days 180 days"
+        },
+        {
+          "tag": "option",
+          "line": 1531,
+          "value": "90",
+          "events": [],
+          "text": "90 days"
+        },
+        {
+          "tag": "option",
+          "line": 1532,
+          "value": "180",
+          "events": [],
+          "text": "180 days"
+        },
+        {
+          "tag": "button",
+          "line": 1536,
+          "events": ["onclick"],
+          "text": "Empty Bin"
+        },
+        {
+          "tag": "button",
+          "line": 1537,
+          "events": ["onclick"],
+          "text": "Close"
+        },
+        {
+          "tag": "button",
+          "line": 1549,
+          "events": ["onclick"],
+          "text": "Retry Sync Now"
+        },
+        {
+          "tag": "button",
+          "line": 1550,
+          "events": ["onclick"],
+          "text": "Close"
+        }
+      ],
+      "pages_and_modals": [
+        {
+          "id": "page-dashboard",
+          "line": 229
+        },
+        {
+          "id": "page-bills",
+          "line": 304
+        },
+        {
+          "id": "page-stock",
+          "line": 339
+        },
+        {
+          "id": "page-sales",
+          "line": 365
+        },
+        {
+          "id": "page-ledger",
+          "line": 400
+        },
+        {
+          "id": "page-profit",
+          "line": 464
+        },
+        {
+          "id": "page-daybook",
+          "line": 499
+        },
+        {
+          "id": "page-orders",
+          "line": 569
+        },
+        {
+          "id": "page-batch-entry",
+          "line": 586
+        },
+        {
+          "id": "modal-return",
+          "line": 606
+        },
+        {
+          "id": "modal-expense",
+          "line": 633
+        },
+        {
+          "id": "modal-shop-settings",
+          "line": 677
+        },
+        {
+          "id": "modal-new-customer",
+          "line": 693
+        },
+        {
+          "id": "modal-new-invoice",
+          "line": 710
+        },
+        {
+          "id": "modal-invoice-detail",
+          "line": 772
+        },
+        {
+          "id": "modal-customer-detail",
+          "line": 807
+        },
+        {
+          "id": "modal-sale-payment",
+          "line": 833
+        },
+        {
+          "id": "modal-new-bill",
+          "line": 883
+        },
+        {
+          "id": "modal-new-party",
+          "line": 993
+        },
+        {
+          "id": "modal-order-detail",
+          "line": 1023
+        },
+        {
+          "id": "modal-storefront-settings",
+          "line": 1036
+        },
+        {
+          "id": "modal-shop-listing",
+          "line": 1095
+        },
+        {
+          "id": "modal-new-item",
+          "line": 1127
+        },
+        {
+          "id": "modal-quick-payment",
+          "line": 1241
+        },
+        {
+          "id": "modal-bill-detail",
+          "line": 1273
+        },
+        {
+          "id": "modal-item-detail",
+          "line": 1311
+        },
+        {
+          "id": "modal-stock-adjust",
+          "line": 1355
+        },
+        {
+          "id": "modal-storage",
+          "line": 1371
+        },
+        {
+          "id": "modal-bulk-payment",
+          "line": 1380
+        },
+        {
+          "id": "modal-counter-sale",
+          "line": 1406
+        },
+        {
+          "id": "modal-party-detail",
+          "line": 1450
+        },
+        {
+          "id": "modal-merge-party",
+          "line": 1478
+        },
+        {
+          "id": "modal-recycle-bin",
+          "line": 1520
+        },
+        {
+          "id": "modal-unsynced",
+          "line": 1541
+        }
+      ],
+      "inline_handler_names": [
+        "_runUndo",
+        "acKeydown",
+        "acRun",
+        "addBatchBill",
+        "addBatchItem",
+        "addBillDiscount",
+        "addBillItemRow",
+        "addCustomerInline",
+        "addExtraCharge",
+        "addInvoiceExtraCharge",
+        "addInvoiceItemRow",
+        "addRecentItem",
+        "advanceOrder",
+        "applyPriceTypeToRows",
+        "autocompleteCustomer",
+        "batchFieldKeydown",
+        "batchItemAC",
+        "batchItemKeydown",
+        "batchPartyAC",
+        "batchShowPage",
+        "beforePicker",
+        "billRowAddUnit2",
+        "billRowAddUnit3",
+        "binPurgeAll",
+        "binRestore",
+        "bulkShopCategory",
+        "bulkShopList",
+        "calcBatchBillTotal",
+        "calcBillTotal",
+        "calcInvoiceTotal",
+        "calcItemRow",
+        "calcItemSalePrices",
+        "clearPaySelections",
+        "clearSearchInput",
+        "closeBatchEntry",
+        "closeConfirm",
+        "closeLightbox",
+        "closeModal",
+        "closeToolsMenu",
+        "confirmCheckedAutoPayments",
+        "confirmMergeParty",
+        "convertOrderToInvoice",
+        "csAddRow",
+        "csCalcTotal",
+        "csCustomerAC",
+        "csFillItem",
+        "csFillRateFromUnit",
+        "csItemAC",
+        "deleteBillFromDetail",
+        "deleteCustomerFromDetail",
+        "deleteExpense",
+        "deleteInvoiceFromDetail",
+        "deleteItemFromModal",
+        "deletePartyFromDetail",
+        "deletePayment",
+        "deleteSalePayment",
+        "doLogin",
+        "doLogout",
+        "downloadEntrySheet",
+        "editBillFromDetail",
+        "editCustomerFromDetail",
+        "editInvoiceFromDetail",
+        "editPartyFromDetail",
+        "editShopDesc",
+        "editShopImage",
+        "exportCSV",
+        "exportJSONBackup",
+        "fillBatchItem",
+        "fillInvoiceItem",
+        "fillItem",
+        "filterBillsByStatus",
+        "filterLedger",
+        "filterLedgerDir",
+        "filterOrders",
+        "filterParties",
+        "filterSalesTab",
+        "filterShopList",
+        "filterStockTab",
+        "fullSync",
+        "hardResetDevice",
+        "if",
+        "importEntrySheet",
+        "importExcel",
+        "importJSONBackup",
+        "invoiceItemAutocomplete",
+        "itemAddTier",
+        "itemAutocomplete",
+        "itemRemoveTier",
+        "itemUnitTierCheck",
+        "lightboxStep",
+        "loadOrders",
+        "notifyOrderCustomer",
+        "onBigRateChange",
+        "onInvoiceUnitChange",
+        "onPieceRateChange",
+        "onSmallRateChange",
+        "onTotalCostChange",
+        "openBatchEntry",
+        "openBillDetail",
+        "openBulkPaymentModal",
+        "openCounterSaleModal",
+        "openCustomerDetail",
+        "openDayBook",
+        "openExpenseModal",
+        "openInvoiceDetail",
+        "openItemDetail",
+        "openLightbox",
+        "openMergeParty",
+        "openModal",
+        "openNewBillModal",
+        "openNewCustomerModal",
+        "openNewInvoiceModal",
+        "openNewItemModal",
+        "openNewPartyModal",
+        "openOrderDetail",
+        "openPartyDetail",
+        "openProfitDashboard",
+        "openRecycleBin",
+        "openReturnModal",
+        "openShopListing",
+        "openShopSettings",
+        "openStockAdjustModal",
+        "openStoragePanel",
+        "openStorefrontSettings",
+        "openUnsyncedModal",
+        "openWalkInSaleModal",
+        "payFromCustomerDetail",
+        "payFromDetail",
+        "payFromInvoiceDetail",
+        "payFromPartyDetail",
+        "previewFIFO",
+        "printBillReceipt",
+        "printInvoice",
+        "printPartyStatement",
+        "quickPayParty",
+        "rejectOrder",
+        "removeBatchBill",
+        "removeBillImage",
+        "renderBills",
+        "renderBulkPayList",
+        "renderDayBook",
+        "renderGlobalSearch",
+        "renderProfitDashboard",
+        "renderShopListing",
+        "renderStock",
+        "repeatLastBill",
+        "retryUnsynced",
+        "saveBatchBills",
+        "saveBill",
+        "saveBulkPayment",
+        "saveCounterSale",
+        "saveCustomer",
+        "saveExpense",
+        "saveInvoice",
+        "saveItem",
+        "saveParty",
+        "savePayment",
+        "saveReturn",
+        "saveSalePayment",
+        "saveShopListing",
+        "saveShopSettings",
+        "saveStockAdjustment",
+        "saveStorefrontSettings",
+        "scanBarcode",
+        "scanBarcodeForItem",
+        "scheduleBatchDraft",
+        "selectACIdx",
+        "selectACNew",
+        "selectCustomerAC",
+        "selectCustomerChip",
+        "selectPartyChip",
+        "selectPayPartyChip",
+        "selectUnitVal",
+        "setBillItemPurchaseMode",
+        "setBillRowPriceUnit",
+        "setBinRetention",
+        "setItemPriceUnit",
+        "setPaySelectionAmount",
+        "setTimeout",
+        "shareBillWhatsApp",
+        "shareCustomerStatementWhatsApp",
+        "shareInvoiceAsImage",
+        "shareInvoiceWhatsApp",
+        "sharePartyWhatsApp",
+        "shareStatementAsImage",
+        "showAllRecentItems",
+        "showPage",
+        "startNewBillFromDetail",
+        "startNewBillFromPartyDetail",
+        "startVoiceEntry",
+        "switchLedgerPartiesView",
+        "toggleBillSelection",
+        "toggleLowStockBanner",
+        "togglePaymentDueBanner",
+        "toggleRPDay",
+        "toggleRecentSort",
+        "toggleRemark",
+        "toggleShopItem",
+        "toggleToolsMenu",
+        "undoAutoPayment",
+        "unitAutocomplete",
+        "updateAutoPayBtnCount",
+        "updateBulkPayTotal",
+        "updateReturnAmount",
+        "updateStockAdjPreview",
+        "uploadBillImage"
+      ]
+    },
+    "shop.html": {
+      "bytes": 75986,
+      "sha256": "8aa6855944712647436b1034ca20b6d5efb2e1aadc80ea36f1106faa6cdff2f8",
+      "git_blob": "a9ebb86b3f040d8d80c974f4dea1608248a0ce00",
+      "lines": 1721,
+      "functions": [
+        {
+          "name": "escHTML",
+          "line": 509
+        },
+        {
+          "name": "money",
+          "line": 513
+        },
+        {
+          "name": "tint",
+          "line": 519
+        },
+        {
+          "name": "initials",
+          "line": 525
+        },
+        {
+          "name": "setStatus",
+          "line": 530
+        },
+        {
+          "name": "fetchCatalog",
+          "line": 533
+        },
+        {
+          "name": "fetchSettings",
+          "line": 542
+        },
+        {
+          "name": "settingsOrDefault",
+          "line": 552
+        },
+        {
+          "name": "readCache",
+          "line": 559
+        },
+        {
+          "name": "writeCache",
+          "line": 568
+        },
+        {
+          "name": "matches",
+          "line": 575
+        },
+        {
+          "name": "visibleItems",
+          "line": 580
+        },
+        {
+          "name": "renderCats",
+          "line": 590
+        },
+        {
+          "name": "cardHTML",
+          "line": 602
+        },
+        {
+          "name": "ctrlHTML",
+          "line": 624
+        },
+        {
+          "name": "loadCart",
+          "line": 637
+        },
+        {
+          "name": "saveCart",
+          "line": 643
+        },
+        {
+          "name": "itemById",
+          "line": 647
+        },
+        {
+          "name": "setQty",
+          "line": 651
+        },
+        {
+          "name": "updateCardCtrl",
+          "line": 663
+        },
+        {
+          "name": "cartLines",
+          "line": 673
+        },
+        {
+          "name": "cartTotals",
+          "line": 684
+        },
+        {
+          "name": "renderCartBar",
+          "line": 699
+        },
+        {
+          "name": "renderSheet",
+          "line": 709
+        },
+        {
+          "name": "loadWho",
+          "line": 777
+        },
+        {
+          "name": "saveWho",
+          "line": 782
+        },
+        {
+          "name": "digits10",
+          "line": 785
+        },
+        {
+          "name": "coSetErr",
+          "line": 786
+        },
+        {
+          "name": "fgBad",
+          "line": 793
+        },
+        {
+          "name": "openCheckout",
+          "line": 797
+        },
+        {
+          "name": "closeCheckout",
+          "line": 827
+        },
+        {
+          "name": "summaryHTML",
+          "line": 828
+        },
+        {
+          "name": "humanError",
+          "line": 840
+        },
+        {
+          "name": "submitOrder",
+          "line": 866
+        },
+        {
+          "name": "trackingURL",
+          "line": 928
+        },
+        {
+          "name": "showConfirmation",
+          "line": 933
+        },
+        {
+          "name": "openSheet",
+          "line": 980
+        },
+        {
+          "name": "closeSheet",
+          "line": 985
+        },
+        {
+          "name": "findMyOrder",
+          "line": 992
+        },
+        {
+          "name": "renderShopInfo",
+          "line": 1034
+        },
+        {
+          "name": "openShopInfo",
+          "line": 1084
+        },
+        {
+          "name": "closeShopInfo",
+          "line": 1089
+        },
+        {
+          "name": "loadHistory",
+          "line": 1099
+        },
+        {
+          "name": "saveHistory",
+          "line": 1106
+        },
+        {
+          "name": "addToHistory",
+          "line": 1109
+        },
+        {
+          "name": "isLiveStatus",
+          "line": 1117
+        },
+        {
+          "name": "renderHistoryDot",
+          "line": 1120
+        },
+        {
+          "name": "statusLabel",
+          "line": 1128
+        },
+        {
+          "name": "whenLabel",
+          "line": 1135
+        },
+        {
+          "name": "renderHistory",
+          "line": 1146
+        },
+        {
+          "name": "refreshHistory",
+          "line": 1173
+        },
+        {
+          "name": "openHistory",
+          "line": 1194
+        },
+        {
+          "name": "closeHistory",
+          "line": 1201
+        },
+        {
+          "name": "orderAgain",
+          "line": 1204
+        },
+        {
+          "name": "reorderShelfHTML",
+          "line": 1233
+        },
+        {
+          "name": "isBrowsing",
+          "line": 1252
+        },
+        {
+          "name": "catList",
+          "line": 1253
+        },
+        {
+          "name": "catImage",
+          "line": 1261
+        },
+        {
+          "name": "tileHTML",
+          "line": 1268
+        },
+        {
+          "name": "shelfHTML",
+          "line": 1278
+        },
+        {
+          "name": "renderHome",
+          "line": 1287
+        },
+        {
+          "name": "renderBanner",
+          "line": 1308
+        },
+        {
+          "name": "openDetail",
+          "line": 1320
+        },
+        {
+          "name": "closeDetail",
+          "line": 1341
+        },
+        {
+          "name": "renderDetailAction",
+          "line": 1342
+        },
+        {
+          "name": "renderGrid",
+          "line": 1358
+        },
+        {
+          "name": "renderSkeleton",
+          "line": 1384
+        },
+        {
+          "name": "renderError",
+          "line": 1391
+        },
+        {
+          "name": "load",
+          "line": 1403
+        },
+        {
+          "name": "applySettingsUI",
+          "line": 1436
+        },
+        {
+          "name": "parseTrackHash",
+          "line": 1465
+        },
+        {
+          "name": "fetchOrder",
+          "line": 1476
+        },
+        {
+          "name": "stepsHTML",
+          "line": 1489
+        },
+        {
+          "name": "renderOrder",
+          "line": 1505
+        },
+        {
+          "name": "refreshOrder",
+          "line": 1549
+        },
+        {
+          "name": "stopTrackPoll",
+          "line": 1559
+        },
+        {
+          "name": "openTracking",
+          "line": 1561
+        },
+        {
+          "name": "closeTracking",
+          "line": 1572
+        },
+        {
+          "name": "checkTrackHash",
+          "line": 1585
+        }
+      ],
+      "keyboard_lines": [],
+      "static_controls": [
+        {
+          "tag": "button",
+          "line": 324,
+          "id": "myorders",
+          "aria-label": "My orders",
+          "events": [],
+          "text": "📜"
+        },
+        {
+          "tag": "button",
+          "line": 326,
+          "id": "shopinfo",
+          "aria-label": "Shop info",
+          "events": [],
+          "text": "ℹ"
+        },
+        {
+          "tag": "input",
+          "line": 332,
+          "id": "q",
+          "type": "search",
+          "placeholder": "Search for items...",
+          "inputmode": "search",
+          "events": []
+        },
+        {
+          "tag": "button",
+          "line": 334,
+          "id": "qclear",
+          "aria-label": "Clear search",
+          "events": [],
+          "text": "×"
+        },
+        {
+          "tag": "button",
+          "line": 348,
+          "id": "iclose",
+          "aria-label": "Close",
+          "events": [],
+          "text": "×"
+        },
+        {
+          "tag": "button",
+          "line": 358,
+          "id": "oclose",
+          "aria-label": "Close",
+          "events": [],
+          "text": "×"
+        },
+        {
+          "tag": "input",
+          "line": 366,
+          "id": "find-phone",
+          "type": "tel",
+          "placeholder": "10-digit mobile",
+          "inputmode": "numeric",
+          "events": []
+        },
+        {
+          "tag": "input",
+          "line": 368,
+          "id": "find-id",
+          "placeholder": "Order number e.g. ORD-20260820-A2C8",
+          "events": []
+        },
+        {
+          "tag": "button",
+          "line": 370,
+          "id": "find-go",
+          "events": [],
+          "text": "Find my order"
+        },
+        {
+          "tag": "button",
+          "line": 400,
+          "id": "trclose",
+          "aria-label": "Close",
+          "events": [],
+          "text": "×"
+        },
+        {
+          "tag": "button",
+          "line": 411,
+          "id": "coclose",
+          "aria-label": "Close",
+          "events": [],
+          "text": "×"
+        },
+        {
+          "tag": "label",
+          "line": 416,
+          "for": "co-name",
+          "events": [],
+          "text": "Your name"
+        },
+        {
+          "tag": "input",
+          "line": 417,
+          "id": "co-name",
+          "type": "text",
+          "placeholder": "Full name",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 421,
+          "for": "co-phone",
+          "events": [],
+          "text": "Mobile number"
+        },
+        {
+          "tag": "input",
+          "line": 422,
+          "id": "co-phone",
+          "type": "tel",
+          "placeholder": "10-digit mobile",
+          "inputmode": "numeric",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 427,
+          "for": "co-addr",
+          "events": [],
+          "text": "Delivery address"
+        },
+        {
+          "tag": "textarea",
+          "line": 428,
+          "id": "co-addr",
+          "placeholder": "House / street / landmark",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 433,
+          "for": "co-slot",
+          "events": [],
+          "text": "Preferred time"
+        },
+        {
+          "tag": "select",
+          "line": 434,
+          "id": "co-slot",
+          "events": []
+        },
+        {
+          "tag": "label",
+          "line": 437,
+          "for": "co-note",
+          "events": [],
+          "text": "Note for the shop (optional)"
+        },
+        {
+          "tag": "textarea",
+          "line": 438,
+          "id": "co-note",
+          "placeholder": "Anything we should know?",
+          "events": []
+        },
+        {
+          "tag": "input",
+          "line": 440,
+          "id": "co-hp",
+          "placeholder": "Leave empty",
+          "events": []
+        },
+        {
+          "tag": "button",
+          "line": 443,
+          "id": "co-submit",
+          "events": [],
+          "text": "Place Order"
+        },
+        {
+          "tag": "button",
+          "line": 458,
+          "id": "ok-copy",
+          "events": [],
+          "text": "Copy link"
+        },
+        {
+          "tag": "button",
+          "line": 459,
+          "id": "ok-wa",
+          "events": [],
+          "text": "Send on WhatsApp"
+        },
+        {
+          "tag": "button",
+          "line": 462,
+          "id": "ok-upi",
+          "events": [],
+          "text": "Pay now by UPI"
+        },
+        {
+          "tag": "button",
+          "line": 464,
+          "id": "ok-track",
+          "events": [],
+          "text": "Track this order"
+        },
+        {
+          "tag": "button",
+          "line": 464,
+          "id": "ok-done",
+          "events": [],
+          "text": "Back to shop"
+        },
+        {
+          "tag": "button",
+          "line": 473,
+          "id": "sheetclose",
+          "aria-label": "Close",
+          "events": [],
+          "text": "×"
+        },
+        {
+          "tag": "button",
+          "line": 479,
+          "id": "cta",
+          "events": [],
+          "text": "Place Order"
+        }
+      ],
+      "pages_and_modals": [],
+      "inline_handler_names": []
+    },
+    "sw.js": {
+      "bytes": 1638,
+      "sha256": "f008adce17614398d50bb7bea7c5836ec459adce0ed88a4b2300a440f61cbc8c",
+      "git_blob": "f85faec1d69cd5ec3d5ff89ab2c05256f76ede89",
+      "lines": 53,
+      "functions": [],
+      "keyboard_lines": []
+    },
+    "shop-sw.js": {
+      "bytes": 1864,
+      "sha256": "f45b159ad5eabecb4a278a4d9337f9e791935473ac7ed846d9b39003f52cd701",
+      "git_blob": "554a979f70053982f0a7d1bb856e049621ffac5f",
+      "lines": 50,
+      "functions": [],
+      "keyboard_lines": []
+    },
+    "manifest.json": {
+      "bytes": 480,
+      "sha256": "419dd8fe844258689593e084861017aecafdc876f8f5e7037de8f34aaf3f8601",
+      "git_blob": "51584a51b0540d2b4e64ce5489c0152b863ba967",
+      "lines": 15,
+      "functions": [],
+      "keyboard_lines": []
+    },
+    "shop-manifest.json": {
+      "bytes": 211,
+      "sha256": "907c0c56f1b1202b3f856399134c76ce25eb33c8a017a89b27b49d866264c46a",
+      "git_blob": "11dffbb73737b79ec84f4a149efc2f5829641aa4",
+      "lines": 10,
+      "functions": [],
+      "keyboard_lines": []
+    }
+  }
+}

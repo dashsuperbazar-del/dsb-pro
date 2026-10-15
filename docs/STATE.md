@@ -5,28 +5,26 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
 
-- D3b #76 integrated on merged #75/schema 0058: exact numeric business JSON restore into empty same-schema target; endpoint guards, locked emptiness/full-row/FK/invariant/replay checks. Six precision/target regressions and combined formatting PASS; fresh full CI/real SQL proof pending. JSON scripts unchanged; both archive and JSON proof steps retained. No migration; hosted Auth/private bytes are separate. Contract: docs/BUSINESS_JSON_RESTORE.md.
+- `main` verified: `ef880dad401cd12cb470b432edb5444eec46ad66` (#76, fetched 15 October). Migrations 0001–0058 immutable. #76 final full CI #856/#857 and main #858 green.
+- Release COMPLETE: inspection-only #859 found billdocs/0058 only; attended upgrade #860 verified encrypted B2/R2 backups, applied 0058 and required needs_upgrade=false; deploy #861 succeeded on this main. Cloudflare 9/9 and GitHub Pages 10/10 public files matched exact-run artifacts. No physical/shop acceptance implied.
+- Codex builds; other AI verifies. V010 accepts the PX1/SP0 plan amendments and closes VF-014 deploy lag. User confirmed 15 October that old DSB repo commit `62e3c30e9ff573ccfaabe06ad6f49759b37a37be` is the final shop-used baseline (tree `9e2abf6e868a62be4be608115d7f1f56304d0cf2`).
+- PX1/SP0 candidate: source parity inventory/catalog + opt-in disposable navigation benchmark (five routes, reference/synthetic CPU/network, first/revisit/reload, request/heap/storage reports). No production runtime/cache/money change or migration. CI timings/independent review pending; see docs/DSB_PARITY.md and docs/SPEED_BASELINE.md. Next: narrow SP1 shared loading after measured baseline.
+- D3b #76 MERGED as ef880da: exact numeric JSON restore into empty same-schema target; endpoint guards, locked emptiness/full-row/FK/invariant/replay checks, six precision/target regressions and combined proof PASS. Hosted Auth/private bytes are separate; docs/BUSINESS_JSON_RESTORE.md.
 
-- 14 October release: user authorized merge/deploy. Codex builds; other AI verifies. #71–#75 squash-merged after green exact-head CI; #72 also passed separate validate #845. #76 integrated on resulting main/schema 0058; fresh full CI pending. Live preflight/apply/deploy next; H3/shop gates open.
-
-- `main` verified: `f1a550cf101573fc6579787da779225d464fd999` (V006 #75; fetched 14 October). Migrations 0001–0058 immutable. 0058 pending live; last production deploy #801 remains `4a4c172`.
-- DW1 #70 merged after final-head CI #809 / run 38359193865 PASS: 320 unit tests, 55 browser tests passed + 1 scale-only skip, 20 held-cart repetitions passed. Home/Purchases/Sales/Ledger/More; purchase bills/detail, snapshot-safe repeat into fresh draft, supplier/recent item shortcuts, inline supplier creation, bill-to-payment/ledger, Full + Auto allocations. Production publication of DW1 remains pending per saved verifier log; not independently dispatched here.
+- DW1 #70 merged after final-head CI #809 / run 38359193865 PASS: 320 unit tests, 55 browser tests passed + 1 scale-only skip, 20 held-cart repetitions passed. Home/Purchases/Sales/Ledger/More; purchase bills/detail, snapshot-safe repeat into fresh draft, supplier/recent item shortcuts, inline supplier creation, bill-to-payment/ledger, Full + Auto allocations. Included in verified production release #861; physical shop acceptance remains open.
 - DW2a #71 including VF-016/017 MERGED as `7840cfb`; unchanged-head CI #834 / run 38522081829 PASS (332 app tests). User authorized merge; no independent approval claimed.
-- DW2b #72 MERGED as a1a1751: private photo/PDF, durable draft/binary, immutable upload/retry, viewer; 0058 / billdocs. Exact-head CI #844 / 38539868090 and validate #845 / 38541928845 PASS at a661280 (342 app tests, 940 pgTAP, browser/upgrade/build). Separate inspection-only phase6_db_preflight reports every live pending group. Live storage apply, camera/device acceptance and independent approval not claimed. Contract: docs/BILL_DOCUMENTS.md.
+- DW2b #72 MERGED as a1a1751: private photo/PDF, durable draft/binary, immutable upload/retry, viewer; 0058 / billdocs. Exact-head CI #844 / 38539868090 and validate #845 / 38541928845 PASS at a661280 (342 app tests, 940 pgTAP, browser/upgrade/build). Separate inspection-only phase6_db_preflight reports every live pending group. 0058 applied live in #860; physical camera/device acceptance remains open. Contract: docs/BILL_DOCUMENTS.md.
 - DW2c #73 MERGED as 1a9d094 after exact-head CI #848 / 38543056524 PASS at 510de2a. 342 app + 17 archive tests; 940 pgTAP; 55 browser passes + 1 scale skip, 20 held-cart repetitions; two-target snapshot-bound financial/Auth/private-byte recovery PASS. No migration or money-handler change. Hosted backup configuration, physical recovery and H3/shop acceptance remain open. Contract: docs/BILL_DOCUMENT_BACKUP.md.
 - DW3 #74 MERGED as 183c2b6 after exact-head CI #851 / 38543991414 PASS at 5950a29: 355 app + 17 archive tests, 940 pgTAP; 56 browser passes + 1 scale skip, 20 repetitions; two recovery proofs/build. Exact server-ledger text/TXT/CSV and Pro A4/PDF statement output. No migration/money write; real share/printer acceptance open. Contract: docs/SUPPLIER_STATEMENTS.md.
 - Decision 2026-10-02 (user): the return that completes a rounded bill also reverses its round-off; partial returns carry item value, capped so a bill's returns never exceed what was billed for its items (total - extra charges). Extra charges still stay with the shop.
-- Historical D1 apply/deploy: runs 36894777286 / 36897126086. Latest recorded deploy #801 at 4a4c172; DW1 is not live. 0058 merged by #72, not applied here.
+- Historical D1 apply/deploy: 36894777286 / 36897126086. Current production #861 is ef880da with live schema through 0058 (#860).
 - Verifier log V003 (2026-10-02): VF-005/006/008 CLOSED. Open MAJORs fixed in V4: VF-007 follow-up (a finished action repainted/voided the previous customer) and VF-009 (two stored intents blocked each other's retry).
 - FIXED (S1, 2026-10-03): an online sale/return finalized while a background sync cycle was in flight joined that cycle, which had already read the outbox, so it showed "Saved locally" and posted only on the next cycle (held-cart repeat, runs 36909385562 and 758). One fresh cycle now runs if it is still QUEUED; a deterministic e2e holds the cycle's ack. Never a money risk (exactly-once outbox).
 - Watch: daily-entry 'expense answer lost' timed out once locally under full parallel load (button click); 6/6 alone on main and on S1 — same pattern as the suppliers-form watch item.
 - V2 residual closed by V3: receipt/payment check+create+send is serialized per account across windows (Web Locks). Browsers without Web Locks keep the unserialized check.
 - Rule (V2): persist every exact money/stock request BEFORE sending; only definitive DB rejection unlocks it. Use `rpcOutcome`/`*Outcome`, never `classifyError`, to decide outcomes.
 - Decision 2026-10-02 (user): old DSB is retired; no legacy import, no shadow run. DSB Pro goes live with real data once daily-usable, then is patched in use. F0/F3 dropped; F1 (fiscal numbering) later.
-- O1 design: one POSTED opening per account (signed paise; customer + = owes shop, supplier + = shop
-  owes), owner only, void + re-enter to correct. Feeds customer_ledger, party ledger v2, supplier
-  outstanding and both as-of aging reports (aged from as_of_date), export. DEFERRED to O2: allocating
-  payments/credits against an opening — until then such cash shows as unassigned; net balance exact.
+- O1 design: one POSTED opening per account (signed paise; customer + = owes shop, supplier + = shop owes), owner only, void + re-enter to correct. Feeds customer_ledger, party ledger v2, supplier outstanding and both as-of aging reports (aged from as_of_date), export. DEFERRED to O2: allocating payments/credits against an opening — until then such cash shows as unassigned; net balance exact.
 - O2 design (2026-10-02): separate `opening_settlements` (payment ↔ positive opening, owner only, void to
   correct) instead of editing the 5 live payment writers; a new BEFORE INSERT trigger on payment_allocations
   counts settlements so a payment is never assigned twice (DSB_ALLOCATION_EXCEEDS_PAYMENT); voiding a payment
@@ -56,11 +54,13 @@ Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it
 
 ## Local environment
 
-- This session lacks Docker/local Chromium; full Supabase/browser proofs run in CI (CLI 2.116.0).
+- Current builder runtime has Node 24.19.0/pnpm 11.25.0; Docker/local Chromium unavailable. Full database/browser/SP0 measurements run in disposable CI; no local browser timing claim.
 - After migrations reset DB and regenerate `packages/db/src/types.ts`; CI rejects stale types.
 - `pnpm format:check`: all documented app files plus supported changed files; CI uses the PR base SHA. Unrelated root formatting debt is tracked separately.
 
 ## Open risks / debts
+
+- VF-017: purchase draft snapshots still store full item records without age/size caps; retain pending IDs/UNKNOWN recovery in any bounded-storage fix.
 
 - D1-lite: old `get_customer_aging_report` (current-state balances labelled as-of) stays for compatibility but the
   UI no longer calls it. 100k-invoice EXPLAIN not done (one shop; revisit at S1). Cash counts as assigned only

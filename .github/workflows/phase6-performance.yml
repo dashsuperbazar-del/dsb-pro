@@ -11,6 +11,10 @@ on:
       - 'pnpm-workspace.yaml'
       - 'scripts/phase6-performance-fixture.sql'
       - 'apps/admin/e2e/phase6-performance.spec.ts'
+      - 'apps/admin/e2e/navigation-baseline.spec.ts'
+      - 'scripts/navigation-baseline.mjs'
+      - 'scripts/navigation-baseline.test.mjs'
+      - 'scripts/navigation-baseline-fixture.sql'
   schedule:
     # Runs from main after the phase stack is consolidated.
     - cron: '0 20 * * 2'
@@ -120,6 +124,28 @@ jobs:
         env:
           PHASE6_PERF: '1'
         run: pnpm --filter @dsb-pro/admin exec playwright test e2e/phase6-performance.spec.ts --workers=1
+
+      - name: Seed disposable SP0 navigation masters
+        run: |
+          psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' -v ON_ERROR_STOP=1 \
+            -v perf_user='${{ steps.identity.outputs.user_id }}' \
+            -v perf_tenant='${{ steps.identity.outputs.tenant_id }}' \
+            -f scripts/navigation-baseline-fixture.sql
+
+      - name: Record SP0 route, reload, request and memory baselines
+        env:
+          SP0_NAVIGATION: '1'
+          SP0_RESULTS_DIR: ${{ runner.temp }}/sp0
+        run: pnpm --filter @dsb-pro/admin exec playwright test e2e/navigation-baseline.spec.ts --workers=1
+
+      - name: Upload SP0 measurements (including partial failures)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sp0-navigation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sp0/
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Upload performance failure evidence
         if: failure()

@@ -1,0 +1,160 @@
+# PX1 — old DSB feature inventory and Pro parity
+
+Source baseline confirmed by the user on **15 October 2026**: [old DSB commit 62e3c30](https://github.com/dashsuperbazar-del/DSB/tree/62e3c30e9ff573ccfaabe06ad6f49759b37a37be).
+Commit `62e3c30e9ff573ccfaabe06ad6f49759b37a37be`, tree `9e2abf6e868a62be4be608115d7f1f56304d0cf2`.
+Pro comparison baseline: `ef880dad401cd12cb470b432edb5444eec46ad66` (released via #861).
+This is a **source inventory**, not visual, accounting, device or cutover acceptance.
+
+## Evidence and interpretation
+
+[DSB_LEGACY_SOURCE_CATALOG.json](DSB_LEGACY_SOURCE_CATALOG.json) records pinned file bytes/SHA-256/blob IDs,
+all 442 function declarations, 421 static controls (inputs/selects/textareas/buttons/links/labels/options),
+page/modal IDs, inline handler names and keyboard-source lines from `index.html` and `shop.html`.
+Declarations include nested/duplicate function names; counts are not distinct user features.
+The parser does not execute old JS or discover every dynamically generated control. The grouped audit
+below covers the named workflows; the lexical catalog is the traceable backlog for finer field/flow review.
+It is **not** evidence that every old feature works or every Pro feature has been exercised.
+
+Regenerate from a clean pinned checkout, without running the old app or connecting to its database:
+
+```sh
+python3 scripts/catalog-legacy-dsb.py ../old-dsb docs/DSB_LEGACY_SOURCE_CATALOG.json
+pnpm exec prettier --write docs/DSB_LEGACY_SOURCE_CATALOG.json
+```
+
+Statuses: **Have** = corresponding implementation found, not an assertion of exact UI/money parity;
+**Partial** = a related capability exists but fields/flow/policy differ;
+**Missing** = no corresponding current app entry point found in the reviewed source;
+**Changed** = a deliberate safety/product difference, not a feature to copy blindly;
+**Deferred** = storefront/SaaS or an existing deferred packet. Priorities below are **proposals**, not
+new user decisions. The user's demonstrated purchase/payment usage makes those flows the first candidates.
+Real balances, backups and customer details are never fixtures in this public repository.
+
+## Admin navigation, daily work and masters
+
+Old evidence names below refer to `index.html`; find their exact source line in the catalog.
+Pro evidence paths are under `apps/admin/src/` unless another package is named.
+
+| ID  | Old feature / evidence                                                                                                             | Pro evidence and difference                                                                             | Status  | Proposed queue               |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ------- | ---------------------------- |
+| N01 | Five persistent tabs: Dashboard, Bills, Sales, Ledger, Orders (`showPage`)                                                         | `App.tsx`, `components/BottomNav.tsx`: Home, Purchases, Sales, Ledger, More; route mounts replace views | Partial | SP1 / DS1                    |
+| N02 | Local first render, retained hidden pages, then cloud refresh (`renderAll`, `fullSync`)                                            | POS local catalog exists; most other screens reload via adapters; bounded state retention needed        | Partial | SP1 / SP2                    |
+| N03 | Header tools menu and task shortcuts (`toggleToolsMenu`)                                                                           | `screens/MoreScreen.tsx`, home/context links; different grouping                                        | Partial | DS1                          |
+| N04 | Cross-entity global search (`renderGlobalSearch`)                                                                                  | Separate item/customer/supplier/purchase searches; no equivalent unified search entry                   | Missing | User priority                |
+| N05 | Quick bill/payment launch from bill and supplier detail (`startNewBillFromDetail`, `startNewBillFromPartyDetail`, `payFromDetail`) | `PurchasesScreen.tsx`, `SuppliersScreen.tsx` query-context links                                        | Have    | Preserve                     |
+| N06 | Recent sort/date/status filters (`toggleRecentSort`, `filterBillsByStatus`)                                                        | Purchases loaded-page search, supplier filter and date/entered sort; differing status controls          | Partial | DS1                          |
+| N07 | Due-payment and low-stock banners (`togglePaymentDueBanner`, `toggleLowStockBanner`)                                               | `HealthPanel.tsx`, Reports low stock; no same due-day dashboard                                         | Partial | User priority                |
+| N08 | Confirm/undo/toast and dirty-modal close guards (`undoToast`, `guardedCloseBill`, `guardedCloseInvoice`)                           | Durable drafts/UNKNOWN recovery and inline status; not old modal/undo flow                              | Partial | DS1; retain safety           |
+| I01 | Item name, barcode, category, GST, up to 3 units (`saveItem`, `itemAddTier`)                                                       | Inventory + `adapters/masterData.ts`: three-unit master/barcodes; not every old edit field is exposed   | Partial | PF master UX                 |
+| I02 | Unit conversions and any-level purchase price entry (`calcBigEquiv`, `setBillRowPriceUnit`)                                        | Core fixed-point units, unit-level purchase lines; different interaction                                | Partial | Golden fixtures first        |
+| I03 | Retail and wholesale prices, price-anchor unit, quantity-for-price helper (`calcItemSalePrices`)                                   | `pricing.ts`, Inventory price form and POS retail/wholesale choice; no same pack-price calculator       | Partial | PF pricing UX                |
+| I04 | Existing item edit/inactive/delete (`editItem`, `deleteItemFromModal`)                                                             | Inventory create/min-stock/barcode/price/archive paths; old full edit dialog not equivalent             | Partial | PF master UX                 |
+| I05 | Opening/current stock editable in item master (`item-stock`)                                                                       | Separate owner openings/stock count movement paths; no silent master stock overwrite                    | Changed | Preserve ledgers             |
+| I06 | Stock list/search/tabs and item detail (`renderStock`, `openItemDetail`)                                                           | Inventory item search/detail, stock adjust, Reports stock; different table and navigation               | Partial | DS1 / SP2                    |
+| I07 | Historical stock movements (`renderStockAdjHistory`, `logStockMovement`)                                                           | Stock movements/reports and immutable count records; not the same detail timeline                       | Partial | PF stock UX                  |
+| I08 | Item price and demand charts (`drawPriceChart`, `analyzeDemand`, `renderDemandChart`)                                              | No equivalent item-detail chart controls found                                                          | Missing | Later unless essential       |
+| I09 | Camera barcode scanner (`scanBarcode`, `scanBarcodeForItem`)                                                                       | POS barcode text/wedge scan and barcode master; no equivalent camera scanner found                      | Partial | Physical device first        |
+| I10 | Supplier name/phone, payment day, credit limit, notes and recurring-pay schedule (`saveParty`, `renderAutoChecklist`)              | Inventory supplier creation exposes name/phone/GSTIN; recurring payment scheduling not equivalent       | Partial | Purchase/payment priority    |
+| I11 | Merge duplicate parties (`openMergeParty`, `confirmMergeParty`)                                                                    | No equivalent merge UI; requires reviewed relationship/ledger policy                                    | Missing | Separate money/data decision |
+| I12 | Customer name/phone/address/GSTIN/credit limit/notes (`saveCustomer`)                                                              | Adapter/schema support wider fields; Customers create form exposes name/phone/address                   | Partial | PF customer UX               |
+
+## Purchase capture, attachments and supplier payment
+
+| ID  | Old feature / evidence                                                                                                | Pro evidence and difference                                                                                          | Status  | Proposed queue                     |
+| --- | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------- | ---------------------------------- |
+| P01 | Party chips/autocomplete and inline supplier (`renderPartyChips`, `acRun`)                                            | Inventory purchase context: supplier selection/search/chips and inline create                                        | Have    | Preserve / DS1                     |
+| P02 | Supplier-recent items and repeat last bill (`renderPartyRecentItems`, `repeatLastBill`)                               | `purchaseWorkflow.ts`, Purchases repeat with current-item/unit validation and fresh posting ID                       | Have    | Preserve                           |
+| P03 | Multi-line bill entry, units/qty/rate/line cost (`addBillItemRow`, `calcItemRow`)                                     | Inventory purchase lines; explicit unit level, quantity and unit paise                                               | Partial | DS1 + golden cases                 |
+| P04 | Derive rate from total cost / multiple unit-price entry modes (`onTotalCostChange`, `setBillItemPurchaseMode`)        | No same price-entry mode/total-cost calculator found                                                                 | Missing | Purchase priority                  |
+| P05 | Multiple header charges and discounts, percent/amount controls (`addExtraCharge`, `addBillDiscount`, `calcBillTotal`) | Purchase discount and extra amount fields; different breakdown/policy                                                | Partial | Decide accepted arithmetic         |
+| P06 | Total-only quick bill, itemize later (`bill-manual-total`)                                                            | Purchase RPC requires actual lines; no same financial quick-bill model                                               | Missing | Separate design; never dummy stock |
+| P07 | Bill date, notes, paid/credit selection (`saveBill`)                                                                  | Purchase date/reference/discount/extra and separate explicit cash/payment workflow                                   | Partial | Preserve explicit cash semantics   |
+| P08 | Duplicate bill warning (`checkDuplicate`)                                                                             | Same-ID payload verification prevents retries duplicating; different-ID duplicate-human-entry warning not equivalent | Partial | PF duplicate warning               |
+| P09 | Batch bill entry and draft (`openBatchEntry`, `saveBatchBills`, `loadBatchDraft`)                                     | No equivalent batch-entry editor found                                                                               | Missing | Purchase priority if needed        |
+| P10 | Excel entry-sheet generation/import (`downloadEntrySheet`, `importEntrySheet`, `importExcel`)                         | Legacy master/stock import is not purchase-sheet capture                                                             | Missing | Separate validated import packet   |
+| P11 | Dirty/unfinished purchase draft recovery (`saveBillDraft`, `restoreBillDraft`)                                        | `purchaseDraft.ts`, per-editor snapshots, explicit unreadable discard and frozen financial intents                   | Have    | VF-017 storage follow-up           |
+| P12 | Multiple bill photos, compression, strip and lightbox (`compressImageFile`, `renderBillImageStrip`, `openLightbox`)   | `BillDocumentPreview`, one immutable image/PDF per purchase (5 MiB); upload retry verification                       | Partial | Decide multi-document need         |
+| P13 | Draggable/resizable image peek while entering (`renderBillImagePeek`, `savePeekGeom`)                                 | Inline document preview, no equivalent movable peek panel found                                                      | Missing | Purchase priority                  |
+| P14 | Attachments survive camera picker (`beforePicker`, `saveBillDraft`)                                                   | IndexedDB binary/draft retention; physical Android picker restart remains untested                                   | Partial | Device H3/picker                   |
+| P15 | Bill detail: edit/delete/paid remark (`editBillFromDetail`, `deleteBillFromDetail`, `toggleRemark`)                   | Server-confirmed detail, void and safe repeat; posted originals not edited silently                                  | Changed | Preserve immutable history         |
+| P16 | Bill text/WhatsApp/print (`shareBillWhatsApp`, `printBillReceipt`)                                                    | Purchase detail exists; not all old share/print layouts exist                                                        | Partial | PR1                                |
+| S01 | Supplier balance and dated ledger (`getPartyOutstanding`, `openPartyDetail`)                                          | `SuppliersScreen`, v2 server ledger/outstanding, signed openings and settlements                                     | Have    | Real-book reconciliation           |
+| S02 | Select bills, Full and auto FIFO (`toggleBillSelection`, `previewFIFO`)                                               | Explicit allocation/Full/Auto; Full deliberately preserves entered cash after #75                                    | Have    | Preserve regression                |
+| S03 | Unallocated cash advance / partial pay (`savePayment`)                                                                | Server-budgeted payment and allocations; advance remainder explicit                                                  | Have    | Preserve                           |
+| S04 | Apply/release previously unassigned cash (`applyFifoPayment`)                                                         | Supplier allocate/release operations and original request ledger                                                     | Have    | Preserve                           |
+| S05 | Bulk payments to several suppliers (`saveBulkPayment`)                                                                | No same one-screen multi-supplier recording flow found                                                               | Missing | Separate per-request design        |
+| S06 | Scheduled recurring supplier checklist/undo (`recordAutoPayment`, `undoAutoPayment`)                                  | No matching schedule/checklist UI; void/reconcile money safely instead of editing arrays                             | Missing | User priority                      |
+| S07 | Text/CSV/A4 supplier statement (`printPartyStatement`, `sharePartyWhatsApp`)                                          | `SupplierStatement.tsx`, exact server statement, text/CSV/share/A4                                                   | Have    | Actual share/printer acceptance    |
+| S08 | Statement/bill sharing as image (`shareStatementAsImage`)                                                             | Pro text/CSV/A4 flow; no equivalent image-render/share control found                                                 | Partial | PR1                                |
+
+## Sales, receipts, reports and recovery
+
+| ID  | Old feature / evidence                                                                                                | Pro evidence and difference                                                                        | Status  | Proposed queue                    |
+| --- | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------- | --------------------------------- |
+| C01 | Invoice, counter-sale and walk-in entry modes (`openNewInvoiceModal`, `openCounterSaleModal`, `openWalkInSaleModal`)  | POS walk-in/customer/cart; different entry modes                                                   | Partial | DS1                               |
+| C02 | Item/unit/retail-wholesale selection and discounts (`priceForUnit`, `calcInvoiceTotal`)                               | POS price kind/unit/line adjustments, header discount/extra; exact paise policy authoritative      | Have    | Golden-case differences reviewed  |
+| C03 | Customer chips, autocomplete and inline create (`renderInvoiceCustomerChips`, `addCustomerInline`)                    | Customer selection/create exists on separate screen; not identical inline flow                     | Partial | PF sales UX                       |
+| C04 | Credit limit warning and negative-stock/price anomaly warnings (`checkPriceAnomaly`, `checkNegativeStock`)            | Server stock policy and health warnings; not all contextual old warnings found                     | Partial | Separate warning audit            |
+| C05 | Retain half-entered sale (`markInvoiceDirty`)                                                                         | POS held carts/outbox and durable request lifecycle; different draft rules                         | Partial | H3                                |
+| C06 | Voice entry (`startVoiceEntry`, `parseVoiceEntry`)                                                                    | No matching speech input found                                                                     | Missing | Later unless essential            |
+| C07 | Sale list/detail/filter/receivable (`renderSalesPage`, `openInvoiceDetail`)                                           | `SalesHistoryScreen`, customer ledger and server receipt detail                                    | Have    | DS1                               |
+| C08 | Receipt allocations, payment history and customer balance (`saveSalePayment`, `openCustomerDetail`)                   | Customers v2 receipt/allocations and same-ID UNKNOWN reconciliation                                | Have    | Preserve                          |
+| C09 | Edit/delete invoice or receipt (`editInvoiceFromDetail`, `deleteInvoiceFromDetail`, `deleteSalePayment`)              | Void with immutable history and original request status                                            | Changed | Never restore destructive editing |
+| C10 | Tax invoice layout, print and WhatsApp/image (`buildInvoiceHTML`, `printInvoice`, `shareInvoiceAsImage`)              | `Receipt`, print CSS, invoice exports; not a visual/image-share parity claim                       | Partial | PR1 / actual paper                |
+| C11 | Future profile edits leave older receipts unchanged                                                                   | Old uses current settings; Pro current-profile rendering also lacks D2c snapshots                  | Partial | D2c forward design                |
+| R01 | Purchase/sale returns (`openReturnModal`, `saveReturn`)                                                               | Server source-line/cap/refund/stock-disposition rules, durable offline provisional returns         | Have    | Intentional policy exceptions     |
+| R02 | Expenses by category/mode/date/notes (`saveExpense`)                                                                  | Dedicated `ExpensesScreen` with durable outcomes                                                   | Have    | DS1                               |
+| R03 | Day-book purchases/payments/sales/expenses and cash/bank totals (`renderDayBook`, `getCashBalance`, `getBankBalance`) | Day-book RPC/Reports/Home tile; definitions and completeness differ                                | Partial | Golden/reconciliation audit       |
+| R04 | Profit/FIFO cost, period filters and item analysis (`computeProfitForPeriod`, `computeSalesProfitSummary`)            | Pro reports exist; no blanket acceptance of the old FIFO arithmetic                                | Partial | Separate cost-method decision     |
+| R05 | Supplier/customer aging, due and low stock (`getPartyAgingDays`, `buildOutstandingSummary`)                           | Dated aging/server-ledger reports and low-stock report                                             | Have    | Real-book reconciliation          |
+| R06 | Generic CSV export (`exportCSV`)                                                                                      | Compare, statements and accounting export CSVs; different scopes                                   | Partial | PX1 export fixtures               |
+| R07 | Shop name/address/phone/GSTIN/footer (`saveShopSettings`)                                                             | Name/address/GSTIN/timezone/printer settings; not identical phone/footer fields                    | Partial | PR1 / D2c                         |
+| R08 | Local JSON backup/restore (`exportJSONBackup`, `importJSONBackup`)                                                    | Business JSON empty-target restore, device continuity snapshot and separate document/Auth recovery | Changed | Preserve scope labels             |
+| R09 | Backup reminder, storage meter and reset (`checkBackupReminder`, `openStoragePanel`, `hardResetDevice`)               | Health/offline tools; no silent equivalent of clearing unresolved work                             | Partial | D4 / VF-017                       |
+| R10 | Unsynced badge/list/retry and periodic cloud sync (`getUnsyncedRecords`, `retryUnsynced`, `fullSync`)                 | `SyncRuntime`, outbox/conflicts/financialAttempts; server remains authority                        | Have    | H3 / SP0                          |
+| R11 | Local tombstones/recycle-bin retention/restore/purge (`binPut`, `binRestore`, `binPurgeAll`)                          | Archive/void semantics; no generic financial recycle-bin resurrection                              | Changed | Preserve immutable history        |
+| R12 | Visible edit audit (`logEdit`, `getAuditLog`)                                                                         | Database audit exists; no assertion of equivalent user-facing audit timeline                       | Partial | Later                             |
+
+## Storefront and order workflow (present in old DSB, deferred in Pro)
+
+These belong in the inventory even though they must not expand this own-shop speed packet into M3.
+Old evidence includes admin order/listing functions plus `shop.html`; Pro G/S packets remain deferred.
+
+| ID  | Old capability / evidence                                                                                             | Pro status                                                         |
+| --- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| G01 | Category shelves, search, item cards/detail and stock-aware quantity (`renderHome`, `renderGrid`, `openDetail`)       | Deferred: no public storefront equivalent                          |
+| G02 | Retail units, min/max stock/cart quantities and persisted cart (`setQty`, `cartTotals`, `saveCart`)                   | Deferred; server requote/reservations needed before adoption       |
+| G03 | Pickup/delivery, slots, minimums/fees/free threshold (`openCheckout`, admin `saveStorefrontSettings`)                 | Deferred                                                           |
+| G04 | Name/phone/address checkout, validation/honeypot and order submit (`submitOrder`)                                     | Deferred; privacy/abuse/access review required                     |
+| G05 | Confirmation, tracking URL, steps/status refresh/poll (`openTracking`, `refreshOrder`)                                | Deferred                                                           |
+| G06 | Find previous order, local history and order again (`findMyOrder`, `renderHistory`, `orderAgain`)                     | Deferred                                                           |
+| G07 | Admin orders/status/filter/watch/badge/reject/notify (`loadOrders`, `advanceOrder`, `notifyOrderCustomer`)            | Deferred                                                           |
+| G08 | Convert/link order to invoice and stock warning (`convertOrderToInvoice`, `linkOrderToInvoice`, `orderStockWarnings`) | Deferred; preserve idempotent fulfillment                          |
+| G09 | Publish selected items, bulk category/visibility/image/description (`saveShopListing`, `bulkShopList`)                | Deferred                                                           |
+| G10 | Shop status/closed message/banner/contact/UPI/maps/licence (`saveStorefrontSettings`, `renderShopInfo`)               | Deferred; do not copy private admin data into a public projection  |
+| G11 | Shopper offline shell/catalog cache and worker update (`readCache`, `shop-sw.js`)                                     | Deferred; admin offline safety does not establish shopper behavior |
+
+## Keyboard, layout, defaults and arithmetic decisions
+
+| ID  | Old source behavior                                                                 | Pro disposition / required evidence                                                                            |
+| --- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| K01 | Login Enter, autocomplete Up/Down/Enter/Escape (`acKeydown`)                        | Native forms/selects differ. Record explicit keyboard flows during DS1; no global shortcuts invented           |
+| K02 | Batch Enter/Tab field/item progression (`batchItemKeydown`, `batchFieldKeydown`)    | Missing with batch editor; preserve intended focus order in its own packet                                     |
+| K03 | Drag/resize image peek, previous/next/lightbox controls                             | Missing peek parity; pointer/touch/keyboard alternatives need device proof                                     |
+| K04 | Modal close X/backdrop, dirty-entry guarded close                                   | Source catalog lists close handlers; visual/device acceptance still NOT CHECKED                                |
+| K05 | Remembered local sort/theme/peek geometry/drafts                                    | Different Pro storage scopes; no previous-user data may leak after sign-out/role/shop changes                  |
+| A01 | Unit conversion, any-level rates, bulk-quantity price and decimal quantities        | Future golden fixtures must name source function, exact old result, intended Pro result, reason for exceptions |
+| A02 | Line/header discounts, extra-charge order, round-off, tax and credit/stock warnings | Do not require equality where user-approved Pro rules differ; preserve half-up paise/bill and return policy    |
+| A03 | Delete/edit/merge, client-built IDs and cloud-array merge                           | Convenience can be redesigned; never copy LWW financial edits or weaken request-ledger safeguards              |
+| V01 | Old colours, density, fonts, field order, receipt paper layouts                     | Source is available; side-by-side screenshots NOT YET CAPTURED. No visual parity or pixel-match claim          |
+
+## First implementation decisions
+
+1. SP0 measures current route/data readiness before speed changes; see [SPEED_BASELINE.md](SPEED_BASELINE.md).
+2. SP1 reuses `useSession`; deduplicates context reads with auth/shop/role/date invalidation. Do not keep every screen mounted.
+3. SP2 starts with bounded read snapshots keyed by identity/access/filter/date, explicit as-of labels and protected durable queues.
+4. Ask the user to prioritize the purchase gaps (P04/P06/P09/P10/P12/P13), supplier fields/schedules (I10/S05/S06)
+   and search (N04) after reviewing this inventory; none is silently accepted as a cutover requirement here.
+5. Before claiming full stock-data readiness at scale, separately verify list pagination/row caps: `listItems`
+   paginates while `listStock`/`listParties` do not. The SP0 item-count assertion does not prove all stock rows.
+6. H3, actual camera/share/printer, per-role/device acceptance, opening balances, recovery drills and the clean shop week stay open.
