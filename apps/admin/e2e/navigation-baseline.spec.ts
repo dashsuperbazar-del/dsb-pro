@@ -33,9 +33,9 @@ async function ready(page: Page, path: string) {
     await check(
       main.getByRole('heading', { name: 'Inventory & purchases', exact: true }),
     ).toBeVisible();
-    await check(main.getByLabel('Item details', { exact: true }).locator('option')).toHaveCount(
-      10001,
-    );
+    await check(
+      main.getByRole('combobox', { name: /^Item details\b/ }).locator('option'),
+    ).toHaveCount(10001);
   } else if (path === '/purchases') {
     await check(main.getByRole('heading', { name: 'Purchases', exact: true })).toBeVisible();
     await check(
@@ -52,7 +52,9 @@ async function ready(page: Page, path: string) {
     await check(
       main.getByRole('heading', { name: 'Customers & ledger', exact: true }),
     ).toBeVisible();
-    await check(main.getByLabel('Customer', { exact: true }).locator('option')).toHaveCount(9);
+    await check(main.getByRole('combobox', { name: /^Customer\b/ }).locator('option')).toHaveCount(
+      9,
+    );
     await check(main.getByRole('button', { name: 'Create customer', exact: true })).toBeEnabled();
   }
   // A useful rendered state, followed by two frames; heading-only timings hide network waits.
@@ -140,10 +142,10 @@ test.describe('SP0 read/navigation baseline (no optimization or live target)', (
         const row = pending.get(response.request());
         if (row && response.status() >= 400) row.failed = true;
       });
-      const settle = async () => {
+      const settle = async (timeout = 30_000) => {
         await expect
           .poll(() => pending.size === 0 && performance.now() - lastActivity >= 200, {
-            timeout: 30_000,
+            timeout,
             intervals: [50, 100],
           })
           .toBe(true);
@@ -166,6 +168,7 @@ test.describe('SP0 read/navigation baseline (no optimization or live target)', (
           'Synthetic desktop Chromium CPU/network profile, not a physical Android result.',
           'First visit follows completed catalog sync; not a fresh-device 2.5-second claim.',
           'Request counts include background XHR/fetch activity through a bounded settle window.',
+          'Request interception disables Chromium HTTP cache; route revisits retain app/IndexedDB state only.',
           'Seven revisit samples; empirical nearest-rank p95 is the maximum, not a population estimate.',
         ],
         measurements: measured,
@@ -182,14 +185,16 @@ test.describe('SP0 read/navigation baseline (no optimization or live target)', (
         await menu(page, '/pos');
         await page.locator('a[href="/pos"]:visible').first().click();
         await ready(page, '/pos');
-        await settle();
+        // Initial sync still transfers invoice history after the POS catalog becomes usable.
+        // Keep this separately reported startup wait out of all route measurements.
+        await settle(180_000);
         report.loginToCatalogReadyMs = performance.now() - startup;
         await cdp.send('Network.clearBrowserCache');
         const reload = performance.now();
         await page.reload();
         await ready(page, '/pos');
         report.httpColdReloadWithCachedCatalogMs = performance.now() - reload;
-        await settle();
+        await settle(180_000);
         report.memoryAfterBootstrap = await cdp.send('Memory.getDOMCounters');
         for (let round = 0; round <= samples; round++) {
           for (const path of routes) {
@@ -245,6 +250,10 @@ test.describe('SP0 read/navigation baseline (no optimization or live target)', (
         throw error;
       } finally {
         report.blockedExternalRequests = blocked.length;
+        report.pendingRequests = [...pending.values()].map((row) => ({
+          category: row.category,
+          elapsedMs: performance.now() - row.started,
+        }));
         const output = process.env.SP0_RESULTS_DIR ?? testInfo.outputPath('sp0');
         await mkdir(output, { recursive: true });
         await writeFile(

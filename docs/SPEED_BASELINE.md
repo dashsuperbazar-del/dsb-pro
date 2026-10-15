@@ -34,8 +34,12 @@ the result as a browser-native INP measurement. Inventory stock completeness is 
 Two **synthetic desktop Chromium** profiles use a 390×844 viewport: reference (CPU 1×, no network
 throttling), and mobile-like (CPU 4× slowdown, 150 ms latency, 1.6 Mbit/s down/750 Kbit/s up using the
 existing workflow's throughput convention). This is not the user's actual Android device or measured
-India-to-host RTT. Service workers are blocked to isolate route/HTTP-cache behavior; offline worker
-startup/update behavior and installed-PWA cold start need separate measurements.
+India-to-host RTT. Service workers are blocked, and Playwright request interception disables Chromium's
+HTTP cache. Revisits retain app/IndexedDB state but do not represent normal HTTP-cache or PWA behavior.
+Offline worker startup/update behavior and installed-PWA cold start need separate measurements.
+Startup gets a separate bounded 180-second quiet wait because invoice sync continues after the POS
+catalog becomes usable; route request accounting keeps its 30-second bound. Neither wait changes the
+existing 60-second catalog-sync gate or turns a timeout into a passing timing sample.
 
 Nearest-rank p50/p95 are reported with sample count/min/max. With seven samples p95 equals max; it is
 an empirical tail observation, not a population estimate or statistically stable budget. No 150 ms / 2.5 s
