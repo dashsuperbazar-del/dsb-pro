@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { test, expect } from '@playwright/test';
+import { test, expect, type Request, type Response } from '@playwright/test';
 import { addItemForm } from './design-helpers';
 test('DSB purchase detail, repeat and contextual payment use the same financial records', async ({
   page,
@@ -24,7 +24,35 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
   await expect(page.getByRole('status').filter({ hasText: 'Created Daily oil' })).toContainText(
     'Created Daily oil',
   );
+  // Main's editor first loads its catalog, then prepares the explicit new-bill
+  // context with a second business-date read. Finish that baseline before entry.
+  const dateRequests = new Set<Request>();
+  let dateReads = 0;
+  const trackRequest = (request: Request) => {
+    if (
+      request.url().endsWith('/rpc/shop_business_date') &&
+      new URL(request.frame().url()).pathname === '/purchases'
+    )
+      dateRequests.add(request);
+  };
+  page.on('request', trackRequest);
+  const trackResponse = async (response: Response) => {
+    if (dateRequests.has(response.request()) && response.ok()) {
+      const failure = await response.finished().catch(() => new Error('Response did not finish'));
+      if (!failure) dateReads++;
+    }
+  };
+  page.on('response', trackResponse);
   await page.goto('/purchases?new=1');
+  await expect.poll(() => dateReads).toBeGreaterThanOrEqual(2);
+  page.off('request', trackRequest);
+  page.off('response', trackResponse);
+  const readyPurchase = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Post purchase', exact: true }) })
+    .last();
+  await expect(readyPurchase.locator('input[name="date"]')).not.toHaveValue('');
+  await expect(readyPurchase.locator('fieldset').first()).toBeEnabled();
   const supplier = page
     .getByRole('button', { name: 'Create & select supplier' })
     .locator('xpath=..');

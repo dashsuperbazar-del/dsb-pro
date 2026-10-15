@@ -77,6 +77,8 @@ jobs:
       - run: pnpm test
       - name: Private document archive failure tests
         run: node --test scripts/test-bill-document-backup.mjs
+      - name: D3b exact JSON and target guards
+        run: node --test scripts/restore-business-json.test.mjs
 
   pgtap:
     runs-on: ubuntu-latest
@@ -119,6 +121,8 @@ jobs:
         run: node scripts/test-supplier-payment-concurrency.mjs
       - name: Prove fixed-point TypeScript/PostgreSQL parity
         run: node scripts/test-fixed-point-parity.mjs
+      - name: Prove D3b business JSON restore (real-RPC shop -> empty target, exact rows, replay)
+        run: node scripts/test-restore-business-json.mjs
 
   document_backup_proof:
     # Synthetic data only. A second loopback target proves actual bytes, Auth and
