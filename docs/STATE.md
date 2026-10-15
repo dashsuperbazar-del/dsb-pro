@@ -4,6 +4,7 @@ Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/CO
 Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
+- 15 October (sole builder = Claude; Codex unavailable; the user verifies): PR #77 head 1e46669 had two SP0 failures. Fixed locally, not yet pushed (session has no GitHub write access): POS kept only the first 1,000 items after a first sync until reload (real display defect, fixed by `lib/catalogWatch.ts`); Customers readiness waited for a button inside a collapsed section. First measured baseline and inventory corrections are in `docs/SPEED_BASELINE.md` and `docs/DSB_PARITY.md`. Needs push, fresh CI and verification.
 
 - `main` verified: `ef880dad401cd12cb470b432edb5444eec46ad66` (#76, fetched 15 October). Migrations 0001–0058 immutable. #76 final full CI #856/#857 and main #858 green.
 - Release COMPLETE: inspection-only #859 found billdocs/0058 only; attended upgrade #860 verified encrypted B2/R2 backups, applied 0058 and required needs_upgrade=false; deploy #861 succeeded on this main. Cloudflare 9/9 and GitHub Pages 10/10 public files matched exact-run artifacts. No physical/shop acceptance implied.
@@ -20,7 +21,6 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
 - Historical D1 apply/deploy: 36894777286 / 36897126086. Current production #861 is ef880da with live schema through 0058 (#860).
 - Verifier log V003 (2026-10-02): VF-005/006/008 CLOSED. Open MAJORs fixed in V4: VF-007 follow-up (a finished action repainted/voided the previous customer) and VF-009 (two stored intents blocked each other's retry).
 - FIXED (S1, 2026-10-03): an online sale/return finalized while a background sync cycle was in flight joined that cycle, which had already read the outbox, so it showed "Saved locally" and posted only on the next cycle (held-cart repeat, runs 36909385562 and 758). One fresh cycle now runs if it is still QUEUED; a deterministic e2e holds the cycle's ack. Never a money risk (exactly-once outbox).
-- Watch: daily-entry 'expense answer lost' timed out once locally under full parallel load (button click); 6/6 alone on main and on S1 — same pattern as the suppliers-form watch item.
 - V2 residual closed by V3: receipt/payment check+create+send is serialized per account across windows (Web Locks). Browsers without Web Locks keep the unserialized check.
 - Rule (V2): persist every exact money/stock request BEFORE sending; only definitive DB rejection unlocks it. Use `rpcOutcome`/`*Outcome`, never `classifyError`, to decide outcomes.
 - Decision 2026-10-02 (user): old DSB is retired; no legacy import, no shadow run. DSB Pro goes live with real data once daily-usable, then is patched in use. F0/F3 dropped; F1 (fiscal numbering) later.

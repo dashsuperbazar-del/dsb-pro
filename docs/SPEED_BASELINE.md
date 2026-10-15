@@ -82,3 +82,52 @@ first useful paint, p50/p95 and memory change. On auth/shop/role change, midnigh
 reconnect/focus, failed refresh, account switching and navigation away/back, preserve authorization,
 drafts and immutable financial identities. SP2 needs bounded per-identity/per-query snapshots, explicit
 stale/as-of labels, deletion/invalidation rules and eviction that cannot touch protected pending work.
+
+## First measured baseline (local disposable run, 15 October 2026)
+
+Produced by the verifier-turned-builder in a local container on this packet's code, against local
+Supabase with the exact 10k item / 100k invoice fixture and eight suppliers/customers. **This is not CI
+evidence and not the shop phone.** CI must repeat it on the final head; the numbers below only show
+shape. Both JSON reports completed (`status: complete`), each holds 40 measurements (5 routes x 8 visits),
+zero failed requests, zero blocked external requests.
+
+| Route     | Desktop reference p50 / p95 | Mobile-like (CPU 4x, 150 ms, 1.6 Mbit/s) p50 / p95 | Requests per visit (desktop / mobile) |
+| --------- | --------------------------- | -------------------------------------------------- | ------------------------------------- |
+| POS       | 293 ms / 2,416 ms           | 500 ms / 737 ms                                    | 6.1 / 5.0                             |
+| Inventory | 5,224 ms / 5,322 ms         | 20,953 ms / 21,224 ms                              | 17.4 / 20.0                           |
+| Purchases | 189 ms / 208 ms             | 1,506 ms / 1,545 ms                                | 24.4 / 28.0                           |
+| Suppliers | 160 ms / 210 ms             | 967 ms / 994 ms                                    | 5.0 / 4.0                             |
+| Customers | 266 ms / 316 ms             | 1,007 ms / 1,049 ms                                | 5.0 / 6.0                             |
+
+Startup: login to Overview 0.6 s / 2.6 s; login to usable POS catalog 5.8 s / 30.2 s; HTTP-cold reload
+with cached catalog 1.1 s / 9.9 s. Memory after the run: JS heap 35 MB / 22 MB; IndexedDB 24 MB.
+
+Seven revisit samples, so p95 equals the maximum (see above); the POS p95 contains one slower sample.
+
+### What the baseline already shows (all on the 10k-item fixture)
+
+1. **Inventory re-downloads the whole item catalog on every visit**: 11 `table:items` requests each time
+   (10,000 items in pages of 1,000), plus the supplier, stock, shop and membership reads. It is by far the
+   slowest screen: 5.2 s on a fast machine and 21 s on the mobile-like profile, with a 10,001-option item
+   selector on top. Purchases repeats the same 11 item requests and adds 4 membership, 3 supplier and 2
+   shop reads per visit (24 to 28 requests in total) although it renders sooner.
+2. **Suppliers and Customers are already light** (4 to 6 requests, about 1 s mobile-like).
+3. A shop with 276 items (your imported catalog) needs 1 item page, not 11, so its Inventory cost is
+   much lower than this fixture. The fixture is a stress shape, not your shop. Measure on your device.
+
+### Product defect found while making this baseline pass
+
+**POS showed only the first 1,000 items after a first sync and never refreshed.** If POS opened while a new
+device was still downloading the catalog, the device cache held exactly one page (1,000 items), POS
+treated "1,000 or more cached items" as a complete catalog, skipped the server read, and never looked at
+the cache again. IndexedDB reached 10,000 items within seconds, but POS kept showing 1,000 (observed for
+more than 90 s until a reload). Items beyond that were not findable by name search until the app was
+reopened. This is a read-side display defect (selling still goes through the server and the outbox), but
+a new device in a shop with more than 1,000 items would hit it on day one. Fixed in this packet by
+`lib/catalogWatch.ts`: POS re-reads the device catalog whenever its size changes, display only, stopped
+when the screen closes, and covered by five unit tests (the fixed behaviour fails without the change).
+
+The failed CI run's two failures were therefore different in kind: the POS one was this real defect (the
+harness exposed it); the Customers one was a harness mistake (it waited for the "Create customer" button,
+which sits inside a collapsed "Add customer" section; it now waits for the visible "Add customer" control).
+No assertion was removed or weakened.

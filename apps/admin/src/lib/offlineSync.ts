@@ -612,6 +612,9 @@ export function getOfflineRuntimeIdentity(): SyncIdentity | null {
 export async function getOfflineItems(): Promise<SyncedItem[]> {
   return getCachedItems(requireRuntime().db);
 }
+export async function getOfflineItemCount(): Promise<number> {
+  return requireRuntime().db.items.count();
+}
 export async function getOfflineCustomers(): Promise<SyncedCustomer[]> {
   return getCachedCustomers(requireRuntime().db);
 }

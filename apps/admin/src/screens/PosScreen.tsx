@@ -29,6 +29,7 @@ import {
   getOfflineBusinessDate,
   getOfflineCustomers,
   getOfflineItems,
+  getOfflineItemCount,
   getOfflinePrices,
   getOfflineRuntimeIdentity,
   listOfflineSales,
@@ -41,6 +42,7 @@ import {
   completeHeldCartForResume,
   discardHeldCartById,
 } from '../lib/offlineSync';
+import { mergeCatalog, watchOfflineCatalog } from '../lib/catalogWatch';
 import { ReceiptHeader } from '../components/ReceiptHeader';
 import { loadShopProfile, type ProfileLoad } from '../lib/shopProfile';
 
@@ -236,6 +238,16 @@ export function PosScreen() {
   useEffect(() => {
     void refresh().catch((e) => setError(String(e)));
   }, []);
+  // A catalog still syncing when POS opened is re-read from the device as it grows (display only).
+  useEffect(
+    () =>
+      watchOfflineCatalog<Item>({
+        count: getOfflineItemCount,
+        load: async () => (await getOfflineItems()) as Item[],
+        onChange: (rows) => setItems((shown) => mergeCatalog(shown, rows)),
+      }),
+    [],
+  );
   useEffect(() => {
     if (!heldCleanup) return;
     let active = true;

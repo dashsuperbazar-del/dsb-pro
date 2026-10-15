@@ -55,7 +55,8 @@ async function ready(page: Page, path: string) {
     await check(main.getByRole('combobox', { name: /^Customer\b/ }).locator('option')).toHaveCount(
       9,
     );
-    await check(main.getByRole('button', { name: 'Create customer', exact: true })).toBeEnabled();
+    // The create form lives in a collapsed <details>; its summary is the visible, actionable control.
+    await check(main.getByText('Add customer', { exact: true })).toBeVisible();
   }
   // A useful rendered state, followed by two frames; heading-only timings hide network waits.
   await page.evaluate(
