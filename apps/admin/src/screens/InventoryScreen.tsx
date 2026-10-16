@@ -171,6 +171,19 @@ export function InventoryScreen({
     }
   }, [shopId]);
   const [purchaseBusy, setPurchaseBusy] = useState(false);
+  // Old-draft discard never offers the draft of this window's purchase or of a purchase awaiting
+  // confirmation (its pending request id), so an unconfirmed bill's editable copy is never removed.
+  function discardableDrafts() {
+    const pending = shopId ? loadPendingIntent<PurchaseRequest>(pendingKey(shopId)) : null;
+    const pendingId = pending?.ok ? pending.value?.clientId : undefined;
+    return staleDrafts(
+      savedDrafts.filter(
+        (s) => s.draft.clientId !== purchaseClientId && s.draft.clientId !== pendingId,
+      ),
+      Date.now(),
+      30,
+    );
+  }
   const [legacyPlan, setLegacyPlan] = useState<LegacyDsbImportPlan | null>(null);
   const [legacyFileName, setLegacyFileName] = useState('');
   const [legacyClientId, setLegacyClientId] = useState(() => crypto.randomUUID());
@@ -1305,20 +1318,12 @@ export function InventoryScreen({
               Unposted work on this device, for your account and this shop. Resume to review;
               nothing posts automatically.
             </p>
-            {staleDrafts(
-              savedDrafts.filter((s) => s.draft.clientId !== purchaseClientId),
-              Date.now(),
-              30,
-            ).length > 0 && (
+            {discardableDrafts().length > 0 && (
               <button
                 type="button"
                 disabled={purchaseLocked || contextBusy}
                 onClick={() => {
-                  const old = staleDrafts(
-                    savedDrafts.filter((s) => s.draft.clientId !== purchaseClientId),
-                    Date.now(),
-                    30,
-                  );
+                  const old = discardableDrafts();
                   if (
                     !confirm(
                       `Discard ${old.length} unposted draft${old.length === 1 ? '' : 's'} saved more than 30 days ago? This cannot be undone.`,
