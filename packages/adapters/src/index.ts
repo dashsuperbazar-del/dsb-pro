@@ -3,44 +3,214 @@ export { listPurchaseHistory, getPurchaseDetail } from './purchases';
 export type { PurchaseRecord, PurchaseHistoryLine, PurchaseBalance } from './purchases';
 export type { ErrorClass } from './errors';
 export { classifyError, errorMessage } from './errors';
-export { signUp, signIn, signOut, getSession, ensureFreshSession, onAuthStateChange, isEmailVerified, resendVerificationEmail, resetPasswordForEmail } from './auth';
+export {
+  signUp,
+  signIn,
+  signOut,
+  getSession,
+  ensureFreshSession,
+  onAuthStateChange,
+  isEmailVerified,
+  resendVerificationEmail,
+  resetPasswordForEmail,
+} from './auth';
 export type { Session } from './auth';
 export type { Membership, Invite, TenantUser } from './tenancy';
-export { createTenant, getDefaultShopId, createInvite, revokeInvite, acceptInvite, setUserRole, setUserStatus, removeTenantUser, getCurrentMembership, listTenantUsers, listInvites } from './tenancy';
+export {
+  createTenant,
+  getDefaultShopId,
+  createInvite,
+  revokeInvite,
+  acceptInvite,
+  setUserRole,
+  setUserStatus,
+  removeTenantUser,
+  getCurrentMembership,
+  listTenantUsers,
+  listInvites,
+} from './tenancy';
 export type { Device } from './devices';
-export { getOrCreateDeviceId, guessDeviceLabel, registerCurrentDevice, listDevices, renameDevice, revokeDevice } from './devices';
+export {
+  getOrCreateDeviceId,
+  guessDeviceLabel,
+  registerCurrentDevice,
+  listDevices,
+  renameDevice,
+  revokeDevice,
+} from './devices';
 export type { Item, Party, StockRow, PurchaseLine, ItemBarcode } from './masterData';
-export { listItems, listParties, createItem, createParty, addItemBarcode, findItemByBarcode, listStock, listBelowZeroStock, getShopBusinessDate, postPurchase, voidPurchase, archiveMaster, uploadItemImage, purgeItemImage, setItemMinStock } from './masterData';
+export { normalizePartyDetails, updateParty, updateCustomer } from './partyEdit';
+export type { PartyDetailsInput, NormalizedPartyDetails } from './partyEdit';
+export {
+  listItems,
+  listParties,
+  createItem,
+  createParty,
+  addItemBarcode,
+  findItemByBarcode,
+  listStock,
+  listBelowZeroStock,
+  getShopBusinessDate,
+  postPurchase,
+  voidPurchase,
+  archiveMaster,
+  uploadItemImage,
+  purgeItemImage,
+  setItemMinStock,
+} from './masterData';
 export type { ItemPrice } from './pricing';
 export { listCurrentPrices, setItemPrice } from './pricing';
 export { replaceItemImage } from './itemImages';
-export type { Customer, SaleLineInput, SalePaymentInput, SaleInvoice, CustomerBalance, PaymentAllocationInput, CustomerLedgerRow, SaleReceipt, SaleReceiptLine, SaleReceiptPayment } from './sales';
-export { listCustomers, createCustomer, postSale, voidSale, recordCustomerPayment, voidPayment, listRecentSales, listCustomerBalances, listCustomerLedger, listOpenCustomerSales, getSaleReceipt } from './sales';
+export type {
+  Customer,
+  SaleLineInput,
+  SalePaymentInput,
+  SaleInvoice,
+  CustomerBalance,
+  PaymentAllocationInput,
+  CustomerLedgerRow,
+  SaleReceipt,
+  SaleReceiptLine,
+  SaleReceiptPayment,
+} from './sales';
+export {
+  listCustomers,
+  createCustomer,
+  postSale,
+  voidSale,
+  recordCustomerPayment,
+  voidPayment,
+  listRecentSales,
+  listCustomerBalances,
+  listCustomerLedger,
+  listOpenCustomerSales,
+  getSaleReceipt,
+} from './sales';
 export type { CustomerOutstandingInvoice } from './receivables';
 export { listCustomerOutstandingInvoices } from './receivables';
 
 export type { LegacyDsbImportSummary } from './legacyImport';
 export { importLegacyDsbMaster } from './legacyImport';
 
-export type { ShopDayReconciliation, DayReconciliationPaymentModes, DayReconciliationSoldItem } from './reconciliation';
+export type {
+  ShopDayReconciliation,
+  DayReconciliationPaymentModes,
+  DayReconciliationSoldItem,
+} from './reconciliation';
 export { getShopDayReconciliation } from './reconciliation';
 
-export type { SyncCursorWire, SyncPullWire, SyncPullTable, SyncSaleResultWire, ServerSyncConflict } from './sync';
-export { SYNC_SCHEMA_VERSION, SYNC_PULL_LIMITS, syncPullMayHaveMore, isolateSyncPullCursors, pullSync, pullSyncTable, ackSync, pushSyncedSale, setOfflineCashierFinalization, recordServerSyncConflict, listServerSyncConflicts, resolveServerSyncConflict, subscribeSyncWakeup } from './sync';
+export type {
+  SyncCursorWire,
+  SyncPullWire,
+  SyncPullTable,
+  SyncSaleResultWire,
+  ServerSyncConflict,
+} from './sync';
+export {
+  SYNC_SCHEMA_VERSION,
+  SYNC_PULL_LIMITS,
+  syncPullMayHaveMore,
+  isolateSyncPullCursors,
+  pullSync,
+  pullSyncTable,
+  ackSync,
+  pushSyncedSale,
+  setOfflineCashierFinalization,
+  recordServerSyncConflict,
+  listServerSyncConflicts,
+  resolveServerSyncConflict,
+  subscribeSyncWakeup,
+} from './sync';
 
-export type { DayBookRow, StockValueRow, GstRow, PartyLedgerRow, InvariantHealth, LowStockRow, ItemSalesRow, PurchaseRegisterRow, CustomerAgingRow, AgingReportV2, AgingAccountV2, AgingDetailV2, DayBookText } from './reports';
-export { getDayBook, getStockValuation, getGstSummary, postExpense, voidExpense, exportTenant, checkInvariants, getPartyLedger, createStockCount, postStockCount, getLowStockReport, getItemSalesReport, getPurchaseRegister, getCustomerAgingReport, getAgingReportV2, getDayBookText, listStockText } from './reports';
+export type {
+  DayBookRow,
+  StockValueRow,
+  GstRow,
+  PartyLedgerRow,
+  InvariantHealth,
+  LowStockRow,
+  ItemSalesRow,
+  PurchaseRegisterRow,
+  CustomerAgingRow,
+  AgingReportV2,
+  AgingAccountV2,
+  AgingDetailV2,
+  DayBookText,
+} from './reports';
+export {
+  getDayBook,
+  getStockValuation,
+  getGstSummary,
+  postExpense,
+  voidExpense,
+  exportTenant,
+  checkInvariants,
+  getPartyLedger,
+  createStockCount,
+  postStockCount,
+  getLowStockReport,
+  getItemSalesReport,
+  getPurchaseRegister,
+  getCustomerAgingReport,
+  getAgingReportV2,
+  getDayBookText,
+  listStockText,
+} from './reports';
 
 export type { BackupHealth } from './health';
 export { getLatestBackupHealth } from './health';
-export type { ReturnType, ReturnDisposition, ReturnSource, ReturnableLine, PostedReturn, ReturnLineInput } from './returns';
-export { listReturnSources, listReturnableLines, postReturn, listRecentReturns, voidReturn, pullReturnSources, pushSyncedReturn, pushSyncedReturnVoid } from './returns';
+export type {
+  ReturnType,
+  ReturnDisposition,
+  ReturnSource,
+  ReturnableLine,
+  PostedReturn,
+  ReturnLineInput,
+} from './returns';
+export {
+  listReturnSources,
+  listReturnableLines,
+  postReturn,
+  listRecentReturns,
+  voidReturn,
+  pullReturnSources,
+  pushSyncedReturn,
+  pushSyncedReturnVoid,
+} from './returns';
 
 export type { PrinterWidth, ShopSettings, ShopSettingsInput } from './shopSettings';
 export { getShopSettings, updateShopSettings } from './shopSettings';
 
-export type { SupplierOperation, CustomerOperation, FinancialOperation, SaleAllocation, PaymentMode, SupplierAllocation, SupplierWriteOutcome, SupplierRequestLookup, SupplierOutstandingRow, SupplierBill, SupplierPayment, SupplierLedger, SupplierLedgerEntry } from './supplierPayments';
-export { recordCustomerPaymentV2, allocateCustomerPaymentV2, lookupFinancialRequest, recordSupplierPayment, allocateSupplierPayment, voidSupplierPayment, releaseSupplierAllocation, lookupSupplierRequest, getSupplierOutstanding, listSupplierBills, listSupplierPayments, listSupplierAllocations, getSupplierLedger } from './supplierPayments';
+export type {
+  SupplierOperation,
+  CustomerOperation,
+  FinancialOperation,
+  SaleAllocation,
+  PaymentMode,
+  SupplierAllocation,
+  SupplierWriteOutcome,
+  SupplierRequestLookup,
+  SupplierOutstandingRow,
+  SupplierBill,
+  SupplierPayment,
+  SupplierLedger,
+  SupplierLedgerEntry,
+} from './supplierPayments';
+export {
+  recordCustomerPaymentV2,
+  allocateCustomerPaymentV2,
+  lookupFinancialRequest,
+  recordSupplierPayment,
+  allocateSupplierPayment,
+  voidSupplierPayment,
+  releaseSupplierAllocation,
+  lookupSupplierRequest,
+  getSupplierOutstanding,
+  listSupplierBills,
+  listSupplierPayments,
+  listSupplierAllocations,
+  getSupplierLedger,
+} from './supplierPayments';
 export type { WriteOutcome, PurchaseRequest, StockCountRequest } from './outcomes';
 export { postExpenseOutcome, postPurchaseOutcome, postStockCountOutcome } from './outcomes';
 export type { AccountOpening } from './outcomes';
@@ -48,5 +218,11 @@ export { recordOpeningOutcome, voidOpeningOutcome, listOpenings } from './outcom
 export type { SettlementOptions } from './outcomes';
 export { settleOpeningOutcome, voidSettlementOutcome, getSettlementOptions } from './outcomes';
 
-export { billDocumentPath, billDocumentHash, readBillDocument, uploadBillDocument, BILL_DOCUMENT_PATH } from './billDocuments';
+export {
+  billDocumentPath,
+  billDocumentHash,
+  readBillDocument,
+  uploadBillDocument,
+  BILL_DOCUMENT_PATH,
+} from './billDocuments';
 export type { BillDocument } from './billDocuments';
