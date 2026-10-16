@@ -52,6 +52,35 @@ begin
  return p_customer_id;
 end $$;
 
+-- A ledger row may never be written for an archived party. The posting functions check "party is live" with a
+-- plain SELECT and only take the FK lock at INSERT, which a concurrent archive can slip between. This guard
+-- locks the party row FOR KEY SHARE at INSERT time: it waits for an in-flight archive (FOR UPDATE) and then
+-- sees deleted_at, or it holds the lock first and the archive's history check then sees the new row.
+create function dsb_assert_live_parties() returns trigger
+language plpgsql security definer set search_path=public as $$
+declare j jsonb:=to_jsonb(new);
+begin
+ if (j->>'party_id') is not null then
+   perform 1 from parties where id=(j->>'party_id')::uuid and deleted_at is null for key share;
+   if not found then raise exception 'DSB_PARTY_ARCHIVED: this supplier is archived and cannot receive new bills, payments or returns'; end if;
+ end if;
+ if (j->>'customer_id') is not null then
+   perform 1 from customers where id=(j->>'customer_id')::uuid and deleted_at is null for key share;
+   if not found then raise exception 'DSB_PARTY_ARCHIVED: this customer is archived and cannot receive new sales, payments or returns'; end if;
+ end if;
+ return new;
+end $$;
+create trigger dsb_live_party_guard before insert on purchase_bills for each row execute function dsb_assert_live_parties();
+create trigger dsb_live_party_guard before insert on purchase_returns for each row execute function dsb_assert_live_parties();
+create trigger dsb_live_party_guard before insert on sale_invoices for each row execute function dsb_assert_live_parties();
+create trigger dsb_live_party_guard before insert on sale_returns for each row execute function dsb_assert_live_parties();
+create trigger dsb_live_party_guard before insert on payments for each row execute function dsb_assert_live_parties();
+create trigger dsb_live_party_guard before insert on account_openings for each row execute function dsb_assert_live_parties();
+
+-- An archived customer must not reserve its name forever (it is invisible and cannot be restored).
+alter table customers drop constraint customers_tenant_id_normalized_name_key;
+create unique index customers_live_name_key on customers(tenant_id,normalized_name) where deleted_at is null;
+
 -- The generic archive no longer handles suppliers: it had no history check.
 create or replace function archive_master(p_table text,p_id uuid) returns uuid
 language plpgsql security definer set search_path=public as $$
@@ -94,6 +123,7 @@ create policy parties_update on parties for update
 
 revoke all on function dsb_supplier_has_history(uuid) from public;
 revoke all on function dsb_customer_has_history(uuid) from public;
+revoke all on function dsb_assert_live_parties() from public;
 revoke all on function archive_party(uuid) from public;
 revoke all on function archive_customer(uuid) from public;
 grant execute on function archive_party(uuid) to authenticated;

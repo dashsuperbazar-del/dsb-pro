@@ -540,7 +540,7 @@ if [[ "$billdocs" != '0' && "$d3a" != '2' && ! ( "$billdocs" == '1' && "$d3a" ==
  echo 'Bill documents appear ahead of completed D3a. Refusing migration.' >&2; exit 1
 fi
 
-# Guarded party archive (0059): additive classifier field, like billdocs. Six anchors, all or nothing.
+# Guarded party archive (0059): additive classifier field, like billdocs. Eight anchors, all or nothing.
 partyarchive_probe=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -F' ' <<'SQL'
 do $$ begin
  create temp table _partyarchive_receipt (present boolean);
@@ -559,15 +559,18 @@ select (select present from _partyarchive_receipt),
    (exists(select 1 from pg_proc where oid=to_regprocedure('public.archive_master(text,uuid)') and position('DSB_USE_ARCHIVE_PARTY' in prosrc)>0)),
    (to_regclass('public.parties') is not null and to_regclass('public.customers') is not null
      and not has_column_privilege('authenticated','public.parties','deleted_at','UPDATE')
-     and not has_column_privilege('authenticated','public.customers','deleted_at','UPDATE'))
+     and not has_column_privilege('authenticated','public.customers','deleted_at','UPDATE')),
+   (exists(select 1 from pg_indexes where schemaname='public' and indexname='customers_live_name_key')
+     and not exists(select 1 from pg_constraint where conname='customers_tenant_id_normalized_name_key')),
+   ((select count(*) from pg_trigger where tgname='dsb_live_party_guard' and not tgisinternal)=6)
  ) p(ok) where ok);
 SQL
 )
 read -r partyarchive_receipt partyarchive_anchors <<<"$(tail -n 1 <<<"$partyarchive_probe")"
 case "$partyarchive_receipt:$partyarchive_anchors" in
  f:0) partyarchive=0; needs_partyarchive=true ;;
- f:6) partyarchive=1; needs_partyarchive=true ;;
- t:6) partyarchive=2; needs_partyarchive=false ;;
+ f:8) partyarchive=1; needs_partyarchive=true ;;
+ t:8) partyarchive=2; needs_partyarchive=false ;;
  *) echo "Party archive partial/drift state ($partyarchive_receipt/$partyarchive_anchors). Refusing migration." >&2; exit 1 ;;
 esac
 if [[ "$partyarchive" == '2' ]]; then

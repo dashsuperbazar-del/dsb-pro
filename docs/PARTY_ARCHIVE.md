@@ -18,9 +18,18 @@ edits are last-writer-wins; no money moves.
 - **Security fix:** cashiers held `MANAGE_CUSTOMERS`, so a cashier could rewrite any customer (credit limit, notes) and
   archive it through the API. They can still create customers at the till; updates now need `MANAGE_MASTER_DATA`.
 
-Known limits: a bill posted by a crafted API call for an already-archived supplier is not blocked (the UI cannot select it);
-an archived customer keeps its name reserved (unique name). Items remain visible to owners/managers after an archive through
+- **Archive vs posting race (found in review, closed):** the posting functions test "party is live" with a plain SELECT and
+  take the FK lock only at INSERT, so an archive could slip in between. A `dsb_live_party_guard` BEFORE INSERT trigger on
+  purchase_bills, purchase_returns, sale_invoices, sale_returns, payments and account_openings locks the party row
+  `FOR KEY SHARE` and refuses an archived party (`DSB_PARTY_ARCHIVED`). Verified with two concurrent sessions in both orders:
+  a bill in flight makes the archive refuse; an archive in flight makes the bill refuse.
+- **Names:** the customer-name unique constraint is replaced by a partial unique index on live rows, so an archived (invisible,
+  unrestorable) customer no longer reserves its name.
+
+Known limits: a pre-existing archived party that already has history (possible only if someone called the old unguarded
+`archive_master`) would now refuse new documents such as a void's reversal rows; the legacy one-time DSB import guard only
+checks live rows. Items remain visible to owners/managers after an archive through
 the same FOR ALL pattern (`items_write`); no screen archives items today.
 
-Upgrade: group `partyarchive` (classifier fields `partyarchive_state`, `needs_partyarchive`; six all-or-nothing anchors).
-Proof: pgTAP `remaining_party_archive.sql` (31 assertions) and the CI step "Prove guarded party archive upgrade".
+Upgrade: group `partyarchive` (classifier fields `partyarchive_state`, `needs_partyarchive`; eight all-or-nothing anchors).
+Proof: pgTAP `remaining_party_archive.sql` (39 assertions) and the CI step "Prove guarded party archive upgrade".

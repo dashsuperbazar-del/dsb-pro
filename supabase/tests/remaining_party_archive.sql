@@ -1,7 +1,7 @@
 -- Packet partyarchive (mig 0059): guarded archive of suppliers/customers; customer rewrites need master-data permission.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(31);
+select plan(39);
 insert into auth.users(id) values
  ('a9000000-0000-0000-0000-000000000001'),  -- owner
  ('a9000000-0000-0000-0000-000000000002'),  -- manager
@@ -94,6 +94,18 @@ select is((select credit_limit_paise from customers where id=pg_temp.id('c_edit'
 select throws_like(format($$select archive_customer(%L::uuid)$$,pg_temp.id('c_edit')),'%not permitted%','cashier cannot archive a customer');
 select throws_like(format($$select archive_party(%L::uuid)$$,pg_temp.id('p_billed')),'%not permitted%','cashier cannot archive a supplier');
 
+-- A ledger row can never be written for an archived party (guards the archive-vs-posting race).
+reset role;
+select throws_like(format($$insert into purchase_bills(tenant_id,party_id) values(%L::uuid,%L::uuid)$$,pg_temp.id('tenant'),pg_temp.id('p_unused')),'DSB_PARTY_ARCHIVED%','no bill for an archived supplier');
+select throws_like(format($$insert into purchase_returns(tenant_id,party_id) values(%L::uuid,%L::uuid)$$,pg_temp.id('tenant'),pg_temp.id('p_unused')),'DSB_PARTY_ARCHIVED%','no purchase return for an archived supplier');
+select throws_like(format($$insert into sale_invoices(tenant_id,customer_id) values(%L::uuid,%L::uuid)$$,pg_temp.id('tenant'),pg_temp.id('c_unused')),'DSB_PARTY_ARCHIVED%','no sale for an archived customer');
+select throws_like(format($$insert into sale_returns(tenant_id,customer_id) values(%L::uuid,%L::uuid)$$,pg_temp.id('tenant'),pg_temp.id('c_unused')),'DSB_PARTY_ARCHIVED%','no sale return for an archived customer');
+select throws_like(format($$insert into payments(tenant_id,kind,party_id) values(%L::uuid,'party',%L::uuid)$$,pg_temp.id('tenant'),pg_temp.id('p_unused')),'DSB_PARTY_ARCHIVED%','no payment to an archived supplier');
+select throws_like(format($$insert into account_openings(tenant_id,account_kind,customer_id) values(%L::uuid,'CUSTOMER',%L::uuid)$$,pg_temp.id('tenant'),pg_temp.id('c_unused')),'DSB_PARTY_ARCHIVED%','no opening for an archived customer');
+set role authenticated;
+select pg_temp.act('a9000000-0000-0000-0000-000000000001');
+select lives_ok($$insert into customers(tenant_id,name,client_id) values(current_tenant_id(),'  UNUSED   customer ','a9-c-again')$$,'an archived customer''s name can be used again');
+select throws_like($$insert into customers(tenant_id,name,client_id) values(current_tenant_id(),'unused customer','a9-c-dup')$$,'%duplicate key%','a live duplicate name is still refused');
 -- Another tenant's owner cannot reach these rows.
 select pg_temp.act('a9000000-0000-0000-0000-000000000004');
 select create_tenant('A9 Other','a9-other','A9 Other Shop','a9-other-tenant');
