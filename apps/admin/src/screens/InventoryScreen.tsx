@@ -33,6 +33,7 @@ import {
 } from '@dsb-pro/core';
 import { repeatPurchase, rankedPurchaseParties } from '../lib/purchaseWorkflow';
 import { readCatalogForScreen, markCatalogDirty, catalogDirtySince } from '../lib/catalogRead';
+import { boundedItemOptions } from '../lib/itemOptions';
 import { shopContext } from '../lib/shopContext';
 import { getSyncedOfflineCatalog, runSyncNow } from '../lib/offlineSync';
 import { paiseToDecimal, rupees } from '../lib/money';
@@ -1119,13 +1120,19 @@ export function InventoryScreen({
             onChange={(e) => setSelected((e.currentTarget as HTMLSelectElement).value)}
           >
             <option value="">Choose…</option>
-            {items.map((i) => (
+            {boundedItemOptions(items, itemSearch, selected).options.map((i) => (
               <option key={i.id} value={i.id}>
                 {i.name}
               </option>
             ))}
           </select>
         </label>
+        {items.length > boundedItemOptions(items, itemSearch, selected).options.length && (
+          <p class="muted">
+            Showing up to 50 of {boundedItemOptions(items, itemSearch, selected).matches} matching
+            items. Type in “Find stock item” above to narrow the list.
+          </p>
+        )}
         {selectedItem && (
           <div aria-label="item peek">
             <strong>{selectedItem.name}</strong> · Stock {selectedStock}{' '}
@@ -1529,21 +1536,19 @@ export function InventoryScreen({
             </label>
             <fieldset>
               <legend>Add purchase line</legend>
-              {purchaseOnly && (
-                <label>
-                  Find purchase item
-                  <input
-                    placeholder="Item name or SKU"
-                    value={purchaseItemSearch}
-                    onInput={(e) => {
-                      setPurchaseItemSearch(e.currentTarget.value);
-                      setPurchaseLineItemId('');
-                      setPurchaseLineQty('');
-                      setPurchaseLinePrice('');
-                    }}
-                  />
-                </label>
-              )}
+              <label>
+                Find purchase item
+                <input
+                  placeholder="Item name or SKU"
+                  value={purchaseItemSearch}
+                  onInput={(e) => {
+                    setPurchaseItemSearch(e.currentTarget.value);
+                    setPurchaseLineItemId('');
+                    setPurchaseLineQty('');
+                    setPurchaseLinePrice('');
+                  }}
+                />
+              </label>
               <select
                 aria-label="Purchase item"
                 name="itemId"
@@ -1556,18 +1561,13 @@ export function InventoryScreen({
                 }}
               >
                 <option value="">Item…</option>
-                {items
-                  .filter((i) =>
-                    (i.name + ' ' + (i.sku || ''))
-                      .toLowerCase()
-                      .includes(purchaseItemSearch.toLowerCase()),
-                  )
-                  .slice(0, purchaseOnly ? 50 : items.length)
-                  .map((i) => (
+                {boundedItemOptions(items, purchaseItemSearch, purchaseLineItemId).options.map(
+                  (i) => (
                     <option key={i.id} value={i.id}>
                       {i.name}
                     </option>
-                  ))}
+                  ),
+                )}
               </select>{' '}
               <select
                 aria-label="Unit"
