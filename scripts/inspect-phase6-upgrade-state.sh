@@ -557,9 +557,9 @@ select (select present from _partyarchive_receipt),
    (exists(select 1 from pg_policies where schemaname='public' and tablename='parties' and policyname='parties_update')
      and not exists(select 1 from pg_policies where schemaname='public' and tablename='parties' and policyname='parties_write')),
    (exists(select 1 from pg_proc where oid=to_regprocedure('public.archive_master(text,uuid)') and position('DSB_USE_ARCHIVE_PARTY' in prosrc)>0)),
-   (case when to_regclass('public.parties') is null or to_regclass('public.customers') is null then false
-     else not has_column_privilege('authenticated','public.parties','deleted_at','UPDATE')
-      and not has_column_privilege('authenticated','public.customers','deleted_at','UPDATE') end),
+   (to_regclass('public.parties') is not null and to_regclass('public.customers') is not null
+     and not has_column_privilege('authenticated','public.parties','deleted_at','UPDATE')
+     and not has_column_privilege('authenticated','public.customers','deleted_at','UPDATE')),
    (exists(select 1 from pg_indexes where schemaname='public' and indexname='customers_live_name_key')
      and not exists(select 1 from pg_constraint where conname='customers_tenant_id_normalized_name_key')),
    ((select count(*) from pg_trigger where tgname='dsb_live_party_guard' and not tgisinternal)=6)
