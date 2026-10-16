@@ -1,7 +1,7 @@
 -- Packet profit (mig 0060): read-only FIFO profit report with hand-computed expectations.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(43);
+select plan(48);
 insert into auth.users(id) values
  ('f1000000-0000-0000-0000-000000000001'),  -- owner
  ('f1000000-0000-0000-0000-000000000002'),  -- cashier
@@ -17,9 +17,10 @@ select set_config('pf.tenant',current_tenant_id()::text,false);
 select set_config('pf.shop',(select id::text from shops where tenant_id=current_tenant_id() and is_default limit 1),false);
 insert into items(tenant_id,name,unit1,client_id) values
  (current_tenant_id(),'Item A','piece','pf-a'),(current_tenant_id(),'Item B','piece','pf-b'),
- (current_tenant_id(),'Item V','piece','pf-v'),(current_tenant_id(),'Item W','piece','pf-w'),(current_tenant_id(),'Item C','piece','pf-c');
+ (current_tenant_id(),'Item P','piece','pf-p'),(current_tenant_id(),'Item V','piece','pf-v'),(current_tenant_id(),'Item W','piece','pf-w'),(current_tenant_id(),'Item C','piece','pf-c');
 select set_config('pf.a',(select id::text from items where client_id='pf-a'),false);
 select set_config('pf.b',(select id::text from items where client_id='pf-b'),false);
+select set_config('pf.p',(select id::text from items where client_id='pf-p'),false);
 select set_config('pf.v',(select id::text from items where client_id='pf-v'),false);
 select set_config('pf.w',(select id::text from items where client_id='pf-w'),false);
 select set_config('pf.c',(select id::text from items where client_id='pf-c'),false);
@@ -32,6 +33,7 @@ insert into item_prices(tenant_id,item_id,shop_id,kind,unit_level,price_paise,ef
  (pg_temp.id('tenant'),pg_temp.id('a'),pg_temp.id('shop'),'retail',1,2000,now()-interval '1 day','pf-pa'),
  (pg_temp.id('tenant'),pg_temp.id('b'),pg_temp.id('shop'),'retail',1,1000,now()-interval '1 day','pf-pb'),
  (pg_temp.id('tenant'),pg_temp.id('v'),pg_temp.id('shop'),'retail',1,1000,now()-interval '1 day','pf-pv'),
+ (pg_temp.id('tenant'),pg_temp.id('p'),pg_temp.id('shop'),'retail',1,1000,now()-interval '1 day','pf-pp'),
  (pg_temp.id('tenant'),pg_temp.id('w'),pg_temp.id('shop'),'retail',1,1000,now()-interval '1 day','pf-pw'),
  (pg_temp.id('tenant'),pg_temp.id('c'),pg_temp.id('shop'),'retail',1,2000,now()-interval '1 day','pf-pc');
 -- Item B: opening stock of 5 whose cost nobody knows (legacy import / count gain).
@@ -106,6 +108,14 @@ select is((select jsonb_path_query_first(pg_temp.rep('2026-10-01','2026-10-31')-
 select lives_ok($$select pg_temp.buy_item('pf-cp','2026-10-07','c','10',1000,500)$$,'item C: 10 @ 10.00 plus 5.00 freight');
 select lives_ok($$select pg_temp.sell('pf-c1','2026-10-08','c',4,8000)$$,'item C: 4 sold');
 select is((select jsonb_path_query_first(pg_temp.rep('2026-10-07','2026-10-08')->'items','$[*] ? (@.name=="Item C")')->>'costOfGoodsPaise'),'4200','C: freight is part of the unit cost');
+
+-- (5) Rounding never leaks paise: 3 pieces cost 3 x 3.34 + 0.01 freight = 10.03 in total; sold one by one the three lines must
+--     add up to 1003, not 3 x round(334.33) = 1002.
+select lives_ok($$select pg_temp.buy_item('pf-pp1','2026-10-13','p','3',334,1)$$,'item P: 3 pieces @ 3.34 plus 0.01 freight');
+select lives_ok($$select pg_temp.sell('pf-ps1','2026-10-14','p',1,1000)$$,'item P: first piece');
+select lives_ok($$select pg_temp.sell('pf-ps2','2026-10-14','p',1,1000)$$,'item P: second piece');
+select lives_ok($$select pg_temp.sell('pf-ps3','2026-10-14','p',1,1000)$$,'item P: third piece');
+select is((select jsonb_path_query_first(pg_temp.rep('2026-10-13','2026-10-14')->'items','$[*] ? (@.name=="Item P")')->>'costOfGoodsPaise'),'1003','P: the three one-piece sales add up to the exact cost');
 
 -- (4) The revenue allocation equals the item-sales report's: one invoice, two lines, a header discount of 3.33.
 select lives_ok($$select post_sale(pg_temp.id('shop'),null,'2026-10-12',333,0,'pf-disc',

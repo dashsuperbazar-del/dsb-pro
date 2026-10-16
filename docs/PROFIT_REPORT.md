@@ -25,13 +25,20 @@ Migration `0060_profit_report.sql`, group `profit`, function `get_profit_report(
 
 ## Why this can be trusted
 
-Hand-computed pgTAP (43 assertions): two layers, three sales, a sale that outruns the stock, a voided sale, a voided purchase
+Hand-computed pgTAP (48 assertions): two layers, three sales, a sale that outruns the stock, a voided sale, a voided purchase
 dated before the first layer (mutation-checked: without the void the figures change), a pro-rata return credit
 (9600 × 2 / 9 = 2133), an unknown-cost item and the refund of one (no phantom loss), a sale dated before its purchase
 (estimated, layer untouched), freight in unit cost, revenue equal to the item-sales report on a discounted invoice, a later period that must honour earlier consumption, margin in basis points, and
 cashier / accountant / backwards-period handling.
 
 ## Known limits
+
+- Backdated sales entered after go-live can only use layers dated on or before them; stock that existed before the system was
+  loaded as an adjustment dated today therefore shows as ESTIMATED for those sales, not known.
+- Units sold out of opening stock count as ESTIMATED once the item has any purchase, and as UNKNOWN only when it has none.
+- Cost is the purchase bill as entered; revenue includes the GST printed on sale bills. If purchase GST is entered differently
+  the margin is skewed.
+- Per-line cost rounds the running exact cost, so lines add up to the exact cost within half a paisa.
 
 - It is a report, not a ledger: it never changes stock, money or any row.
 - Revenue includes GST (a GST-registered shop's margin is overstated by the tax share).

@@ -117,7 +117,9 @@ export function ProfitReportView({ report }: { report: ProfitReport }) {
       <p class="hint">
         Sales are after discounts and include any GST printed on the bill; extra charges and
         round-off are not included. A sale return puts the item back at the cost of the original
-        sale. Voided bills and invoices are ignored.
+        sale. Voided bills and invoices are ignored. Cost is taken from your purchase bills as
+        entered; if their GST is not entered the same way as on your sales, the margin is skewed.
+        Figures for past periods can change when an earlier-dated purchase is entered later.
       </p>
     </div>
   );

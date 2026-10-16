@@ -583,7 +583,7 @@ if [[ "$partyarchive" != '0' && "$billdocs" != '2' && ! ( "$partyarchive" == '1'
  echo 'Party archive appears ahead of completed bill documents. Refusing migration.' >&2; exit 1
 fi
 
-# FIFO profit report (0060): additive classifier field, like billdocs/partyarchive. Three anchors, all or nothing.
+# FIFO profit report (0060): additive classifier field, like billdocs/partyarchive. Four anchors, all or nothing.
 profit_probe=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -F' ' <<'SQL'
 do $$ begin
  create temp table _profit_receipt (present boolean);
@@ -598,15 +598,18 @@ select (select present from _profit_receipt),
       and position('DSB_INVALID_PERIOD' in prosrc)>0 and position('profit_line_costs' in prosrc)>0)),
    (case when to_regprocedure('public.get_profit_report(uuid,date,date)') is null then false
      else has_function_privilege('authenticated','public.get_profit_report(uuid,date,date)','execute')
-      and not has_function_privilege('anon','public.get_profit_report(uuid,date,date)','execute') end)
+      and not has_function_privilege('anon','public.get_profit_report(uuid,date,date)','execute') end),
+   (case when to_regprocedure('public.profit_line_costs(uuid,uuid,date,date)') is null then false
+     else not has_function_privilege('authenticated','public.profit_line_costs(uuid,uuid,date,date)','execute')
+      and not has_function_privilege('anon','public.profit_line_costs(uuid,uuid,date,date)','execute') end)
  ) p(ok) where ok);
 SQL
 )
 read -r profit_receipt profit_anchors <<<"$(tail -n 1 <<<"$profit_probe")"
 case "$profit_receipt:$profit_anchors" in
  f:0) profit=0; needs_profit=true ;;
- f:3) profit=1; needs_profit=true ;;
- t:3) profit=2; needs_profit=false ;;
+ f:4) profit=1; needs_profit=true ;;
+ t:4) profit=2; needs_profit=false ;;
  *) echo "Profit report partial/drift state ($profit_receipt/$profit_anchors). Refusing migration." >&2; exit 1 ;;
 esac
 if [[ "$profit" == '2' ]]; then

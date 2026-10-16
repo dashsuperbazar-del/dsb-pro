@@ -28,7 +28,7 @@ declare
  v_tz text:=coalesce((select s.timezone from shops s where s.id=p_shop_id and s.tenant_id=p_tenant),'Asia/Kolkata');
  e record; v_item uuid:=null;
  q_qty numeric[]:='{}'; q_unit numeric[]:='{}'; q_known boolean[]:='{}'; v_head int:=1;
- v_last_unit numeric; v_need numeric; v_take numeric; v_known_raw numeric; v_unk_q numeric; v_est_unit numeric; v_est_q numeric;
+ v_cum numeric:=0; v_booked bigint:=0; v_line_known bigint; v_last_unit numeric; v_need numeric; v_take numeric; v_known_raw numeric; v_unk_q numeric; v_est_unit numeric; v_est_q numeric;
 begin
  for e in
   with pl0 as (
@@ -85,7 +85,7 @@ begin
   order by ev.item_id,ev.d,ev.ko,ev.ts,ev.line_no,ev.oid
  loop
   if e.item_id is distinct from v_item then
-   v_item:=e.item_id; q_qty:='{}'; q_unit:='{}'; q_known:='{}'; v_head:=1; v_last_unit:=null;
+   v_item:=e.item_id; q_qty:='{}'; q_unit:='{}'; q_known:='{}'; v_head:=1; v_last_unit:=null; v_cum:=0; v_booked:=0;
   end if;
   if e.kind='L' then
    q_qty:=q_qty||e.qty; q_unit:=q_unit||e.unit; q_known:=q_known||e.known;
@@ -99,10 +99,15 @@ begin
     if q_qty[v_head]=0 then v_head:=v_head+1; end if;
     v_need:=v_need-v_take;
    end loop;
+   if e.kind='S' then
+    -- Round the RUNNING exact cost, not each line: lines then add up to the exact cost within half a paisa
+    -- instead of losing up to half a paisa on every line (3 pieces costing 10.03 sold one by one: 3.34+3.34+3.35).
+    v_cum:=v_cum+v_known_raw; v_line_known:=round(v_cum)::bigint-v_booked; v_booked:=v_booked+v_line_known;
+   end if;
    if e.kind='S' and e.wanted then
     v_est_q:=v_unk_q+v_need;
     v_est_unit:=coalesce(v_last_unit,e.first_unit);
-    line_id:=e.oid; item_id:=e.item_id; d:=e.d; qty:=e.qty; known_cost:=round(v_known_raw)::bigint;
+    line_id:=e.oid; item_id:=e.item_id; d:=e.d; qty:=e.qty; known_cost:=v_line_known;
     if v_est_unit is null then est_qty:=0; est_cost:=0; unknown_qty:=v_est_q;
     else est_qty:=v_est_q; est_cost:=round(v_est_q*v_est_unit)::bigint; unknown_qty:=0; end if;
     return next;
@@ -110,7 +115,7 @@ begin
   end if;
  end loop;
 end $$;
-revoke all on function profit_line_costs(uuid,uuid,date,date) from public,anon,authenticated;
+revoke all on function profit_line_costs(uuid,uuid,date,date) from public,anon,authenticated,service_role;
 
 create function get_profit_report(p_shop_id uuid,p_from date,p_to date) returns jsonb
 language plpgsql stable security definer set search_path=public as $$

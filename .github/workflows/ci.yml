@@ -896,6 +896,9 @@ jobs:
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "grant execute on function get_profit_report(uuid,date,date) to anon"
           if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Anonymous access to the profit report accepted'; exit 1; fi
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "revoke execute on function get_profit_report(uuid,date,date) from anon"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "grant execute on function profit_line_costs(uuid,uuid,date,date) to authenticated"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Client access to the internal profit costing function accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "revoke execute on function profit_line_costs(uuid,uuid,date,date) from authenticated"
           grep -Fx 'needs_upgrade=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
           echo 'DISPOSABLE PROFIT REPORT UPGRADE: PASS'
       - name: Stop and erase the disposable target
