@@ -5,6 +5,7 @@ import { act } from 'preact/test-utils';
 import 'fake-indexeddb/auto';
 import { InventoryScreen } from './InventoryScreen';
 import { shopContext } from '../lib/shopContext';
+import { markCatalogDirty, resetCatalogDirtyForTests } from '../lib/catalogRead';
 const api = vi.hoisted(() => ({
   BILL_DOCUMENT_PATH:
     /^([0-9a-f-]{36})\/([0-9a-f-]{36})\/([0-9a-f-]{36})\/([0-9a-f-]{36})\.(webp|pdf)$/,
@@ -41,6 +42,7 @@ const host = document.createElement('div');
 beforeEach(() => {
   // The shared context is a module singleton; every test starts from a cold, cache-free state.
   shopContext.invalidate();
+  resetCatalogDirtyForTests();
   offline.getSyncedOfflineCatalog.mockResolvedValue(null);
   offline.runSyncNow.mockResolvedValue(undefined);
   api.getCurrentMembership.mockResolvedValue({ tenantId: 'tenant', role: 'owner' });
@@ -888,6 +890,8 @@ const hasOption = (id: string) => host.querySelectorAll(`select option[value="${
 test('SP1: after a completed device sync the catalog comes from the device and is not downloaded again', async () => {
   offline.getSyncedOfflineCatalog.mockResolvedValue({
     key: 'k1',
+    tenantId: 'tenant',
+    userId: 'user',
     items: [deviceItem('d1', 'Device One')],
   });
   await act(async () => {
@@ -900,9 +904,16 @@ test('SP1: after a completed device sync the catalog comes from the device and i
 
 test('SP1: a change synced from another device appears after the incremental cycle', async () => {
   offline.getSyncedOfflineCatalog
-    .mockResolvedValueOnce({ key: 'k1', items: [deviceItem('d1', 'Device One')] })
+    .mockResolvedValueOnce({
+      key: 'k1',
+      tenantId: 'tenant',
+      userId: 'user',
+      items: [deviceItem('d1', 'Device One')],
+    })
     .mockResolvedValue({
       key: 'k1',
+      tenantId: 'tenant',
+      userId: 'user',
       items: [deviceItem('d1', 'Device One'), deviceItem('d2', 'From Another Phone')],
     });
   await act(async () => {
@@ -914,8 +925,18 @@ test('SP1: a change synced from another device appears after the incremental cyc
 
 test('SP1: rows for a different identity are never applied to this screen', async () => {
   offline.getSyncedOfflineCatalog
-    .mockResolvedValueOnce({ key: 'user-a', items: [deviceItem('a1', 'User A Item')] })
-    .mockResolvedValue({ key: 'user-b', items: [deviceItem('b1', 'User B Item')] });
+    .mockResolvedValueOnce({
+      key: 'user-a',
+      tenantId: 'tenant',
+      userId: 'user',
+      items: [deviceItem('a1', 'User A Item')],
+    })
+    .mockResolvedValue({
+      key: 'user-b',
+      tenantId: 'tenant',
+      userId: 'user',
+      items: [deviceItem('b1', 'User B Item')],
+    });
   await act(async () => {
     render(<InventoryScreen />, host);
   });
@@ -934,4 +955,59 @@ test('SP1: a device cache that has not finished a sync falls back to the server 
   await vi.waitFor(() => expect(hasOption('a')).toBe(true));
   expect(api.listItems).toHaveBeenCalledTimes(1);
   expect(offline.runSyncNow).not.toHaveBeenCalled();
+});
+
+test('SP1: rows that belong to another user or tenant are not used even when a sync has completed', async () => {
+  offline.getSyncedOfflineCatalog.mockResolvedValue({
+    key: 'other',
+    tenantId: 'someone-elses-tenant',
+    userId: 'user',
+    items: [deviceItem('x1', 'Foreign Item')],
+  });
+  await act(async () => {
+    render(<InventoryScreen />, host);
+  });
+  await vi.waitFor(() => expect(hasOption('a')).toBe(true));
+  expect(hasOption('x1')).toBe(false);
+  expect(api.listItems).toHaveBeenCalledTimes(1);
+});
+
+test('SP1: after our own write the device copy is not trusted until a later sync cycle has covered it', async () => {
+  markCatalogDirty(Date.now() + 60_000); // a write that no completed cycle has started after yet
+  offline.getSyncedOfflineCatalog.mockImplementation(async (input?: { notBefore?: number }) =>
+    input?.notBefore
+      ? null
+      : {
+          key: 'k1',
+          tenantId: 'tenant',
+          userId: 'user',
+          items: [deviceItem('d1', 'Stale Device')],
+        },
+  );
+  await act(async () => {
+    render(<InventoryScreen />, host);
+  });
+  await vi.waitFor(() => expect(hasOption('a')).toBe(true));
+  expect(api.listItems).toHaveBeenCalledTimes(1);
+  expect(hasOption('d1')).toBe(false);
+  resetCatalogDirtyForTests();
+});
+
+test('SP1: a failing incremental sync leaves the device list in place and shows no error', async () => {
+  offline.getSyncedOfflineCatalog.mockResolvedValue({
+    key: 'k1',
+    tenantId: 'tenant',
+    userId: 'user',
+    items: [deviceItem('d1', 'Device One')],
+  });
+  offline.runSyncNow.mockRejectedValue(new Error('offline'));
+  await act(async () => {
+    render(<InventoryScreen />, host);
+  });
+  await vi.waitFor(() => expect(offline.runSyncNow).toHaveBeenCalled());
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  expect(hasOption('d1')).toBe(true);
+  expect(host.textContent).not.toContain('offline');
 });

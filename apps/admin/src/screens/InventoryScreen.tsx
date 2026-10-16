@@ -32,7 +32,7 @@ import {
   type LegacyDsbImportPlan,
 } from '@dsb-pro/core';
 import { repeatPurchase, rankedPurchaseParties } from '../lib/purchaseWorkflow';
-import { readCatalogForScreen } from '../lib/catalogRead';
+import { readCatalogForScreen, markCatalogDirty, catalogDirtySince } from '../lib/catalogRead';
 import { shopContext } from '../lib/shopContext';
 import { getSyncedOfflineCatalog, runSyncNow } from '../lib/offlineSync';
 import { paiseToDecimal, rupees } from '../lib/money';
@@ -181,7 +181,9 @@ export function InventoryScreen({
   async function refresh(fresh = false) {
     const generation = ++refreshGeneration.current;
     if (fresh) {
+      // Called right after one of our own writes: the device copy lacks it until a later cycle.
       serverAuthoritative.current = true;
+      markCatalogDirty();
       shopContext.invalidate();
     }
     const { membership, session, shopId: shop } = await shopContext.get();
@@ -197,8 +199,11 @@ export function InventoryScreen({
         ? listItems().then((rows) => ({ source: 'server' as const, items: rows }))
         : readCatalogForScreen<Item>({
             device: async () => {
-              const device = await getSyncedOfflineCatalog();
+              const device = await getSyncedOfflineCatalog({ notBefore: catalogDirtySince() });
               if (!device) return null;
+              // Rows must belong to the user and tenant this screen is acting for.
+              if (device.tenantId !== membership.tenantId || device.userId !== session.user.id)
+                return null;
               catalogKey.current = device.key;
               return device.items as unknown as Item[];
             },
@@ -226,7 +231,7 @@ export function InventoryScreen({
         if (stopped || serverAuthoritative.current || !catalogKey.current) return;
         await runSyncNow().catch(() => undefined);
         if (stopped || serverAuthoritative.current) return;
-        const device = await getSyncedOfflineCatalog();
+        const device = await getSyncedOfflineCatalog({ notBefore: catalogDirtySince() });
         if (stopped || serverAuthoritative.current || !device || device.key !== catalogKey.current)
           return;
         setItems(device.items as unknown as Item[]);

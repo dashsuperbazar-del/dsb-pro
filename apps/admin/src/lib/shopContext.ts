@@ -43,11 +43,12 @@ export function createShopContext(deps: Deps) {
   }
   function wire() {
     if (wired) return;
-    wired = true;
     try {
       deps.onAuthChange(invalidate);
+      wired = true;
     } catch {
-      // No auth client yet (tests, signed-out boot): focus/reconnect/ttl still bound the answer.
+      // No auth client yet (tests, signed-out boot): focus/reconnect/ttl still bound the answer, and the
+      // next call tries to subscribe again.
     }
     if (typeof window !== 'undefined') {
       window.addEventListener('focus', invalidate);
@@ -73,6 +74,9 @@ export function createShopContext(deps: Deps) {
         deps.getDefaultShopId(),
       ]);
       if (!membership) throw new Error('No tenant membership.');
+      if (startedIn !== generation) throw new StaleRead();
+      // The user may have switched while we waited; the answer belongs to whoever is signed in NOW.
+      if ((await deps.getSession())?.user.id !== userId) throw new StaleRead();
       if (startedIn !== generation) throw new StaleRead();
       const value = { session, membership, shopId };
       stored = { userId, at: deps.now(), value };

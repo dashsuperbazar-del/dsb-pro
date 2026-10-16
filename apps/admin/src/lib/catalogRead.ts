@@ -18,3 +18,18 @@ export async function readCatalogForScreen<T>(input: {
   }
   return { source: 'server', items: await input.server() };
 }
+
+// Our own writes (new item, import, purchase) reach the server first and the device only through a later
+// sync cycle. Until a cycle that STARTED after the write has completed, the device copy may lack it, so
+// screens read the server instead. Module-level on purpose: it must survive leaving and re-entering a screen.
+let dirtySince = 0;
+export function markCatalogDirty(now = Date.now()): void {
+  dirtySince = Math.max(dirtySince, now);
+}
+/** Tests only: start from a clean marker. */
+export function resetCatalogDirtyForTests(): void {
+  dirtySince = 0;
+}
+export function catalogDirtySince(): number {
+  return dirtySince;
+}

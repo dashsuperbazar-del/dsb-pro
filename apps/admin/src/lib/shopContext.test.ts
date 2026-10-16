@@ -120,3 +120,32 @@ test('a failed read is not cached', async () => {
   await expect(ctx.get()).rejects.toThrow('network');
   await expect(ctx.get()).resolves.toBeTruthy();
 });
+
+test('a user switch during the read never stores the old user\u2019s answer under the new user', async () => {
+  const getSession = vi
+    .fn()
+    .mockResolvedValueOnce({ user: { id: 'u1' } }) // identity at the start
+    .mockResolvedValueOnce({ user: { id: 'u2' } }) // identity after the reads: switched
+    .mockResolvedValue({ user: { id: 'u2' } });
+  const getMembership = vi
+    .fn()
+    .mockResolvedValueOnce({ tenantId: 'tenant-of-u1', role: 'owner', shopIds: ['s'] })
+    .mockResolvedValue({ tenantId: 'tenant-of-u2', role: 'cashier', shopIds: ['s'] });
+  const { ctx } = setup({ getSession: getSession as never, getMembership: getMembership as never });
+  const out = await ctx.get();
+  expect(out.membership.tenantId).toBe('tenant-of-u2');
+  expect(out.session.user.id).toBe('u2');
+});
+
+test('if subscribing to auth changes fails once, the next call subscribes again', async () => {
+  const onAuthChange = vi
+    .fn()
+    .mockImplementationOnce(() => {
+      throw new Error('no client yet');
+    })
+    .mockImplementation(() => () => {});
+  const { ctx } = setup({ onAuthChange: onAuthChange as never });
+  await ctx.get();
+  await ctx.get();
+  expect(onAuthChange).toHaveBeenCalledTimes(2);
+});
