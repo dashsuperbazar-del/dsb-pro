@@ -3,6 +3,7 @@ import { withAccountLock } from '../lib/accountLock';
 import {
   createCustomer,
   updateCustomer,
+  archiveCustomer,
   getCurrentMembership,
   getDefaultShopId,
   getShopBusinessDate,
@@ -416,6 +417,12 @@ export function CustomersScreen() {
               });
               await refreshBase();
               setMessage(`Details of ${saved.name} saved.`);
+            }}
+            onArchive={async () => {
+              await archiveCustomer(customer.id);
+              selectCustomer('');
+              await refreshBase();
+              setMessage(`${customer.name} archived.`);
             }}
           />
         )}

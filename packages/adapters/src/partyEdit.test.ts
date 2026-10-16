@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { __setSupabaseClientForTest, type DsbSupabaseClient } from './client';
-import { normalizePartyDetails, updateCustomer, updateParty } from './partyEdit';
+import {
+  archiveCustomer,
+  archiveParty,
+  normalizePartyDetails,
+  updateCustomer,
+  updateParty,
+} from './partyEdit';
 
 function fakeClient(result: { data: unknown; error: unknown }) {
   const calls: Record<string, unknown[]> = {};
@@ -117,5 +123,38 @@ describe('updateCustomer', () => {
     await expect(updateCustomer({ id: 'c1', name: 'Asha' })).rejects.toThrow(
       /already has this name/i,
     );
+  });
+});
+
+describe('archiveParty / archiveCustomer', () => {
+  function fakeRpc(result: { data: unknown; error: unknown }) {
+    const rpc = vi.fn(async () => result);
+    __setSupabaseClientForTest({ rpc } as unknown as DsbSupabaseClient);
+    return rpc;
+  }
+  it('calls the guarded server functions with the argument names they declare', async () => {
+    const rpc = fakeRpc({ data: 'p1', error: null });
+    await archiveParty('p1');
+    expect(rpc).toHaveBeenCalledWith('archive_party', { p_party_id: 'p1' });
+    await archiveCustomer('c1');
+    expect(rpc).toHaveBeenCalledWith('archive_customer', { p_customer_id: 'c1' });
+  });
+  it('explains a refusal because of ledger history in plain words', async () => {
+    fakeRpc({
+      data: null,
+      error: {
+        code: 'P0001',
+        message:
+          'DSB_PARTY_HAS_HISTORY: this supplier has bills, payments, returns or an opening balance and cannot be archived',
+      },
+    });
+    await expect(archiveParty('p1')).rejects.toThrow(
+      /has bills, payments, returns or an opening balance and cannot be archived/,
+    );
+    await expect(archiveParty('p1')).rejects.not.toThrow(/DSB_PARTY_HAS_HISTORY/);
+  });
+  it('passes other failures through the normal error classes', async () => {
+    fakeRpc({ data: null, error: { message: 'not permitted' } });
+    await expect(archiveCustomer('c1')).rejects.toThrow(/not permitted/i);
   });
 });
