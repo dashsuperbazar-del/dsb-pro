@@ -114,3 +114,25 @@ test('a receipt whose answer is lost after commit is reconciled, never recorded 
   await expect(statement).toContainText('Closing −₹25.00');
   await expect(statement.getByRole('row').filter({ hasText: 'Payment received' })).toHaveCount(1);
 });
+
+test('global search finds a customer by name and says plainly when nothing matches', async ({
+  page,
+}) => {
+  await createOwnerShop(page);
+  await page.getByRole('link', { name: 'Customers & ledger' }).click();
+  await page
+    .locator('summary')
+    .filter({ hasText: /^Add customer$/ })
+    .click();
+  await page.getByLabel('Name').fill('Searchable Customer');
+  await page.getByRole('button', { name: 'Create customer' }).click();
+  await expect(page.getByText(/Customer owes ₹0.00/)).toBeVisible();
+  await page.goto('/');
+  await page.getByRole('link', { name: 'Search', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Search', exact: true })).toBeVisible();
+  await page.getByPlaceholder('Name, SKU or phone').fill('searchab');
+  const group = page.getByLabel('Customers', { exact: true });
+  await expect(group.getByRole('link', { name: 'Searchable Customer' })).toBeVisible();
+  await page.getByPlaceholder('Name, SKU or phone').fill('zzzzqq');
+  await expect(page.getByText('No matches.')).toBeVisible();
+});

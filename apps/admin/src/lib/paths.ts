@@ -26,4 +26,5 @@ export const appRoute = {
   stockAdjust: appPath('/stock-adjust'),
   compare: appPath('/compare'),
   openings: appPath('/openings'),
+  search: appPath('/search'),
 };

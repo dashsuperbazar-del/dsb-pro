@@ -23,6 +23,7 @@ import { ExpensesScreen } from './screens/ExpensesScreen';
 import { StockAdjustScreen } from './screens/StockAdjustScreen';
 import { CompareScreen } from './screens/CompareScreen';
 import { OpeningsScreen } from './screens/OpeningsScreen';
+import { SearchScreen } from './screens/SearchScreen';
 import { DayBookTile } from './components/DayBookTile';
 import { BottomNav } from './components/BottomNav';
 import { t } from './lib/i18n';
@@ -92,6 +93,7 @@ export function App() {
         <Route path={appRoute.stockAdjust} component={StockAdjustScreen} />
         <Route path={appRoute.compare} component={CompareScreen} />
         <Route path={appRoute.openings} component={OpeningsScreen} />
+        <Route path={appRoute.search} component={SearchScreen} />
         <Route default component={() => <Home session={session} />} />
       </Router>
       {session.status === 'active' && (
@@ -124,6 +126,9 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
       <main class="dashboard">
         <div class="dashboard-heading">
           <h1>Overview</h1>
+          <a class="quiet-link" href={appRoute.search}>
+            Search
+          </a>
           <a class="quiet-link" href={appRoute.sync}>
             Sync status
           </a>
