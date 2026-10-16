@@ -12,6 +12,7 @@ export function MoreScreen({ role }: { role: Role | null }) {
       </main>
     );
   const links: [string, string, IconName][] = [
+    [appRoute.search, 'Search', 'report'],
     ...(role === 'cashier'
       ? []
       : ([
