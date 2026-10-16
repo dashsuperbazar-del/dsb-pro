@@ -111,13 +111,35 @@ test.describe('SP0 read/navigation baseline (no optimization or live target)', (
       });
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: profile.cpu });
       await cdp.send('Performance.enable');
-      const requests: { category: string; started: number; finished?: number; failed?: boolean }[] =
-        [];
+      const requests: {
+        category: string;
+        started: number;
+        finished?: number;
+        failed?: boolean;
+        detail?: string;
+      }[] = [];
       const pending = new Map<Request, (typeof requests)[number]>();
       let lastActivity = performance.now();
       page.on('request', (request) => {
         if (!['fetch', 'xhr'].includes(request.resourceType())) return;
-        const row = { category: requestCategory(request.url()), started: performance.now() };
+        const row: (typeof requests)[number] = {
+          category: requestCategory(request.url()),
+          started: performance.now(),
+        };
+        if (row.category.startsWith('rpc:phase5_sync_pull')) {
+          // Which table this page asks for = the one cursor that is not the disabled sentinel.
+          try {
+            const cursors = (
+              request.postDataJSON() as { p_cursors?: Record<string, { updatedAt: number }> }
+            ).p_cursors;
+            row.detail = Object.entries(cursors ?? {})
+              .filter(([, cursor]) => cursor.updatedAt !== Number.MAX_SAFE_INTEGER)
+              .map(([table, cursor]) => `${table}@${cursor.updatedAt}`)
+              .join(',');
+          } catch {
+            row.detail = 'unparsed';
+          }
+        }
         requests.push(row);
         pending.set(request, row);
         lastActivity = performance.now();
@@ -253,6 +275,7 @@ test.describe('SP0 read/navigation baseline (no optimization or live target)', (
         report.blockedExternalRequests = blocked.length;
         report.pendingRequests = [...pending.values()].map((row) => ({
           category: row.category,
+          detail: row.detail,
           elapsedMs: performance.now() - row.started,
         }));
         if (report.status === 'failed') {
@@ -263,6 +286,12 @@ test.describe('SP0 read/navigation baseline (no optimization or live target)', (
               totalRequests: requests.length,
               msSinceLastActivity: Math.round(now - lastActivity),
               pending: report.pendingRequests,
+              pullTimeline: requests
+                .filter((row) => row.category.startsWith('rpc:phase5_sync_pull'))
+                .map(
+                  (row) =>
+                    `${row.detail}|ago=${Math.round(now - row.started)}|ms=${row.finished ? Math.round(row.finished - row.started) : 'PENDING'}${row.failed ? '|FAILED' : ''}`,
+                ),
               lastRequests: requests.slice(-12).map((row) => ({
                 category: row.category,
                 agoMs: Math.round(now - row.started),
