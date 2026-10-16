@@ -81,7 +81,7 @@ test.describe('SP0 read/navigation baseline (no optimization or live target)', (
   test.skip(!enabled, 'Explicit disposable performance workflow only.');
   for (const profile of profiles)
     test(profile.name, async ({ browser, baseURL }, testInfo) => {
-      test.setTimeout(540_000);
+      test.setTimeout(1_800_000);
       expect(baseURL && allowedBaselineUrl(baseURL)).toBeTruthy();
       expect(process.env.PHASE6_PERF_EMAIL).toBeTruthy();
       expect(process.env.PHASE6_PERF_PASSWORD).toBeTruthy();
@@ -172,7 +172,9 @@ test.describe('SP0 read/navigation baseline (no optimization or live target)', (
       const liveCount = () =>
         [...pending.values()].filter((row) => performance.now() - row.started < STALE_REQUEST_MS)
           .length;
-      const settle = async (timeout = 30_000) => {
+      // Route settle must outlast the slowest known route: on the throttled profile Inventory re-downloads
+      // 11 catalog pages at ~4 s each (run 38889524334). The click-to-ready time is taken before settling.
+      const settle = async (timeout = 150_000) => {
         await expect
           .poll(() => liveCount() === 0 && performance.now() - lastActivity >= 200, {
             timeout,
