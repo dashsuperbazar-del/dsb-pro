@@ -39,7 +39,13 @@ export {
   revokeDevice,
 } from './devices';
 export type { Item, Party, StockRow, PurchaseLine, ItemBarcode } from './masterData';
-export { normalizePartyDetails, updateParty, updateCustomer } from './partyEdit';
+export {
+  normalizePartyDetails,
+  updateParty,
+  updateCustomer,
+  archiveParty,
+  archiveCustomer,
+} from './partyEdit';
 export type { PartyDetailsInput, NormalizedPartyDetails } from './partyEdit';
 export {
   listItems,

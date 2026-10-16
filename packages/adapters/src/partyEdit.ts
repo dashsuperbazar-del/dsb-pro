@@ -83,3 +83,21 @@ export async function updateCustomer(
   if (!data) throw new Error('That customer was not found, or it has been archived.');
   return data as Customer;
 }
+
+// Archive is soft and guarded on the server: a party with any bill, invoice, payment, return or opening
+// balance is refused, so a ledger row never loses its owner. Unused parties (typos, duplicates) archive.
+async function archive(fn: 'archive_party' | 'archive_customer', args: Record<string, string>) {
+  const { error } = await getSupabaseClient().rpc(fn, args as never);
+  if (error) {
+    const message = (error as { message?: string }).message ?? '';
+    const refusal = /^DSB_PARTY_HAS_HISTORY:\s*(.+)$/s.exec(message);
+    if (refusal) throw new Error(refusal[1]!.replace(/^./, (c) => c.toUpperCase()) + '.');
+    throw new Error(friendly(error));
+  }
+}
+export function archiveParty(partyId: string): Promise<void> {
+  return archive('archive_party', { p_party_id: partyId });
+}
+export function archiveCustomer(customerId: string): Promise<void> {
+  return archive('archive_customer', { p_customer_id: customerId });
+}

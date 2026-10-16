@@ -120,3 +120,68 @@ test('a second submit while saving is ignored', async () => {
   expect(onSave).toHaveBeenCalledTimes(1);
   await act(async () => finish());
 });
+
+const archiveButton = () =>
+  [...host.querySelectorAll('button')].find((b) => /^Archive /.test(b.textContent ?? ''));
+
+test('there is no archive control unless the caller offers one', async () => {
+  await act(async () =>
+    render(<PartyEditor kind="supplier" initial={initial} onSave={vi.fn()} />, host),
+  );
+  await openIt();
+  expect(archiveButton()).toBeUndefined();
+});
+
+test('archiving asks first, then archives, and a cancelled prompt does nothing', async () => {
+  const onArchive = vi.fn().mockResolvedValue(undefined);
+  await act(async () =>
+    render(
+      <PartyEditor kind="supplier" initial={initial} onSave={vi.fn()} onArchive={onArchive} />,
+      host,
+    ),
+  );
+  await openIt();
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  await act(async () => archiveButton()!.click());
+  expect(confirm).toHaveBeenCalled();
+  expect(confirm.mock.calls[0]![0]).toContain('Sharma Traders');
+  expect(onArchive).not.toHaveBeenCalled();
+  confirm.mockReturnValue(true);
+  await act(async () => archiveButton()!.click());
+  expect(onArchive).toHaveBeenCalledTimes(1);
+  confirm.mockRestore();
+});
+
+test('a refused archive (the party has history) shows the reason and nothing else changes', async () => {
+  const onArchive = vi
+    .fn()
+    .mockRejectedValue(new Error('This supplier has bills and cannot be archived.'));
+  await act(async () =>
+    render(
+      <PartyEditor kind="supplier" initial={initial} onSave={vi.fn()} onArchive={onArchive} />,
+      host,
+    ),
+  );
+  await openIt();
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  await act(async () => archiveButton()!.click());
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain('cannot be archived');
+  expect(host.querySelector('form')).not.toBeNull();
+});
+
+test('a second archive click while archiving is ignored', async () => {
+  let finish!: () => void;
+  const onArchive = vi.fn(() => new Promise<void>((resolve) => (finish = resolve)));
+  await act(async () =>
+    render(
+      <PartyEditor kind="customer" initial={initial} onSave={vi.fn()} onArchive={onArchive} />,
+      host,
+    ),
+  );
+  await openIt();
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  await act(async () => archiveButton()!.click());
+  await act(async () => archiveButton()?.click());
+  expect(onArchive).toHaveBeenCalledTimes(1);
+  await act(async () => finish());
+});

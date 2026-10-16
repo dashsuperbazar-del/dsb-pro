@@ -7,6 +7,7 @@ import {
   getShopBusinessDate,
   listParties,
   updateParty,
+  archiveParty,
   type Party,
   getSupplierOutstanding,
   listSupplierAllocations,
@@ -496,6 +497,12 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
                   });
                   await refreshBase();
                   setMessage(`Details of ${saved.name} saved.`);
+                }}
+                onArchive={async () => {
+                  await archiveParty(party.id);
+                  await changeParty('');
+                  await refreshBase();
+                  setMessage(`${party.name} archived.`);
                 }}
               />
             );

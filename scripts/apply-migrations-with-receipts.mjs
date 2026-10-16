@@ -16,7 +16,12 @@
 import pg from 'pg';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
-import { loadManifest, ALLOWED_GROUPS, ManifestError, REPO_ROOT } from './verify-migration-manifest.mjs';
+import {
+  loadManifest,
+  ALLOWED_GROUPS,
+  ManifestError,
+  REPO_ROOT,
+} from './verify-migration-manifest.mjs';
 
 const { Client } = pg;
 
@@ -24,7 +29,29 @@ const { Client } = pg;
 // emits its needs_<group> flags in. This is the one place that ordering is
 // duplicated as data (not logic) -- the actual state determination stays in
 // the shell classifier; this file only reads its output.
-const GROUP_ORDER = ['foundation', 'hardening', 'phase65', 'batcha', 'batchb', 'p1', 'p2', 'c0', 'c1', 'c2', 'c3', 'c3b', 'r0', 'd1', 'r0b', 'o1', 'o2', 'd2b', 'd3a', 'billdocs'];
+const GROUP_ORDER = [
+  'foundation',
+  'hardening',
+  'phase65',
+  'batcha',
+  'batchb',
+  'p1',
+  'p2',
+  'c0',
+  'c1',
+  'c2',
+  'c3',
+  'c3b',
+  'r0',
+  'd1',
+  'r0b',
+  'o1',
+  'o2',
+  'd2b',
+  'd3a',
+  'billdocs',
+  'partyarchive',
+];
 
 /**
  * Shells out to the same classifier the live CI/attended-upgrade path uses,
@@ -39,7 +66,10 @@ export function getClassifierState(databaseUrl, { repoRoot = REPO_ROOT } = {}) {
   const scriptPath = join(repoRoot, 'scripts', 'inspect-phase6-upgrade-state.sh');
   let output;
   try {
-    output = execFileSync('bash', [scriptPath, databaseUrl], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    output = execFileSync('bash', [scriptPath, databaseUrl], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
   } catch (error) {
     // execFileSync's own thrown error includes the full command and argv
     // (the database URL, which may carry a password) in its .message --
@@ -51,7 +81,8 @@ export function getClassifierState(databaseUrl, { repoRoot = REPO_ROOT } = {}) {
     // would all leak it. Re-throw a sanitized error with only the
     // classifier's own stderr (the actual refusal reason: partial/
     // out-of-order schema, wrong Phase 5 baseline), never the command/argv.
-    const rawStderr = typeof error.stderr === 'string' ? error.stderr.trim() : String(error.stderr ?? '').trim();
+    const rawStderr =
+      typeof error.stderr === 'string' ? error.stderr.trim() : String(error.stderr ?? '').trim();
     // Defense in depth beyond stripping argv above: also redact any
     // URI-shaped substring (scheme://[user[:pass]@]host...) that the
     // classifier's own stderr might contain. No real psql failure mode
@@ -60,7 +91,10 @@ export function getClassifierState(databaseUrl, { repoRoot = REPO_ROOT } = {}) {
     // reasonably raised it as plausible for some libpq error path or a
     // future wrapped tool -- this makes it unconditionally safe rather
     // than dependent on today's observed psql behavior never changing.
-    const stderr = rawStderr.replace(/[a-zA-Z][a-zA-Z0-9+.-]*:\/\/\S+/g, '<redacted-connection-string>');
+    const stderr = rawStderr.replace(
+      /[a-zA-Z][a-zA-Z0-9+.-]*:\/\/\S+/g,
+      '<redacted-connection-string>',
+    );
     // Deliberate: `cause` must NOT be the caught error itself here.
     // execFileSync's error carries the full command/argv (the database
     // URL, possibly with a password) in its own .message/.cmd fields --
@@ -147,7 +181,9 @@ export function isAmbiguousSchemaExistsCase(entry, receiptTableExists) {
 
 function usageError(message) {
   console.error(message);
-  console.error(`usage: node scripts/apply-migrations-with-receipts.mjs <database-url> <${ALLOWED_GROUPS.join('|')}|all> [...]`);
+  console.error(
+    `usage: node scripts/apply-migrations-with-receipts.mjs <database-url> <${ALLOWED_GROUPS.join('|')}|all> [...]`,
+  );
   process.exitCode = 2;
 }
 
@@ -258,7 +294,9 @@ async function main(argv) {
                     `silently accept drift; this requires reviewed forward repair, not automatic action.`,
                 );
               }
-              console.log(`Skipping ${entry.relativePath}: matching receipt already recorded (no-op).`);
+              console.log(
+                `Skipping ${entry.relativePath}: matching receipt already recorded (no-op).`,
+              );
               continue;
             }
           }
@@ -323,17 +361,18 @@ async function main(argv) {
       totalApplied += groupEntries.length;
     }
 
-    console.log(`Applied and recorded receipts for ${totalApplied} migration(s) across ${groupsInOrder.length} group(s).`);
+    console.log(
+      `Applied and recorded receipts for ${totalApplied} migration(s) across ${groupsInOrder.length} group(s).`,
+    );
   } finally {
     await client.end();
   }
 }
 
 async function tableExists(client, tableName) {
-  const result = await client.query(
-    `select to_regclass('public.' || $1) is not null as present`,
-    [tableName],
-  );
+  const result = await client.query(`select to_regclass('public.' || $1) is not null as present`, [
+    tableName,
+  ]);
   return result.rows[0].present === true;
 }
 
