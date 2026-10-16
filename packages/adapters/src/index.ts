@@ -91,6 +91,7 @@ export {
   listRecentSales,
   listCustomerBalances,
   listCustomerLedger,
+  readCustomerLedgerForStatement,
   listOpenCustomerSales,
   getSaleReceipt,
 } from './sales';
