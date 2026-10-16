@@ -61,7 +61,9 @@ test("owner can correct a customer's phone and credit limit and the change survi
   await editor.getByRole('button', { name: 'Save details' }).click();
   await expect(page.getByText('Details of Edit Me Customer saved.').first()).toBeVisible();
   await page.reload();
-  await page.getByLabel('Customer', { exact: true }).selectOption({ label: 'Edit Me Customer' });
+  await page
+    .getByRole('combobox', { name: /^Customer\b/ })
+    .selectOption({ label: 'Edit Me Customer' });
   await page
     .locator('summary')
     .filter({ hasText: /^Edit details$/ })
