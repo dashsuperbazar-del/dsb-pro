@@ -878,8 +878,29 @@ jobs:
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "create policy customers_write on customers for all using(true)"
           if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Restored broad customers policy accepted'; exit 1; fi
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "drop policy customers_write on customers"
-          grep -Fx 'needs_upgrade=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          grep -Fx 'needs_partyarchive=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
           echo 'DISPOSABLE PARTY ARCHIVE UPGRADE: PASS'
+      - name: Prove FIFO profit report upgrade (apply, no-op, tamper/drift refusal)
+        env:
+          PROOF_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          grep -Fx 'needs_profit=true' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" profit
+          grep -Fx 'needs_profit=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" profit
+          expected_checksum=$(sha256sum supabase/migrations/0060_profit_report.sql | cut -d' ' -f1)
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update app_migration_receipts set checksum_sha256=repeat('0',64) where version='0060'"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo '0060 tamper accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update app_migration_receipts set checksum_sha256='$expected_checksum' where version='0060'"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "grant execute on function get_profit_report(uuid,date,date) to anon"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Anonymous access to the profit report accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "revoke execute on function get_profit_report(uuid,date,date) from anon"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "grant execute on function profit_line_costs(uuid,uuid,date,date) to authenticated"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Client access to the internal profit costing function accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "revoke execute on function profit_line_costs(uuid,uuid,date,date) from authenticated"
+          grep -Fx 'needs_upgrade=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          echo 'DISPOSABLE PROFIT REPORT UPGRADE: PASS'
       - name: Stop and erase the disposable target
         if: always()
         run: supabase stop --workdir "$PROOF_ROOT" --no-backup
@@ -1559,6 +1580,11 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" partyarchive
+      - name: Apply FIFO profit report atomically
+        if: steps.preflight.outputs.needs_profit == 'true'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" profit
       - name: Verify live Batch B contract
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}

@@ -39,6 +39,8 @@ export {
   revokeDevice,
 } from './devices';
 export type { Item, Party, StockRow, PurchaseLine, ItemBarcode } from './masterData';
+export { getProfitReport } from './profit';
+export type { ProfitReport, ProfitSummary, ProfitItem } from './profit';
 export {
   normalizePartyDetails,
   updateParty,

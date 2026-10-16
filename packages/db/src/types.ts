@@ -3280,6 +3280,10 @@ export type Database = {
         }
         Returns: Json
       }
+      get_profit_report: {
+        Args: { p_from: string; p_shop_id: string; p_to: string }
+        Returns: Json
+      }
       get_purchase_register: {
         Args: { p_from: string; p_shop_id: string; p_to: string }
         Returns: {
@@ -3576,6 +3580,24 @@ export type Database = {
       post_stock_count: {
         Args: { p_stock_count_id: string }
         Returns: undefined
+      }
+      profit_line_costs: {
+        Args: {
+          p_from: string
+          p_shop_id: string
+          p_tenant: string
+          p_to: string
+        }
+        Returns: {
+          d: string
+          est_cost: number
+          est_qty: number
+          item_id: string
+          known_cost: number
+          line_id: string
+          qty: number
+          unknown_qty: number
+        }[]
       }
       r0_round_off: { Args: { p_total: number }; Returns: number }
       r0_sync_post_sale: {
