@@ -11,9 +11,6 @@ import {
 const enabled = process.env.SP0_NAVIGATION === '1';
 const samples = 7;
 const check = expect.configure({ timeout: 60_000 });
-// Startup-only wait for the post-login invoice-history sync to go quiet. The throttled mobile profile
-// on a shared CI runner exceeded 180 s (run 38883172633); this wait is reported, never measured.
-const STARTUP_SETTLE_MS = 480_000;
 const profiles = [
   { name: 'desktop-reference', cpu: 1, latency: 0, down: -1, up: -1 },
   {
@@ -84,7 +81,7 @@ test.describe('SP0 read/navigation baseline (no optimization or live target)', (
   test.skip(!enabled, 'Explicit disposable performance workflow only.');
   for (const profile of profiles)
     test(profile.name, async ({ browser, baseURL }, testInfo) => {
-      test.setTimeout(1_000_000);
+      test.setTimeout(540_000);
       expect(baseURL && allowedBaselineUrl(baseURL)).toBeTruthy();
       expect(process.env.PHASE6_PERF_EMAIL).toBeTruthy();
       expect(process.env.PHASE6_PERF_PASSWORD).toBeTruthy();
@@ -191,14 +188,14 @@ test.describe('SP0 read/navigation baseline (no optimization or live target)', (
         await ready(page, '/pos');
         // Initial sync still transfers invoice history after the POS catalog becomes usable.
         // Keep this separately reported startup wait out of all route measurements.
-        await settle(STARTUP_SETTLE_MS);
+        await settle(180_000);
         report.loginToCatalogReadyMs = performance.now() - startup;
         await cdp.send('Network.clearBrowserCache');
         const reload = performance.now();
         await page.reload();
         await ready(page, '/pos');
         report.httpColdReloadWithCachedCatalogMs = performance.now() - reload;
-        await settle(STARTUP_SETTLE_MS);
+        await settle(180_000);
         report.memoryAfterBootstrap = await cdp.send('Memory.getDOMCounters');
         for (let round = 0; round <= samples; round++) {
           for (const path of routes) {
