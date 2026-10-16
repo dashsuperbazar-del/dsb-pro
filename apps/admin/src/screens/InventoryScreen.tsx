@@ -1539,7 +1539,7 @@ export function InventoryScreen({
               <label>
                 Find purchase item
                 <input
-                  placeholder="Item name or SKU"
+                  placeholder="Search by name or SKU"
                   value={purchaseItemSearch}
                   onInput={(e) => {
                     setPurchaseItemSearch(e.currentTarget.value);
