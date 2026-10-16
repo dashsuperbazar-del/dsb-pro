@@ -39,6 +39,37 @@ test('owner can open customer ledger and allocation workflow', async ({ page }) 
   await expect(page.getByRole('heading', { name: 'Customer ledger' })).toBeVisible();
 });
 
+test("owner can correct a customer's phone and credit limit and the change survives a reload", async ({
+  page,
+}) => {
+  await createOwnerShop(page);
+  await page.getByRole('link', { name: 'Customers & ledger' }).click();
+  await page
+    .locator('summary')
+    .filter({ hasText: /^Add customer$/ })
+    .click();
+  await page.getByLabel('Name').fill('Edit Me Customer');
+  await page.getByRole('button', { name: 'Create customer' }).click();
+  await expect(page.getByText(/Customer owes ₹0.00/)).toBeVisible();
+  await page
+    .locator('summary')
+    .filter({ hasText: /^Edit details$/ })
+    .click();
+  const editor = page.locator('form.party-editor');
+  await editor.getByLabel('Phone').fill('98765 43210');
+  await editor.getByLabel('Credit limit').fill('1500');
+  await editor.getByRole('button', { name: 'Save details' }).click();
+  await expect(page.getByText('Details of Edit Me Customer saved.').first()).toBeVisible();
+  await page.reload();
+  await page.getByLabel('Customer', { exact: true }).selectOption({ label: 'Edit Me Customer' });
+  await page
+    .locator('summary')
+    .filter({ hasText: /^Edit details$/ })
+    .click();
+  await expect(page.locator('form.party-editor').getByLabel('Phone')).toHaveValue('98765 43210');
+  await expect(page.locator('form.party-editor').getByLabel('Credit limit')).toHaveValue('1500.00');
+});
+
 test('a receipt whose answer is lost after commit is reconciled, never recorded twice', async ({
   page,
 }) => {

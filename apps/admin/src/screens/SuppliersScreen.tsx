@@ -6,6 +6,8 @@ import {
   getDefaultShopId,
   getShopBusinessDate,
   listParties,
+  updateParty,
+  type Party,
   getSupplierOutstanding,
   listSupplierAllocations,
   listSupplierBills,
@@ -35,6 +37,7 @@ import {
   type FinancialAttempt,
 } from '../lib/offlineSync';
 import { TaskTabs } from '../components/TaskTabs';
+import { PartyEditor } from '../components/PartyEditor';
 import { SupplierStatement } from '../components/SupplierStatement';
 import { appRoute } from '../lib/paths';
 import { rupees, paiseToDecimal } from '../lib/money';
@@ -123,7 +126,7 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
   const restoredFor = useRef('');
   // The shop:party the screen currently shows; late results for any other selection are dropped.
   const current = useRef('');
-  const [allParties, setAllParties] = useState<{ id: string; name: string }[]>([]);
+  const [allParties, setAllParties] = useState<Party[]>([]);
 
   const canPost = role === 'owner' || role === 'manager';
   const isOwner = role === 'owner';
@@ -470,6 +473,29 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
             ))}
           </select>
         </label>
+        {canPost &&
+          partyId &&
+          (() => {
+            const party = allParties.find((p) => p.id === partyId);
+            if (!party) return null;
+            return (
+              <PartyEditor
+                key={party.id}
+                kind="supplier"
+                initial={{
+                  name: party.name,
+                  phone: party.phone,
+                  gstin: party.gstin,
+                  address: party.address ?? null,
+                }}
+                onSave={async (v) => {
+                  const saved = await updateParty({ id: party.id, ...v });
+                  await refreshBase();
+                  setMessage(`Details of ${saved.name} saved.`);
+                }}
+              />
+            );
+          })()}
       </section>
 
       {partyId && (

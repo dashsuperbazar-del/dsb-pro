@@ -64,7 +64,7 @@ test('Full preserves the entered cash and the advance remainder in the actual pa
   );
   await act(async () => {
     host
-      .querySelector('form')!
+      .querySelector('form:not(.party-editor)')!
       .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
   });
   expect(host.querySelector('[aria-label="Confirm payment"]')!.textContent).toContain(
@@ -80,7 +80,7 @@ test('Full never infers cash paid, even with a blank or smaller payment amount',
   expect(paid().value).toBe('5000');
   await act(async () => {
     host
-      .querySelector('form')!
+      .querySelector('form:not(.party-editor)')!
       .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
   });
   await act(async () => button('Confirm and record').click());

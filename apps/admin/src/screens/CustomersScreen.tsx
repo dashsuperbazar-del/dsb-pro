@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { withAccountLock } from '../lib/accountLock';
 import {
   createCustomer,
+  updateCustomer,
   getCurrentMembership,
   getDefaultShopId,
   getShopBusinessDate,
@@ -18,6 +19,7 @@ import {
   type CustomerLedgerRow,
   type CustomerOutstandingInvoice,
 } from '@dsb-pro/adapters';
+import { PartyEditor } from '../components/PartyEditor';
 import { TaskTabs } from '../components/TaskTabs';
 import { appRoute } from '../lib/paths';
 import {
@@ -53,6 +55,7 @@ type AllocationDraft = { saleId: string; docNo: string; checked: boolean; amount
 export function CustomersScreen() {
   const [view, setView] = useState<'receipt' | 'ledger'>('receipt');
   const [canViewSuppliers, setCanViewSuppliers] = useState(false);
+  const [canEditMaster, setCanEditMaster] = useState(false);
   const [search, setSearch] = useState('');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [balances, setBalances] = useState<Record<string, number>>({});
@@ -94,6 +97,7 @@ export function CustomersScreen() {
       getShopBusinessDate(shop),
     ]);
     setCanViewSuppliers(membership.role !== 'cashier');
+    setCanEditMaster(['owner', 'manager'].includes(membership.role));
     setTenantId(membership.tenantId);
     setShopId(shop);
     setCustomers(c);
@@ -387,6 +391,25 @@ export function CustomersScreen() {
             {(balances[customer.id] ?? 0) < 0 ? 'Advance available' : 'Customer owes'}{' '}
             {money(Math.abs(balances[customer.id] ?? 0))}
           </p>
+        )}
+        {customer && canEditMaster && (
+          <PartyEditor
+            key={customer.id}
+            kind="customer"
+            initial={{
+              name: customer.name,
+              phone: customer.phone,
+              gstin: customer.gstin,
+              address: customer.address,
+              creditLimitPaise: customer.credit_limit_paise,
+              notes: customer.notes,
+            }}
+            onSave={async (v) => {
+              const saved = await updateCustomer({ id: customer.id, ...v });
+              await refreshBase();
+              setMessage(`Details of ${saved.name} saved.`);
+            }}
+          />
         )}
       </section>
 
