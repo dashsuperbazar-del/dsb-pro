@@ -51,6 +51,7 @@ const GROUP_ORDER = [
   'd3a',
   'billdocs',
   'partyarchive',
+  'profit',
 ];
 
 /**

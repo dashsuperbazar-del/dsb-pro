@@ -3280,6 +3280,10 @@ export type Database = {
         }
         Returns: Json
       }
+      get_profit_report: {
+        Args: { p_from: string; p_shop_id: string; p_to: string }
+        Returns: Json
+      }
       get_purchase_register: {
         Args: { p_from: string; p_shop_id: string; p_to: string }
         Returns: {

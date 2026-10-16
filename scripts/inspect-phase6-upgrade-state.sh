@@ -557,9 +557,9 @@ select (select present from _partyarchive_receipt),
    (exists(select 1 from pg_policies where schemaname='public' and tablename='parties' and policyname='parties_update')
      and not exists(select 1 from pg_policies where schemaname='public' and tablename='parties' and policyname='parties_write')),
    (exists(select 1 from pg_proc where oid=to_regprocedure('public.archive_master(text,uuid)') and position('DSB_USE_ARCHIVE_PARTY' in prosrc)>0)),
-   (to_regclass('public.parties') is not null and to_regclass('public.customers') is not null
-     and not has_column_privilege('authenticated','public.parties','deleted_at','UPDATE')
-     and not has_column_privilege('authenticated','public.customers','deleted_at','UPDATE')),
+   (case when to_regclass('public.parties') is null or to_regclass('public.customers') is null then false
+     else not has_column_privilege('authenticated','public.parties','deleted_at','UPDATE')
+      and not has_column_privilege('authenticated','public.customers','deleted_at','UPDATE') end),
    (exists(select 1 from pg_indexes where schemaname='public' and indexname='customers_live_name_key')
      and not exists(select 1 from pg_constraint where conname='customers_tenant_id_normalized_name_key')),
    ((select count(*) from pg_trigger where tgname='dsb_live_party_guard' and not tgisinternal)=6)
@@ -583,11 +583,47 @@ if [[ "$partyarchive" != '0' && "$billdocs" != '2' && ! ( "$partyarchive" == '1'
  echo 'Party archive appears ahead of completed bill documents. Refusing migration.' >&2; exit 1
 fi
 
+# FIFO profit report (0060): additive classifier field, like billdocs/partyarchive. Three anchors, all or nothing.
+profit_probe=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -F' ' <<'SQL'
+do $$ begin
+ create temp table _profit_receipt (present boolean);
+ if to_regclass('public.app_migration_receipts') is not null then
+   insert into _profit_receipt select exists(select 1 from public.app_migration_receipts where version='0060');
+ else insert into _profit_receipt values(false); end if;
+end $$;
+select (select present from _profit_receipt),
+ (select count(*) from (values
+   (to_regprocedure('public.get_profit_report(uuid,date,date)') is not null),
+   (exists(select 1 from pg_proc where oid=to_regprocedure('public.get_profit_report(uuid,date,date)')
+      and position('DSB_INVALID_PERIOD' in prosrc)>0 and position('phase65_purchase_line_cap' in prosrc)>0)),
+   (case when to_regprocedure('public.get_profit_report(uuid,date,date)') is null then false
+     else has_function_privilege('authenticated','public.get_profit_report(uuid,date,date)','execute')
+      and not has_function_privilege('anon','public.get_profit_report(uuid,date,date)','execute') end)
+ ) p(ok) where ok);
+SQL
+)
+read -r profit_receipt profit_anchors <<<"$(tail -n 1 <<<"$profit_probe")"
+case "$profit_receipt:$profit_anchors" in
+ f:0) profit=0; needs_profit=true ;;
+ f:3) profit=1; needs_profit=true ;;
+ t:3) profit=2; needs_profit=false ;;
+ *) echo "Profit report partial/drift state ($profit_receipt/$profit_anchors). Refusing migration." >&2; exit 1 ;;
+esac
+if [[ "$profit" == '2' ]]; then
+ profit_expected=$(sha256sum "$repo_root/supabase/migrations/0060_profit_report.sql" | cut -d' ' -f1)
+ profit_recorded=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -c "select checksum_sha256 from public.app_migration_receipts where version='0060'")
+ [[ "$profit_expected" == "$profit_recorded" ]] || { echo '0060 receipt checksum mismatch. Refusing migration.' >&2; exit 1; }
+fi
+# A later packet is not allowed to appear ahead of its predecessor, except a full reset awaiting receipts.
+if [[ "$profit" != '0' && "$partyarchive" != '2' && ! ( "$profit" == '1' && "$partyarchive" == '1' ) ]]; then
+ echo 'Profit report appears ahead of completed party archive. Refusing migration.' >&2; exit 1
+fi
+
 emit_state() {
   local needs_foundation=$1 needs_hardening=$2 needs_phase65=$3 needs_batcha=$4 needs_batchb=$5 needs_p1=$6 needs_p2=$7 needs_c0=$8 needs_c1=$9 needs_c2=${10} needs_c3=${11} needs_c3b=${12} needs_r0=${13} needs_d1=${14} needs_r0b=${15} needs_o1=${16} needs_o2=${17} needs_d2b=${18} needs_d3a=${19}
   local needs_upgrade=true
   if [[ "$needs_foundation:$needs_hardening:$needs_phase65:$needs_batcha:$needs_batchb:$needs_p1:$needs_p2:$needs_c0:$needs_c1:$needs_c2:$needs_c3:$needs_c3b:$needs_r0:$needs_d1:$needs_r0b:$needs_o1:$needs_o2:$needs_d2b:$needs_d3a" == "false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false" ]]; then
-    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" ]]; then needs_upgrade=false; fi
+    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" ]]; then needs_upgrade=false; fi
   fi
   printf 'observed_state=%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s\n' "$foundation" "$hardening" "$phase65" "$batcha" "$batchb" "$p1" "$p2" "$c0" "$c1" "$c2" "$c3" "$c3b" "$r0" "$d1" "$r0b" "$o1" "$o2" "$d2b" "$d3a"
   printf 'needs_upgrade=%s\n' "$needs_upgrade"
@@ -614,6 +650,8 @@ emit_state() {
   printf 'needs_billdocs=%s\n' "$needs_billdocs"
   printf 'partyarchive_state=%s\n' "$partyarchive"
   printf 'needs_partyarchive=%s\n' "$needs_partyarchive"
+  printf 'profit_state=%s\n' "$profit"
+  printf 'needs_profit=%s\n' "$needs_profit"
 }
 
 # Legacy (0030-0043) classification is unchanged from before Packet P1: the
