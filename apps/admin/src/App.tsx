@@ -25,6 +25,7 @@ import { CompareScreen } from './screens/CompareScreen';
 import { OpeningsScreen } from './screens/OpeningsScreen';
 import { SearchScreen } from './screens/SearchScreen';
 import { DayBookTile } from './components/DayBookTile';
+import { AttentionTile } from './components/AttentionTile';
 import { BottomNav } from './components/BottomNav';
 import { t } from './lib/i18n';
 import { VerificationBanner } from './components/VerificationBanner';
@@ -140,6 +141,7 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
           </p>
         )}
         {session.membership.role !== 'cashier' && <DayBookTile />}
+        {session.membership.role !== 'cashier' && <AttentionTile />}
         <h2 class="section-label">Quick entry</h2>
         <nav class="quick-entry" aria-label="Quick entry">
           {session.membership.role !== 'cashier' && (
