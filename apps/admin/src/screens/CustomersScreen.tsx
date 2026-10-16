@@ -405,7 +405,15 @@ export function CustomersScreen() {
               notes: customer.notes,
             }}
             onSave={async (v) => {
-              const saved = await updateCustomer({ id: customer.id, ...v });
+              const saved = await updateCustomer({
+                id: customer.id,
+                ...v,
+                existing: {
+                  phone: customer.phone,
+                  gstin: customer.gstin,
+                  address: customer.address,
+                },
+              });
               await refreshBase();
               setMessage(`Details of ${saved.name} saved.`);
             }}

@@ -84,6 +84,18 @@ test('a bad credit limit is refused before anything is sent', async () => {
   expect(host.querySelector('[role="alert"]')?.textContent).toMatch(/credit limit/i);
 });
 
+test('a credit limit with more than two decimals is refused, never silently rounded', async () => {
+  const onSave = vi.fn();
+  await act(async () =>
+    render(<PartyEditor kind="customer" initial={initial} onSave={onSave} />, host),
+  );
+  await openIt();
+  await type('Credit limit', '1500.505');
+  await submit();
+  expect(onSave).not.toHaveBeenCalled();
+  expect(host.querySelector('[role="alert"]')?.textContent).toMatch(/credit limit/i);
+});
+
 test('a failed save shows the reason and keeps what was typed', async () => {
   const onSave = vi.fn().mockRejectedValue(new Error('Another customer already has this name.'));
   await act(async () =>

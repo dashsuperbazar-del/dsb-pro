@@ -44,6 +44,17 @@ describe('normalizePartyDetails', () => {
   });
 });
 
+describe('legacy values', () => {
+  it('does not re-validate a phone/GSTIN left exactly as stored, but still validates a changed one', () => {
+    const existing = { phone: '98765/43210', gstin: '22aaaa', address: null };
+    expect(
+      normalizePartyDetails({ name: 'A', phone: '98765/43210', gstin: '22aaaa', existing }).phone,
+    ).toBe('98765/43210');
+    expect(() => normalizePartyDetails({ name: 'A', phone: 'ext 12', existing })).toThrow(/phone/i);
+    expect(() => normalizePartyDetails({ name: 'A', gstin: '123', existing })).toThrow(/GSTIN/);
+  });
+});
+
 describe('updateParty', () => {
   it('updates only the editable columns of a live supplier by id', async () => {
     const calls = fakeClient({

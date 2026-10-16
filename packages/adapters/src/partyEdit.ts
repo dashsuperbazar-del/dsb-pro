@@ -7,7 +7,17 @@ import type { Party } from './masterData';
 // already records old and new values, and nothing here touches a ledger. Archiving is a separate, guarded step.
 const friendly = (error: unknown) => errorMessage(classifyError(error), error);
 
-export type PartyDetailsInput = { name: string; phone?: string; gstin?: string; address?: string };
+export type PartyDetailsInput = {
+  name: string;
+  phone?: string;
+  gstin?: string;
+  address?: string;
+  /**
+   * What is stored today. A phone/GSTIN/address left exactly as stored is not re-validated, so a legacy
+   * value that predates these rules never blocks an unrelated edit (e.g. fixing only a credit limit).
+   */
+  existing?: { phone?: string | null; gstin?: string | null; address?: string | null };
+};
 export type NormalizedPartyDetails = {
   name: string;
   phone: string | null;
@@ -23,13 +33,15 @@ export function normalizePartyDetails(input: PartyDetailsInput): NormalizedParty
   if (!name) throw new Error('Enter a name.');
   if (name.length > 120) throw new Error('The name is too long (120 characters at most).');
   const phone = (input.phone ?? '').trim();
-  if (phone && !PHONE.test(phone))
+  const same = (now: string, was?: string | null) => now !== '' && now === (was ?? '').trim();
+  if (phone && !same(phone, input.existing?.phone) && !PHONE.test(phone))
     throw new Error('Enter a valid phone number, or leave it empty.');
   const gstin = (input.gstin ?? '').trim().toUpperCase();
-  if (gstin && !GSTIN.test(gstin))
+  if (gstin && !same(gstin, (input.existing?.gstin ?? '').toUpperCase()) && !GSTIN.test(gstin))
     throw new Error('A GSTIN is 15 letters and digits, e.g. 22AAAAA0000A1Z5.');
   const address = (input.address ?? '').trim();
-  if (address.length > 300) throw new Error('The address is too long (300 characters at most).');
+  if (address.length > 300 && !same(address, input.existing?.address))
+    throw new Error('The address is too long (300 characters at most).');
   return { name, phone: phone || null, gstin: gstin || null, address: address || null };
 }
 

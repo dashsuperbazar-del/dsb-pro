@@ -489,7 +489,11 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
                   address: party.address ?? null,
                 }}
                 onSave={async (v) => {
-                  const saved = await updateParty({ id: party.id, ...v });
+                  const saved = await updateParty({
+                    id: party.id,
+                    ...v,
+                    existing: { phone: party.phone, gstin: party.gstin, address: party.address },
+                  });
                   await refreshBase();
                   setMessage(`Details of ${saved.name} saved.`);
                 }}

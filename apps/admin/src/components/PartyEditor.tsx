@@ -51,6 +51,8 @@ export function PartyEditor({
     const values: PartyEditorValues = { name, phone, gstin, address };
     if (kind === 'customer') {
       try {
+        // Exactly what is shown is what is stored: more than two decimals would be silently rounded.
+        if (!/^\d+(\.\d{1,2})?$/.test((creditLimit || '0').trim())) throw new Error('format');
         values.creditLimitPaise = parseRupeesToPaise(creditLimit || '0');
       } catch {
         setError('Enter the credit limit in rupees, for example 1500 or 1500.50.');
