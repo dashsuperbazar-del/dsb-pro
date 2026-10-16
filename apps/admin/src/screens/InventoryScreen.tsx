@@ -33,6 +33,7 @@ import {
 } from '@dsb-pro/core';
 import { repeatPurchase, rankedPurchaseParties } from '../lib/purchaseWorkflow';
 import { readCatalogForScreen, markCatalogDirty, catalogDirtySince } from '../lib/catalogRead';
+import { boundedItemOptions } from '../lib/itemOptions';
 import { shopContext } from '../lib/shopContext';
 import { getSyncedOfflineCatalog, runSyncNow } from '../lib/offlineSync';
 import { paiseToDecimal, rupees } from '../lib/money';
@@ -540,6 +541,8 @@ export function InventoryScreen({
   }
   const selectedItem = items.find((i) => i.id === selected);
   const purchaseLineItem = items.find((i) => i.id === purchaseLineItemId);
+  const detailPicker = boundedItemOptions(items, itemSearch, selected);
+  const purchasePicker = boundedItemOptions(items, purchaseItemSearch, purchaseLineItemId);
   const selectedStock = useMemo(
     () => stock.find((s) => s.item_id === selected)?.qty_base ?? 0,
     [stock, selected],
@@ -1119,13 +1122,19 @@ export function InventoryScreen({
             onChange={(e) => setSelected((e.currentTarget as HTMLSelectElement).value)}
           >
             <option value="">Choose…</option>
-            {items.map((i) => (
+            {detailPicker.options.map((i) => (
               <option key={i.id} value={i.id}>
                 {i.name}
               </option>
             ))}
           </select>
         </label>
+        {detailPicker.truncated && (
+          <p class="muted">
+            Showing up to 50 of {detailPicker.matches} matching items. Type in “Find stock item”
+            above to narrow the list.
+          </p>
+        )}
         {selectedItem && (
           <div aria-label="item peek">
             <strong>{selectedItem.name}</strong> · Stock {selectedStock}{' '}
@@ -1529,21 +1538,19 @@ export function InventoryScreen({
             </label>
             <fieldset>
               <legend>Add purchase line</legend>
-              {purchaseOnly && (
-                <label>
-                  Find purchase item
-                  <input
-                    placeholder="Item name or SKU"
-                    value={purchaseItemSearch}
-                    onInput={(e) => {
-                      setPurchaseItemSearch(e.currentTarget.value);
-                      setPurchaseLineItemId('');
-                      setPurchaseLineQty('');
-                      setPurchaseLinePrice('');
-                    }}
-                  />
-                </label>
-              )}
+              <label>
+                Find purchase item
+                <input
+                  placeholder="Search by name or SKU"
+                  value={purchaseItemSearch}
+                  onInput={(e) => {
+                    setPurchaseItemSearch(e.currentTarget.value);
+                    setPurchaseLineItemId('');
+                    setPurchaseLineQty('');
+                    setPurchaseLinePrice('');
+                  }}
+                />
+              </label>
               <select
                 aria-label="Purchase item"
                 name="itemId"
@@ -1556,19 +1563,18 @@ export function InventoryScreen({
                 }}
               >
                 <option value="">Item…</option>
-                {items
-                  .filter((i) =>
-                    (i.name + ' ' + (i.sku || ''))
-                      .toLowerCase()
-                      .includes(purchaseItemSearch.toLowerCase()),
-                  )
-                  .slice(0, purchaseOnly ? 50 : items.length)
-                  .map((i) => (
-                    <option key={i.id} value={i.id}>
-                      {i.name}
-                    </option>
-                  ))}
+                {purchasePicker.options.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.name}
+                  </option>
+                ))}
               </select>{' '}
+              {purchasePicker.truncated && (
+                <p class="muted">
+                  Showing up to 50 of {purchasePicker.matches} matching items. Type in “Find
+                  purchase item” to narrow the list.
+                </p>
+              )}
               <select
                 aria-label="Unit"
                 name="unitLevel"

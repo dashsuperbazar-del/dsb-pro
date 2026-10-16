@@ -33,9 +33,11 @@ async function ready(page: Page, path: string) {
     await check(
       main.getByRole('heading', { name: 'Inventory & purchases', exact: true }),
     ).toBeVisible();
+    // The catalog list is bounded to 50 rows; the line below proves all 10,000 items were loaded.
+    await check(main.getByText('Showing up to 50 matches · 10000 items')).toBeVisible();
     await check(
       main.getByRole('combobox', { name: /^Item details\b/ }).locator('option'),
-    ).toHaveCount(10001);
+    ).toHaveCount(51); // "Choose…" + 50 matches: the picker no longer renders 10,001 options
   } else if (path === '/purchases') {
     await check(main.getByRole('heading', { name: 'Purchases', exact: true })).toBeVisible();
     await check(
