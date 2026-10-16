@@ -6,7 +6,7 @@ export type LedgerRow = {
   customer_id: string;
   business_date: string;
   created_at: string;
-  entry_type: 'SALE' | 'PAYMENT' | 'REFUND' | 'SALE_RETURN';
+  entry_type: 'SALE' | 'PAYMENT' | 'REFUND' | 'SALE_RETURN' | 'OPENING';
   ref_id: string;
   reference: string | null;
   debit_paise: number;
@@ -43,6 +43,7 @@ const kinds: Record<LedgerRow['entry_type'], string> = {
   PAYMENT: 'Payment received',
   REFUND: 'Refund paid',
   SALE_RETURN: 'Sale return',
+  OPENING: 'Opening balance',
 };
 export const customerEntryKind = (kind: LedgerRow['entry_type']) => kinds[kind];
 const isPaise = (v: unknown): v is number =>

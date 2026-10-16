@@ -92,3 +92,27 @@ test('text and CSV carry the sign convention, exact rupees, and neutralise formu
   expect(csv).toContain("'=HYPERLINK");
   expect(csv).toContain('83.00');
 });
+
+test('an opening-balance row is an ordinary dated entry and carries the balance forward', () => {
+  const withOpening = [row('o', '2026-08-01', 'OPENING', 5000, 0), ...rows];
+  const s = prepareCustomerStatement(
+    withOpening,
+    13300,
+    { shopId: 's', customerId: 'c1', from: '2026-10-01', to: '2026-10-31' },
+    profile,
+    'Asha',
+    'T',
+  );
+  expect(s.openingBalancePaise).toBe('11000');
+  expect(s.closingBalancePaise).toBe('13300');
+  const all = prepareCustomerStatement(
+    withOpening,
+    13300,
+    { shopId: 's', customerId: 'c1', from: null, to: '2026-10-31' },
+    profile,
+    'Asha',
+    'T',
+  );
+  expect(all.entries[0]).toMatchObject({ kind: 'OPENING', amountPaise: '5000' });
+  expect(customerStatementText(all)).toContain('Opening balance');
+});

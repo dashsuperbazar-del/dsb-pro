@@ -42,7 +42,7 @@ export type CustomerLedgerRow = {
   customer_id: string;
   business_date: string;
   created_at: string;
-  entry_type: 'SALE' | 'PAYMENT' | 'REFUND' | 'SALE_RETURN';
+  entry_type: 'SALE' | 'PAYMENT' | 'REFUND' | 'SALE_RETURN' | 'OPENING';
   ref_id: string;
   reference: string | null;
   debit_paise: number;
