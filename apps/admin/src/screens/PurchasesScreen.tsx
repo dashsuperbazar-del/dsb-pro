@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
-  getCurrentMembership,
-  getDefaultShopId,
   listParties,
   listPurchaseHistory,
   getPurchaseDetail,
@@ -10,6 +8,7 @@ import {
 } from '@dsb-pro/adapters';
 import { BillDocumentPreview } from '../components/BillDocumentPreview';
 import { InventoryScreen } from './InventoryScreen';
+import { shopContext } from '../lib/shopContext';
 import { appRoute } from '../lib/paths';
 import { rupees } from '../lib/money';
 import { purchaseStatus } from '../lib/purchaseWorkflow';
@@ -51,16 +50,14 @@ export function PurchasesScreen({ url }: { url?: string }) {
     let active = true;
     void (async () => {
       try {
-        const m = await getCurrentMembership();
-        if (!m || !['owner', 'manager', 'accountant'].includes(m.role))
+        const { membership: m, shopId: s } = await shopContext.get();
+        if (!['owner', 'manager', 'accountant'].includes(m.role))
           throw new Error('Purchase history is restricted by your role.');
-        const s = await getDefaultShopId();
-        const p = await listParties();
         if (!active) return;
         setAllowed(true);
         setCanPost(['owner', 'manager'].includes(m.role));
         setShop(s);
-        setParties(p);
+        // refresh() reads suppliers together with the bill list; no second supplier read here.
         await refresh(s);
       } catch (e) {
         if (active) {

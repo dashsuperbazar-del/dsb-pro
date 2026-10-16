@@ -97,6 +97,10 @@ type Runtime = {
   timer: number;
   unsubscribeRealtime: (() => void) | null;
   running: Promise<void> | null;
+  /** True once a full cycle (outbox, every pull page, ack) has completed for this identity. */
+  syncedOnce: boolean;
+  /** When the most recent fully successful cycle STARTED (what it pulled is at least this fresh). */
+  lastGoodCycleStartedAt: number;
 };
 type PublicState = {
   online: boolean;
@@ -179,7 +183,15 @@ export async function startOfflineSync(input: {
   if (identity.role === 'cashier') await restrictCachedCostPrices(db);
   await recoverInterruptedOutbox(db);
   await recoverInterruptedAttempts(db);
-  runtime = { identity, db, timer: 0, unsubscribeRealtime: null, running: null };
+  runtime = {
+    identity,
+    db,
+    timer: 0,
+    unsubscribeRealtime: null,
+    running: null,
+    syncedOnce: false,
+    lastGoodCycleStartedAt: 0,
+  };
   runtime.timer = window.setInterval(() => {
     void runSyncNow();
   }, 30000);
@@ -378,6 +390,7 @@ export async function runSyncNow(): Promise<void> {
   }
   if (rt.running) return rt.running;
   rt.running = (async () => {
+    const startedAt = Date.now();
     state = { ...state, running: true, lastError: null };
     emit();
     try {
@@ -389,6 +402,8 @@ export async function runSyncNow(): Promise<void> {
       if (!(await processOutbox(rt))) return;
       const nextCursors = await pullAllPages(rt);
       await ackSync({ deviceId: rt.identity.deviceId, cursors: nextCursors });
+      rt.syncedOnce = true;
+      rt.lastGoodCycleStartedAt = startedAt;
       state = { ...state, lastCycleAt: Date.now(), lastError: null };
     } catch (error) {
       state = { ...state, lastError: reason(error) };
@@ -611,6 +626,26 @@ export function getOfflineRuntimeIdentity(): SyncIdentity | null {
 }
 export async function getOfflineItems(): Promise<SyncedItem[]> {
   return getCachedItems(requireRuntime().db);
+}
+/**
+ * The device catalog for display, or null while it could still be partial or older than `notBefore`: no
+ * completed sync cycle for this identity yet, or none that STARTED after `notBefore` (used after our own
+ * writes, which reach the device only through a later cycle). Also null if the identity changed during
+ * the read. The identity fields let the caller refuse rows that belong to anyone but the current user.
+ */
+export async function getSyncedOfflineCatalog(input: { notBefore?: number } = {}): Promise<{
+  key: string;
+  tenantId: string;
+  userId: string;
+  items: SyncedItem[];
+} | null> {
+  const rt = runtime;
+  if (!rt || !rt.syncedOnce) return null;
+  if (input.notBefore && rt.lastGoodCycleStartedAt < input.notBefore) return null;
+  const items = await getCachedItems(rt.db);
+  if (rt !== runtime) return null;
+  const { tenantId, userId, shopId, deviceId } = rt.identity;
+  return { key: `${tenantId}:${userId}:${shopId}:${deviceId}`, tenantId, userId, items };
 }
 export async function getOfflineItemCount(): Promise<number> {
   return requireRuntime().db.items.count();

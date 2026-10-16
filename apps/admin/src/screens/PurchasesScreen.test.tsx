@@ -3,8 +3,12 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { PurchasesScreen } from './PurchasesScreen';
+import { shopContext } from '../lib/shopContext';
 const api = vi.hoisted(() => ({
-  getCurrentMembership: vi.fn().mockResolvedValue({ role: 'owner' }),
+  getSession: vi.fn().mockResolvedValue({ user: { id: 'user' } }),
+  onAuthStateChange: vi.fn().mockReturnValue(() => {}),
+  getShopBusinessDate: vi.fn().mockResolvedValue('2026-10-13'),
+  getCurrentMembership: vi.fn().mockResolvedValue({ tenantId: 'tenant', role: 'owner' }),
   getDefaultShopId: vi.fn().mockResolvedValue('shop'),
   listParties: vi.fn().mockResolvedValue([]),
   listPurchaseHistory: vi.fn().mockResolvedValue([]),
@@ -18,6 +22,7 @@ vi.mock('./InventoryScreen', () => ({
 }));
 const host = document.createElement('div');
 afterEach(() => {
+  shopContext.invalidate();
   act(() => render(null, host));
   vi.clearAllMocks();
 });
