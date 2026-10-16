@@ -541,6 +541,8 @@ export function InventoryScreen({
   }
   const selectedItem = items.find((i) => i.id === selected);
   const purchaseLineItem = items.find((i) => i.id === purchaseLineItemId);
+  const detailPicker = boundedItemOptions(items, itemSearch, selected);
+  const purchasePicker = boundedItemOptions(items, purchaseItemSearch, purchaseLineItemId);
   const selectedStock = useMemo(
     () => stock.find((s) => s.item_id === selected)?.qty_base ?? 0,
     [stock, selected],
@@ -1120,17 +1122,17 @@ export function InventoryScreen({
             onChange={(e) => setSelected((e.currentTarget as HTMLSelectElement).value)}
           >
             <option value="">Choose…</option>
-            {boundedItemOptions(items, itemSearch, selected).options.map((i) => (
+            {detailPicker.options.map((i) => (
               <option key={i.id} value={i.id}>
                 {i.name}
               </option>
             ))}
           </select>
         </label>
-        {items.length > boundedItemOptions(items, itemSearch, selected).options.length && (
+        {detailPicker.truncated && (
           <p class="muted">
-            Showing up to 50 of {boundedItemOptions(items, itemSearch, selected).matches} matching
-            items. Type in “Find stock item” above to narrow the list.
+            Showing up to 50 of {detailPicker.matches} matching items. Type in “Find stock item”
+            above to narrow the list.
           </p>
         )}
         {selectedItem && (
@@ -1561,14 +1563,18 @@ export function InventoryScreen({
                 }}
               >
                 <option value="">Item…</option>
-                {boundedItemOptions(items, purchaseItemSearch, purchaseLineItemId).options.map(
-                  (i) => (
-                    <option key={i.id} value={i.id}>
-                      {i.name}
-                    </option>
-                  ),
-                )}
+                {purchasePicker.options.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.name}
+                  </option>
+                ))}
               </select>{' '}
+              {purchasePicker.truncated && (
+                <p class="muted">
+                  Showing up to 50 of {purchasePicker.matches} matching items. Type in “Find
+                  purchase item” to narrow the list.
+                </p>
+              )}
               <select
                 aria-label="Unit"
                 name="unitLevel"
