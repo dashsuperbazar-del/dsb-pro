@@ -97,6 +97,8 @@ type Runtime = {
   timer: number;
   unsubscribeRealtime: (() => void) | null;
   running: Promise<void> | null;
+  /** True once a full cycle (outbox, every pull page, ack) has completed for this identity. */
+  syncedOnce: boolean;
 };
 type PublicState = {
   online: boolean;
@@ -179,7 +181,7 @@ export async function startOfflineSync(input: {
   if (identity.role === 'cashier') await restrictCachedCostPrices(db);
   await recoverInterruptedOutbox(db);
   await recoverInterruptedAttempts(db);
-  runtime = { identity, db, timer: 0, unsubscribeRealtime: null, running: null };
+  runtime = { identity, db, timer: 0, unsubscribeRealtime: null, running: null, syncedOnce: false };
   runtime.timer = window.setInterval(() => {
     void runSyncNow();
   }, 30000);
@@ -389,6 +391,7 @@ export async function runSyncNow(): Promise<void> {
       if (!(await processOutbox(rt))) return;
       const nextCursors = await pullAllPages(rt);
       await ackSync({ deviceId: rt.identity.deviceId, cursors: nextCursors });
+      rt.syncedOnce = true;
       state = { ...state, lastCycleAt: Date.now(), lastError: null };
     } catch (error) {
       state = { ...state, lastError: reason(error) };
@@ -611,6 +614,21 @@ export function getOfflineRuntimeIdentity(): SyncIdentity | null {
 }
 export async function getOfflineItems(): Promise<SyncedItem[]> {
   return getCachedItems(requireRuntime().db);
+}
+/**
+ * The device catalog for display, or null while it could still be partial (no completed sync cycle for this
+ * identity yet) or the identity changed during the read. `key` names the identity the rows belong to so a
+ * later result can be refused if the signed-in user or shop has since changed.
+ */
+export async function getSyncedOfflineCatalog(): Promise<{
+  key: string;
+  items: SyncedItem[];
+} | null> {
+  const rt = runtime;
+  if (!rt || !rt.syncedOnce) return null;
+  const items = await getCachedItems(rt.db);
+  if (rt !== runtime) return null;
+  return { key: `${rt.identity.tenantId}:${rt.identity.userId}:${rt.identity.deviceId}`, items };
 }
 export async function getOfflineItemCount(): Promise<number> {
   return requireRuntime().db.items.count();

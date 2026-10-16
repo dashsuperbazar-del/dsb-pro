@@ -3,13 +3,10 @@ import {
   addItemBarcode,
   createItem,
   createParty,
-  getCurrentMembership,
-  getSession,
   onAuthStateChange,
   getPurchaseDetail,
   listPurchaseHistory,
   type PurchaseRecord,
-  getDefaultShopId,
   getShopBusinessDate,
   importLegacyDsbMaster,
   listCurrentPrices,
@@ -35,6 +32,9 @@ import {
   type LegacyDsbImportPlan,
 } from '@dsb-pro/core';
 import { repeatPurchase, rankedPurchaseParties } from '../lib/purchaseWorkflow';
+import { readCatalogForScreen } from '../lib/catalogRead';
+import { shopContext } from '../lib/shopContext';
+import { getSyncedOfflineCatalog, runSyncNow } from '../lib/offlineSync';
 import { paiseToDecimal, rupees } from '../lib/money';
 import { compressItemImage } from '../lib/compressImage';
 import { BillDocumentPreview } from '../components/BillDocumentPreview';
@@ -175,35 +175,65 @@ export function InventoryScreen({
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const refreshGeneration = useRef(0);
-  async function refresh() {
+  // After any server read (first load fallback, or a read that follows our own write) the screen's list is
+  // authoritative; a later device-cache pass must not replace it with possibly older rows.
+  const serverAuthoritative = useRef(false);
+  async function refresh(fresh = false) {
     const generation = ++refreshGeneration.current;
-    const membership = await getCurrentMembership();
-    if (!membership) throw new Error('No tenant membership.');
-    const shop = await getDefaultShopId();
-    const session = await getSession();
+    if (fresh) {
+      serverAuthoritative.current = true;
+      shopContext.invalidate();
+    }
+    const { membership, session, shopId: shop } = await shopContext.get();
     if (generation !== refreshGeneration.current) return;
     setTenantId(membership.tenantId);
     setShopId(shop);
-    if (session && ['owner', 'manager'].includes(membership.role)) {
+    if (['owner', 'manager'].includes(membership.role)) {
       draftUser.current = session.user.id;
       setDraftPrefix(purchaseDraftPrefix(session.user.id, shop));
     }
-    const [i, p, s, d] = await Promise.all([
-      listItems(),
+    const [catalog, p, s, d] = await Promise.all([
+      fresh
+        ? listItems().then((rows) => ({ source: 'server' as const, items: rows }))
+        : readCatalogForScreen<Item>({
+            device: async () => {
+              const device = await getSyncedOfflineCatalog();
+              if (!device) return null;
+              catalogKey.current = device.key;
+              return device.items as unknown as Item[];
+            },
+            server: listItems,
+          }),
       listParties(),
       listStock(shop),
-      getShopBusinessDate(shop),
+      shopContext.businessDate(shop),
     ]);
     if (generation !== refreshGeneration.current) return;
-    setItems(i);
+    if (catalog.source === 'server') serverAuthoritative.current = true;
+    setItems(catalog.items);
     setParties(p);
     setStock(s);
     setCatalogLoaded(true);
     setBusinessDate((value) => value || d);
   }
+  const catalogKey = useRef('');
   useEffect(() => {
-    void refresh().catch((e) => setError(String(e)));
+    let stopped = false;
+    void refresh()
+      .then(async () => {
+        // Opened from the device copy: pick up changes from other devices with one incremental sync cycle
+        // (a few small requests) instead of re-downloading the catalog. Display only.
+        if (stopped || serverAuthoritative.current || !catalogKey.current) return;
+        await runSyncNow().catch(() => undefined);
+        if (stopped || serverAuthoritative.current) return;
+        const device = await getSyncedOfflineCatalog();
+        if (stopped || serverAuthoritative.current || !device || device.key !== catalogKey.current)
+          return;
+        setItems(device.items as unknown as Item[]);
+      })
+      .catch((e) => setError(String(e)));
     return () => {
+      stopped = true;
       refreshGeneration.current++;
     };
   }, []);
@@ -564,7 +594,7 @@ export function InventoryScreen({
         clientId: legacyClientId,
       });
       setLegacyClientId(crypto.randomUUID());
-      await refresh();
+      await refresh(true);
       setLegacyPlan(null);
       setLegacyFileName('');
       setMessage(
@@ -598,7 +628,7 @@ export function InventoryScreen({
         clientId: crypto.randomUUID(),
       });
       form.reset();
-      await refresh();
+      await refresh(true);
       setMessage(`Created ${item.name}.`);
     } catch (e) {
       setError(String(e));
@@ -645,7 +675,7 @@ export function InventoryScreen({
         clientId: crypto.randomUUID(),
       });
       form.reset();
-      await refresh();
+      await refresh(true);
       if (purchaseOnly) {
         setPurchaseSupplier(party.id);
         setDraftTouched(true);
@@ -832,7 +862,7 @@ export function InventoryScreen({
       onPurchasePosted?.();
       // Refresh before announcing, as before: the screen is settled when the message appears.
       let refreshNote = '';
-      await refresh().catch((e) => (refreshNote = ` (Refresh failed: ${String(e)})`));
+      await refresh(true).catch((e) => (refreshNote = ` (Refresh failed: ${String(e)})`));
       setMessage(
         `Purchase posted (${lineCount} line${lineCount === 1 ? '' : 's'}) and stock updated.${refreshNote}`,
       );

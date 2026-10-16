@@ -4,6 +4,7 @@ import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import 'fake-indexeddb/auto';
 import { InventoryScreen } from './InventoryScreen';
+import { shopContext } from '../lib/shopContext';
 const api = vi.hoisted(() => ({
   BILL_DOCUMENT_PATH:
     /^([0-9a-f-]{36})\/([0-9a-f-]{36})\/([0-9a-f-]{36})\/([0-9a-f-]{36})\.(webp|pdf)$/,
@@ -31,8 +32,17 @@ const api = vi.hoisted(() => ({
   postPurchaseOutcome: vi.fn(),
 }));
 vi.mock('@dsb-pro/adapters', () => api);
+const offline = vi.hoisted(() => ({
+  getSyncedOfflineCatalog: vi.fn(),
+  runSyncNow: vi.fn(),
+}));
+vi.mock('../lib/offlineSync', () => offline);
 const host = document.createElement('div');
 beforeEach(() => {
+  // The shared context is a module singleton; every test starts from a cold, cache-free state.
+  shopContext.invalidate();
+  offline.getSyncedOfflineCatalog.mockResolvedValue(null);
+  offline.runSyncNow.mockResolvedValue(undefined);
   api.getCurrentMembership.mockResolvedValue({ tenantId: 'tenant', role: 'owner' });
   api.getDefaultShopId.mockResolvedValue('shop');
   vi.spyOn(window, 'confirm').mockReturnValue(true);
@@ -858,4 +868,70 @@ test('VF-016: an unreadable snapshot is listed apart, discardable, and never hid
   expect(localStorage.getItem(prefix + 'broken:w')).toBeNull();
   expect(host.textContent).not.toContain('unreadable on this device');
   expect(host.textContent).toContain('KEPT');
+});
+
+const deviceItem = (id: string, name: string) => ({
+  id,
+  name,
+  unit1: 'piece',
+  min_stock: 0,
+  sku: null,
+  unit2: null,
+  unit3: null,
+  conv1: null,
+  conv2: null,
+  tax_rate_bp: 0,
+  image_path: null,
+});
+const hasOption = (id: string) => host.querySelectorAll(`select option[value="${id}"]`).length > 0;
+
+test('SP1: after a completed device sync the catalog comes from the device and is not downloaded again', async () => {
+  offline.getSyncedOfflineCatalog.mockResolvedValue({
+    key: 'k1',
+    items: [deviceItem('d1', 'Device One')],
+  });
+  await act(async () => {
+    render(<InventoryScreen />, host);
+  });
+  await vi.waitFor(() => expect(hasOption('d1')).toBe(true));
+  expect(api.listItems).not.toHaveBeenCalled();
+  expect(offline.runSyncNow).toHaveBeenCalledTimes(1);
+});
+
+test('SP1: a change synced from another device appears after the incremental cycle', async () => {
+  offline.getSyncedOfflineCatalog
+    .mockResolvedValueOnce({ key: 'k1', items: [deviceItem('d1', 'Device One')] })
+    .mockResolvedValue({
+      key: 'k1',
+      items: [deviceItem('d1', 'Device One'), deviceItem('d2', 'From Another Phone')],
+    });
+  await act(async () => {
+    render(<InventoryScreen />, host);
+  });
+  await vi.waitFor(() => expect(hasOption('d2')).toBe(true));
+  expect(api.listItems).not.toHaveBeenCalled();
+});
+
+test('SP1: rows for a different identity are never applied to this screen', async () => {
+  offline.getSyncedOfflineCatalog
+    .mockResolvedValueOnce({ key: 'user-a', items: [deviceItem('a1', 'User A Item')] })
+    .mockResolvedValue({ key: 'user-b', items: [deviceItem('b1', 'User B Item')] });
+  await act(async () => {
+    render(<InventoryScreen />, host);
+  });
+  await vi.waitFor(() => expect(offline.runSyncNow).toHaveBeenCalled());
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  expect(hasOption('a1')).toBe(true);
+  expect(hasOption('b1')).toBe(false);
+});
+
+test('SP1: a device cache that has not finished a sync falls back to the server catalog', async () => {
+  await act(async () => {
+    render(<InventoryScreen />, host);
+  });
+  await vi.waitFor(() => expect(hasOption('a')).toBe(true));
+  expect(api.listItems).toHaveBeenCalledTimes(1);
+  expect(offline.runSyncNow).not.toHaveBeenCalled();
 });
