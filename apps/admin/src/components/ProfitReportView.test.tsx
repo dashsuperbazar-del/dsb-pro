@@ -98,6 +98,33 @@ test('an item that is only partly costed shows its profit and says how many unit
   expect(row).toContain('₹18,800.00');
 });
 
+test('the headline says "on costed sales" whenever part of the cost is estimated or missing, and plain gross profit otherwise', async () => {
+  await act(async () => render(<ProfitReportView report={base} />, host));
+  expect(text()).toContain('Profit on costed sales');
+  const exact: ProfitReport = {
+    ...base,
+    summary: {
+      ...base.summary,
+      estimatedCostPaise: '0',
+      unknownCostRevenuePaise: '0',
+      unknownCostItemCount: 0,
+      estimatedCostItemCount: 0,
+    },
+  };
+  await act(async () => render(<ProfitReportView report={exact} />, host));
+  expect(text()).toContain('Gross profit');
+  expect(text()).not.toContain('on costed sales');
+});
+
+test('a negative unknown-cost amount (a refund of uncosted sales) is not announced as sales without a cost', async () => {
+  const refund: ProfitReport = {
+    ...base,
+    summary: { ...base.summary, unknownCostRevenuePaise: '-200000', estimatedCostPaise: '0' },
+  };
+  await act(async () => render(<ProfitReportView report={refund} />, host));
+  expect(host.querySelector('[data-testid="unknown-note"]')).toBeNull();
+});
+
 test('no notes when everything was costed from purchases, and a clear empty state', async () => {
   const clean: ProfitReport = {
     ...base,

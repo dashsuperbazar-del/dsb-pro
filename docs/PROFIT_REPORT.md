@@ -7,13 +7,15 @@ Migration `0060_profit_report.sql`, group `profit`, function `get_profit_report(
 
 ## How the number is built
 
-- FIFO runs per (shop, item) over the **whole** history up to the period end, because earlier sales use up the oldest cost
-  layers. Only sale lines dated inside the period are reported.
-- **Cost layers:** purchase lines of POSTED bills (net of the bill discount) and positive stock adjustments (opening stock,
+- FIFO is simulated per (shop, item) **in time order** over the whole history up to the period end, because earlier sales use
+  up the oldest cost layers. A sale can only take layers dated on or before it. Only sale lines dated inside the period are
+  reported.
+- **Cost layers:** purchase lines of POSTED bills (net of the bill discount, plus the bill's extra charges / freight, both spread over the lines by value) and positive stock adjustments (opening stock,
   count gains), whose cost is unknown. **Consumption:** sale lines of FINALIZED invoices (cost of goods sold); negative
   adjustments and purchase returns use up layers but are not cost of goods sold.
-- **Known cost:** units matched to a purchase layer. **Estimated cost:** units with no layer left (sold before the purchase was
-  entered, or stock that predates the system), costed at the item's latest purchase unit cost and shown separately.
+- **Known cost:** units matched to a purchase layer. **Estimated cost:** units with no layer available at that time (sold before the purchase's date, or stock that
+  predates the system), costed at the latest purchase unit cost seen before the sale, else the item's first purchase cost,
+  and shown separately.
   **Unknown cost:** no purchase at all; the revenue is reported apart and is **not** in profit or margin.
 - **Revenue** is the invoice allocation the item-sales report uses (after discounts; extra charges and round-off excluded).
   GST printed on bills is inside it. Returns reduce revenue on the return's date.
@@ -23,14 +25,17 @@ Migration `0060_profit_report.sql`, group `profit`, function `get_profit_report(
 
 ## Why this can be trusted
 
-Hand-computed pgTAP (27 assertions): two layers, three sales, a sale that outruns the stock, a voided sale, a voided purchase
+Hand-computed pgTAP (43 assertions): two layers, three sales, a sale that outruns the stock, a voided sale, a voided purchase
 dated before the first layer (mutation-checked: without the void the figures change), a pro-rata return credit
-(9600 × 2 / 9 = 2133), an unknown-cost item, a later period that must honour earlier consumption, margin in basis points, and
+(9600 × 2 / 9 = 2133), an unknown-cost item and the refund of one (no phantom loss), a sale dated before its purchase
+(estimated, layer untouched), freight in unit cost, revenue equal to the item-sales report on a discounted invoice, a later period that must honour earlier consumption, margin in basis points, and
 cashier / accountant / backwards-period handling.
 
 ## Known limits
 
 - It is a report, not a ledger: it never changes stock, money or any row.
 - Revenue includes GST (a GST-registered shop's margin is overstated by the tax share).
-- Very large histories are computed on demand; the 10k-item / 100k-invoice profile has not been measured for this report.
+- Measured on a local Postgres 16 with 10k items, 100k sale lines and 50k purchase layers: 0.55 s for a day, 0.6 s for a
+  month, 1.6 s for a full year (Supabase's default limit is 8 s). Not yet measured on the CI database or a phone.
+- Adjustment dates use the shop's timezone; ordering inside one invoice follows line number.
 - Not yet validated against real shop data or old DSB output; do that on a real month before relying on it.

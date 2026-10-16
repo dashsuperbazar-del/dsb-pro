@@ -1,7 +1,7 @@
 -- Packet profit (mig 0060): read-only FIFO profit report with hand-computed expectations.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(27);
+select plan(43);
 insert into auth.users(id) values
  ('f1000000-0000-0000-0000-000000000001'),  -- owner
  ('f1000000-0000-0000-0000-000000000002'),  -- cashier
@@ -16,9 +16,13 @@ select create_tenant('PF Co','pf-co','PF Shop','pf-tenant');
 select set_config('pf.tenant',current_tenant_id()::text,false);
 select set_config('pf.shop',(select id::text from shops where tenant_id=current_tenant_id() and is_default limit 1),false);
 insert into items(tenant_id,name,unit1,client_id) values
- (current_tenant_id(),'Item A','piece','pf-a'),(current_tenant_id(),'Item B','piece','pf-b');
+ (current_tenant_id(),'Item A','piece','pf-a'),(current_tenant_id(),'Item B','piece','pf-b'),
+ (current_tenant_id(),'Item V','piece','pf-v'),(current_tenant_id(),'Item W','piece','pf-w'),(current_tenant_id(),'Item C','piece','pf-c');
 select set_config('pf.a',(select id::text from items where client_id='pf-a'),false);
 select set_config('pf.b',(select id::text from items where client_id='pf-b'),false);
+select set_config('pf.v',(select id::text from items where client_id='pf-v'),false);
+select set_config('pf.w',(select id::text from items where client_id='pf-w'),false);
+select set_config('pf.c',(select id::text from items where client_id='pf-c'),false);
 reset role;
 update shops set allow_negative_stock=true where id=pg_temp.id('shop');
 insert into tenant_users(tenant_id,user_id,role,shop_ids,status,client_id) values
@@ -26,7 +30,10 @@ insert into tenant_users(tenant_id,user_id,role,shop_ids,status,client_id) value
  (pg_temp.id('tenant'),'f1000000-0000-0000-0000-000000000003','accountant',array[pg_temp.id('shop')],'active','pf-acct');
 insert into item_prices(tenant_id,item_id,shop_id,kind,unit_level,price_paise,effective_from,client_id) values
  (pg_temp.id('tenant'),pg_temp.id('a'),pg_temp.id('shop'),'retail',1,2000,now()-interval '1 day','pf-pa'),
- (pg_temp.id('tenant'),pg_temp.id('b'),pg_temp.id('shop'),'retail',1,1000,now()-interval '1 day','pf-pb');
+ (pg_temp.id('tenant'),pg_temp.id('b'),pg_temp.id('shop'),'retail',1,1000,now()-interval '1 day','pf-pb'),
+ (pg_temp.id('tenant'),pg_temp.id('v'),pg_temp.id('shop'),'retail',1,1000,now()-interval '1 day','pf-pv'),
+ (pg_temp.id('tenant'),pg_temp.id('w'),pg_temp.id('shop'),'retail',1,1000,now()-interval '1 day','pf-pw'),
+ (pg_temp.id('tenant'),pg_temp.id('c'),pg_temp.id('shop'),'retail',1,2000,now()-interval '1 day','pf-pc');
 -- Item B: opening stock of 5 whose cost nobody knows (legacy import / count gain).
 insert into stock_movements(tenant_id,shop_id,item_id,source_type,source_id,qty_base,client_id,created_by)
  values(pg_temp.id('tenant'),pg_temp.id('shop'),pg_temp.id('b'),'ADJUSTMENT',pg_temp.id('b'),5,'pf-open-b','f1000000-0000-0000-0000-000000000001');
@@ -35,6 +42,9 @@ select pg_temp.act('f1000000-0000-0000-0000-000000000001');
 create function pg_temp.buy(p_client text,p_date date,p_qty text,p_price int) returns uuid language sql as $$
  select post_purchase(pg_temp.id('shop'),null,p_client,p_date,0,0,p_client,
   jsonb_build_array(jsonb_build_object('item_id',pg_temp.id('a'),'qty',p_qty,'unit_price_paise',p_price))) $$;
+create function pg_temp.buy_item(p_client text,p_date date,p_item text,p_qty text,p_price int,p_extra int default 0) returns uuid language sql as $$
+ select post_purchase(pg_temp.id('shop'),null,p_client,p_date,0,p_extra,p_client,
+  jsonb_build_array(jsonb_build_object('item_id',pg_temp.id(p_item),'qty',p_qty,'unit_price_paise',p_price))) $$;
 create function pg_temp.sell(p_client text,p_date date,p_item text,p_qty int,p_total int) returns uuid language sql as $$
  select post_sale(pg_temp.id('shop'),null,p_date,0,0,p_client,
   jsonb_build_array(jsonb_build_object('item_id',pg_temp.id(p_item),'unit_level',1,'qty',p_qty,'price_kind','retail','discount_paise',0)),
@@ -73,6 +83,41 @@ select lives_ok(format($$select post_return('SALE',(select sale_invoice_id from 
 select is(pg_temp.rep('2026-09-04','2026-09-06')->'summary'->>'netRevenuePaise','33000','with the return: net revenue 34000 - 4000 + 3000 (item B)');
 select is(pg_temp.rep('2026-09-04','2026-09-06')->'summary'->>'grossProfitPaise','12933','with the return: 30000 - (15867 known + 1200 estimated)');
 select is((pg_temp.rep('2026-09-04','2026-09-06')->'summary'->>'marginBp')::int,4311,'margin in basis points on costed revenue only');
+
+
+-- Review findings, each pinned by a number worked out by hand.
+-- (1) Item V has no purchase at all: 2 pcs sold and both returned. Refunding sales that never had a cost must not show
+--     up as a loss: unknown-cost revenue goes to 0 together with the net revenue, and profit stays 0.
+select lives_ok($$select set_config('pf.v1',pg_temp.sell('pf-v1','2026-10-04','v',2,2000)::text,false)$$,'item V: 2 pcs sold with no purchase on record');
+select lives_ok(format($$select post_return('SALE',%L::uuid,'2026-10-05','pf-vr',
+  jsonb_build_array(jsonb_build_object('sale_invoice_item_id',(select id from sale_invoice_items where sale_invoice_id=%L::uuid),'qty',2,'disposition','RETURN_TO_SELLABLE')),null)$$,
+  pg_temp.id('v1'),pg_temp.id('v1')),'item V: both returned the next day');
+select is((select jsonb_path_query_first(pg_temp.rep('2026-10-04','2026-10-05')->'items','$[*] ? (@.name=="Item V")')->>'grossProfitPaise'),'0','V sold and returned in one period: no profit, no loss');
+select is((select jsonb_path_query_first(pg_temp.rep('2026-10-05','2026-10-05')->'items','$[*] ? (@.name=="Item V")')->>'grossProfitPaise'),'0','V return alone in a later period: the refund is not booked as a loss');
+select is((select jsonb_path_query_first(pg_temp.rep('2026-10-05','2026-10-05')->'items','$[*] ? (@.name=="Item V")')->>'unknownCostRevenuePaise'),'-2000','the refund reduces the unknown-cost revenue instead');
+-- (2) Item W: 3 pcs sold on 10-01, but the only purchase (10 @ 5.00) is dated 10-10. A purchase dated later cannot supply
+--     an earlier sale: those 3 units are ESTIMATED (at that purchase's cost), not known, and the layer stays whole.
+select lives_ok($$select pg_temp.sell('pf-w1','2026-10-01','w',3,3000)$$,'item W: sold before any purchase');
+select lives_ok($$select pg_temp.buy_item('pf-wp','2026-10-10','w','10',500)$$,'item W: purchase dated later');
+select lives_ok($$select pg_temp.sell('pf-w2','2026-10-11','w',2,2000)$$,'item W: later sale from the 10-10 layer');
+select is((select jsonb_path_query_first(pg_temp.rep('2026-10-01','2026-10-31')->'items','$[*] ? (@.name=="Item W")')->>'estimatedCostPaise'),'1500','W: the early sale is estimated (3 x 5.00), not known');
+select is((select jsonb_path_query_first(pg_temp.rep('2026-10-01','2026-10-31')->'items','$[*] ? (@.name=="Item W")')->>'costOfGoodsPaise'),'2500','W: 1500 estimated + 2 x 5.00 known from the intact layer');
+-- (3) Item C: 10 @ 10.00 with 5.00 freight on the bill: each unit really costs 10.50. 4 sold = 42.00.
+select lives_ok($$select pg_temp.buy_item('pf-cp','2026-10-07','c','10',1000,500)$$,'item C: 10 @ 10.00 plus 5.00 freight');
+select lives_ok($$select pg_temp.sell('pf-c1','2026-10-08','c',4,8000)$$,'item C: 4 sold');
+select is((select jsonb_path_query_first(pg_temp.rep('2026-10-07','2026-10-08')->'items','$[*] ? (@.name=="Item C")')->>'costOfGoodsPaise'),'4200','C: freight is part of the unit cost');
+
+-- (4) The revenue allocation equals the item-sales report's: one invoice, two lines, a header discount of 3.33.
+select lives_ok($$select post_sale(pg_temp.id('shop'),null,'2026-10-12',333,0,'pf-disc',
+  jsonb_build_array(jsonb_build_object('item_id',pg_temp.id('a'),'unit_level',1,'qty',1,'price_kind','retail','discount_paise',0),
+                    jsonb_build_object('item_id',pg_temp.id('c'),'unit_level',1,'qty',1,'price_kind','retail','discount_paise',0)),
+  jsonb_build_array(jsonb_build_object('amount_paise',3667,'mode','cash')))$$,'a two-line sale with a header discount');
+select is((select sum((x->>'netRevenuePaise')::bigint) from jsonb_array_elements(pg_temp.rep('2026-10-12','2026-10-12')->'items') x),
+          (select sum(net_sales_paise) from get_item_sales_report(pg_temp.id('shop'),'2026-10-12','2026-10-12')),
+          'profit revenue equals the item-sales report (same allocation, per item and in total)');
+select is((select count(*) from get_item_sales_report(pg_temp.id('shop'),'2026-10-12','2026-10-12') r
+           join jsonb_array_elements(pg_temp.rep('2026-10-12','2026-10-12')->'items') x on (x->>'itemId')::uuid=r.item_id
+           and (x->>'netRevenuePaise')::bigint=r.net_sales_paise),2::bigint,'each of the two items matches individually');
 
 -- Access and input checks.
 select throws_like($$select pg_temp.rep('2026-09-05','2026-09-01')$$,'DSB_INVALID_PERIOD%','a backwards period is refused');

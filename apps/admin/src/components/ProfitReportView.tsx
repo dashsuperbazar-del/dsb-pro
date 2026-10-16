@@ -16,6 +16,11 @@ function percent(bp: number | null): string {
 export function ProfitReportView({ report }: { report: ProfitReport }) {
   const s = report.summary;
   const empty = report.items.length === 0;
+  // Positive only: after a return the unknown-cost bucket can be zero or negative, which is not a "sales" amount.
+  const hasUnknown =
+    !s.unknownCostRevenuePaise.startsWith('-') && s.unknownCostRevenuePaise !== '0';
+  const hasEstimate = s.estimatedCostPaise !== '0' && !s.estimatedCostPaise.startsWith('-');
+  const exact = !hasUnknown && !hasEstimate;
   return (
     <div>
       <p class="muted">
@@ -37,7 +42,7 @@ export function ProfitReportView({ report }: { report: ProfitReport }) {
               {rupees(s.costOfGoodsPaise)}
             </p>
             <p>
-              <strong>Gross profit</strong>
+              <strong>{exact ? 'Gross profit' : 'Profit on costed sales'}</strong>
               <br />
               {rupees(s.grossProfitPaise)}
             </p>
@@ -47,14 +52,14 @@ export function ProfitReportView({ report }: { report: ProfitReport }) {
               {percent(s.marginBp)}
             </p>
           </div>
-          {s.estimatedCostPaise !== '0' && (
+          {hasEstimate && (
             <p data-testid="estimated-note" class="hint">
               {rupees(s.estimatedCostPaise)} of the cost is estimated from the latest purchase
               price, because {s.estimatedCostItemCount} item(s) were sold before any purchase was
               recorded (opening stock, or a bill entered late). Enter the purchase to make it exact.
             </p>
           )}
-          {s.unknownCostRevenuePaise !== '0' && (
+          {hasUnknown && (
             <p data-testid="unknown-note" class="alert" role="status">
               {rupees(s.unknownCostRevenuePaise)} of sales on {s.unknownCostItemCount} item(s) have
               no purchase cost on record at all. They are not counted in profit or margin.

@@ -595,7 +595,7 @@ select (select present from _profit_receipt),
  (select count(*) from (values
    (to_regprocedure('public.get_profit_report(uuid,date,date)') is not null),
    (exists(select 1 from pg_proc where oid=to_regprocedure('public.get_profit_report(uuid,date,date)')
-      and position('DSB_INVALID_PERIOD' in prosrc)>0 and position('phase65_purchase_line_cap' in prosrc)>0)),
+      and position('DSB_INVALID_PERIOD' in prosrc)>0 and position('profit_line_costs' in prosrc)>0)),
    (case when to_regprocedure('public.get_profit_report(uuid,date,date)') is null then false
      else has_function_privilege('authenticated','public.get_profit_report(uuid,date,date)','execute')
       and not has_function_privilege('anon','public.get_profit_report(uuid,date,date)','execute') end)
