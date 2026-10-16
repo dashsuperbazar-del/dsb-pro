@@ -50,6 +50,8 @@ import {
   scanPurchaseDrafts,
   savePurchaseDraft,
   removePurchaseDraft,
+  removePurchaseDrafts,
+  staleDrafts,
   clearPurchaseDrafts,
   restorePurchaseDraft,
   type PurchaseDraft,
@@ -1303,13 +1305,45 @@ export function InventoryScreen({
               Unposted work on this device, for your account and this shop. Resume to review;
               nothing posts automatically.
             </p>
+            {staleDrafts(
+              savedDrafts.filter((s) => s.draft.clientId !== purchaseClientId),
+              Date.now(),
+              30,
+            ).length > 0 && (
+              <button
+                type="button"
+                disabled={purchaseLocked || contextBusy}
+                onClick={() => {
+                  const old = staleDrafts(
+                    savedDrafts.filter((s) => s.draft.clientId !== purchaseClientId),
+                    Date.now(),
+                    30,
+                  );
+                  if (
+                    !confirm(
+                      `Discard ${old.length} unposted draft${old.length === 1 ? '' : 's'} saved more than 30 days ago? This cannot be undone.`,
+                    )
+                  )
+                    return;
+                  try {
+                    removePurchaseDrafts(old.map((s) => s.key));
+                    refreshDrafts();
+                  } catch (e) {
+                    setDraftError(`Old drafts could not be discarded: ${String(e)}.`);
+                  }
+                }}
+              >
+                Discard drafts older than 30 days
+              </button>
+            )}
             {savedDrafts
               .filter((s) => s.draft.clientId !== purchaseClientId)
               .map((s) => (
                 <div class="context-actions" key={s.key}>
                   <span>
                     {s.draft.billNo || 'Untitled purchase'} · {s.draft.businessDate} ·{' '}
-                    {s.draft.cart.length} lines
+                    {s.draft.cart.length} lines · saved{' '}
+                    {new Date(s.draft.savedAt).toISOString().slice(0, 10)}
                   </span>
                   <button
                     type="button"
