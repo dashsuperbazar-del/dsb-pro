@@ -2975,10 +2975,12 @@ export type Database = {
         Args: { p_allocations: Json; p_client_id: string; p_payment_id: string }
         Returns: Json
       }
+      archive_customer: { Args: { p_customer_id: string }; Returns: string }
       archive_master: {
         Args: { p_id: string; p_table: string }
         Returns: string
       }
+      archive_party: { Args: { p_party_id: string }; Returns: string }
       c0_post_purchase_body: {
         Args: {
           p_bill_image_path?: string
@@ -3148,6 +3150,10 @@ export type Database = {
         Args: { p_signed?: boolean; p_value: number }
         Returns: undefined
       }
+      dsb_customer_has_history: {
+        Args: { p_customer_id: string }
+        Returns: boolean
+      }
       dsb_lock_request: {
         Args: { p_client_id: string; p_operation: string; p_tenant: string }
         Returns: undefined
@@ -3169,6 +3175,10 @@ export type Database = {
           p_tenant: string
         }
         Returns: Json
+      }
+      dsb_supplier_has_history: {
+        Args: { p_party_id: string }
+        Returns: boolean
       }
       get_customer_aging_report: {
         Args: { p_as_of: string; p_shop_id: string }
@@ -3268,6 +3278,10 @@ export type Database = {
           p_shop_id: string
           p_to: string
         }
+        Returns: Json
+      }
+      get_profit_report: {
+        Args: { p_from: string; p_shop_id: string; p_to: string }
         Returns: Json
       }
       get_purchase_register: {
@@ -3566,6 +3580,24 @@ export type Database = {
       post_stock_count: {
         Args: { p_stock_count_id: string }
         Returns: undefined
+      }
+      profit_line_costs: {
+        Args: {
+          p_from: string
+          p_shop_id: string
+          p_tenant: string
+          p_to: string
+        }
+        Returns: {
+          d: string
+          est_cost: number
+          est_qty: number
+          item_id: string
+          known_cost: number
+          line_id: string
+          qty: number
+          unknown_qty: number
+        }[]
       }
       r0_round_off: { Args: { p_total: number }; Returns: number }
       r0_sync_post_sale: {

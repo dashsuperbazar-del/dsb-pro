@@ -14,6 +14,8 @@ import {
   getItemSalesReport,
   getPurchaseRegister,
   getAgingReportV2,
+  getProfitReport,
+  type ProfitReport,
   type DayBookRow,
   type GstRow,
   type Party,
@@ -25,6 +27,7 @@ import {
   type AgingReportV2,
 } from '@dsb-pro/adapters';
 import { TaskTabs } from '../components/TaskTabs';
+import { ProfitReportView } from '../components/ProfitReportView';
 import { appRoute } from '../lib/paths';
 import { rupees } from '../lib/money';
 import { exportOfflineBillingSnapshot } from '../lib/offlineSync';
@@ -45,8 +48,10 @@ function download(name: string, content: string | Uint8Array, type: string) {
 
 export function ReportsScreen() {
   const [view, setView] = useState<
-    'money' | 'sales' | 'purchases' | 'stock' | 'outstanding' | 'recovery'
+    'money' | 'sales' | 'profit' | 'purchases' | 'stock' | 'outstanding' | 'recovery'
   >('money');
+  const [profit, setProfit] = useState<ProfitReport | null>(null);
+  const [profitBusy, setProfitBusy] = useState(false);
   const [shop, setShop] = useState('');
   const [businessDate, setBusinessDate] = useState('');
   const [from, setFrom] = useState('');
@@ -111,6 +116,23 @@ export function ReportsScreen() {
     }
   }
 
+  // Profit is heavier than the other reports (it walks the whole purchase and sales history for FIFO), so it
+  // loads only from its own tab, and a failure there never blanks the other reports.
+  async function loadProfit() {
+    if (!shop || profitBusy) return;
+    setProfitBusy(true);
+    setMsg('Loading profit…');
+    try {
+      setProfit(await getProfitReport(shop, from, to));
+      setMsg('');
+    } catch (e) {
+      setProfit(null);
+      setMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setProfitBusy(false);
+    }
+  }
+
   async function saveBackup() {
     if (!shop || !businessDate) return;
     try {
@@ -154,6 +176,7 @@ export function ReportsScreen() {
         options={[
           { value: 'money', label: 'Money' },
           { value: 'sales', label: 'Sales' },
+          { value: 'profit', label: 'Profit' },
           { value: 'purchases', label: 'Purchases' },
           { value: 'stock', label: 'Stock' },
           { value: 'outstanding', label: 'Outstanding' },
@@ -177,7 +200,11 @@ export function ReportsScreen() {
             onInput={(e) => setTo((e.target as HTMLInputElement).value)}
           />
         </label>
-        <button class="primary" disabled={!shop || !from || !to} onClick={() => void load()}>
+        <button
+          class="primary"
+          disabled={!shop || !from || !to || profitBusy}
+          onClick={() => (view === 'profit' ? void loadProfit() : void load())}
+        >
           Refresh
         </button>
         <button hidden={view !== 'recovery'} onClick={() => void saveBackup()}>
@@ -206,7 +233,7 @@ export function ReportsScreen() {
         </p>
       </section>
       <section class="card" hidden={view !== 'recovery'}>
-        <h2>Shadow run</h2>
+        <h2>Checks and opening balances</h2>
         <p>
           <a href={appRoute.compare}>Compare with old DSB</a> — balances, stock and day totals on
           one page, each exportable as CSV.
@@ -413,6 +440,14 @@ export function ReportsScreen() {
             </tbody>
           </table>
         </div>
+      </section>
+      <section class="card" hidden={view !== 'profit'}>
+        <h2>Profit</h2>
+        {profit ? (
+          <ProfitReportView report={profit} />
+        ) : (
+          <p class="muted">Choose the dates above, then press Refresh to calculate profit.</p>
+        )}
       </section>
       <section class="card" hidden={view !== 'purchases'}>
         <h2>Purchase register</h2>

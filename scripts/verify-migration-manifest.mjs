@@ -46,6 +46,8 @@ export const ALLOWED_GROUPS = Object.freeze([
   'd2b',
   'd3a',
   'billdocs',
+  'partyarchive',
+  'profit',
 ]);
 
 const VERSION_RE = /^[0-9]{4}$/;
@@ -66,34 +68,142 @@ export class ManifestError extends Error {}
 // registry was written; they must never change, because these files must
 // never change.
 const EXPECTED_LEGACY_ENTRIES = Object.freeze({
-  '0030': ['foundation', 'supabase/migrations/0030_phase6_ledgers_reports_dr.sql', 'b5dcc58cdf6712abbaa189657e15282ab5462d470b5983d7c8922a2bce2ece77'],
-  '0031': ['hardening', 'supabase/migrations/0031_phase6_sync_page_size.sql', '090a63a72920dba253324ab5d99624f2222dc7fd5c75e1708482ce0d9e6df145'],
-  '0032': ['hardening', 'supabase/migrations/0032_phase6_parallel_sync_pulls.sql', 'fb8908afef1e6fa09fc08c8835a8d94d8977a8aa6df93097d0af230793d5f446'],
-  '0033': ['hardening', 'supabase/migrations/0033_phase6_streaming_page_size.sql', '11c5a6ac4937344625fb219c14b7a430257b1c22355d6f599c9833daeca9115b'],
-  '0034': ['hardening', 'supabase/migrations/0034_phase6_integrity_hardening.sql', '10f8f2927db0f810eb585370c1fac7067e44fd6cabd453aea400fd7ec9a82a47'],
-  '0035': ['hardening', 'supabase/migrations/0035_phase6_complete_export.sql', 'abe8eedd012ced9e75bb2f2a99a6870f34f0ee19c10b4e10c7db107b3fc69eba'],
-  '0036': ['phase65', 'supabase/migrations/0036_phase65_returns.sql', '9f9e9794573185f75c94b5954859a1699f60cf4b57eec265dcf3da3ae8ba21b3'],
-  '0037': ['phase65', 'supabase/migrations/0037_phase65_offline_returns.sql', 'b443710de3b4db7ddee75a10d8b658266a63cb55ae154f60b5a62ca0bb9c0977'],
-  '0038': ['phase65', 'supabase/migrations/0038_phase65_shop_settings.sql', 'ef32cef9e6ff6d3a57b1cc25e244240b2496039c42a9904ce6fe9e85149c57d2'],
-  '0039': ['phase65', 'supabase/migrations/0039_phase65_negative_stock_override.sql', '07f5ebbcb775a28a5e6267293699cf23fc9ebf2860ce232875ffb5c025b2c7b6'],
-  '0040': ['phase65', 'supabase/migrations/0040_phase65_missing_reports.sql', 'e954abf3aa72278b84caef22636f0862b72b4e5a55a1ebef5c52c3b1c04daccb'],
-  '0041': ['batcha', 'supabase/migrations/0041_phase65_sync_cost_confidentiality.sql', '0cde20371bd91d9b1ed5f25483fa941232778f8acbf38c1fc199624b34e2ed24'],
-  '0042': ['batcha', 'supabase/migrations/0042_phase65_negative_stock_recovery.sql', 'a0935d9405eb4af10d20fdf6bb90d6238b1d89a8ea60cec6470913f06c25ee65'],
-  '0043': ['batchb', 'supabase/migrations/0043_phase65_fixed_point_sale_ack.sql', 'cb191c062c3ed9edcfdd1a4ffcb330f969fa647031176c287f95f63511d4730e'],
+  '0030': [
+    'foundation',
+    'supabase/migrations/0030_phase6_ledgers_reports_dr.sql',
+    'b5dcc58cdf6712abbaa189657e15282ab5462d470b5983d7c8922a2bce2ece77',
+  ],
+  '0031': [
+    'hardening',
+    'supabase/migrations/0031_phase6_sync_page_size.sql',
+    '090a63a72920dba253324ab5d99624f2222dc7fd5c75e1708482ce0d9e6df145',
+  ],
+  '0032': [
+    'hardening',
+    'supabase/migrations/0032_phase6_parallel_sync_pulls.sql',
+    'fb8908afef1e6fa09fc08c8835a8d94d8977a8aa6df93097d0af230793d5f446',
+  ],
+  '0033': [
+    'hardening',
+    'supabase/migrations/0033_phase6_streaming_page_size.sql',
+    '11c5a6ac4937344625fb219c14b7a430257b1c22355d6f599c9833daeca9115b',
+  ],
+  '0034': [
+    'hardening',
+    'supabase/migrations/0034_phase6_integrity_hardening.sql',
+    '10f8f2927db0f810eb585370c1fac7067e44fd6cabd453aea400fd7ec9a82a47',
+  ],
+  '0035': [
+    'hardening',
+    'supabase/migrations/0035_phase6_complete_export.sql',
+    'abe8eedd012ced9e75bb2f2a99a6870f34f0ee19c10b4e10c7db107b3fc69eba',
+  ],
+  '0036': [
+    'phase65',
+    'supabase/migrations/0036_phase65_returns.sql',
+    '9f9e9794573185f75c94b5954859a1699f60cf4b57eec265dcf3da3ae8ba21b3',
+  ],
+  '0037': [
+    'phase65',
+    'supabase/migrations/0037_phase65_offline_returns.sql',
+    'b443710de3b4db7ddee75a10d8b658266a63cb55ae154f60b5a62ca0bb9c0977',
+  ],
+  '0038': [
+    'phase65',
+    'supabase/migrations/0038_phase65_shop_settings.sql',
+    'ef32cef9e6ff6d3a57b1cc25e244240b2496039c42a9904ce6fe9e85149c57d2',
+  ],
+  '0039': [
+    'phase65',
+    'supabase/migrations/0039_phase65_negative_stock_override.sql',
+    '07f5ebbcb775a28a5e6267293699cf23fc9ebf2860ce232875ffb5c025b2c7b6',
+  ],
+  '0040': [
+    'phase65',
+    'supabase/migrations/0040_phase65_missing_reports.sql',
+    'e954abf3aa72278b84caef22636f0862b72b4e5a55a1ebef5c52c3b1c04daccb',
+  ],
+  '0041': [
+    'batcha',
+    'supabase/migrations/0041_phase65_sync_cost_confidentiality.sql',
+    '0cde20371bd91d9b1ed5f25483fa941232778f8acbf38c1fc199624b34e2ed24',
+  ],
+  '0042': [
+    'batcha',
+    'supabase/migrations/0042_phase65_negative_stock_recovery.sql',
+    'a0935d9405eb4af10d20fdf6bb90d6238b1d89a8ea60cec6470913f06c25ee65',
+  ],
+  '0043': [
+    'batchb',
+    'supabase/migrations/0043_phase65_fixed_point_sale_ack.sql',
+    'cb191c062c3ed9edcfdd1a4ffcb330f969fa647031176c287f95f63511d4730e',
+  ],
   // Merged after P1: frozen here per the in-flight rule below.
-  '0044': ['p1', 'supabase/migrations/0044_upgrade_receipts.sql', 'd08731a7a96e88da8042a1769e0e871726dfea72fee0634d5dd4364a7666716c'],
-  '0045': ['p2', 'supabase/migrations/0045_item_sales_fix.sql', '666465b6ec8c06e975da4a933f19c515f3fc690e2a2d2ba2c71b6c9529235946'],
-  '0046': ['c0', 'supabase/migrations/0046_finance_requests_and_locking.sql', 'd65404f14b6cc9d0a32407adad0605072dcbe13bc599153059dead4685748b08'],
-  '0049': ['c3', 'supabase/migrations/0049_customer_requests.sql', '076dd3ec1fbaa1ed8cdfc8e87229b58f6b0441d83164129ef9536e3042e471f8'],
-  '0048': ['c2', 'supabase/migrations/0048_supplier_ledger_fix.sql', '82f20464b0d1a4c9391b52bbdb132a776161894f05045729f8c6d32208cb338b'],
-  '0047': ['c1', 'supabase/migrations/0047_supplier_payments.sql', '16f1d50f8157194926229561126741e74881cc5f41124e5a929fab466c368d09'],
-  '0050': ['c3b', 'supabase/migrations/0050_purchase_retry_verification.sql', '1c4017af017b2706a1bbe8920ca1b8de7a6cf8fbb2d14d9b85120c2238210066'],
-  '0051': ['r0', 'supabase/migrations/0051_bill_round_off.sql', 'ad64cd733a4c6548b112d2afbf49b4190ace77a4faea0e67c670af69bffa5b70'],
-  '0052': ['d1', 'supabase/migrations/0052_aging_as_of.sql', '7bad8d7050f1234ab0ef15149f2705a6ff8a5915056bac1d0c6b3793d2a83e93'],
-  '0053': ['r0b', 'supabase/migrations/0053_return_round_off.sql', '4e86b769e3d679c32c256dfb4f1a6985887e2aec028f9aafe85faa5d99e7c38e'],
-  '0054': ['o1', 'supabase/migrations/0054_account_openings.sql', '74d8d8d1c38668228820713ee45d489c778397612b4610e6e442eba8d0d7d9cb'],
-  '0055': ['o2', 'supabase/migrations/0055_opening_settlements.sql', 'cccbe2a580dfacd2695b5d64ec43e63d36ce2a5c7c7f247c6e41dfce77593e76'],
-  '0056': ['d2b', 'supabase/migrations/0056_shop_settings_guard.sql', '37f370c6498fdc9ec14b27cf84ec61e6b51d188a4a0d5b00867b798e608c8116'],
+  '0044': [
+    'p1',
+    'supabase/migrations/0044_upgrade_receipts.sql',
+    'd08731a7a96e88da8042a1769e0e871726dfea72fee0634d5dd4364a7666716c',
+  ],
+  '0045': [
+    'p2',
+    'supabase/migrations/0045_item_sales_fix.sql',
+    '666465b6ec8c06e975da4a933f19c515f3fc690e2a2d2ba2c71b6c9529235946',
+  ],
+  '0046': [
+    'c0',
+    'supabase/migrations/0046_finance_requests_and_locking.sql',
+    'd65404f14b6cc9d0a32407adad0605072dcbe13bc599153059dead4685748b08',
+  ],
+  '0049': [
+    'c3',
+    'supabase/migrations/0049_customer_requests.sql',
+    '076dd3ec1fbaa1ed8cdfc8e87229b58f6b0441d83164129ef9536e3042e471f8',
+  ],
+  '0048': [
+    'c2',
+    'supabase/migrations/0048_supplier_ledger_fix.sql',
+    '82f20464b0d1a4c9391b52bbdb132a776161894f05045729f8c6d32208cb338b',
+  ],
+  '0047': [
+    'c1',
+    'supabase/migrations/0047_supplier_payments.sql',
+    '16f1d50f8157194926229561126741e74881cc5f41124e5a929fab466c368d09',
+  ],
+  '0050': [
+    'c3b',
+    'supabase/migrations/0050_purchase_retry_verification.sql',
+    '1c4017af017b2706a1bbe8920ca1b8de7a6cf8fbb2d14d9b85120c2238210066',
+  ],
+  '0051': [
+    'r0',
+    'supabase/migrations/0051_bill_round_off.sql',
+    'ad64cd733a4c6548b112d2afbf49b4190ace77a4faea0e67c670af69bffa5b70',
+  ],
+  '0052': [
+    'd1',
+    'supabase/migrations/0052_aging_as_of.sql',
+    '7bad8d7050f1234ab0ef15149f2705a6ff8a5915056bac1d0c6b3793d2a83e93',
+  ],
+  '0053': [
+    'r0b',
+    'supabase/migrations/0053_return_round_off.sql',
+    '4e86b769e3d679c32c256dfb4f1a6985887e2aec028f9aafe85faa5d99e7c38e',
+  ],
+  '0054': [
+    'o1',
+    'supabase/migrations/0054_account_openings.sql',
+    '74d8d8d1c38668228820713ee45d489c778397612b4610e6e442eba8d0d7d9cb',
+  ],
+  '0055': [
+    'o2',
+    'supabase/migrations/0055_opening_settlements.sql',
+    'cccbe2a580dfacd2695b5d64ec43e63d36ce2a5c7c7f247c6e41dfce77593e76',
+  ],
+  '0056': [
+    'd2b',
+    'supabase/migrations/0056_shop_settings_guard.sql',
+    '37f370c6498fdc9ec14b27cf84ec61e6b51d188a4a0d5b00867b798e608c8116',
+  ],
 });
 
 // Group/path can be frozen for an in-flight (not yet merged) entry the
@@ -107,6 +217,8 @@ const EXPECTED_LEGACY_ENTRIES = Object.freeze({
 const EXPECTED_IN_FLIGHT_GROUP_AND_PATH = Object.freeze({
   '0057': ['d3a', 'supabase/migrations/0057_export_requests.sql'],
   '0058': ['billdocs', 'supabase/migrations/0058_bill_documents.sql'],
+  '0059': ['partyarchive', 'supabase/migrations/0059_party_archive.sql'],
+  '0060': ['profit', 'supabase/migrations/0060_profit_report.sql'],
 });
 
 /**
@@ -130,28 +242,38 @@ export function loadManifest({ manifestPath = MANIFEST_PATH, repoRoot = REPO_ROO
 
     const fields = line.split(/\s+/);
     if (fields.length !== 3) {
-      throw new ManifestError(`Manifest line ${index + 1}: expected "version group path", got: ${JSON.stringify(line)}`);
+      throw new ManifestError(
+        `Manifest line ${index + 1}: expected "version group path", got: ${JSON.stringify(line)}`,
+      );
     }
     const [version, group, relativePath] = fields;
 
     if (!VERSION_RE.test(version)) {
-      throw new ManifestError(`Manifest line ${index + 1}: invalid version "${version}" (expected 4 digits)`);
+      throw new ManifestError(
+        `Manifest line ${index + 1}: invalid version "${version}" (expected 4 digits)`,
+      );
     }
     if (seenVersions.has(version)) {
       throw new ManifestError(`Manifest line ${index + 1}: duplicate version "${version}"`);
     }
     if (!(version > previousVersion)) {
-      throw new ManifestError(`Manifest line ${index + 1}: version "${version}" is not strictly greater than preceding "${previousVersion}" (manifest must be in strictly ascending order)`);
+      throw new ManifestError(
+        `Manifest line ${index + 1}: version "${version}" is not strictly greater than preceding "${previousVersion}" (manifest must be in strictly ascending order)`,
+      );
     }
     if (!ALLOWED_GROUPS.includes(group)) {
-      throw new ManifestError(`Manifest line ${index + 1}: unknown group "${group}" (allowed: ${ALLOWED_GROUPS.join(', ')})`);
+      throw new ManifestError(
+        `Manifest line ${index + 1}: unknown group "${group}" (allowed: ${ALLOWED_GROUPS.join(', ')})`,
+      );
     }
     if (seenPaths.has(relativePath)) {
       throw new ManifestError(`Manifest line ${index + 1}: duplicate path "${relativePath}"`);
     }
     const expectedPrefix = `supabase/migrations/${version}_`;
     if (!(relativePath.startsWith(expectedPrefix) && relativePath.endsWith('.sql'))) {
-      throw new ManifestError(`Manifest line ${index + 1}: path "${relativePath}" does not match version "${version}" (expected ${expectedPrefix}*.sql)`);
+      throw new ManifestError(
+        `Manifest line ${index + 1}: path "${relativePath}" does not match version "${version}" (expected ${expectedPrefix}*.sql)`,
+      );
     }
 
     const absolutePath = join(repoRoot, relativePath);
@@ -159,14 +281,20 @@ export function loadManifest({ manifestPath = MANIFEST_PATH, repoRoot = REPO_ROO
     try {
       bytes = readFileSync(absolutePath);
     } catch {
-      throw new ManifestError(`Manifest line ${index + 1}: missing migration file "${relativePath}"`);
+      throw new ManifestError(
+        `Manifest line ${index + 1}: missing migration file "${relativePath}"`,
+      );
     }
     const checksumSha256 = createHash('sha256').update(bytes).digest('hex');
 
     const expectedLegacy = EXPECTED_LEGACY_ENTRIES[version];
     if (expectedLegacy) {
       const [expectedGroup, expectedPath, expectedChecksum] = expectedLegacy;
-      if (group !== expectedGroup || relativePath !== expectedPath || checksumSha256 !== expectedChecksum) {
+      if (
+        group !== expectedGroup ||
+        relativePath !== expectedPath ||
+        checksumSha256 !== expectedChecksum
+      ) {
         throw new ManifestError(
           `Manifest line ${index + 1}: entry "${version}" does not match its frozen historical record ` +
             `(expected group "${expectedGroup}", path "${expectedPath}", checksum "${expectedChecksum}"). ` +
@@ -248,7 +376,9 @@ function main() {
       console.log(`  ${group}: ${count} file(s)`);
     }
     for (const entry of entries) {
-      console.log(`  ${entry.version} ${entry.group} ${entry.relativePath} sha256=${entry.checksumSha256}`);
+      console.log(
+        `  ${entry.version} ${entry.group} ${entry.relativePath} sha256=${entry.checksumSha256}`,
+      );
     }
   } catch (error) {
     if (error instanceof ManifestError) {

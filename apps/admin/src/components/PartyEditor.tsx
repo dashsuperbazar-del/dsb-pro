@@ -19,6 +19,7 @@ export function PartyEditor({
   kind,
   initial,
   onSave,
+  onArchive,
 }: {
   kind: 'supplier' | 'customer';
   initial: {
@@ -30,6 +31,8 @@ export function PartyEditor({
     notes?: string | null;
   };
   onSave: (values: PartyEditorValues) => Promise<void>;
+  /** Offered only to people allowed to archive. The server refuses a party that has any history. */
+  onArchive?: () => Promise<void>;
 }) {
   const [name, setName] = useState(initial.name);
   const [phone, setPhone] = useState(initial.phone ?? '');
@@ -42,6 +45,27 @@ export function PartyEditor({
   const [saved, setSaved] = useState('');
   // The fields exist only while the section is open, so a closed editor never competes with the add form.
   const [open, setOpen] = useState(false);
+
+  async function archive() {
+    if (busy) return;
+    const label = kind === 'supplier' ? 'supplier' : 'customer';
+    if (
+      !window.confirm(
+        `Archive ${initial.name}? The ${label} disappears from every list. This only works while there are no bills, sales, payments, returns or opening balances for them.`,
+      )
+    )
+      return;
+    setError('');
+    setSaved('');
+    setBusy(true);
+    try {
+      await onArchive!();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function submit(event: Event) {
     event.preventDefault();
@@ -114,6 +138,13 @@ export function PartyEditor({
           )}
           <button disabled={busy}>{busy ? 'Saving…' : 'Save details'}</button>
         </form>
+      )}
+      {open && onArchive && (
+        <p>
+          <button type="button" class="link" disabled={busy} onClick={() => void archive()}>
+            Archive this {kind}
+          </button>
+        </p>
       )}
       {error && (
         <p class="alert" role="alert">
