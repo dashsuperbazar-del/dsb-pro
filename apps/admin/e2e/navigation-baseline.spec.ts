@@ -255,6 +255,23 @@ test.describe('SP0 read/navigation baseline (no optimization or live target)', (
           category: row.category,
           elapsedMs: performance.now() - row.started,
         }));
+        if (report.status === 'failed') {
+          // Self-describing failure: what was still pending and what the last requests were.
+          const now = performance.now();
+          console.log(
+            `SP0 ${profile.name} diagnostics ${JSON.stringify({
+              totalRequests: requests.length,
+              msSinceLastActivity: Math.round(now - lastActivity),
+              pending: report.pendingRequests,
+              lastRequests: requests.slice(-12).map((row) => ({
+                category: row.category,
+                agoMs: Math.round(now - row.started),
+                durationMs: row.finished ? Math.round(row.finished - row.started) : null,
+                failed: row.failed ?? false,
+              })),
+            })}`,
+          );
+        }
         const output = process.env.SP0_RESULTS_DIR ?? testInfo.outputPath('sp0');
         await mkdir(output, { recursive: true });
         await writeFile(
