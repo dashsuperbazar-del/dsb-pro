@@ -165,9 +165,16 @@ test.describe('SP0 read/navigation baseline (no optimization or live target)', (
         const row = pending.get(response.request());
         if (row && response.status() >= 400) row.failed = true;
       });
+      // A request with no completion event for 60 s is not "live": run 38888120412 showed two sync pulls that
+      // never reported finished/failed on the throttled profile while the app re-issued the same pages and
+      // kept syncing every 30 s. Such requests stay listed in pendingRequests; they are never silently dropped.
+      const STALE_REQUEST_MS = 60_000;
+      const liveCount = () =>
+        [...pending.values()].filter((row) => performance.now() - row.started < STALE_REQUEST_MS)
+          .length;
       const settle = async (timeout = 30_000) => {
         await expect
-          .poll(() => pending.size === 0 && performance.now() - lastActivity >= 200, {
+          .poll(() => liveCount() === 0 && performance.now() - lastActivity >= 200, {
             timeout,
             intervals: [50, 100],
           })
@@ -192,6 +199,7 @@ test.describe('SP0 read/navigation baseline (no optimization or live target)', (
           'First visit follows completed catalog sync; not a fresh-device 2.5-second claim.',
           'Request counts include background XHR/fetch activity through a bounded settle window.',
           'Request interception disables Chromium HTTP cache; route revisits retain app/IndexedDB state only.',
+          'Requests with no completion event for 60 s are excluded from the quiet check and listed under pendingRequests.',
           'Seven revisit samples; empirical nearest-rank p95 is the maximum, not a population estimate.',
         ],
         measurements: measured,
