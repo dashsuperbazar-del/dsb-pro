@@ -855,12 +855,18 @@ body {
 @media print {
   .supplier-screen > :not(.supplier-ledger),
   .supplier-ledger > h2,
+  .customer-screen > :not(.customer-ledger),
+  .customer-ledger > h2,
+  .customer-statement > :not(.customer-statement-print),
   .supplier-statement > :not(.supplier-statement-print) {
     display: none !important;
   }
   .supplier-screen,
   .supplier-ledger,
-  .supplier-statement {
+  .supplier-statement,
+  .customer-screen,
+  .customer-ledger,
+  .customer-statement {
     margin: 0;
     padding: 0;
     border: 0;
@@ -868,21 +874,28 @@ body {
     max-width: none;
     width: auto;
   }
-  .supplier-screen .receipt-print {
+  .supplier-screen .receipt-print,
+  .customer-screen .receipt-print {
     position: static;
   }
-  .supplier-statement-print table {
+  .supplier-statement-print table,
+  .customer-statement-print table {
     table-layout: fixed;
     width: 100%;
   }
   .supplier-statement-print th,
   .supplier-statement-print td,
   .supplier-statement-print p,
-  .supplier-statement-print footer {
+  .supplier-statement-print footer,
+  .customer-statement-print th,
+  .customer-statement-print td,
+  .customer-statement-print p,
+  .customer-statement-print footer {
     white-space: normal;
     overflow-wrap: anywhere;
   }
-  .supplier-statement-print thead {
+  .supplier-statement-print thead,
+  .customer-statement-print thead {
     display: table-header-group;
   }
   :root,

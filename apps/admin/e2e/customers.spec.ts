@@ -37,6 +37,10 @@ test('owner can open customer ledger and allocation workflow', async ({ page }) 
     .getByRole('button', { name: 'Ledger', exact: true })
     .click();
   await expect(page.getByRole('heading', { name: 'Customer ledger' })).toBeVisible();
+  // Statement over the real PostgREST path (empty ledger: no balance row yet).
+  const empty = page.getByLabel('Prepared customer statement');
+  await expect(empty).toContainText('Closing ₹0.00');
+  await expect(empty).toContainText('No posted entries in this period.');
 });
 
 test("owner can correct a customer's phone and credit limit and the change survives a reload", async ({
@@ -104,4 +108,9 @@ test('a receipt whose answer is lost after commit is reconciled, never recorded 
   await expect(page.getByText('Receipt confirmed by the server.')).toBeVisible();
   await expect(page.getByText(/Advance available ₹25.00/)).toBeVisible();
   expect(calls).toBe(1);
+  // The confirmed receipt appears once in the verified statement (paged read + stored-balance check).
+  await tasks.getByRole('button', { name: 'Ledger', exact: true }).click();
+  const statement = page.getByLabel('Prepared customer statement');
+  await expect(statement).toContainText('Closing −₹25.00');
+  await expect(statement.getByRole('row').filter({ hasText: 'Payment received' })).toHaveCount(1);
 });

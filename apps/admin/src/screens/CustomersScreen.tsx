@@ -20,6 +20,7 @@ import {
   type CustomerLedgerRow,
   type CustomerOutstandingInvoice,
 } from '@dsb-pro/adapters';
+import { CustomerStatement } from '../components/CustomerStatement';
 import { PartyEditor } from '../components/PartyEditor';
 import { TaskTabs } from '../components/TaskTabs';
 import { appRoute } from '../lib/paths';
@@ -298,7 +299,7 @@ export function CustomersScreen() {
 
   const customer = customers.find((c) => c.id === selected);
   return (
-    <main class="page wide">
+    <main class="page wide customer-screen">
       <p>
         <a href={appRoute.home}>← Home</a>
       </p>
@@ -648,6 +649,19 @@ export function CustomersScreen() {
               </table>
             </div>
           )}
+        </section>
+      )}
+
+      {selected && view === 'ledger' && shopId && businessDate && customer && (
+        <section class="customer-ledger">
+          <h2>Statement</h2>
+          <CustomerStatement
+            key={`${shopId}:${selected}`}
+            shopId={shopId}
+            customerId={selected}
+            customerName={customer.name}
+            businessDate={businessDate}
+          />
         </section>
       )}
     </main>

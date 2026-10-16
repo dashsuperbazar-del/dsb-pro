@@ -5,8 +5,8 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
 
-- 16 October (sole builder = Claude; the user verifies and authorised "merge and continue"): merged in order #78 (PX1/SP0 + POS partial-catalog fix, `14b4c23`), #79 SP1a (`ee67489`), #80 supplier/customer edit (`321b2ea`), #81 guarded archive, migration 0059 `partyarchive` (`a0067ed`), #82 FIFO profit report, migration 0060 `profit` (`610d7c1`), #83 SP1b item pickers capped at 50 (`4ba4859`). All on green CI; #81/#82 also had `validate` on the unchanged head.
-- `main` verified: `4ba48592aa7e7f8dd697ded1e5a1720b878797b7` (16 October). Migrations 0001–0060 immutable.
+- 16 October (sole builder = Claude; the user verifies and authorised "merge and continue"): merged in order #78 (PX1/SP0 + POS partial-catalog fix, `14b4c23`), #79 SP1a (`ee67489`), #80 supplier/customer edit (`321b2ea`), #81 guarded archive, migration 0059 `partyarchive` (`a0067ed`), #82 FIFO profit report, migration 0060 `profit` (`610d7c1`), #83 SP1b item pickers capped at 50 (`4ba4859`), #84 docs, #85 VF-017 bounded draft storage (`794a797`). All on green CI; #81/#82 also had `validate` on the unchanged head.
+- `main` verified: `794a7978b77059a50015c7e73ed540718b9d1434` (16 October, after #84 docs and #85 VF-017). Migrations 0001–0060 immutable.
 - LIVE DATABASE IS NOT UPGRADED past 0058. Pending groups, in order: `partyarchive` (0059), `profit` (0060); a live `phase6_db_upgrade` applies both. Until 0059 is applied a cashier can still update customers (hole closed only in 0059). Last production deploy is `ef880da`; nothing after it is deployed. Read the preflight and get the user's approval first.
 - Measured (SP0, CI mobile-synthetic profile): Inventory revisit p50 21.4 s -> 4.9 s after SP1a; SP1b removes the 10,001-option picker (re-measure with a performance run). Navigation harness details: `docs/SPEED_BASELINE.md`.
 - Decisions 16 Oct: profit cost method = FIFO (user). Known/estimated/unknown cost kept separate; headline says "Profit on costed sales" when any is estimated/unknown; revenue includes GST. Archived suppliers/customers cannot receive new documents (trigger guard + partial unique name index) and can be archived only when they have no history (`DSB_PARTY_HAS_HISTORY`). `.prettierignore` now lists `packages/db/src/types.ts` (generated). A local Postgres harness used for SQL checks is scratch-only, not in the repo.
@@ -60,8 +60,6 @@ Before a live `phase6_db_upgrade`, list EVERY group the preflight will apply (it
 - `pnpm format:check`: all documented app files plus supported changed files; CI uses the PR base SHA. Unrelated root formatting debt is tracked separately.
 
 ## Open risks / debts
-
-- VF-017: purchase draft snapshots still store full item records without age/size caps; retain pending IDs/UNKNOWN recovery in any bounded-storage fix.
 
 - D1-lite: old `get_customer_aging_report` (current-state balances labelled as-of) stays for compatibility but the
   UI no longer calls it. 100k-invoice EXPLAIN not done (one shop; revisit at S1). Cash counts as assigned only
