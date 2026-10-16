@@ -22,6 +22,23 @@ export type PurchaseDraft = {
   documentIssue?: string;
 };
 export type SavedPurchaseDraft = { key: string; draft: PurchaseDraft };
+// VF-017: a snapshot stores only what restore compares (id, name, units, conversions); restore swaps in
+// the current catalog row. Whole item records made drafts large and could fill the device quota.
+export const MAX_DRAFT_BYTES = 200_000;
+const SNAP_KEYS = ['id', 'name', 'unit1', 'unit2', 'unit3', 'conv1', 'conv2'] as const;
+function compactItem(i: Item): Item {
+  const out: Record<string, unknown> = {};
+  for (const k of SNAP_KEYS)
+    if ((i as Record<string, unknown>)[k] !== undefined) out[k] = (i as Record<string, unknown>)[k];
+  return out as unknown as Item;
+}
+function compactDraft(d: PurchaseDraft): PurchaseDraft {
+  return {
+    ...d,
+    cart: d.cart.map((l) => ({ ...l, item: compactItem(l.item) })),
+    lineItem: d.lineItem ? compactItem(d.lineItem) : null,
+  };
+}
 export function purchaseDraftPrefix(userId: string, shopId: string) {
   if (!userId || !shopId) throw new Error('Sign in and select a shop to save a draft.');
   return `dsb-purchase-draft:${encodeURIComponent(userId)}:${encodeURIComponent(shopId)}:`;
@@ -113,13 +130,24 @@ export function listPurchaseDrafts(prefix: string): SavedPurchaseDraft[] {
 // Restored snapshots keep their posting identity: two windows cannot post the same draft twice.
 export function savePurchaseDraft(prefix: string, writer: string, draft: PurchaseDraft): string {
   const key = `${prefix}${draft.clientId}:${writer}`;
-  const text = JSON.stringify(checked(draft));
+  const text = JSON.stringify(compactDraft(checked(draft)));
+  if (text.length > MAX_DRAFT_BYTES)
+    throw new Error(
+      `This draft is too large to save on this device (${draft.cart.length} lines). Post it in smaller bills; the page keeps your work meanwhile`,
+    );
   localStorage.setItem(key, text);
   if (localStorage.getItem(key) !== text) throw new Error('This device did not keep the draft.');
   return key;
 }
 export function removePurchaseDraft(key: string) {
   localStorage.removeItem(key);
+}
+// Explicit user action only: snapshots older than the cut-off, listed first and never removed silently.
+export function staleDrafts(drafts: SavedPurchaseDraft[], now: number, days: number) {
+  return drafts.filter((s) => now - s.draft.savedAt > days * 86_400_000);
+}
+export function removePurchaseDrafts(keys: string[]) {
+  for (const key of keys) localStorage.removeItem(key);
 }
 export function clearPurchaseDrafts(prefix: string, clientId: string) {
   // Remove only snapshots belonging to the server-confirmed request.

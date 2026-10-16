@@ -8,6 +8,8 @@ import {
   clearPurchaseDrafts,
   scanPurchaseDrafts,
   restorePurchaseDraft,
+  staleDrafts,
+  removePurchaseDrafts,
   type PurchaseDraft,
 } from './purchaseDraft';
 const item = { id: 'a', name: 'Oil', unit1: 'case', unit2: 'jar', conv1: 6 } as Item;
@@ -89,4 +91,53 @@ test('VF-016: a save succeeds and returns its key even beside an unreadable snap
   const prefix = purchaseDraftPrefix('u', 's');
   localStorage.setItem(prefix + 'broken:w', '{');
   expect(savePurchaseDraft(prefix, 'one', draft())).toBe(prefix + 'request:one');
+});
+
+test('VF-017: a saved line keeps only what restore compares, not the whole item record', () => {
+  const prefix = purchaseDraftPrefix('u', 's');
+  const big = {
+    ...item,
+    description: 'x'.repeat(5000),
+    image: 'y'.repeat(5000),
+  } as unknown as Item;
+  const d = {
+    ...draft(),
+    cart: [{ item: big, qty: '1', unitLevel: 1 as const, unitPricePaise: 100 }],
+    lineItem: big,
+  };
+  const key = savePurchaseDraft(prefix, 'w', d);
+  const raw = localStorage.getItem(key) as string;
+  expect(raw.length).toBeLessThan(1500);
+  expect(raw).not.toContain('xxxx');
+  const back = listPurchaseDrafts(prefix)[0].draft;
+  expect(back.cart[0].item).toEqual(item);
+  expect(restorePurchaseDraft(back, [item], []).cart[0].item).toBe(item);
+});
+
+test('VF-017: an oversized draft is refused with a plain message and nothing is half-written', () => {
+  const prefix = purchaseDraftPrefix('u', 's');
+  const lines = Array.from({ length: 4000 }, (_, i) => ({
+    item: { ...item, id: `i${i}`, name: 'N'.repeat(60) } as Item,
+    qty: '1',
+    unitLevel: 1 as const,
+    unitPricePaise: 100,
+  }));
+  expect(() =>
+    savePurchaseDraft(prefix, 'w', { ...draft(), cart: lines, editingLine: null }),
+  ).toThrow(/too large/i);
+  expect(localStorage.length).toBe(0);
+});
+
+test('VF-017: staleDrafts lists only snapshots older than the cut-off; removing is explicit', () => {
+  const prefix = purchaseDraftPrefix('u', 's');
+  const day = 86_400_000;
+  const now = 100 * day;
+  savePurchaseDraft(prefix, 'w', { ...draft(), clientId: 'old', savedAt: now - 40 * day });
+  savePurchaseDraft(prefix, 'w', { ...draft(), clientId: 'new', savedAt: now - 2 * day });
+  const { drafts } = scanPurchaseDrafts(prefix);
+  const stale = staleDrafts(drafts, now, 30);
+  expect(stale.map((s) => s.draft.clientId)).toEqual(['old']);
+  expect(scanPurchaseDrafts(prefix).drafts).toHaveLength(2);
+  removePurchaseDrafts(stale.map((s) => s.key));
+  expect(scanPurchaseDrafts(prefix).drafts.map((s) => s.draft.clientId)).toEqual(['new']);
 });
