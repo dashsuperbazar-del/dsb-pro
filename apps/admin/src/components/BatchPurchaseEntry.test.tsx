@@ -133,3 +133,14 @@ test('saving is disabled while the purchase screen cannot accept drafts', async 
   await mount(true);
   expect((button(/Save 1 draft/) as HTMLButtonElement).disabled).toBe(true);
 });
+
+test('saving the same supplier and bill number again is refused while its draft exists', async () => {
+  await mount();
+  await fillOne();
+  await act(async () => button(/Save 1 draft/).click());
+  expect(scanPurchaseDrafts(prefix).drafts).toHaveLength(1);
+  await fillOne(1, 'B-1');
+  await act(async () => button(/Save 1 draft/).click());
+  expect(scanPurchaseDrafts(prefix).drafts).toHaveLength(1);
+  expect(host.textContent).toContain('already saved');
+});

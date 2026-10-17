@@ -19,6 +19,7 @@ const item = (id: string, name: string): Item =>
 const items = [item('i1', 'Oil'), item('i2', 'Rice')];
 const parties = [{ id: 's1', name: 'Acme' }] as Party[];
 let n = 0;
+let existing: Array<{ supplier: string; billNo: string }> = [];
 const newId = () => `req-${++n}`;
 const row = (o: Partial<BatchRow> = {}): BatchRow => ({
   billNo: 'B-1',
@@ -32,7 +33,7 @@ const row = (o: Partial<BatchRow> = {}): BatchRow => ({
   ...o,
 });
 const build = (rows: BatchRow[]) =>
-  buildBatchDrafts(rows, items, parties, { now: 1000, newId, today: '2026-10-17' });
+  buildBatchDrafts(rows, items, parties, { now: 1000, newId, today: '2026-10-17', existing });
 
 test('each valid row becomes its own unposted draft with its own posting identity', () => {
   const r = build([row(), row({ billNo: 'B-2', itemId: 'i2', qty: '2.5', cost: '10' })]);
@@ -89,4 +90,23 @@ test('a blank bill number is allowed once per supplier-date but needs a supplier
 
 test('an empty batch is refused', () => {
   expect(build([]).errors[0].message).toMatch(/at least one/i);
+});
+
+test('a bill number already saved as a draft for that supplier is refused, so a retry cannot duplicate it', () => {
+  existing = [{ supplier: 's1', billNo: 'b-1' }];
+  const r = build([row(), row({ billNo: 'B-2' })]);
+  existing = [];
+  expect(r.drafts).toEqual([]);
+  expect(r.errors).toEqual([{ row: 1, message: expect.stringMatching(/already saved/i) }]);
+});
+
+test('drafts for other suppliers or other bill numbers do not block, and blank bill numbers are never matched', () => {
+  existing = [
+    { supplier: 's2', billNo: 'B-1' },
+    { supplier: 's1', billNo: '' },
+  ];
+  const r = build([row(), row({ billNo: '' })]);
+  existing = [];
+  expect(r.errors).toEqual([]);
+  expect(r.drafts).toHaveLength(2);
 });

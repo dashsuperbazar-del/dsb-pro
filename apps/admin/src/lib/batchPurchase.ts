@@ -25,7 +25,13 @@ export function buildBatchDrafts(
   rows: BatchRow[],
   items: Item[],
   parties: Party[],
-  ctx: { now: number; newId: () => string; today: string },
+  ctx: {
+    now: number;
+    newId: () => string;
+    today: string;
+    /** Supplier and bill number of drafts already saved on this device. */
+    existing?: Array<{ supplier: string; billNo: string }>;
+  },
 ): { drafts: PurchaseDraft[]; errors: BatchError[] } {
   if (rows.length === 0)
     return { drafts: [], errors: [{ row: 0, message: 'Add at least one bill to the batch.' }] };
@@ -49,6 +55,15 @@ export function buildBatchDrafts(
     if (r.supplierId && billNo) {
       const key = `${r.supplierId}:${billNo.toLowerCase()}`;
       if (seen.has(key)) fail('This supplier and bill number appear twice in the batch.');
+      else if (
+        ctx.existing?.some(
+          (d) =>
+            d.supplier === r.supplierId && d.billNo.trim().toLowerCase() === billNo.toLowerCase(),
+        )
+      )
+        fail(
+          'A draft for this supplier and bill number is already saved. Open Saved purchase drafts, or remove this row.',
+        );
       seen.add(key);
     }
     let qty = '';

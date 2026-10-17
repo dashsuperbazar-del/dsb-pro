@@ -1,7 +1,7 @@
 import { useState } from 'preact/hooks';
 import type { Item, Party } from '@dsb-pro/adapters';
 import { buildBatchDrafts, type BatchError, type BatchRow } from '../lib/batchPurchase';
-import { savePurchaseDraft } from '../lib/purchaseDraft';
+import { savePurchaseDraft, scanPurchaseDrafts } from '../lib/purchaseDraft';
 import { boundedItemOptions } from '../lib/itemOptions';
 
 const blankRow = (date: string, previous?: BatchRow): BatchRow => ({
@@ -42,10 +42,21 @@ export function BatchPurchaseEntry({
 
   function save() {
     setMessage('');
+    let existing: Array<{ supplier: string; billNo: string }>;
+    try {
+      existing = scanPurchaseDrafts(draftPrefix).drafts.map((d) => ({
+        supplier: d.draft.supplier,
+        billNo: d.draft.billNo,
+      }));
+    } catch (e) {
+      setMessage(`Saved drafts could not be checked: ${String(e)}. Nothing was saved.`);
+      return;
+    }
     const result = buildBatchDrafts(rows, items, parties, {
       now: Date.now(),
       newId: () => crypto.randomUUID(),
       today,
+      existing,
     });
     setErrors(result.errors);
     if (result.errors.length) return;

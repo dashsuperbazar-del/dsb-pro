@@ -116,6 +116,8 @@ export function InventoryScreen({
   const [documentBusy, setDocumentBusy] = useState(false);
   const [documentSaveError, setDocumentSaveError] = useState('');
   const [businessDate, setBusinessDate] = useState('');
+  // The shop's own date, never changed by the purchase form or a resumed draft (limits batch entry dates).
+  const [shopToday, setShopToday] = useState('');
   const [selected, setSelected] = useState('');
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
@@ -241,6 +243,7 @@ export function InventoryScreen({
     setStock(s);
     setCatalogLoaded(true);
     setBusinessDate((value) => value || d);
+    setShopToday(d);
   }
   const catalogKey = useRef('');
   useEffect(() => {
@@ -1332,11 +1335,11 @@ export function InventoryScreen({
             ))}
           </div>
         )}
-        {purchaseOnly && businessDate && (
+        {purchaseOnly && shopToday && (
           <BatchPurchaseEntry
             items={items}
             parties={parties}
-            today={businessDate}
+            today={shopToday}
             draftPrefix={draftPrefix}
             disabled={
               purchaseLocked ||
