@@ -17,6 +17,8 @@ export type PurchaseDraft = {
   unitLevel: 1 | 2 | 3;
   qty: string;
   price: string;
+  /** How `price` is to be read: per unit (default, older drafts) or the whole line total. */
+  costMode?: 'unit' | 'total';
   editingLine: number | null;
   document?: BillDocument | null;
   documentIssue?: string;
@@ -76,6 +78,8 @@ function checked(value: unknown): PurchaseDraft {
     )
   )
     throw new Error('A saved purchase draft is unreadable. It has been kept on this device.');
+  if (d.costMode !== undefined && d.costMode !== 'unit' && d.costMode !== 'total')
+    throw new Error('Saved cost entry mode is unreadable. The draft has been kept.');
   if (d.documentIssue !== undefined && typeof d.documentIssue !== 'string')
     throw new Error('Saved document selection state is unreadable. The draft has been kept.');
   if (d.document) {

@@ -34,6 +34,8 @@ import {
 import { repeatPurchase, rankedPurchaseParties } from '../lib/purchaseWorkflow';
 import { readCatalogForScreen, markCatalogDirty, catalogDirtySince } from '../lib/catalogRead';
 import { boundedItemOptions } from '../lib/itemOptions';
+import { deriveUnitCostFromTotal } from '../lib/purchaseCost';
+import { CostDerivation } from '../components/CostDerivation';
 import { shopContext } from '../lib/shopContext';
 import { getSyncedOfflineCatalog, runSyncNow } from '../lib/offlineSync';
 import { paiseToDecimal, rupees } from '../lib/money';
@@ -123,6 +125,8 @@ export function InventoryScreen({
   const [purchaseLineUnitLevel, setPurchaseLineUnitLevel] = useState<1 | 2 | 3>(1);
   const [purchaseLineQty, setPurchaseLineQty] = useState('');
   const [purchaseLinePrice, setPurchaseLinePrice] = useState('');
+  // 'total': purchaseLinePrice holds the whole line total and the unit cost is derived (never silently rounded).
+  const [purchaseCostMode, setPurchaseCostMode] = useState<'unit' | 'total'>('unit');
   const [purchaseCart, setPurchaseCart] = useState<
     { item: Item; unitLevel: 1 | 2 | 3; qty: string; unitPricePaise: number }[]
   >([]);
@@ -456,6 +460,7 @@ export function InventoryScreen({
     unitLevel: purchaseLineUnitLevel,
     qty: purchaseLineQty,
     price: purchaseLinePrice,
+    costMode: purchaseCostMode,
     editingLine: editingPurchaseLine,
     document: billDocument,
     documentIssue: documentSaveError,
@@ -545,6 +550,7 @@ export function InventoryScreen({
       setPurchaseLineUnitLevel(d.unitLevel);
       setPurchaseLineQty(d.qty);
       setPurchaseLinePrice(d.price);
+      setPurchaseCostMode(d.costMode ?? 'unit');
       setEditingPurchaseLine(d.editingLine);
       setDraftTouched(true);
       setView('purchase');
@@ -715,7 +721,7 @@ export function InventoryScreen({
     setError('');
     const item = items.find((i) => i.id === purchaseLineItemId);
     let qty: string;
-    const unitPricePaise = paise(purchaseLinePrice);
+    let unitPricePaise = purchaseCostMode === 'unit' ? paise(purchaseLinePrice) : 0;
     if (!item) {
       setError('Choose an item for the purchase line.');
       return;
@@ -726,7 +732,20 @@ export function InventoryScreen({
       setError('Enter a purchase quantity with at most 6 decimal places.');
       return;
     }
-    if (!purchaseLinePrice.trim() || !(unitPricePaise >= 0)) {
+    if (purchaseCostMode === 'total') {
+      const derived = deriveUnitCostFromTotal(purchaseLineQty, purchaseLinePrice);
+      if (!derived.ok) {
+        setError(derived.message);
+        return;
+      }
+      if (!derived.exact) {
+        setError(
+          'This total cannot be stored exactly as a unit cost. Use the suggested unit cost shown below, or enter the unit cost yourself.',
+        );
+        return;
+      }
+      unitPricePaise = derived.unitPaise;
+    } else if (!purchaseLinePrice.trim() || !(unitPricePaise >= 0)) {
       setError('Enter a unit cost.');
       return;
     }
@@ -742,6 +761,7 @@ export function InventoryScreen({
     setPurchaseLineUnitLevel(1);
     setPurchaseLineQty('');
     setPurchaseLinePrice('');
+    setPurchaseCostMode('unit');
   }
   function removePurchaseLine(index: number) {
     setPurchaseCart((v) => v.filter((_, i) => i !== index));
@@ -1642,17 +1662,44 @@ export function InventoryScreen({
                 />
               </label>{' '}
               <label>
-                Unit cost ₹
+                Enter cost as
+                <select
+                  aria-label="Cost entry mode"
+                  value={purchaseCostMode}
+                  onChange={(e) => {
+                    setPurchaseCostMode(
+                      (e.currentTarget as HTMLSelectElement).value === 'total' ? 'total' : 'unit',
+                    );
+                    setPurchaseLinePrice('');
+                  }}
+                >
+                  <option value="unit">Cost per unit</option>
+                  <option value="total">Line total</option>
+                </select>
+              </label>{' '}
+              <label>
+                {purchaseCostMode === 'total' ? 'Line total ₹' : 'Unit cost ₹'}
                 <input
                   name="price"
                   type="number"
                   min="0"
                   step="0.01"
-                  placeholder="Unit cost ₹"
+                  placeholder={purchaseCostMode === 'total' ? 'Line total ₹' : 'Unit cost ₹'}
                   value={purchaseLinePrice}
                   onInput={(e) => setPurchaseLinePrice((e.currentTarget as HTMLInputElement).value)}
                 />
               </label>{' '}
+              {purchaseCostMode === 'total' &&
+                purchaseLinePrice.trim() &&
+                purchaseLineQty.trim() && (
+                  <CostDerivation
+                    derived={deriveUnitCostFromTotal(purchaseLineQty, purchaseLinePrice)}
+                    onUse={(unitPaise) => {
+                      setPurchaseCostMode('unit');
+                      setPurchaseLinePrice(paiseToDecimal(unitPaise));
+                    }}
+                  />
+                )}
               <button type="button" onClick={addPurchaseLine}>
                 {editingPurchaseLine === null ? 'Add line' : 'Update line'}
               </button>
@@ -1705,6 +1752,7 @@ export function InventoryScreen({
                                 setPurchaseLineItemId(l.item.id);
                                 setPurchaseLineUnitLevel(l.unitLevel);
                                 setPurchaseLineQty(l.qty);
+                                setPurchaseCostMode('unit');
                                 setPurchaseLinePrice(paiseToDecimal(l.unitPricePaise));
                               }}
                             >
