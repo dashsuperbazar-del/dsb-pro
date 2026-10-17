@@ -34,11 +34,19 @@ describe('validateBulk', () => {
   });
 });
 
-function deps(states: Record<string, 'COMMITTED' | 'REJECTED' | 'UNKNOWN'>, open: string[] = []) {
+function deps(
+  states: Record<string, 'COMMITTED' | 'REJECTED' | 'UNKNOWN' | 'READY'>,
+  open: string[] = [],
+  drafts: string[] = [],
+  today = '2026-10-17',
+) {
   const sent: string[] = [];
   const d: BulkDeps = {
     lock: (_s, _p, fn) => fn(),
     listOpen: async (_s, p) => (open.includes(p) ? [{ id: 'x' } as never] : []),
+    listDrafts: async (_s, p) =>
+      drafts.includes(p) ? [{ id: 'd', operation: 'supplier.record.v1' } as never] : [],
+    businessDate: async () => today,
     listBills: async () => [bill('b1', '2026-10-01', 300) as never],
     newDraft: async (input) => ({ id: input.accountId, payload: input.payload }) as never,
     send: async (id) => {
@@ -135,5 +143,43 @@ describe('runBulkPayments', () => {
         allocations: [{ purchaseBillId: 'b1', amountPaise: '250' }],
       },
     });
+  });
+});
+
+describe('double-recording guards', () => {
+  it('skips a supplier with a saved payment draft', async () => {
+    const { d, sent } = deps({ b: 'COMMITTED' }, [], ['a']);
+    const out = await runBulkPayments(
+      [
+        { partyId: 'a', amountPaise: 500n },
+        { partyId: 'b', amountPaise: 100n },
+      ],
+      ctx,
+      d,
+    );
+    expect(sent).toEqual(['b']);
+    expect(out[0]).toMatchObject({ status: 'skipped', message: expect.stringContaining('draft') });
+  });
+  it('sends nothing when the shop date has moved on', async () => {
+    const { d, sent } = deps({ a: 'COMMITTED' }, [], [], '2026-10-18');
+    const out = await runBulkPayments([{ partyId: 'a', amountPaise: 5n }], ctx, d);
+    expect(sent).toEqual([]);
+    expect(out[0]).toMatchObject({
+      status: 'not-sent',
+      message: expect.stringContaining('2026-10-18'),
+    });
+  });
+  it('a send left READY (never confirmed) stops the run like a lost answer', async () => {
+    const { d, sent } = deps({ a: 'READY', b: 'COMMITTED' });
+    const out = await runBulkPayments(
+      [
+        { partyId: 'a', amountPaise: 5n },
+        { partyId: 'b', amountPaise: 5n },
+      ],
+      ctx,
+      d,
+    );
+    expect(sent).toEqual(['a']);
+    expect(out.map((r) => r.status)).toEqual(['unknown', 'not-sent']);
   });
 });

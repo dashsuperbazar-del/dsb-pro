@@ -2,9 +2,10 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
-vi.mock('@dsb-pro/adapters', () => ({ listSupplierBills: vi.fn() }));
+vi.mock('@dsb-pro/adapters', () => ({ listSupplierBills: vi.fn(), getShopBusinessDate: vi.fn() }));
 vi.mock('../lib/offlineSync', () => ({
   listOpenFinancialAttempts: vi.fn(),
+  listFinancialDrafts: vi.fn(),
   newFinancialDraft: vi.fn(),
   sendFinancialAttempt: vi.fn(),
 }));
@@ -40,6 +41,8 @@ test('review then record: each supplier recorded once, amounts cleared, owed-onl
   const deps: BulkDeps = {
     lock: (_s, _p, fn) => fn(),
     listOpen: async () => [],
+    listDrafts: async () => [],
+    businessDate: async () => '2026-10-17',
     listBills: async () => [],
     newDraft: async (i) => ({ id: i.accountId }) as never,
     send,
@@ -71,4 +74,36 @@ test('review then record: each supplier recorded once, amounts cleared, owed-onl
     '',
   );
   expect(btn('Record payments')).toBeUndefined();
+});
+
+test('review lists each amount and warns when it is more than owed; a lost answer clears that row', async () => {
+  const deps: BulkDeps = {
+    lock: (_s, _p, fn) => fn(),
+    listOpen: async () => [],
+    listDrafts: async () => [],
+    businessDate: async () => '2026-10-17',
+    listBills: async () => [],
+    newDraft: async (i) => ({ id: i.accountId }) as never,
+    send: async (id) => ({ id, state: 'UNKNOWN' }) as never,
+  };
+  await act(async () =>
+    render(
+      <BulkSupplierPayments
+        shopId="s"
+        businessDate="2026-10-17"
+        suppliers={[sup('Acme', '10000')]}
+        onDone={() => {}}
+        deps={deps}
+      />,
+      host,
+    ),
+  );
+  await type('Amount paid to Acme', '500');
+  await act(async () => btn('Review')!.click());
+  expect(host.textContent).toContain('₹400.00 more than owed, kept as advance');
+  await act(async () => btn('Record payments')!.click());
+  await vi.waitFor(() => expect(host.textContent).toContain('answer was lost'));
+  expect(host.querySelector<HTMLInputElement>('[aria-label="Amount paid to Acme"]')!.value).toBe(
+    '',
+  );
 });

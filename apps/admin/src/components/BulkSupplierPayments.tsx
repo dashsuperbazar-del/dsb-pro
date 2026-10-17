@@ -1,11 +1,13 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import {
+  getShopBusinessDate,
   listSupplierBills,
   type PaymentMode,
   type SupplierOutstandingRow,
 } from '@dsb-pro/adapters';
 import { withAccountLock } from '../lib/accountLock';
 import {
+  listFinancialDrafts,
   listOpenFinancialAttempts,
   newFinancialDraft,
   sendFinancialAttempt,
@@ -22,6 +24,8 @@ import { rupees } from '../lib/money';
 const realDeps: BulkDeps = {
   lock: withAccountLock,
   listOpen: listOpenFinancialAttempts,
+  listDrafts: listFinancialDrafts,
+  businessDate: getShopBusinessDate,
   listBills: listSupplierBills,
   newDraft: (input) => newFinancialDraft(input),
   send: (id) => sendFinancialAttempt(id, supplierSender),
@@ -33,7 +37,7 @@ export function BulkSupplierPayments(props: {
   shopId: string;
   businessDate: string;
   suppliers: SupplierOutstandingRow[];
-  onDone: () => void;
+  onDone: (results: BulkRowResult[]) => void;
   deps?: BulkDeps;
 }) {
   const [amounts, setAmounts] = useState<Record<string, string>>({});
@@ -43,6 +47,9 @@ export function BulkSupplierPayments(props: {
   const [reviewing, setReviewing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<BulkRowResult[]>([]);
+  const inFlight = useRef(false);
+  // A changed supplier list or payment mode needs a fresh review.
+  useEffect(() => setReviewing(false), [props.suppliers, mode]);
   const owed = props.suppliers.filter((s) => BigInt(s.netLedgerBalance) > 0n);
   const name = (id: string) => props.suppliers.find((s) => s.partyId === id)?.partyName ?? id;
   const entries = owed.map((s) => ({
@@ -53,7 +60,8 @@ export function BulkSupplierPayments(props: {
   const checked = validateBulk(entries);
 
   async function record() {
-    if (!checked.ok || busy) return;
+    if (!checked.ok || inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setResults([]);
     try {
@@ -68,15 +76,18 @@ export function BulkSupplierPayments(props: {
         props.deps ?? realDeps,
         (r) => setResults((v) => [...v, r]),
       );
-      // Recorded suppliers are cleared so a second press can never record them again.
+      // Recorded suppliers, and any whose answer was lost, are cleared so a second press can never record
+      // them again; the user re-enters an amount only after checking that supplier.
       setAmounts((v) => {
         const next = { ...v };
-        for (const r of out) if (r.status === 'committed') delete next[r.partyId];
+        for (const r of out)
+          if (r.status === 'committed' || r.status === 'unknown') delete next[r.partyId];
         return next;
       });
       setReviewing(false);
-      props.onDone();
+      props.onDone(out);
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
@@ -142,6 +153,25 @@ export function BulkSupplierPayments(props: {
           ) : (
             checked.ok && (
               <div role="group" aria-label="Confirm bulk payments">
+                <ul>
+                  {checked.rows.map((r) => {
+                    const owedPaise = BigInt(
+                      props.suppliers.find((s) => s.partyId === r.partyId)?.netLedgerBalance ?? '0',
+                    );
+                    const advance = r.amountPaise - owedPaise;
+                    return (
+                      <li key={r.partyId}>
+                        {r.partyName}: {rupees(r.amountPaise.toString())}
+                        {advance > 0n && (
+                          <strong class="alert">
+                            {' '}
+                            — {rupees(advance.toString())} more than owed, kept as advance
+                          </strong>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
                 <p>
                   Record {checked.rows.length} payment{checked.rows.length === 1 ? '' : 's'}{' '}
                   totalling <strong>{rupees(checked.totalPaise.toString())}</strong> by {mode}?

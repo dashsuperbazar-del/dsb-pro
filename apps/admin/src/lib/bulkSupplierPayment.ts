@@ -51,6 +51,10 @@ export function validateBulk(entries: BulkEntry[]):
 export type BulkDeps = {
   lock: <T>(shopId: string, partyId: string, fn: () => Promise<T>) => Promise<T>;
   listOpen: (shopId: string, partyId: string) => Promise<FinancialAttempt[]>;
+  /** Saved, unsent payment drafts (the single-payment screen restores these). */
+  listDrafts: (shopId: string, partyId: string) => Promise<FinancialAttempt[]>;
+  /** The shop's business date now, re-read right before recording. */
+  businessDate: (shopId: string) => Promise<string>;
   listBills: (shopId: string, partyId: string) => Promise<SupplierBill[]>;
   newDraft: (input: {
     operation: 'supplier.record.v1';
@@ -73,6 +77,27 @@ export async function runBulkPayments(
     onProgress?.(r);
   };
   let stopped = false;
+  // A run started on yesterday's screen must not post payments to yesterday.
+  try {
+    const today = await deps.businessDate(ctx.shopId);
+    if (today !== ctx.businessDate) {
+      for (const row of rows)
+        push({
+          partyId: row.partyId,
+          status: 'not-sent',
+          message: `Not sent: the shop date is now ${today}. Review the payments again.`,
+        });
+      return results;
+    }
+  } catch (e) {
+    for (const row of rows)
+      push({
+        partyId: row.partyId,
+        status: 'not-sent',
+        message: `Not sent: the shop date could not be checked (${e instanceof Error ? e.message : String(e)}).`,
+      });
+    return results;
+  }
   for (const row of rows) {
     if (stopped) {
       push({
@@ -88,7 +113,17 @@ export async function runBulkPayments(
         if (open.length)
           return {
             status: 'skipped' as const,
-            message: 'A payment for this supplier is awaiting confirmation or saved as a draft.',
+            message:
+              'A payment for this supplier is awaiting server confirmation. Resolve it first.',
+          };
+        const drafts = (await deps.listDrafts(ctx.shopId, row.partyId)).filter(
+          (d) => d.operation === 'supplier.record.v1',
+        );
+        if (drafts.length)
+          return {
+            status: 'skipped' as const,
+            message:
+              'This supplier has a saved payment draft. Open the supplier and record or discard it first.',
           };
         const bills = await deps.listBills(ctx.shopId, row.partyId);
         const { allocations, remainderPaise } = fifoAllocate(bills, row.amountPaise);

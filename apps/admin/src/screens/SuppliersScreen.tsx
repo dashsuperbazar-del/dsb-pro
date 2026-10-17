@@ -359,7 +359,15 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
           shopId={shopId}
           businessDate={businessDate}
           suppliers={summary}
-          onDone={() => void refreshBase().catch((e) => setError(String(e)))}
+          onDone={(results) => {
+            // The open supplier's panel must not keep an amount that was just recorded in bulk.
+            if (results.some((r) => r.partyId === partyRef.current && r.status !== 'skipped')) {
+              setAmount('');
+              setAlloc({});
+              setConfirming(false);
+            }
+            void Promise.all([refreshParty(), refreshBase()]).catch((e) => setError(String(e)));
+          }}
         />
       )}
 
