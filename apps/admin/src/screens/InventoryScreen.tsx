@@ -36,6 +36,7 @@ import { readCatalogForScreen, markCatalogDirty, catalogDirtySince } from '../li
 import { boundedItemOptions } from '../lib/itemOptions';
 import { deriveUnitCostFromTotal } from '../lib/purchaseCost';
 import { CostDerivation } from '../components/CostDerivation';
+import { BatchPurchaseEntry } from '../components/BatchPurchaseEntry';
 import { shopContext } from '../lib/shopContext';
 import { getSyncedOfflineCatalog, runSyncNow } from '../lib/offlineSync';
 import { paiseToDecimal, rupees } from '../lib/money';
@@ -1330,6 +1331,22 @@ export function InventoryScreen({
               </button>
             ))}
           </div>
+        )}
+        {purchaseOnly && businessDate && (
+          <BatchPurchaseEntry
+            items={items}
+            parties={parties}
+            today={businessDate}
+            draftPrefix={draftPrefix}
+            disabled={
+              purchaseLocked ||
+              contextBusy ||
+              !purchaseContextReady ||
+              accountChanged ||
+              !catalogLoaded
+            }
+            onSaved={refreshDrafts}
+          />
         )}
         {savedDrafts.some((s) => s.draft.clientId !== purchaseClientId) && (
           <details class="card" aria-label="Saved purchase drafts">
