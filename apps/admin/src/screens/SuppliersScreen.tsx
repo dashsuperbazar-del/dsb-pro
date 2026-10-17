@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { withAccountLock } from '../lib/accountLock';
 import {
-  allocateSupplierPayment,
   getCurrentMembership,
   getDefaultShopId,
   getShopBusinessDate,
@@ -14,15 +13,11 @@ import {
   listSupplierBills,
   listSupplierPayments,
   lookupSupplierRequest,
-  recordSupplierPayment,
-  releaseSupplierAllocation,
-  voidSupplierPayment,
   type PaymentMode,
   type SupplierBill,
   type SupplierOperation,
   type SupplierOutstandingRow,
   type SupplierPayment,
-  type SupplierWriteOutcome,
 } from '@dsb-pro/adapters';
 import { parseRupeesToPaise, type Role } from '@dsb-pro/core';
 import {
@@ -41,56 +36,20 @@ import { TaskTabs } from '../components/TaskTabs';
 import { PartyEditor } from '../components/PartyEditor';
 import { SupplierStatement } from '../components/SupplierStatement';
 import { SupplierSchedulePanel } from '../components/SupplierSchedulePanel';
+import { BulkSupplierPayments } from '../components/BulkSupplierPayments';
 import { SnapshotNote } from '../components/SnapshotNote';
 import { dropSnapshot, peekSnapshot, putSnapshot, snapshotUserId } from '../lib/routeSnapshot';
 
 type SupplierBaseSnapshot = { summary: SupplierOutstandingRow[]; parties: Party[] };
 import { appRoute } from '../lib/paths';
+import { fifoAllocate, supplierSender, type RecordPayload } from '../lib/supplierPaymentFlow';
 import { rupees, paiseToDecimal } from '../lib/money';
 import { t } from '../lib/i18n';
 
 export { rupees };
 const toPaiseText = (r: string) => String(parseRupeesToPaise(r || '0'));
 
-type RecordPayload = {
-  shopId: string;
-  partyId: string;
-  businessDate: string | null;
-  amountPaise: string;
-  mode: PaymentMode;
-  reference: string | null;
-  allocations: { purchaseBillId: string; amountPaise: string }[];
-};
-
-// Each operation is sent with the attempt's own id as the request id -- never a fresh one.
-function sender(attempt: FinancialAttempt): Promise<SupplierWriteOutcome> {
-  const p = attempt.payload as Record<string, unknown>;
-  switch (attempt.operation) {
-    case 'supplier.record.v1':
-      return recordSupplierPayment({ requestId: attempt.id, ...(p as RecordPayload) });
-    case 'supplier.allocate.v1':
-      return allocateSupplierPayment({
-        requestId: attempt.id,
-        paymentId: String(p.paymentId),
-        allocations: p.allocations as RecordPayload['allocations'],
-      });
-    case 'supplier.void.v1':
-      return voidSupplierPayment({
-        requestId: attempt.id,
-        paymentId: String(p.paymentId),
-        reason: String(p.reason),
-      });
-    case 'supplier.release.v1':
-      return releaseSupplierAllocation({
-        requestId: attempt.id,
-        allocationId: String(p.allocationId),
-        reason: String(p.reason),
-      });
-    default:
-      // Customer attempts belong to the Customers screen; never send them from here.
-      return Promise.resolve({ kind: 'unknown', message: 'Not a supplier request.' });
-  }
-}
+const sender = supplierSender;
 const lookup = (a: FinancialAttempt) =>
   lookupSupplierRequest(a.shopId, a.operation as SupplierOperation, a.id);
 
@@ -265,20 +224,9 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
   }, [loadedParty, bills, draft, open, contextSupplier, contextBill]);
   function autoAllocate() {
     try {
-      let remaining = BigInt(toPaiseText(amount));
+      const { allocations } = fifoAllocate(bills, BigInt(toPaiseText(amount)));
       const next: Record<string, string> = {};
-      for (const bill of [...bills].sort(
-        (a, b) =>
-          a.business_date.localeCompare(b.business_date) ||
-          a.purchase_bill_id.localeCompare(b.purchase_bill_id),
-      )) {
-        const due = BigInt(bill.outstanding_paise);
-        const take = remaining < due ? remaining : due;
-        if (take > 0n) {
-          next[bill.purchase_bill_id] = paiseToDecimal(take.toString());
-          remaining -= take;
-        }
-      }
+      for (const a of allocations) next[a.purchaseBillId] = paiseToDecimal(a.amountPaise);
       setAlloc(next);
       setConfirming(false);
       setMessage(
@@ -451,6 +399,22 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
       )}
       {message && <p role="status">{message}</p>}
       <SnapshotNote at={snapshotAt} failed={snapshotFailed} />
+      {canPost && shopId && businessDate && snapshotAt === null && (
+        <BulkSupplierPayments
+          shopId={shopId}
+          businessDate={businessDate}
+          suppliers={summary}
+          onDone={(results) => {
+            // The open supplier's panel must not keep an amount that was just recorded in bulk.
+            if (results.some((r) => r.partyId === partyRef.current && r.status !== 'skipped')) {
+              setAmount('');
+              setAlloc({});
+              setConfirming(false);
+            }
+            void Promise.all([refreshParty(), refreshBase()]).catch((e) => setError(String(e)));
+          }}
+        />
+      )}
 
       <section class="mobile-records">
         <h2>Summary</h2>

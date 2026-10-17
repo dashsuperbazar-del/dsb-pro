@@ -3,6 +3,8 @@ import { PriceHistory } from '../components/PriceHistory';
 import { learnedUnits } from '../lib/unitLearning';
 import { VoiceEntryButton } from '../components/VoiceEntryButton';
 import { matchItems, parseVoiceEntry, unitLevelFor } from '../lib/voiceEntry';
+import { SnapshotNote } from '../components/SnapshotNote';
+import { peekSnapshot, putSnapshot, snapshotUserId } from '../lib/routeSnapshot';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   addItemBarcode,
@@ -69,6 +71,8 @@ import {
 } from '../lib/purchaseDraft';
 
 const paise = (rupees: string) => parseRupeesToPaise(rupees || '0');
+
+type InventorySnapshot = { items: Item[]; parties: Party[]; stock: StockRow[] };
 
 export function InventoryScreen({
   purchaseOnly = false,
@@ -156,6 +160,8 @@ export function InventoryScreen({
   const contextApplied = useRef('');
   const contextNeedsReset = useRef(false);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
+  const [snapshotAt, setSnapshotAt] = useState<number | null>(null);
+  const [snapshotFailed, setSnapshotFailed] = useState(false);
   const itemsRef = useRef(items);
   itemsRef.current = items;
   const partiesRef = useRef(parties);
@@ -218,6 +224,19 @@ export function InventoryScreen({
   const serverAuthoritative = useRef(false);
   async function refresh(fresh = false) {
     const generation = ++refreshGeneration.current;
+    // SP2b: the stock screen (not purchase entry) shows this tab's last lists at once, display only, then
+    // refreshes. Never after one of our own writes that the saved copy may lack, and it never marks the
+    // catalogue as loaded, so purchase drafts and repeats still wait for the fresh read.
+    const userId = await snapshotUserId();
+    if (!fresh && !purchaseOnly && generation === 1) {
+      const snap = peekSnapshot<InventorySnapshot>('inventory', userId);
+      if (snap && snap.at >= catalogDirtySince() && generation === refreshGeneration.current) {
+        setItems(snap.value.items);
+        setParties(snap.value.parties);
+        setStock(snap.value.stock);
+        setSnapshotAt(snap.at);
+      }
+    }
     if (fresh) {
       // Called right after one of our own writes: the device copy lacks it until a later cycle.
       serverAuthoritative.current = true;
@@ -257,6 +276,13 @@ export function InventoryScreen({
     setItems(catalog.items);
     setParties(p);
     setStock(s);
+    setSnapshotAt(null);
+    if (!purchaseOnly && session.user.id === userId)
+      putSnapshot<InventorySnapshot>('inventory', userId, shop, {
+        items: catalog.items,
+        parties: p,
+        stock: s,
+      });
     setCatalogLoaded(true);
     setBusinessDate((value) => value || d);
     setShopToday(d);
@@ -276,7 +302,10 @@ export function InventoryScreen({
           return;
         setItems(device.items as unknown as Item[]);
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => {
+        setSnapshotFailed(true);
+        setError(String(e));
+      });
     return () => {
       stopped = true;
       refreshGeneration.current++;
@@ -1100,6 +1129,7 @@ export function InventoryScreen({
         <p class="muted">Showing up to 50 matches · {items.length} items</p>
       </section>
       {error && <p role="alert">{error}</p>}
+      {!purchaseOnly && <SnapshotNote at={snapshotAt} failed={snapshotFailed} />}
       {message && <p role="status">{message}</p>}
       <section hidden={purchaseOnly || view !== 'advanced'} aria-label="Import old DSB backup">
         <h2>Import old DSB backup</h2>
