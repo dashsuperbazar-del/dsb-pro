@@ -12,6 +12,10 @@ import { shopContext } from '../lib/shopContext';
 import { appRoute } from '../lib/paths';
 import { rupees } from '../lib/money';
 import { purchaseStatus } from '../lib/purchaseWorkflow';
+import { peekSnapshot, putSnapshot, snapshotUserId } from '../lib/routeSnapshot';
+import { SnapshotNote } from '../components/SnapshotNote';
+
+type PurchaseListSnapshot = { rows: PurchaseRecord[]; parties: Party[] };
 
 export function PurchasesScreen({ url }: { url?: string }) {
   const query = new URL(url ?? window.location.href, window.location.origin).searchParams;
@@ -30,6 +34,8 @@ export function PurchasesScreen({ url }: { url?: string }) {
   const [more, setMore] = useState(false);
   const generation = useRef(0);
   const listGeneration = useRef(0);
+  const [snapshotAt, setSnapshotAt] = useState<number | null>(null);
+  const userRef = useRef('');
   async function refresh(shopId = shop) {
     const token = ++listGeneration.current;
     setLoading(true);
@@ -40,6 +46,11 @@ export function PurchasesScreen({ url }: { url?: string }) {
       setRows(bills);
       setParties(suppliers);
       setMore(bills.length === 50);
+      setSnapshotAt(null);
+      putSnapshot<PurchaseListSnapshot>('purchases', userRef.current, shopId, {
+        rows: bills,
+        parties: suppliers,
+      });
     } catch (e) {
       if (token === listGeneration.current) setError(String(e));
     } finally {
@@ -50,9 +61,26 @@ export function PurchasesScreen({ url }: { url?: string }) {
     let active = true;
     void (async () => {
       try {
-        const { membership: m, shopId: s } = await shopContext.get();
-        if (!['owner', 'manager', 'accountant'].includes(m.role))
+        // Show the last list at once (display only), then refresh it below.
+        userRef.current = await snapshotUserId();
+        const snap = peekSnapshot<PurchaseListSnapshot>('purchases', userRef.current);
+        if (snap && active) {
+          setRows(snap.value.rows);
+          setParties(snap.value.parties);
+          setShop(snap.shopId);
+          setSnapshotAt(snap.at);
+          setLoading(false);
+        }
+        const { session: fresh, membership: m, shopId: s } = await shopContext.get();
+        userRef.current = fresh.user.id;
+        if (!['owner', 'manager', 'accountant'].includes(m.role)) {
+          if (active) {
+            setRows([]);
+            setParties([]);
+            setSnapshotAt(null);
+          }
           throw new Error('Purchase history is restricted by your role.');
+        }
         if (!active) return;
         setAllowed(true);
         setCanPost(['owner', 'manager'].includes(m.role));
@@ -121,6 +149,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
       </nav>
       {error && <p role="alert">{error}</p>}
       {loading && <p role="status">Loading purchases…</p>}
+      {!entering && <SnapshotNote at={snapshotAt} />}
       {allowed && canPost && (
         <div hidden={!entering}>
           <InventoryScreen

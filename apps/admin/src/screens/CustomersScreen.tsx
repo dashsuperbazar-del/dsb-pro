@@ -48,11 +48,18 @@ const sendReceipt = (a: FinancialAttempt): Promise<SupplierWriteOutcome> =>
 const lookupReceipt = (a: FinancialAttempt) =>
   lookupFinancialRequest(a.shopId, a.operation as FinancialOperation, a.id);
 import { parseRupeesToPaise } from '@dsb-pro/core';
+import { SnapshotNote } from '../components/SnapshotNote';
+import { peekSnapshot, putSnapshot, snapshotUserId } from '../lib/routeSnapshot';
 
 const money = (paise: number) => `₹${(paise / 100).toFixed(2)}`;
 const toPaise = (rupees: string) => parseRupeesToPaise(rupees || '0');
 
 type AllocationDraft = { saleId: string; docNo: string; checked: boolean; amount: string };
+
+type CustomerBaseSnapshot = {
+  customers: Customer[];
+  balances: Record<string, number>;
+};
 
 export function CustomersScreen() {
   const [view, setView] = useState<'receipt' | 'ledger'>('receipt');
@@ -88,8 +95,18 @@ export function CustomersScreen() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [snapshotAt, setSnapshotAt] = useState<number | null>(null);
 
   async function refreshBase() {
+    // SP2: the customer list and balances from the last visit show at once (display only); receipts and
+    // allocations load fresh per customer below.
+    const userId = await snapshotUserId();
+    const snap = peekSnapshot<CustomerBaseSnapshot>('customers', userId);
+    if (snap) {
+      setCustomers(snap.value.customers);
+      setBalances(snap.value.balances);
+      setSnapshotAt(snap.at);
+    }
     const membership = await getCurrentMembership();
     if (!membership) throw new Error('No tenant membership.');
     const shop = await getDefaultShopId();
@@ -102,9 +119,15 @@ export function CustomersScreen() {
     setCanEditMaster(['owner', 'manager'].includes(membership.role));
     setTenantId(membership.tenantId);
     setShopId(shop);
+    const balanceMap = Object.fromEntries(b.map((x) => [x.customer_id, x.balance_paise]));
     setCustomers(c);
-    setBalances(Object.fromEntries(b.map((x) => [x.customer_id, x.balance_paise])));
+    setBalances(balanceMap);
     setBusinessDate(d);
+    setSnapshotAt(null);
+    putSnapshot<CustomerBaseSnapshot>('customers', userId, shop, {
+      customers: c,
+      balances: balanceMap,
+    });
   }
   async function refreshCustomer(customerId = selectedRef.current, shop = shopId) {
     if (customerId !== selectedRef.current) return; // a stale action's refresh: the screen moved on
@@ -310,6 +333,7 @@ export function CustomersScreen() {
           Customers
         </a>
       </nav>
+      <SnapshotNote at={snapshotAt} />
       {error && (
         <p role="alert" class="alert">
           {error}

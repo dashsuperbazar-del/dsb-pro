@@ -41,6 +41,10 @@ import { TaskTabs } from '../components/TaskTabs';
 import { PartyEditor } from '../components/PartyEditor';
 import { SupplierStatement } from '../components/SupplierStatement';
 import { SupplierSchedulePanel } from '../components/SupplierSchedulePanel';
+import { SnapshotNote } from '../components/SnapshotNote';
+import { peekSnapshot, putSnapshot, snapshotUserId } from '../lib/routeSnapshot';
+
+type SupplierBaseSnapshot = { summary: SupplierOutstandingRow[]; parties: Party[] };
 import { appRoute } from '../lib/paths';
 import { rupees, paiseToDecimal } from '../lib/money';
 import { t } from '../lib/i18n';
@@ -129,15 +133,29 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
   // The shop:party the screen currently shows; late results for any other selection are dropped.
   const current = useRef('');
   const [allParties, setAllParties] = useState<Party[]>([]);
+  const [snapshotAt, setSnapshotAt] = useState<number | null>(null);
 
   const canPost = role === 'owner' || role === 'manager';
   const isOwner = role === 'owner';
 
   async function refreshBase() {
+    // SP2: show the last supplier summary at once (display only). Payments always load fresh bills below.
+    const userId = await snapshotUserId();
+    const snap = peekSnapshot<SupplierBaseSnapshot>('suppliers', userId);
+    if (snap) {
+      setSummary(snap.value.summary);
+      setAllParties(snap.value.parties);
+      setSnapshotAt(snap.at);
+    }
     const m = await getCurrentMembership();
     if (!m) throw new Error('No tenant membership.');
     setRole(m.role);
-    if (m.role === 'cashier') return;
+    if (m.role === 'cashier') {
+      setSummary([]);
+      setAllParties([]);
+      setSnapshotAt(null);
+      return;
+    }
     const shop = m.shopIds[0] ?? (await getDefaultShopId());
     setShopId(shop);
     const [s, d, parties] = await Promise.all([
@@ -148,6 +166,8 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
     setSummary(s);
     setAllParties(parties);
     setBusinessDate(d);
+    setSnapshotAt(null);
+    putSnapshot<SupplierBaseSnapshot>('suppliers', userId, shop, { summary: s, parties });
   }
   async function refreshParty(shop = shopId, party = partyRef.current) {
     if (party !== partyRef.current) return;
@@ -406,6 +426,7 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
         </p>
       )}
       {message && <p role="status">{message}</p>}
+      <SnapshotNote at={snapshotAt} />
 
       <section class="mobile-records">
         <h2>Summary</h2>
