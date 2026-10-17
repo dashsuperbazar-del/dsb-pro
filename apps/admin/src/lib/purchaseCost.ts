@@ -32,22 +32,32 @@ export function deriveUnitCostFromTotal(qtyText: string, totalText: string): Der
   // unit = round-half-up(total / qty), in paise per unit
   const numerator = totalPaise * 1_000_000n;
   const unit = (2n * numerator + qtyMicros) / (2n * qtyMicros);
+  const TOO_LARGE: DerivedCost = {
+    ok: false,
+    message: 'That total is too large to store as a line. Check the quantity and amount.',
+  };
   const candidates = [unit, unit - 1n, unit + 1n].filter(
     (c) => c >= 0n && c <= BigInt(Number.MAX_SAFE_INTEGER),
   );
-  const stored = (c: bigint) => quantityTimesPaise(qty, Number(c));
-  for (const c of candidates) {
-    const t = stored(c);
-    if (BigInt(t) === totalPaise)
-      return { ok: true, exact: true, unitPaise: Number(c), lineTotalPaise: t, diffPaise: 0 };
+  if (candidates.length === 0 || totalPaise > BigInt(Number.MAX_SAFE_INTEGER)) return TOO_LARGE;
+  try {
+    const stored = (c: bigint) => quantityTimesPaise(qty, Number(c));
+    for (const c of candidates) {
+      const t = stored(c);
+      if (BigInt(t) === totalPaise)
+        return { ok: true, exact: true, unitPaise: Number(c), lineTotalPaise: t, diffPaise: 0 };
+    }
+    const best = candidates[0];
+    const t = stored(best);
+    return {
+      ok: true,
+      exact: false,
+      unitPaise: Number(best),
+      lineTotalPaise: t,
+      diffPaise: Number(BigInt(t) - totalPaise),
+    };
+  } catch {
+    // quantityTimesPaise refuses a product beyond the safe integer range
+    return TOO_LARGE;
   }
-  const best = candidates[0] ?? 0n;
-  const t = stored(best);
-  return {
-    ok: true,
-    exact: false,
-    unitPaise: Number(best),
-    lineTotalPaise: t,
-    diffPaise: Number(BigInt(t) - totalPaise),
-  };
 }

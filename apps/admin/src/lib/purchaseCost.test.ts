@@ -61,3 +61,15 @@ test('invalid input is refused with a plain message, never a guess', () => {
 test('a zero total is allowed (free goods) and gives a zero unit cost', () => {
   expect(deriveUnitCostFromTotal('5', '0')).toMatchObject({ ok: true, exact: true, unitPaise: 0 });
 });
+
+test('a total too large to store is refused with a message, never a throw or a zero cost', () => {
+  for (const [q, t] of [
+    ['1000', '999999999999999'],
+    ['1000', '99999999999999999'],
+    ['1', '999999999999999999999'],
+  ] as const) {
+    const r = deriveUnitCostFromTotal(q, t);
+    expect(r).toMatchObject({ ok: false });
+    if (!r.ok) expect(r.message).toMatch(/too large/i);
+  }
+});
