@@ -37,6 +37,8 @@ import { boundedItemOptions } from '../lib/itemOptions';
 import { deriveUnitCostFromTotal } from '../lib/purchaseCost';
 import { CostDerivation } from '../components/CostDerivation';
 import { BatchPurchaseEntry } from '../components/BatchPurchaseEntry';
+import { QuickBillEntry } from '../components/QuickBillEntry';
+import { paperTotalCheck } from '../lib/quickBill';
 import { shopContext } from '../lib/shopContext';
 import { getSyncedOfflineCatalog, runSyncNow } from '../lib/offlineSync';
 import { paiseToDecimal, rupees } from '../lib/money';
@@ -118,6 +120,8 @@ export function InventoryScreen({
   const [businessDate, setBusinessDate] = useState('');
   // The shop's own date, never changed by the purchase form or a resumed draft (limits batch entry dates).
   const [shopToday, setShopToday] = useState('');
+  // P06: the paper bill's total (paise) when this purchase started as a quick bill; checked before posting.
+  const [purchaseExpectedTotal, setPurchaseExpectedTotal] = useState<string | undefined>(undefined);
   const [selected, setSelected] = useState('');
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
@@ -391,6 +395,7 @@ export function InventoryScreen({
           setPurchaseExtra('');
         }
         setBusinessDate(newDate);
+        setPurchaseExpectedTotal(undefined);
         setPurchaseBillNo('');
         setBillDocument(null);
         setDocumentBusy(false);
@@ -465,6 +470,7 @@ export function InventoryScreen({
     qty: purchaseLineQty,
     price: purchaseLinePrice,
     costMode: purchaseCostMode,
+    ...(purchaseExpectedTotal ? { expectedTotalPaise: purchaseExpectedTotal } : {}),
     editingLine: editingPurchaseLine,
     document: billDocument,
     documentIssue: documentSaveError,
@@ -555,6 +561,7 @@ export function InventoryScreen({
       setPurchaseLineQty(d.qty);
       setPurchaseLinePrice(d.price);
       setPurchaseCostMode(d.costMode ?? 'unit');
+      setPurchaseExpectedTotal(d.expectedTotalPaise);
       setEditingPurchaseLine(d.editingLine);
       setDraftTouched(true);
       setView('purchase');
@@ -576,6 +583,14 @@ export function InventoryScreen({
     () => purchaseCart.reduce((sum, l) => sum + quantityTimesPaise(l.qty, l.unitPricePaise), 0),
     [purchaseCart],
   );
+  const payablePaise = (() => {
+    try {
+      return purchaseTotalPaise - paise(purchaseDiscount) + paise(purchaseExtra);
+    } catch {
+      return null;
+    }
+  })();
+  const paperCheck = paperTotalCheck(purchaseExpectedTotal, payablePaise);
   const payablePreview = (() => {
     try {
       return rupees(purchaseTotalPaise - paise(purchaseDiscount) + paise(purchaseExtra));
@@ -832,6 +847,20 @@ export function InventoryScreen({
       setError(purchaseStorageBlocked);
       return;
     }
+    // P06: a quick bill's items must add up to its paper total, or the user says so explicitly.
+    if (!purchaseLocked) {
+      const check = paperTotalCheck(purchaseExpectedTotal, payablePaise);
+      if (
+        check &&
+        !check.matches &&
+        !confirm(
+          check.diffPaise === null
+            ? 'The payable amount cannot be worked out, so it cannot be checked against the paper bill total. Post anyway?'
+            : `The items come to ${rupees(payablePaise!)} but the paper bill total is ${rupees(purchaseExpectedTotal!)} (${rupees(Math.abs(check.diffPaise))} ${check.diffPaise < 0 ? 'less' : 'more'}). Post anyway?`,
+        )
+      )
+        return;
+    }
     const isRetry = Boolean(purchaseLocked && lockedPurchase.current);
     // Durable before dispatch, or not sent at all.
     try {
@@ -882,6 +911,7 @@ export function InventoryScreen({
         setDocumentBusy(false);
         setDocumentSaveError('');
         setPurchaseCart([]);
+        setPurchaseExpectedTotal(undefined);
         setPurchaseBillNo('');
         setPurchaseDiscount('');
         setPurchaseExtra('');
@@ -1334,6 +1364,21 @@ export function InventoryScreen({
               </button>
             ))}
           </div>
+        )}
+        {purchaseOnly && shopToday && (
+          <QuickBillEntry
+            parties={parties}
+            today={shopToday}
+            draftPrefix={draftPrefix}
+            disabled={
+              purchaseLocked ||
+              contextBusy ||
+              !purchaseContextReady ||
+              accountChanged ||
+              !catalogLoaded
+            }
+            onSaved={refreshDrafts}
+          />
         )}
         {purchaseOnly && shopToday && (
           <BatchPurchaseEntry
@@ -1798,6 +1843,20 @@ export function InventoryScreen({
               </div>
             )}
           </fieldset>
+          {paperCheck && purchaseExpectedTotal && (
+            <p
+              class={paperCheck.matches ? 'muted' : 'alert'}
+              role="status"
+              data-testid="paper-total"
+            >
+              Paper bill total: {rupees(purchaseExpectedTotal)}.{' '}
+              {paperCheck.matches
+                ? 'The items match it.'
+                : paperCheck.diffPaise === null
+                  ? 'Check the amounts.'
+                  : `Items are ${rupees(Math.abs(paperCheck.diffPaise))} ${paperCheck.diffPaise < 0 ? 'short of' : 'over'} it.`}
+            </p>
+          )}
           <button
             class="primary"
             disabled={

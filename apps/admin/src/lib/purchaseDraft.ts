@@ -19,6 +19,8 @@ export type PurchaseDraft = {
   price: string;
   /** How `price` is to be read: per unit (default, older drafts) or the whole line total. */
   costMode?: 'unit' | 'total';
+  /** P06 quick bill: the paper bill's total in paise, checked against the items before posting. */
+  expectedTotalPaise?: string;
   editingLine: number | null;
   document?: BillDocument | null;
   documentIssue?: string;
@@ -80,6 +82,11 @@ function checked(value: unknown): PurchaseDraft {
     throw new Error('A saved purchase draft is unreadable. It has been kept on this device.');
   if (d.costMode !== undefined && d.costMode !== 'unit' && d.costMode !== 'total')
     throw new Error('Saved cost entry mode is unreadable. The draft has been kept.');
+  if (
+    d.expectedTotalPaise !== undefined &&
+    !(typeof d.expectedTotalPaise === 'string' && /^[1-9]\d{0,14}$/.test(d.expectedTotalPaise))
+  )
+    throw new Error('Saved paper bill total is unreadable. The draft has been kept.');
   if (d.documentIssue !== undefined && typeof d.documentIssue !== 'string')
     throw new Error('Saved document selection state is unreadable. The draft has been kept.');
   if (d.document) {
