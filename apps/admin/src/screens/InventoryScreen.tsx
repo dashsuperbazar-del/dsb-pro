@@ -1,6 +1,8 @@
 import { CameraScanner } from '../components/CameraScanner';
 import { PriceHistory } from '../components/PriceHistory';
 import { learnedUnits } from '../lib/unitLearning';
+import { VoiceEntryButton } from '../components/VoiceEntryButton';
+import { matchItems, parseVoiceEntry, unitLevelFor } from '../lib/voiceEntry';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   addItemBarcode,
@@ -1706,6 +1708,40 @@ export function InventoryScreen({
             </label>
             <fieldset>
               <legend>Add purchase line</legend>
+              <VoiceEntryButton
+                disabled={purchaseLocked || editingPurchaseLine !== null}
+                onText={(text) => {
+                  const v = parseVoiceEntry(text);
+                  if (!v) {
+                    setMessage(
+                      `Did not understand “${text}”. Say the item name, then the quantity.`,
+                    );
+                    return;
+                  }
+                  setPurchaseItemSearch(v.name);
+                  const hits = matchItems(items, v.name);
+                  if (hits.length !== 1) {
+                    setPurchaseLineItemId('');
+                    setPurchaseLineQty('');
+                    setPurchaseLinePrice('');
+                    setMessage(
+                      hits.length
+                        ? `Heard “${text}”: ${hits.length} items match. Pick one, then check the quantity and price.`
+                        : `Heard “${text}”: no item matches “${v.name}”.`,
+                    );
+                    return;
+                  }
+                  const item = hits[0]!;
+                  setPurchaseLineItemId(item.id);
+                  setPurchaseLineUnitLevel(unitLevelFor(item, v.unitWord) ?? 1);
+                  setPurchaseCostMode('unit');
+                  setPurchaseLineQty(v.qty ?? '');
+                  setPurchaseLinePrice(v.rate ?? '');
+                  setMessage(
+                    `Heard “${text}”. Check ${item.name}, the unit, quantity and price, then press Add line.`,
+                  );
+                }}
+              />
               <label>
                 Find purchase item
                 <input
