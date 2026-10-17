@@ -1011,3 +1011,82 @@ test('SP1: a failing incremental sync leaves the device list in place and shows 
   expect(hasOption('d1')).toBe(true);
   expect(host.textContent).not.toContain('offline');
 });
+
+test('P06: a quick bill checks items against its paper total before posting and never leaks into the next purchase', async () => {
+  const prefix = 'dsb-purchase-draft:user:shop:';
+  localStorage.setItem(
+    `${prefix}quick-1:w`,
+    JSON.stringify({
+      version: 1,
+      clientId: 'quick-1',
+      savedAt: Date.now(),
+      supplier: '',
+      billNo: 'PAPER-9',
+      businessDate: '2026-10-11',
+      discount: '',
+      extra: '',
+      cart: [
+        {
+          item: { id: 'a', name: 'Item A', unit1: 'piece' },
+          unitLevel: 1,
+          qty: '2',
+          unitPricePaise: 100,
+        },
+      ],
+      search: '',
+      lineItem: null,
+      unitLevel: 1,
+      qty: '',
+      price: '',
+      editingLine: null,
+      expectedTotalPaise: '300',
+    }),
+  );
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly />, host);
+  });
+  await vi.waitFor(() =>
+    expect(
+      [...host.querySelectorAll('button')].find((b) => b.textContent === 'Resume draft')?.disabled,
+    ).toBe(false),
+  );
+  expect(host.textContent).toContain('paper total ₹3.00');
+  await act(async () => {
+    [...host.querySelectorAll('button')].find((b) => b.textContent === 'Resume draft')!.click();
+  });
+  const paper = () => host.querySelector('[data-testid="paper-total"]')?.textContent ?? '';
+  expect(paper()).toContain('Items are ₹1.00 short of it.');
+  const submit = () =>
+    act(async () => {
+      host
+        .querySelector('input[name="billNo"]')!
+        .closest('form')!
+        .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+  // Declining the mismatch posts nothing and leaves no pending request behind.
+  const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  await submit();
+  expect(confirmSpy).toHaveBeenCalledTimes(1);
+  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  expect(localStorage.getItem('dsb-pending-purchase:shop')).toBeNull();
+  // An unknown outcome locks the request; the retry resends it without asking again.
+  confirmSpy.mockReturnValue(true);
+  api.postPurchaseOutcome.mockResolvedValueOnce({ kind: 'unknown', message: 'network' });
+  await submit();
+  await vi.waitFor(() => expect(host.textContent).toContain('Not confirmed'));
+  expect(confirmSpy).toHaveBeenCalledTimes(2);
+  api.postPurchaseOutcome.mockResolvedValueOnce({ kind: 'confirmed', value: {} });
+  await submit();
+  await vi.waitFor(() => expect(host.textContent).toContain('Purchase posted'));
+  expect(confirmSpy).toHaveBeenCalledTimes(2);
+  expect(api.postPurchaseOutcome).toHaveBeenCalledTimes(2);
+  // The next purchase carries no paper total, on screen or in its autosaved draft.
+  expect(host.querySelector('[data-testid="paper-total"]')).toBeNull();
+  await enter(host, 'billNo', 'NEXT');
+  await vi.waitFor(() => expect(host.textContent).toContain('Draft saved on this device'));
+  const saved = Object.keys(localStorage)
+    .filter((k) => k.startsWith(prefix))
+    .map((k) => JSON.parse(localStorage.getItem(k)!));
+  expect(saved.length).toBeGreaterThan(0);
+  expect(saved.every((d) => d.expectedTotalPaise === undefined)).toBe(true);
+});
