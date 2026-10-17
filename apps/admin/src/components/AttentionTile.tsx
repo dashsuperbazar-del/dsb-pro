@@ -37,7 +37,9 @@ export function AttentionTile() {
       // SP2: last visit's figures show at once; each part is replaced as its fresh read lands.
       const userId = await snapshotUserId();
       const snap = peekSnapshot<AttentionSnapshot>('attention', userId);
-      const saved: AttentionSnapshot = { ...snap?.value };
+      // Only a set where all three parts were read fresh in this visit is saved, so an old part can never
+      // be re-stamped as new.
+      const fresh: AttentionSnapshot = {};
       let pending = 3;
       const settled = () => {
         if (--pending === 0 && alive) setSnapshotAt(null);
@@ -50,8 +52,9 @@ export function AttentionTile() {
       }
       const shop = await getDefaultShopId();
       const keep = (part: Partial<AttentionSnapshot>) => {
-        Object.assign(saved, part);
-        putSnapshot<AttentionSnapshot>('attention', userId, shop, { ...saved });
+        Object.assign(fresh, part);
+        if (fresh.low && fresh.sup && fresh.due)
+          putSnapshot<AttentionSnapshot>('attention', userId, shop, { ...fresh });
       };
       getLowStockReport(shop).then(
         (value) => {

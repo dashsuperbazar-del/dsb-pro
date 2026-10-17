@@ -12,7 +12,7 @@ import { shopContext } from '../lib/shopContext';
 import { appRoute } from '../lib/paths';
 import { rupees } from '../lib/money';
 import { purchaseStatus } from '../lib/purchaseWorkflow';
-import { peekSnapshot, putSnapshot, snapshotUserId } from '../lib/routeSnapshot';
+import { dropSnapshot, peekSnapshot, putSnapshot, snapshotUserId } from '../lib/routeSnapshot';
 import { SnapshotNote } from '../components/SnapshotNote';
 
 type PurchaseListSnapshot = { rows: PurchaseRecord[]; parties: Party[] };
@@ -35,7 +35,15 @@ export function PurchasesScreen({ url }: { url?: string }) {
   const generation = useRef(0);
   const listGeneration = useRef(0);
   const [snapshotAt, setSnapshotAt] = useState<number | null>(null);
+  const [snapshotFailed, setSnapshotFailed] = useState(false);
   const userRef = useRef('');
+  function forgetSaved(active: boolean) {
+    dropSnapshot('purchases');
+    if (!active) return;
+    setRows([]);
+    setParties([]);
+    setSnapshotAt(null);
+  }
   async function refresh(shopId = shop) {
     const token = ++listGeneration.current;
     setLoading(true);
@@ -52,7 +60,10 @@ export function PurchasesScreen({ url }: { url?: string }) {
         parties: suppliers,
       });
     } catch (e) {
-      if (token === listGeneration.current) setError(String(e));
+      if (token === listGeneration.current) {
+        setError(String(e));
+        setSnapshotFailed(true);
+      }
     } finally {
       if (token === listGeneration.current) setLoading(false);
     }
@@ -67,18 +78,21 @@ export function PurchasesScreen({ url }: { url?: string }) {
         if (snap && active) {
           setRows(snap.value.rows);
           setParties(snap.value.parties);
-          setShop(snap.shopId);
           setSnapshotAt(snap.at);
           setLoading(false);
         }
-        const { session: fresh, membership: m, shopId: s } = await shopContext.get();
+        let context;
+        try {
+          context = await shopContext.get();
+        } catch (e) {
+          // No session or membership: whatever was saved is no longer this user's to see.
+          forgetSaved(active);
+          throw e;
+        }
+        const { session: fresh, membership: m, shopId: s } = context;
         userRef.current = fresh.user.id;
         if (!['owner', 'manager', 'accountant'].includes(m.role)) {
-          if (active) {
-            setRows([]);
-            setParties([]);
-            setSnapshotAt(null);
-          }
+          forgetSaved(active);
           throw new Error('Purchase history is restricted by your role.');
         }
         if (!active) return;
@@ -101,6 +115,10 @@ export function PurchasesScreen({ url }: { url?: string }) {
     };
   }, []);
   async function open(id: string) {
+    if (!shop) {
+      setError('Still loading this shop. Try again in a moment.');
+      return;
+    }
     const token = ++generation.current;
     setDetail(null);
     setError('');
@@ -149,7 +167,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
       </nav>
       {error && <p role="alert">{error}</p>}
       {loading && <p role="status">Loading purchases…</p>}
-      {!entering && <SnapshotNote at={snapshotAt} />}
+      {!entering && <SnapshotNote at={snapshotAt} failed={snapshotFailed} />}
       {allowed && canPost && (
         <div hidden={!entering}>
           <InventoryScreen

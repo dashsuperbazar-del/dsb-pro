@@ -42,7 +42,7 @@ import { PartyEditor } from '../components/PartyEditor';
 import { SupplierStatement } from '../components/SupplierStatement';
 import { SupplierSchedulePanel } from '../components/SupplierSchedulePanel';
 import { SnapshotNote } from '../components/SnapshotNote';
-import { peekSnapshot, putSnapshot, snapshotUserId } from '../lib/routeSnapshot';
+import { dropSnapshot, peekSnapshot, putSnapshot, snapshotUserId } from '../lib/routeSnapshot';
 
 type SupplierBaseSnapshot = { summary: SupplierOutstandingRow[]; parties: Party[] };
 import { appRoute } from '../lib/paths';
@@ -134,35 +134,50 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
   const current = useRef('');
   const [allParties, setAllParties] = useState<Party[]>([]);
   const [snapshotAt, setSnapshotAt] = useState<number | null>(null);
+  const [snapshotFailed, setSnapshotFailed] = useState(false);
+  const baseGeneration = useRef(0);
 
   const canPost = role === 'owner' || role === 'manager';
   const isOwner = role === 'owner';
 
-  async function refreshBase() {
-    // SP2: show the last supplier summary at once (display only). Payments always load fresh bills below.
+  function forgetBase() {
+    dropSnapshot('suppliers');
+    setSummary([]);
+    setAllParties([]);
+    setSnapshotAt(null);
+  }
+  async function refreshBase(showSaved = false) {
+    const gen = ++baseGeneration.current;
+    // SP2: on first open show the last supplier summary at once (display only). Payments always load
+    // fresh bills below; the editor and deep links wait for the fresh supplier list.
     const userId = await snapshotUserId();
-    const snap = peekSnapshot<SupplierBaseSnapshot>('suppliers', userId);
-    if (snap) {
+    const snap = showSaved ? peekSnapshot<SupplierBaseSnapshot>('suppliers', userId) : null;
+    if (snap && gen === baseGeneration.current) {
       setSummary(snap.value.summary);
       setAllParties(snap.value.parties);
       setSnapshotAt(snap.at);
+      setSnapshotFailed(false);
     }
     const m = await getCurrentMembership();
-    if (!m) throw new Error('No tenant membership.');
+    if (gen !== baseGeneration.current) return;
+    if (!m) {
+      forgetBase();
+      throw new Error('No tenant membership.');
+    }
     setRole(m.role);
     if (m.role === 'cashier') {
-      setSummary([]);
-      setAllParties([]);
-      setSnapshotAt(null);
+      forgetBase();
       return;
     }
     const shop = m.shopIds[0] ?? (await getDefaultShopId());
+    if (gen !== baseGeneration.current) return;
     setShopId(shop);
     const [s, d, parties] = await Promise.all([
       getSupplierOutstanding(shop),
       getShopBusinessDate(shop),
       listParties(),
     ]);
+    if (gen !== baseGeneration.current) return;
     setSummary(s);
     setAllParties(parties);
     setBusinessDate(d);
@@ -209,21 +224,30 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
     setLoadedParty(party);
   }
   useEffect(() => {
-    void refreshBase().catch((e) => setError(String(e)));
+    void refreshBase(true).catch((e) => {
+      setSnapshotFailed(true);
+      setError(String(e));
+    });
   }, []);
   useEffect(() => {
     void refreshParty().catch((e) => setError(String(e)));
   }, [shopId, partyId]);
 
   useEffect(() => {
-    if (!shopId || !contextSupplier || !allParties.some((p) => p.id === contextSupplier)) return;
+    if (
+      snapshotAt !== null ||
+      !shopId ||
+      !contextSupplier ||
+      !allParties.some((p) => p.id === contextSupplier)
+    )
+      return;
     const key = contextSupplier + ':' + contextBill + ':' + contextView;
     if (contextUsed.current === key) return;
     contextUsed.current = key;
     void changeParty(contextSupplier)
       .then(() => setView(contextView))
       .catch((e) => setError(String(e)));
-  }, [shopId, allParties, contextSupplier, contextBill, contextView]);
+  }, [shopId, allParties, snapshotAt, contextSupplier, contextBill, contextView]);
   useEffect(() => {
     if (!contextBill || loadedParty !== contextSupplier || targetBillUsed.current === contextBill)
       return;
@@ -426,7 +450,7 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
         </p>
       )}
       {message && <p role="status">{message}</p>}
-      <SnapshotNote at={snapshotAt} />
+      <SnapshotNote at={snapshotAt} failed={snapshotFailed} />
 
       <section class="mobile-records">
         <h2>Summary</h2>
@@ -498,6 +522,7 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
         </label>
         {canPost &&
           partyId &&
+          snapshotAt === null &&
           (() => {
             const party = allParties.find((p) => p.id === partyId);
             if (!party) return null;

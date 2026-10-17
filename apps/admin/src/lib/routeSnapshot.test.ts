@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-vi.mock('@dsb-pro/adapters', () => ({ onAuthStateChange: vi.fn(), getSession: vi.fn() }));
+const auth = vi.hoisted(() => ({ listener: null as null | (() => void) }));
+vi.mock('@dsb-pro/adapters', () => ({
+  onAuthStateChange: vi.fn((cb: () => void) => {
+    auth.listener = cb;
+    return () => {};
+  }),
+  getSession: vi.fn(),
+}));
 import { clearSnapshots, peekSnapshot, putSnapshot, snapshotAge } from './routeSnapshot';
 
 beforeEach(() => clearSnapshots());
@@ -23,5 +30,14 @@ describe('route snapshots', () => {
     expect(snapshotAge(0, 30_000)).toBe('just now');
     expect(snapshotAge(0, 5 * 60_000)).toBe('5 min ago');
     expect(snapshotAge(0, 3 * 3600_000)).toBe('3 h ago');
+  });
+});
+
+describe('sign-in changes', () => {
+  it('any auth event drops every snapshot', () => {
+    putSnapshot('list', 'u1', 's1', 1);
+    expect(auth.listener).not.toBeNull();
+    auth.listener!();
+    expect(peekSnapshot('list', 'u1')).toBeNull();
   });
 });
