@@ -7,14 +7,14 @@ design, feature and the same speed be brought into DSB Pro, so DSB Pro is usable
 
 Old DSB = `dashsuperbazar-del/DSB` @ `62e3c30` (owner-confirmed shop baseline): one 588 KB `index.html`.
 
-| Area | Old DSB | DSB Pro | Consequence |
-| --- | --- | --- | --- |
-| Reads | All data in memory from `localStorage`; every screen renders instantly | Most screens fetch from the server on every visit | DSB feels instant; Pro waits on the network (SP0: Inventory revisit p50 21.4 s → 4.9 s after SP1a, mobile-synthetic CI profile) |
-| Sync | `select=*` of whole tables + `merge-duplicates` upsert (last writer wins); purge-on-absence | Server RPCs, idempotent requests, immutable ledgers, outbox | DSB: two devices or a late sync can silently overwrite or purge money records. Pro: never |
-| Stock/balances | Mutable fields (`it.stock += …`) edited in place | Derived from immutable movements/ledgers | DSB numbers drift with no audit trail; Pro reconciles |
-| Delete | Hard `DELETE` on server + local recycle bin | Void/reverse, never delete | DSB history can be lost; Pro keeps it |
-| Growth | localStorage quota (~5–10 MB per origin); full-table pull grows every year | Server pagination; device holds only the working set | DSB will hit the quota or get slower each year — the gap Pro was built to close |
-| Security | Single anon key, client-trusted | RLS per tenant/shop/role, server-checked permissions | Cashier/phone loss risks in DSB |
+| Area           | Old DSB                                                                                     | DSB Pro                                                     | Consequence                                                                                                                     |
+| -------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Reads          | All data in memory from `localStorage`; every screen renders instantly                      | Most screens fetch from the server on every visit           | DSB feels instant; Pro waits on the network (SP0: Inventory revisit p50 21.4 s → 4.9 s after SP1a, mobile-synthetic CI profile) |
+| Sync           | `select=*` of whole tables + `merge-duplicates` upsert (last writer wins); purge-on-absence | Server RPCs, idempotent requests, immutable ledgers, outbox | DSB: two devices or a late sync can silently overwrite or purge money records. Pro: never                                       |
+| Stock/balances | Mutable fields (`it.stock += …`) edited in place                                            | Derived from immutable movements/ledgers                    | DSB numbers drift with no audit trail; Pro reconciles                                                                           |
+| Delete         | Hard `DELETE` on server + local recycle bin                                                 | Void/reverse, never delete                                  | DSB history can be lost; Pro keeps it                                                                                           |
+| Growth         | localStorage quota (~5–10 MB per origin); full-table pull grows every year                  | Server pagination; device holds only the working set        | DSB will hit the quota or get slower each year — the gap Pro was built to close                                                 |
+| Security       | Single anon key, client-trusted                                                             | RLS per tenant/shop/role, server-checked permissions        | Cashier/phone loss risks in DSB                                                                                                 |
 
 Conclusion: DSB's speed comes from local-first reads, not from anything Pro cannot do. DSB's weaknesses
 (LWW money merge, mutable stock, hard deletes, quota) are structural and cannot be fixed inside DSB's
@@ -45,17 +45,17 @@ design without rebuilding it — which is what Pro is.
 
 ## 4. Build order (one packet per PR; each closes with tests, review, CI)
 
-| # | Packet | Parity rows | Gate |
-| --- | --- | --- | --- |
-| SP2 | Instant route render: SWR snapshot cache for Home, Inventory, Purchases, Suppliers, Customers, Reports | N02 | SP0 revisit p50 ≤ 300 ms (mobile-synthetic) |
-| SP3 | Retained tab shell (5 tabs kept mounted, dirty guards) | N01, N08, C05 | no data loss on tab switch (e2e) |
-| SP4 | Per-screen read RPCs (migration) + IndexedDB persistence for cold start | N02 | cold cached reload ≤ 1.5 s |
-| F1 | Party merge, edit/delete from detail (archive), unit learning | I11, I13, I14 | pgTAP + e2e |
-| F2 | Bulk supplier payments; recent sort/status filters; day book cash/bank | S05, N06, R03 | ledger reconciliation tests |
-| F3 | Excel entry sheet import/export; bill image peek; multiple photos | P10, P12, P13 | import never posts; drafts only |
-| F4 | Price/demand charts; voice entry; image share of bills/statements | I08, C06, S08, C10 | device check |
-| F0 | Import the shop's old DSB data (needs the owner's export file) | — | counts and balances reconcile to DSB exactly |
-| CUT | Parallel week, then cutover | — | §5 |
+| #   | Packet                                                                                                 | Parity rows        | Gate                                         |
+| --- | ------------------------------------------------------------------------------------------------------ | ------------------ | -------------------------------------------- |
+| SP2 | Instant route render: SWR snapshot cache for Home, Inventory, Purchases, Suppliers, Customers, Reports | N02                | SP0 revisit p50 ≤ 300 ms (mobile-synthetic)  |
+| SP3 | Retained tab shell (5 tabs kept mounted, dirty guards)                                                 | N01, N08, C05      | no data loss on tab switch (e2e)             |
+| SP4 | Per-screen read RPCs (migration) + IndexedDB persistence for cold start                                | N02                | cold cached reload ≤ 1.5 s                   |
+| F1  | Party merge, edit/delete from detail (archive), unit learning                                          | I11, I13, I14      | pgTAP + e2e                                  |
+| F2  | Bulk supplier payments; recent sort/status filters; day book cash/bank                                 | S05, N06, R03      | ledger reconciliation tests                  |
+| F3  | Excel entry sheet import/export; bill image peek; multiple photos                                      | P10, P12, P13      | import never posts; drafts only              |
+| F4  | Price/demand charts; voice entry; image share of bills/statements                                      | I08, C06, S08, C10 | device check                                 |
+| F0  | Import the shop's old DSB data (needs the owner's export file)                                         | —                  | counts and balances reconcile to DSB exactly |
+| CUT | Parallel week, then cutover                                                                            | —                  | §5                                           |
 
 Already shipped this week: C12 statement, N04 search, N07 attention tile, P04 line-total cost, P09 batch
 drafts, S06 payment schedule, I09 camera scan (pending merge, device-unverified), P06 quick bill (pending).
@@ -66,4 +66,4 @@ drafts, S06 payment schedule, I09 camera scan (pending merge, device-unverified)
 2. F0 import: item, party, customer counts and every balance equal old DSB's on the same date.
 3. One parallel week: Pro totals reconcile with DSB daily (sales, purchases, payments, stock).
 4. Offline/restart/reconnect test, restore drill, receipt print width, WhatsApp share, per-role checks.
-Until all four pass, H-gates stay NOT GO and old DSB stays the system of record.
+   Until all four pass, H-gates stay NOT GO and old DSB stays the system of record.
