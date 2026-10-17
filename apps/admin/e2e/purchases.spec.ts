@@ -150,3 +150,50 @@ test('a purchase line can be entered as a line total; an inexact total is shown,
   await expect(purchase.locator('table tbody tr')).toHaveCount(2);
   await expect(purchase).toContainText('Lines total: ₹199.99');
 });
+
+test('batch entry saves several single-line bills as drafts; nothing posts until a draft is resumed and posted', async ({
+  page,
+}) => {
+  await createOwnerShop(page);
+  await page.goto('/inventory');
+  await stockTask(page, 'Suppliers');
+  await page.getByPlaceholder('Supplier name').fill('Batch Supplier');
+  await page.getByRole('button', { name: 'Create supplier' }).click();
+  await expect(page.getByRole('status')).toContainText('Created supplier Batch Supplier');
+  await createItem(page, 'Batch Item A');
+  await createItem(page, 'Batch Item B');
+  await page.goto('/purchases?new=1');
+
+  await page.getByText('Batch entry (save several bills as drafts)').click();
+  const batch = page.getByLabel('Batch bill entry');
+  await batch.getByLabel('Batch supplier 1').selectOption({ label: 'Batch Supplier' });
+  await batch.getByLabel('Batch bill number 1').fill('BATCH-1');
+  await batch.getByLabel('Batch item 1').selectOption({ label: 'Batch Item A' });
+  await batch.getByLabel('Batch quantity 1').fill('4');
+  await batch.getByLabel('Batch cost 1').fill('25');
+  await batch.getByRole('button', { name: 'Add another bill' }).click();
+  await batch.getByLabel('Batch bill number 2').fill('BATCH-2');
+  await batch.getByLabel('Batch item 2').selectOption({ label: 'Batch Item B' });
+  await batch.getByLabel('Batch quantity 2').fill('2');
+  await batch.getByLabel('Batch cost mode 2').selectOption('total');
+  await batch.getByLabel('Batch cost 2').fill('50');
+
+  // A bad row saves nothing and names the row.
+  await batch.getByLabel('Batch quantity 2').fill('0');
+  await batch.getByRole('button', { name: 'Save 2 drafts' }).click();
+  await expect(batch.getByRole('alert')).toContainText('Bill 2');
+  await batch.getByLabel('Batch quantity 2').fill('2');
+
+  await batch.getByRole('button', { name: 'Save 2 drafts' }).click();
+  await expect(batch).toContainText('Saved 2 drafts. Nothing is posted yet');
+
+  // The drafts are listed; resuming one and posting it goes through the normal purchase path.
+  await page.getByText('Saved purchase drafts', { exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Resume draft', exact: true })).toHaveCount(2);
+  // Switching from a touched form asks for confirmation; accept it like a user would.
+  page.once('dialog', (dialog) => void dialog.accept());
+  await page.getByRole('button', { name: 'Resume draft', exact: true }).first().click();
+  await expect(page.getByRole('status')).toContainText('Saved purchase draft restored');
+  await page.getByRole('button', { name: 'Post purchase' }).click();
+  await expect(page.getByRole('status')).toContainText(/Purchase posted/);
+});
