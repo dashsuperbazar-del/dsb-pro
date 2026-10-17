@@ -21,6 +21,8 @@ const api = vi.hoisted(() => ({
     },
   ]),
   listSupplierPayments: vi.fn().mockResolvedValue([]),
+  getSession: vi.fn().mockResolvedValue({ user: { id: 'u' } }),
+  onAuthStateChange: vi.fn(),
 }));
 vi.mock('@dsb-pro/adapters', () => api);
 vi.mock('../lib/offlineSync', () => ({
@@ -98,4 +100,66 @@ test('a linked bill selects its allocation but requires an explicit amount paid'
     ),
   );
   expect(paid().value).toBe('');
+});
+
+const row = (name: string, net: string) => ({
+  partyId: name,
+  partyName: name,
+  grossOpenBills: net,
+  unallocatedCashAdvances: '0',
+  returnCredits: '0',
+  netLedgerBalance: net,
+  strandedAllocationsOnVoidBills: 0,
+});
+async function openList() {
+  await act(async () => render(<SuppliersScreen url="/suppliers" />, host));
+}
+
+test('SP2: a revisit shows the saved supplier summary at once, then the fresh one', async () => {
+  const { clearSnapshots } = await import('../lib/routeSnapshot');
+  clearSnapshots();
+  api.getSupplierOutstanding.mockResolvedValue([row('Saved Co', '1000')]);
+  await openList();
+  await vi.waitFor(() => expect(host.textContent).toContain('Saved Co'));
+  await act(async () => render(null, host));
+  let finish!: (v: unknown) => void;
+  api.getSupplierOutstanding.mockReturnValue(new Promise((r) => (finish = r)));
+  await openList();
+  await vi.waitFor(() => expect(host.textContent).toContain('Saved Co'));
+  expect(host.querySelector('[data-testid="snapshot-note"]')?.textContent).toContain('refreshing');
+  await act(async () => finish([row('Fresh Co', '2000')]));
+  await vi.waitFor(() => expect(host.textContent).toContain('Fresh Co'));
+  expect(host.textContent).not.toContain('Saved Co');
+  expect(host.querySelector('[data-testid="snapshot-note"]')).toBeNull();
+  api.getSupplierOutstanding.mockResolvedValue([]);
+});
+
+test('SP2: a failed refresh says the saved figures may be out of date', async () => {
+  const { clearSnapshots, putSnapshot } = await import('../lib/routeSnapshot');
+  clearSnapshots();
+  putSnapshot('suppliers', 'u', 'shop', { summary: [row('Saved Co', '1000')], parties: [] });
+  api.getSupplierOutstanding.mockRejectedValueOnce(new Error('offline'));
+  await openList();
+  await vi.waitFor(() =>
+    expect(host.querySelector('[data-testid="snapshot-note"]')?.textContent).toContain(
+      'Could not refresh',
+    ),
+  );
+});
+
+test('SP2: lost membership or a cashier role clears the saved summary', async () => {
+  const { clearSnapshots, putSnapshot, peekSnapshot } = await import('../lib/routeSnapshot');
+  clearSnapshots();
+  putSnapshot('suppliers', 'u', 'shop', { summary: [row('Saved Co', '1000')], parties: [] });
+  api.getCurrentMembership.mockResolvedValueOnce(null);
+  await openList();
+  await vi.waitFor(() => expect(host.textContent).toContain('No tenant membership'));
+  expect(host.textContent).not.toContain('Saved Co');
+  expect(peekSnapshot('suppliers', 'u')).toBeNull();
+  await act(async () => render(null, host));
+  putSnapshot('suppliers', 'u', 'shop', { summary: [row('Saved Co', '1000')], parties: [] });
+  api.getCurrentMembership.mockResolvedValueOnce({ role: 'cashier', shopIds: ['shop'] });
+  await openList();
+  await vi.waitFor(() => expect(host.textContent).toContain('not available to cashiers'));
+  expect(host.textContent).not.toContain('Saved Co');
 });

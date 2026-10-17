@@ -10,6 +10,8 @@ const api = vi.hoisted(() => ({
   getSupplierOutstanding: vi.fn(),
   getSupplierPaymentsDue: vi.fn(),
   getShopBusinessDate: vi.fn(),
+  getSession: vi.fn().mockResolvedValue(null),
+  onAuthStateChange: vi.fn(),
 }));
 vi.mock('@dsb-pro/adapters', () => api);
 const host = document.createElement('div');
@@ -84,4 +86,19 @@ test('lists due scheduled payments, and an unavailable reminder is not shown as 
     expect(host.textContent).toContain('Supplier payment reminders are unavailable right now.'),
   );
   expect(host.textContent).not.toContain('No scheduled supplier payment is due.');
+});
+
+test('SP2: a revisit shows last figures at once, labelled, until fresh ones land', async () => {
+  const { clearSnapshots } = await import('../lib/routeSnapshot');
+  clearSnapshots();
+  api.getSession.mockResolvedValue({ user: { id: 'u' } });
+  api.getLowStockReport.mockReset().mockResolvedValue([]);
+  api.getSupplierOutstanding.mockReset().mockResolvedValue([sup('a', '123456')]);
+  await mount();
+  await vi.waitFor(() => expect(host.textContent).toContain('₹1,234.56'));
+  await act(async () => render(null, host));
+  api.getSupplierOutstanding.mockReset().mockReturnValue(new Promise(() => {}));
+  await mount();
+  await vi.waitFor(() => expect(host.textContent).toContain('₹1,234.56'));
+  expect(host.querySelector('[data-testid="snapshot-note"]')).not.toBeNull();
 });

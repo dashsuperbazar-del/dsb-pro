@@ -13,6 +13,14 @@ import { appRoute } from '../lib/paths';
 import { rupees } from '../lib/money';
 import { summarizeLowStock, summarizeSuppliers } from '../lib/attention';
 import { summarizeDue } from '../lib/supplierSchedule';
+import { SnapshotNote } from './SnapshotNote';
+import { peekSnapshot, putSnapshot, snapshotUserId } from '../lib/routeSnapshot';
+
+type AttentionSnapshot = {
+  low?: LowStockRow[];
+  sup?: SupplierOutstandingRow[];
+  due?: SupplierPaymentDue[];
+};
 
 type Part<T> = { state: 'loading' } | { state: 'error' } | { state: 'ok'; value: T };
 
@@ -22,31 +30,70 @@ export function AttentionTile() {
   const [low, setLow] = useState<Part<LowStockRow[]>>({ state: 'loading' });
   const [sup, setSup] = useState<Part<SupplierOutstandingRow[]>>({ state: 'loading' });
   const [due, setDue] = useState<Part<SupplierPaymentDue[]>>({ state: 'loading' });
+  const [snapshotAt, setSnapshotAt] = useState<number | null>(null);
   useEffect(() => {
     let alive = true;
     void (async () => {
+      // SP2: last visit's figures show at once; each part is replaced as its fresh read lands.
+      const userId = await snapshotUserId();
+      const snap = peekSnapshot<AttentionSnapshot>('attention', userId);
+      // Only a set where all three parts were read fresh in this visit is saved, so an old part can never
+      // be re-stamped as new.
+      const fresh: AttentionSnapshot = {};
+      let pending = 3;
+      const settled = () => {
+        if (--pending === 0 && alive) setSnapshotAt(null);
+      };
+      if (snap && alive) {
+        setSnapshotAt(snap.at);
+        if (snap.value.low) setLow({ state: 'ok', value: snap.value.low });
+        if (snap.value.sup) setSup({ state: 'ok', value: snap.value.sup });
+        if (snap.value.due) setDue({ state: 'ok', value: snap.value.due });
+      }
       const shop = await getDefaultShopId();
+      const keep = (part: Partial<AttentionSnapshot>) => {
+        Object.assign(fresh, part);
+        if (fresh.low && fresh.sup && fresh.due)
+          putSnapshot<AttentionSnapshot>('attention', userId, shop, { ...fresh });
+      };
       getLowStockReport(shop).then(
-        (value) => alive && setLow({ state: 'ok', value }),
-        () => alive && setLow({ state: 'error' }),
+        (value) => {
+          keep({ low: value });
+          if (alive) setLow({ state: 'ok', value });
+          settled();
+        },
+        () => {
+          if (alive) setLow({ state: 'error' });
+          settled();
+        },
       );
       void (async () => {
         try {
           const value = await getSupplierPaymentsDue(shop, await getShopBusinessDate(shop));
+          keep({ due: value });
           if (alive) setDue({ state: 'ok', value });
         } catch {
           if (alive) setDue({ state: 'error' });
         }
+        settled();
       })();
       getSupplierOutstanding(shop).then(
-        (value) => alive && setSup({ state: 'ok', value }),
-        () => alive && setSup({ state: 'error' }),
+        (value) => {
+          keep({ sup: value });
+          if (alive) setSup({ state: 'ok', value });
+          settled();
+        },
+        () => {
+          if (alive) setSup({ state: 'error' });
+          settled();
+        },
       );
     })().catch(() => {
       if (alive) {
         setLow({ state: 'error' });
         setSup({ state: 'error' });
         setDue({ state: 'error' });
+        setSnapshotAt(null);
       }
     });
     return () => {
@@ -59,6 +106,7 @@ export function AttentionTile() {
   return (
     <section class="card attention-tile" aria-label="Needs attention">
       <h2>Needs attention</h2>
+      <SnapshotNote at={snapshotAt} />
       <ul>
         <li>
           {low.state === 'loading' && <span class="muted">Checking low stock…</span>}
