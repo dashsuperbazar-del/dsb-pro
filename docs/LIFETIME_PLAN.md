@@ -22,6 +22,10 @@ design without rebuilding it — which is what Pro is.
 
 ## 2. Recommendation for the shop today
 
+> Recorded decision (2026-10-02, owner): old DSB is retired; no legacy import and no shadow run; DSB Pro goes
+> live with real data once daily-usable. That decision stands. The F0 and parallel-week rows below are
+> options for the owner to re-open, not planned work.
+
 - Keep old DSB as the ONLY system that records the shop's money and stock until DSB Pro passes the
   cutover gate in §5. Do not record the same day in both apps (double entry, no reconciliation path).
 - Do not keep extending old DSB: every year of data makes its quota and full-sync problem worse. Export a
