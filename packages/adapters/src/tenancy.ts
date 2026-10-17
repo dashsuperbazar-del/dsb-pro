@@ -2,14 +2,7 @@ import { makeTenantSlug, type Role } from '@dsb-pro/core';
 import { getSupabaseClient } from './client';
 
 export type Membership = { tenantId: string; role: Role; shopIds: string[] };
-export type Invite = {
-  id: string;
-  role: Role;
-  shopIds: string[];
-  token: string;
-  expiresAt: string;
-  createdAt: string;
-};
+export type Invite = { id: string; role: Role; shopIds: string[]; token: string; expiresAt: string; createdAt: string };
 export type TenantUser = {
   userId: string;
   email: string | null;
@@ -18,9 +11,7 @@ export type TenantUser = {
   status: 'active' | 'disabled';
 };
 
-function newClientId(): string {
-  return crypto.randomUUID();
-}
+function newClientId(): string { return crypto.randomUUID(); }
 
 export async function createTenant(shopName: string): Promise<string> {
   const { data, error } = await getSupabaseClient().rpc('create_tenant', {
@@ -34,31 +25,17 @@ export async function createTenant(shopName: string): Promise<string> {
 }
 
 export async function getDefaultShopId(): Promise<string> {
-  const { data, error } = await getSupabaseClient()
-    .from('shops')
-    .select('id')
-    .eq('is_default', true)
-    .single();
+  const { data, error } = await getSupabaseClient().from('shops').select('id').eq('is_default', true).single();
   if (error) throw error;
   return (data as { id: string }).id;
 }
 
 export async function createInvite(role: Role): Promise<Invite> {
   const shopId = await getDefaultShopId();
-  const { data, error } = await getSupabaseClient().rpc('create_invite', {
-    p_role: role,
-    p_shop_ids: [shopId],
-  });
+  const { data, error } = await getSupabaseClient().rpc('create_invite', { p_role: role, p_shop_ids: [shopId] });
   if (error) throw error;
   const row = (data as { id: string; token: string; expires_at: string }[])[0];
-  return {
-    id: row.id,
-    role,
-    shopIds: [shopId],
-    token: row.token,
-    expiresAt: row.expires_at,
-    createdAt: new Date().toISOString(),
-  };
+  return { id: row.id, role, shopIds: [shopId], token: row.token, expiresAt: row.expires_at, createdAt: new Date().toISOString() };
 }
 
 export async function revokeInvite(id: string): Promise<void> {
@@ -67,27 +44,18 @@ export async function revokeInvite(id: string): Promise<void> {
 }
 
 export async function acceptInvite(token: string): Promise<string> {
-  const { data, error } = await getSupabaseClient().rpc('accept_invite', {
-    p_token: token,
-    p_client_id: newClientId(),
-  });
+  const { data, error } = await getSupabaseClient().rpc('accept_invite', { p_token: token, p_client_id: newClientId() });
   if (error) throw error;
   return data as string;
 }
 
 export async function setUserRole(userId: string, role: Role): Promise<void> {
-  const { error } = await getSupabaseClient().rpc('set_user_role', {
-    p_user_id: userId,
-    p_role: role,
-  });
+  const { error } = await getSupabaseClient().rpc('set_user_role', { p_user_id: userId, p_role: role });
   if (error) throw error;
 }
 
 export async function setUserStatus(userId: string, status: 'active' | 'disabled'): Promise<void> {
-  const { error } = await getSupabaseClient().rpc('set_user_status', {
-    p_user_id: userId,
-    p_status: status,
-  });
+  const { error } = await getSupabaseClient().rpc('set_user_status', { p_user_id: userId, p_status: status });
   if (error) throw error;
 }
 
@@ -107,15 +75,7 @@ export async function getCurrentMembership(): Promise<Membership | null> {
 export async function listTenantUsers(): Promise<TenantUser[]> {
   const { data, error } = await getSupabaseClient().rpc('list_tenant_users_admin');
   if (error) throw error;
-  return (
-    data as {
-      user_id: string;
-      email: string | null;
-      display_name: string | null;
-      role: Role;
-      status: 'active' | 'disabled';
-    }[]
-  ).map((r) => ({
+  return (data as { user_id: string; email: string | null; display_name: string | null; role: Role; status: 'active' | 'disabled' }[]).map((r) => ({
     userId: r.user_id,
     email: r.email,
     displayName: r.display_name,
@@ -125,20 +85,9 @@ export async function listTenantUsers(): Promise<TenantUser[]> {
 }
 
 export async function listInvites(): Promise<Invite[]> {
-  const { data, error } = await getSupabaseClient()
-    .from('invites')
-    .select('id, role, shop_ids, token, expires_at, created_at');
+  const { data, error } = await getSupabaseClient().from('invites').select('id, role, shop_ids, token, expires_at, created_at');
   if (error) throw error;
-  return (
-    data as {
-      id: string;
-      role: Role;
-      shop_ids: string[];
-      token: string;
-      expires_at: string;
-      created_at: string;
-    }[]
-  ).map((r) => ({
+  return (data as { id: string; role: Role; shop_ids: string[]; token: string; expires_at: string; created_at: string }[]).map((r) => ({
     id: r.id,
     role: r.role,
     shopIds: r.shop_ids,

@@ -105,7 +105,7 @@ export function AttentionTile() {
               {dueSummary.worst
                 .map(
                   (r) =>
-                    `${r.partyName} (${r.remainingPaise === null ? 'no amount set' : rupees(r.remainingPaise)}, ${r.daysOverdue} day${r.daysOverdue === 1 ? '' : 's'} late)`,
+                    `${r.partyName} (${r.remainingPaise === null ? 'no amount set' : rupees(r.remainingPaise)}, ${r.daysOverdue === 0 ? 'due today' : `${r.daysOverdue} day${r.daysOverdue === 1 ? '' : 's'} late`})`,
                 )
                 .join(', ')}
               . <a href={appRoute.suppliers}>Open suppliers</a>

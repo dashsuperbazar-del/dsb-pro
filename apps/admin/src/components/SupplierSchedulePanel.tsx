@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   listSupplierSchedules,
   removeSupplierSchedule,
@@ -33,14 +33,18 @@ export function SupplierSchedulePanel(props: {
     setNote(s?.note ?? '');
     setActive(s ? s.active : true);
   }
+  const seq = useRef(0);
   async function load() {
+    const mine = ++seq.current;
     setLoaded(false);
     setError('');
     try {
       const all = await listSupplierSchedules(shopId);
+      if (mine !== seq.current) return;
       fill(all.find((s) => s.partyId === partyId) ?? null);
       setLoaded(true);
     } catch (e) {
+      if (mine !== seq.current) return;
       setError(e instanceof Error ? e.message : 'Could not load the payment schedule.');
     }
   }

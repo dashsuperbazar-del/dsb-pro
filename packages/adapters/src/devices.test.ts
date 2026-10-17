@@ -34,9 +34,7 @@ describe('getOrCreateDeviceId', () => {
 
 describe('guessDeviceLabel', () => {
   it('recognizes Chrome on Android', () => {
-    expect(guessDeviceLabel('Mozilla/5.0 (Linux; Android 14) Chrome/128 Mobile Safari')).toBe(
-      'Chrome on Android',
-    );
+    expect(guessDeviceLabel('Mozilla/5.0 (Linux; Android 14) Chrome/128 Mobile Safari')).toBe('Chrome on Android');
   });
 
   it('falls back to a generic label for an unrecognized UA', () => {
@@ -53,42 +51,20 @@ describe('registerCurrentDevice', () => {
     expect(id).toBe('device-row-1');
     expect(client.rpc).toHaveBeenCalledWith(
       'register_device',
-      expect.objectContaining({
-        p_device_id: expect.any(String),
-        p_app_version: expect.any(String),
-      }),
+      expect.objectContaining({ p_device_id: expect.any(String), p_app_version: expect.any(String) }),
     );
-    expect(client.rpc).toHaveBeenCalledWith('set_device_label', {
-      p_id: 'device-row-1',
-      p_label: expect.any(String),
-    });
+    expect(client.rpc).toHaveBeenCalledWith('set_device_label', { p_id: 'device-row-1', p_label: expect.any(String) });
   });
 });
 
 describe('listDevices', () => {
   it('maps rows to camelCase', async () => {
     const client = makeMockClient({}, [
-      {
-        id: 'd1',
-        user_id: 'u1',
-        device_id: 'dev-1',
-        label: 'My Phone',
-        last_seen: 'ls',
-        app_version: '1.0',
-        revoked_at: null,
-      },
+      { id: 'd1', user_id: 'u1', device_id: 'dev-1', label: 'My Phone', last_seen: 'ls', app_version: '1.0', revoked_at: null },
     ]);
     __setSupabaseClientForTest(client as never);
     await expect(listDevices({})).resolves.toEqual([
-      {
-        id: 'd1',
-        userId: 'u1',
-        deviceId: 'dev-1',
-        label: 'My Phone',
-        lastSeen: 'ls',
-        appVersion: '1.0',
-        revokedAt: null,
-      },
+      { id: 'd1', userId: 'u1', deviceId: 'dev-1', label: 'My Phone', lastSeen: 'ls', appVersion: '1.0', revokedAt: null },
     ]);
   });
 });
@@ -98,15 +74,12 @@ describe('renameDevice', () => {
     const client = makeMockClient({ set_device_label: null });
     __setSupabaseClientForTest(client as never);
     await renameDevice('d1', 'Counter tablet');
-    expect(client.rpc).toHaveBeenCalledWith('set_device_label', {
-      p_id: 'd1',
-      p_label: 'Counter tablet',
-    });
+    expect(client.rpc).toHaveBeenCalledWith('set_device_label', { p_id: 'd1', p_label: 'Counter tablet' });
   });
 });
 
 describe('revokeDevice', () => {
-  it("calls revoke_device only, when revoking someone else's device", async () => {
+  it('calls revoke_device only, when revoking someone else\'s device', async () => {
     const client = makeMockClient({ revoke_device: null });
     __setSupabaseClientForTest(client as never);
     const signOutSpy = vi.spyOn(authModule, 'signOut').mockResolvedValue();
