@@ -1111,3 +1111,12 @@ body {
     display: none;
   }
 }
+
+.camera-preview {
+  display: block;
+  width: 100%;
+  max-width: 24rem;
+  margin-top: 0.5rem;
+  border-radius: 0.5rem;
+  background: #000;
+}
