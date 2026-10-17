@@ -12,6 +12,7 @@ import { shopContext } from '../lib/shopContext';
 import { appRoute } from '../lib/paths';
 import { rupees } from '../lib/money';
 import { purchaseStatus } from '../lib/purchaseWorkflow';
+import { filterBills, type BillStatusFilter } from '../lib/purchaseListFilter';
 import { dropSnapshot, peekSnapshot, putSnapshot, snapshotUserId } from '../lib/routeSnapshot';
 import { SnapshotNote } from '../components/SnapshotNote';
 
@@ -26,6 +27,9 @@ export function PurchasesScreen({ url }: { url?: string }) {
   const [queryText, setQueryText] = useState('');
   const [supplier, setSupplier] = useState('');
   const [sort, setSort] = useState('date');
+  const [statusFilter, setStatusFilter] = useState<BillStatusFilter>('all');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [detail, setDetail] = useState<Awaited<ReturnType<typeof getPurchaseDetail>> | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -134,7 +138,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
   }
   const name = (id: string | null) =>
     parties.find((p) => p.id === id)?.name ?? (id ? 'Supplier unavailable' : 'No supplier');
-  const visible = rows
+  const visible = filterBills(rows, { status: statusFilter, from: fromDate, to: toDate })
     .filter(
       (b) =>
         (!supplier || b.party_id === supplier) &&
@@ -206,8 +210,34 @@ export function PurchasesScreen({ url }: { url?: string }) {
                 <option value="entered">Recently entered</option>
               </select>
             </label>
+            <label>
+              Status
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.currentTarget.value as BillStatusFilter)}
+              >
+                <option value="all">All bills</option>
+                <option value="posted">Posted</option>
+                <option value="void">Voided</option>
+              </select>
+            </label>
+            <label>
+              From
+              <input
+                type="date"
+                value={fromDate}
+                onInput={(e) => setFromDate(e.currentTarget.value)}
+              />
+            </label>
+            <label>
+              To
+              <input type="date" value={toDate} onInput={(e) => setToDate(e.currentTarget.value)} />
+            </label>
           </div>
-          <p class="muted">{rows.length} bills loaded. Load older bills to search more history.</p>
+          <p class="muted">
+            Showing {visible.length} of {rows.length} loaded bills. Filters apply to loaded bills;
+            load older bills to search more history.
+          </p>
           <div class="record-list">
             {visible.map((b) => (
               <button type="button" key={b.id} onClick={() => void open(b.id)}>
