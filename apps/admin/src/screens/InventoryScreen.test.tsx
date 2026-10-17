@@ -1090,3 +1090,31 @@ test('P06: a quick bill checks items against its paper total before posting and 
   expect(saved.length).toBeGreaterThan(0);
   expect(saved.every((d) => d.expectedTotalPaise === undefined)).toBe(true);
 });
+
+test('SP2b: a revisit of the stock screen lists the last catalogue at once; a write since then skips it', async () => {
+  const { clearSnapshots } = await import('../lib/routeSnapshot');
+  clearSnapshots();
+  await act(async () => {
+    render(<InventoryScreen />, host);
+  });
+  await vi.waitFor(() =>
+    expect(host.querySelectorAll('option[value="a"]').length).toBeGreaterThan(0),
+  );
+  await act(async () => render(null, host));
+  api.listItems.mockReturnValueOnce(new Promise(() => {}));
+  await act(async () => {
+    render(<InventoryScreen />, host);
+  });
+  await vi.waitFor(() =>
+    expect(host.querySelectorAll('option[value="a"]').length).toBeGreaterThan(0),
+  );
+  expect(host.querySelector('[data-testid="snapshot-note"]')?.textContent).toContain('refreshing');
+  await act(async () => render(null, host));
+  markCatalogDirty(Date.now() + 1000);
+  api.listItems.mockReturnValueOnce(new Promise(() => {}));
+  await act(async () => {
+    render(<InventoryScreen />, host);
+  });
+  await new Promise((r) => setTimeout(r, 50));
+  expect(host.querySelectorAll('option[value="a"]').length).toBe(0);
+});
