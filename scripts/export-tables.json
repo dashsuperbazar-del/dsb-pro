@@ -34,6 +34,12 @@
     { "key": "stockCurrent", "table": "stock_current", "scope": "shop" },
     { "key": "accountOpenings", "table": "account_openings", "scope": "shop" },
     { "key": "openingSettlements", "table": "opening_settlements", "scope": "shop" },
+    {
+      "key": "supplierPaymentSchedules",
+      "table": "supplier_payment_schedules",
+      "scope": "shop",
+      "optional": true
+    },
     { "key": "financialRequests", "table": "financial_requests", "scope": "shop" },
     { "key": "shopFinancialHistory", "table": "shop_financial_history", "scope": "shop" },
     { "key": "syncIdempotencyKeys", "table": "sync_idempotency_keys", "scope": "tenant" },

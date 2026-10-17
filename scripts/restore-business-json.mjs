@@ -96,8 +96,9 @@ export function validateExport(raw, expectSha256) {
     if (!known.has(k) && !meta.includes(k)) fail(`unmapped export key ${k}`);
   }
   const tables = manifest.tables.map((t) => {
-    if (!(t.key in doc)) fail(`export is missing ${t.key}`);
-    const rows = t.single ? [doc[t.key]] : doc[t.key];
+    // An optional table was added after format 4 shipped: an older export has none of it, which is valid.
+    if (!(t.key in doc) && !t.optional) fail(`export is missing ${t.key}`);
+    const rows = t.single ? [doc[t.key]] : (doc[t.key] ?? []);
     if (!Array.isArray(rows)) fail(`${t.key} must be a list`);
     for (const r of rows) {
       if (!r || typeof r !== 'object' || Array.isArray(r) || JSON.isRawJSON(r))
