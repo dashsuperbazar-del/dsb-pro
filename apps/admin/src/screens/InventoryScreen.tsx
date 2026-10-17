@@ -1,4 +1,5 @@
 import { CameraScanner } from '../components/CameraScanner';
+import { learnedUnits } from '../lib/unitLearning';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   addItemBarcode,
@@ -566,6 +567,7 @@ export function InventoryScreen({
       setError(String(e));
     }
   }
+  const unitSuggestions = useMemo(() => learnedUnits(items), [items]);
   const selectedItem = items.find((i) => i.id === selected);
   const purchaseLineItem = items.find((i) => i.id === purchaseLineItemId);
   const detailPicker = boundedItemOptions(items, itemSearch, selected);
@@ -1131,10 +1133,16 @@ export function InventoryScreen({
             </label>{' '}
             <label>
               Big unit (e.g. case){' '}
-              <input name="unit1" placeholder="Big unit (e.g. case)" required />
+              <input
+                name="unit1"
+                placeholder="Big unit (e.g. case)"
+                required
+                list="learned-units"
+              />
             </label>{' '}
             <label>
-              Small unit (e.g. pack) <input name="unit2" placeholder="Small unit (e.g. pack)" />
+              Small unit (e.g. pack){' '}
+              <input name="unit2" placeholder="Small unit (e.g. pack)" list="learned-units" />
             </label>{' '}
             <label>
               Small units per big{' '}
@@ -1147,7 +1155,13 @@ export function InventoryScreen({
               />
             </label>{' '}
             <label>
-              Piece unit (optional) <input name="unit3" placeholder="Piece unit (optional)" />
+              Piece unit (optional){' '}
+              <input name="unit3" placeholder="Piece unit (optional)" list="learned-units" />
+              <datalist id="learned-units">
+                {unitSuggestions.map((u) => (
+                  <option key={u} value={u} />
+                ))}
+              </datalist>
             </label>{' '}
             <label>
               Pieces per small{' '}
