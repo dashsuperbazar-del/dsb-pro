@@ -1,43 +1,298 @@
 import { getSupabaseClient } from './client';
 import { classifyError, errorMessage } from './errors';
-function fail(error:unknown){ throw new Error(errorMessage(classifyError(error),error)); }
-export type DayBookRow={business_date:string;sales_paise:number;purchases_paise:number;receipts_paise:number;payments_paise:number;expenses_paise:number;net_cashflow_paise:number};
-export type StockValueRow={item_id:string;item_name:string;qty_base:number;cost_paise:number;value_paise:number};
-export type GstRow={tax_rate_bp:number;taxable_sales_paise:number;gross_sales_paise:number;taxable_purchases_paise:number;gross_purchases_paise:number};
-export async function getDayBook(shopId:string,from:string,to:string){const {data,error}=await getSupabaseClient().rpc('get_day_book',{p_shop_id:shopId,p_from:from,p_to:to});if(error)fail(error);return (data??[]) as DayBookRow[];}
-export async function getStockValuation(shopId:string){const {data,error}=await getSupabaseClient().rpc('get_stock_valuation',{p_shop_id:shopId});if(error)fail(error);return (data??[]) as StockValueRow[];}
-export async function getGstSummary(shopId:string,from:string,to:string){const {data,error}=await getSupabaseClient().rpc('get_gst_summary',{p_shop_id:shopId,p_from:from,p_to:to});if(error)fail(error);return (data??[]) as GstRow[];}
-export async function postExpense(shopId:string,businessDate:string,category:string,description:string,amountPaise:number,mode:string,reference:string|null,clientId:string){const {data,error}=await getSupabaseClient().rpc('post_expense',{p_shop_id:shopId,p_business_date:businessDate,p_category:category,p_description:description,p_amount_paise:amountPaise,p_mode:mode,p_reference:reference,p_client_id:clientId});if(error)fail(error);return data as string;}
-export async function exportTenant(shopId:string){const {data,error}=await getSupabaseClient().rpc('phase6_export_tenant',{p_shop_id:shopId});if(error)fail(error);return data as Record<string,unknown>;}
-export type InvariantHealth={ok:boolean;saleTotalViolations:number;purchaseTotalViolations:number;negativeStock:number;allocationViolations:number;stockProjectionViolations:number;voidReversalViolations:number};
-export async function checkInvariants(){const {data,error}=await getSupabaseClient().rpc('check_invariants');if(error)fail(error);return data as unknown as InvariantHealth;}
+function fail(error: unknown) {
+  throw new Error(errorMessage(classifyError(error), error));
+}
+export type DayBookRow = {
+  business_date: string;
+  sales_paise: number;
+  purchases_paise: number;
+  receipts_paise: number;
+  payments_paise: number;
+  expenses_paise: number;
+  net_cashflow_paise: number;
+};
+export type StockValueRow = {
+  item_id: string;
+  item_name: string;
+  qty_base: number;
+  cost_paise: number;
+  value_paise: number;
+};
+export type GstRow = {
+  tax_rate_bp: number;
+  taxable_sales_paise: number;
+  gross_sales_paise: number;
+  taxable_purchases_paise: number;
+  gross_purchases_paise: number;
+};
+export async function getDayBook(shopId: string, from: string, to: string) {
+  const { data, error } = await getSupabaseClient().rpc('get_day_book', {
+    p_shop_id: shopId,
+    p_from: from,
+    p_to: to,
+  });
+  if (error) fail(error);
+  return (data ?? []) as DayBookRow[];
+}
+export async function getStockValuation(shopId: string) {
+  const { data, error } = await getSupabaseClient().rpc('get_stock_valuation', {
+    p_shop_id: shopId,
+  });
+  if (error) fail(error);
+  return (data ?? []) as StockValueRow[];
+}
+export async function getGstSummary(shopId: string, from: string, to: string) {
+  const { data, error } = await getSupabaseClient().rpc('get_gst_summary', {
+    p_shop_id: shopId,
+    p_from: from,
+    p_to: to,
+  });
+  if (error) fail(error);
+  return (data ?? []) as GstRow[];
+}
+export async function postExpense(
+  shopId: string,
+  businessDate: string,
+  category: string,
+  description: string,
+  amountPaise: number,
+  mode: string,
+  reference: string | null,
+  clientId: string,
+) {
+  const { data, error } = await getSupabaseClient().rpc('post_expense', {
+    p_shop_id: shopId,
+    p_business_date: businessDate,
+    p_category: category,
+    p_description: description,
+    p_amount_paise: amountPaise,
+    p_mode: mode,
+    p_reference: reference,
+    p_client_id: clientId,
+  });
+  if (error) fail(error);
+  return data as string;
+}
+export async function exportTenant(shopId: string) {
+  const { data, error } = await getSupabaseClient().rpc('phase6_export_tenant', {
+    p_shop_id: shopId,
+  });
+  if (error) fail(error);
+  return data as Record<string, unknown>;
+}
+export type InvariantHealth = {
+  ok: boolean;
+  saleTotalViolations: number;
+  purchaseTotalViolations: number;
+  negativeStock: number;
+  allocationViolations: number;
+  stockProjectionViolations: number;
+  voidReversalViolations: number;
+};
+export async function checkInvariants() {
+  const { data, error } = await getSupabaseClient().rpc('check_invariants');
+  if (error) fail(error);
+  return data as unknown as InvariantHealth;
+}
 
-export type PartyLedgerRow={business_date:string;entry_type:string;document:string;debit_paise:number;credit_paise:number;running_balance_paise:number};
-export async function getPartyLedger(partyId:string,from:string,to:string){const {data,error}=await getSupabaseClient().rpc('get_party_ledger',{p_party_id:partyId,p_from:from,p_to:to});if(error)fail(error);return (data??[]) as PartyLedgerRow[];}
-export async function createStockCount(shopId:string,businessDate:string,lines:{item_id:string;counted_qty:number;reason?:string}[],notes:string,clientId:string){const {data,error}=await getSupabaseClient().rpc('create_stock_count',{p_shop_id:shopId,p_business_date:businessDate,p_lines:lines,p_notes:notes,p_client_id:clientId});if(error)fail(error);return data as string;}
-export async function postStockCount(stockCountId:string){const {error}=await getSupabaseClient().rpc('post_stock_count',{p_stock_count_id:stockCountId});if(error)fail(error);}
-export async function voidExpense(expenseId:string){const {error}=await getSupabaseClient().rpc('void_expense',{p_expense_id:expenseId});if(error)fail(error);}
+export type PartyLedgerRow = {
+  business_date: string;
+  entry_type: string;
+  document: string;
+  debit_paise: number;
+  credit_paise: number;
+  running_balance_paise: number;
+};
+export async function getPartyLedger(partyId: string, from: string, to: string) {
+  const { data, error } = await getSupabaseClient().rpc('get_party_ledger', {
+    p_party_id: partyId,
+    p_from: from,
+    p_to: to,
+  });
+  if (error) fail(error);
+  return (data ?? []) as PartyLedgerRow[];
+}
+export async function createStockCount(
+  shopId: string,
+  businessDate: string,
+  lines: { item_id: string; counted_qty: number; reason?: string }[],
+  notes: string,
+  clientId: string,
+) {
+  const { data, error } = await getSupabaseClient().rpc('create_stock_count', {
+    p_shop_id: shopId,
+    p_business_date: businessDate,
+    p_lines: lines,
+    p_notes: notes,
+    p_client_id: clientId,
+  });
+  if (error) fail(error);
+  return data as string;
+}
+export async function postStockCount(stockCountId: string) {
+  const { error } = await getSupabaseClient().rpc('post_stock_count', {
+    p_stock_count_id: stockCountId,
+  });
+  if (error) fail(error);
+}
+export async function voidExpense(expenseId: string) {
+  const { error } = await getSupabaseClient().rpc('void_expense', { p_expense_id: expenseId });
+  if (error) fail(error);
+}
 
-export type LowStockRow={item_id:string;item_name:string;unit_name:string;on_hand:number;min_stock:number;shortfall:number};
-export async function getLowStockReport(shopId:string){const {data,error}=await getSupabaseClient().rpc('get_low_stock_report',{p_shop_id:shopId});if(error)fail(error);return (data??[]) as LowStockRow[];}
+export type LowStockRow = {
+  item_id: string;
+  item_name: string;
+  unit_name: string;
+  on_hand: number;
+  min_stock: number;
+  shortfall: number;
+};
+export async function getLowStockReport(shopId: string) {
+  const { data, error } = await getSupabaseClient().rpc('get_low_stock_report', {
+    p_shop_id: shopId,
+  });
+  if (error) fail(error);
+  return (data ?? []) as LowStockRow[];
+}
 
-export type ItemSalesRow={item_id:string;item_name:string;qty_sold:number;qty_returned:number;net_qty:number;gross_sales_paise:number;net_sales_paise:number};
-export async function getItemSalesReport(shopId:string,from:string,to:string){const {data,error}=await getSupabaseClient().rpc('get_item_sales_report',{p_shop_id:shopId,p_from:from,p_to:to});if(error)fail(error);return (data??[]) as ItemSalesRow[];}
+export type ItemSalesRow = {
+  item_id: string;
+  item_name: string;
+  qty_sold: number;
+  qty_returned: number;
+  net_qty: number;
+  gross_sales_paise: number;
+  net_sales_paise: number;
+};
+export async function getItemSalesReport(shopId: string, from: string, to: string) {
+  const { data, error } = await getSupabaseClient().rpc('get_item_sales_report', {
+    p_shop_id: shopId,
+    p_from: from,
+    p_to: to,
+  });
+  if (error) fail(error);
+  return (data ?? []) as ItemSalesRow[];
+}
 
-export type PurchaseRegisterRow={bill_id:string;doc_no:string;business_date:string;party_name:string|null;subtotal_paise:number;discount_paise:number;extra_charges_paise:number;total_paise:number;status:'POSTED'|'VOID'};
-export async function getPurchaseRegister(shopId:string,from:string,to:string){const {data,error}=await getSupabaseClient().rpc('get_purchase_register',{p_shop_id:shopId,p_from:from,p_to:to});if(error)fail(error);return (data??[]) as PurchaseRegisterRow[];}
+export type PurchaseRegisterRow = {
+  bill_id: string;
+  doc_no: string;
+  business_date: string;
+  party_name: string | null;
+  subtotal_paise: number;
+  discount_paise: number;
+  extra_charges_paise: number;
+  total_paise: number;
+  status: 'POSTED' | 'VOID';
+};
+export async function getPurchaseRegister(shopId: string, from: string, to: string) {
+  const { data, error } = await getSupabaseClient().rpc('get_purchase_register', {
+    p_shop_id: shopId,
+    p_from: from,
+    p_to: to,
+  });
+  if (error) fail(error);
+  return (data ?? []) as PurchaseRegisterRow[];
+}
 
-export type CustomerAgingRow={customer_id:string;customer_name:string;not_due_paise:number;days_1_30_paise:number;days_31_60_paise:number;days_61_90_paise:number;days_90_plus_paise:number;total_outstanding_paise:number};
-export async function getCustomerAgingReport(shopId:string,asOf:string){const {data,error}=await getSupabaseClient().rpc('get_customer_aging_report',{p_shop_id:shopId,p_as_of:asOf});if(error)fail(error);return (data??[]) as CustomerAgingRow[];}
+export type CustomerAgingRow = {
+  customer_id: string;
+  customer_name: string;
+  not_due_paise: number;
+  days_1_30_paise: number;
+  days_31_60_paise: number;
+  days_61_90_paise: number;
+  days_90_plus_paise: number;
+  total_outstanding_paise: number;
+};
+export async function getCustomerAgingReport(shopId: string, asOf: string) {
+  const { data, error } = await getSupabaseClient().rpc('get_customer_aging_report', {
+    p_shop_id: shopId,
+    p_as_of: asOf,
+  });
+  if (error) fail(error);
+  return (data ?? []) as CustomerAgingRow[];
+}
 
 // D1-lite (mig 0052): as-of aging. Money fields are integer-paise strings.
-export type AgingDetailV2={documentId:string;documentNo:string;businessDate:string;ageDays:number;signedDuePaise:string;clampedDuePaise:string;legacyInferredAllocation:boolean};
-export type AgingAccountV2={accountId:string;name:string;days0Paise:string;days1to30Paise:string;days31to60Paise:string;days61to90Paise:string;daysOver90Paise:string;grossOpenPaise:string;documentCreditsPaise:string;unassignedOutPaise:string;unassignedInPaise:string;netLedgerBalancePaise:string;legacyInferredAllocation:boolean;details:AgingDetailV2[]};
-export type AgingReportV2={kind:'customer'|'supplier';shopId:string;asOf:string;historyCompleteness:string;signConvention:string;accounts:AgingAccountV2[];totals:{grossOpenPaise:string;documentCreditsPaise:string;unassignedOutPaise:string;unassignedInPaise:string;netLedgerBalancePaise:string}};
-export async function getAgingReportV2(kind:'customer'|'supplier',shopId:string,asOf:string){const fn=kind==='customer'?'get_customer_aging_report_v2':'get_supplier_aging_report_v2';const {data,error}=await getSupabaseClient().rpc(fn,{p_shop_id:shopId,p_as_of:asOf});if(error)fail(error);return data as unknown as AgingReportV2;}
+export type AgingDetailV2 = {
+  documentId: string;
+  documentNo: string;
+  businessDate: string;
+  ageDays: number;
+  signedDuePaise: string;
+  clampedDuePaise: string;
+  legacyInferredAllocation: boolean;
+};
+export type AgingAccountV2 = {
+  accountId: string;
+  name: string;
+  days0Paise: string;
+  days1to30Paise: string;
+  days31to60Paise: string;
+  days61to90Paise: string;
+  daysOver90Paise: string;
+  grossOpenPaise: string;
+  documentCreditsPaise: string;
+  unassignedOutPaise: string;
+  unassignedInPaise: string;
+  netLedgerBalancePaise: string;
+  legacyInferredAllocation: boolean;
+  details: AgingDetailV2[];
+};
+export type AgingReportV2 = {
+  kind: 'customer' | 'supplier';
+  shopId: string;
+  asOf: string;
+  historyCompleteness: string;
+  signConvention: string;
+  accounts: AgingAccountV2[];
+  totals: {
+    grossOpenPaise: string;
+    documentCreditsPaise: string;
+    unassignedOutPaise: string;
+    unassignedInPaise: string;
+    netLedgerBalancePaise: string;
+  };
+};
+export async function getAgingReportV2(
+  kind: 'customer' | 'supplier',
+  shopId: string,
+  asOf: string,
+) {
+  const fn = kind === 'customer' ? 'get_customer_aging_report_v2' : 'get_supplier_aging_report_v2';
+  const { data, error } = await getSupabaseClient().rpc(fn, { p_shop_id: shopId, p_as_of: asOf });
+  if (error) fail(error);
+  return data as unknown as AgingReportV2;
+}
 
 // R1: exact values for the shadow-run comparison. PostgREST casts to text, so bigint/numeric never
 // pass through a JS number (which rounds above 2^53 or beyond ~15 significant digits).
-export type DayBookText={business_date:string;sales_paise:string;purchases_paise:string;receipts_paise:string;payments_paise:string;expenses_paise:string;net_cashflow_paise:string};
-export async function getDayBookText(shopId:string,from:string,to:string){const {data,error}=await getSupabaseClient().rpc('get_day_book',{p_shop_id:shopId,p_from:from,p_to:to}).select('business_date,sales_paise::text,purchases_paise::text,receipts_paise::text,payments_paise::text,expenses_paise::text,net_cashflow_paise::text');if(error)fail(error);return (data??[]) as unknown as DayBookText[];}
-export async function listStockText(shopId:string){const {data,error}=await getSupabaseClient().from('stock_current').select('item_id,qty_base::text').eq('shop_id',shopId);if(error)fail(error);return (data??[]) as unknown as {item_id:string;qty_base:string}[];}
+export type DayBookText = {
+  business_date: string;
+  sales_paise: string;
+  purchases_paise: string;
+  receipts_paise: string;
+  payments_paise: string;
+  expenses_paise: string;
+  net_cashflow_paise: string;
+};
+export async function getDayBookText(shopId: string, from: string, to: string) {
+  const { data, error } = await getSupabaseClient()
+    .rpc('get_day_book', { p_shop_id: shopId, p_from: from, p_to: to })
+    .select(
+      'business_date,sales_paise::text,purchases_paise::text,receipts_paise::text,payments_paise::text,expenses_paise::text,net_cashflow_paise::text',
+    );
+  if (error) fail(error);
+  return (data ?? []) as unknown as DayBookText[];
+}
+export async function listStockText(shopId: string) {
+  const { data, error } = await getSupabaseClient()
+    .from('stock_current')
+    .select('item_id,qty_base::text')
+    .eq('shop_id', shopId);
+  if (error) fail(error);
+  return (data ?? []) as unknown as { item_id: string; qty_base: string }[];
+}

@@ -35,7 +35,10 @@ describe('auth adapter', () => {
     const client = makeMockClient();
     __setSupabaseClientForTest(client as never);
     await signUp('a@example.com', 'shop2026');
-    expect(client.auth.signUp).toHaveBeenCalledWith({ email: 'a@example.com', password: 'shop2026' });
+    expect(client.auth.signUp).toHaveBeenCalledWith({
+      email: 'a@example.com',
+      password: 'shop2026',
+    });
   });
 
   it('signUp throws the underlying error on failure', async () => {

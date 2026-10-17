@@ -8,6 +8,8 @@ const api = vi.hoisted(() => ({
   getDefaultShopId: vi.fn(),
   getLowStockReport: vi.fn(),
   getSupplierOutstanding: vi.fn(),
+  getSupplierPaymentsDue: vi.fn(),
+  getShopBusinessDate: vi.fn(),
 }));
 vi.mock('@dsb-pro/adapters', () => api);
 const host = document.createElement('div');
@@ -23,6 +25,8 @@ const sup = (id: string, net: string, stranded = 0) => ({
 beforeEach(() => {
   document.body.append(host);
   api.getDefaultShopId.mockReset().mockResolvedValue('shop');
+  api.getShopBusinessDate.mockReset().mockResolvedValue('2026-10-17');
+  api.getSupplierPaymentsDue.mockReset().mockResolvedValue([]);
 });
 afterEach(async () => {
   await act(async () => render(null, host));
@@ -52,4 +56,32 @@ test('a failed report says unavailable and never claims all clear', async () => 
   await vi.waitFor(() => expect(host.textContent).toContain('No supplier balance is owed.'));
   expect(host.textContent).toContain('Low stock is unavailable right now.');
   expect(host.textContent).not.toContain('No items below minimum stock.');
+});
+
+test('lists due scheduled payments, and an unavailable reminder is not shown as all clear', async () => {
+  api.getLowStockReport.mockReset().mockResolvedValue([]);
+  api.getSupplierOutstanding.mockReset().mockResolvedValue([]);
+  api.getSupplierPaymentsDue.mockReset().mockResolvedValue([
+    {
+      scheduleId: 's',
+      partyId: 'p',
+      partyName: 'Acme',
+      dueDay: 5,
+      dueDate: '2026-10-05',
+      expectedAmountPaise: '250000',
+      paidThisMonthPaise: '100000',
+      remainingPaise: '150000',
+      daysOverdue: 12,
+    },
+  ]);
+  await mount();
+  await vi.waitFor(() => expect(host.textContent).toContain('Acme (₹1,500.00, 12 days late)'));
+  expect(api.getSupplierPaymentsDue).toHaveBeenCalledWith('shop', '2026-10-17');
+  api.getSupplierPaymentsDue.mockReset().mockRejectedValue(new Error('x'));
+  await act(async () => render(null, host));
+  await mount();
+  await vi.waitFor(() =>
+    expect(host.textContent).toContain('Supplier payment reminders are unavailable right now.'),
+  );
+  expect(host.textContent).not.toContain('No scheduled supplier payment is due.');
 });

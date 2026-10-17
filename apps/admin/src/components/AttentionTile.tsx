@@ -2,21 +2,26 @@ import { useEffect, useState } from 'preact/hooks';
 import {
   getDefaultShopId,
   getLowStockReport,
+  getShopBusinessDate,
   getSupplierOutstanding,
+  getSupplierPaymentsDue,
+  type SupplierPaymentDue,
   type LowStockRow,
   type SupplierOutstandingRow,
 } from '@dsb-pro/adapters';
 import { appRoute } from '../lib/paths';
 import { rupees } from '../lib/money';
 import { summarizeLowStock, summarizeSuppliers } from '../lib/attention';
+import { summarizeDue } from '../lib/supplierSchedule';
 
 type Part<T> = { state: 'loading' } | { state: 'error' } | { state: 'ok'; value: T };
 
 // Home tile for owner/manager: what needs a look today. A report that fails is shown as unavailable,
-// never as "all clear". There are no supplier due dates in Pro, so this says "owed", not "due".
+// never as "all clear". "Owed" is the ledger balance; "due" comes only from a saved payment schedule.
 export function AttentionTile() {
   const [low, setLow] = useState<Part<LowStockRow[]>>({ state: 'loading' });
   const [sup, setSup] = useState<Part<SupplierOutstandingRow[]>>({ state: 'loading' });
+  const [due, setDue] = useState<Part<SupplierPaymentDue[]>>({ state: 'loading' });
   useEffect(() => {
     let alive = true;
     void (async () => {
@@ -25,6 +30,14 @@ export function AttentionTile() {
         (value) => alive && setLow({ state: 'ok', value }),
         () => alive && setLow({ state: 'error' }),
       );
+      void (async () => {
+        try {
+          const value = await getSupplierPaymentsDue(shop, await getShopBusinessDate(shop));
+          if (alive) setDue({ state: 'ok', value });
+        } catch {
+          if (alive) setDue({ state: 'error' });
+        }
+      })();
       getSupplierOutstanding(shop).then(
         (value) => alive && setSup({ state: 'ok', value }),
         () => alive && setSup({ state: 'error' }),
@@ -33,6 +46,7 @@ export function AttentionTile() {
       if (alive) {
         setLow({ state: 'error' });
         setSup({ state: 'error' });
+        setDue({ state: 'error' });
       }
     });
     return () => {
@@ -40,6 +54,7 @@ export function AttentionTile() {
     };
   }, []);
   const lowSummary = low.state === 'ok' ? summarizeLowStock(low.value) : null;
+  const dueSummary = due.state === 'ok' ? summarizeDue(due.value) : null;
   const supSummary = sup.state === 'ok' ? summarizeSuppliers(sup.value) : null;
   return (
     <section class="card attention-tile" aria-label="Needs attention">
@@ -72,6 +87,28 @@ export function AttentionTile() {
               supplier
               {supSummary.owedCount === 1 ? '' : 's'}.{' '}
               <a href={appRoute.suppliers}>Review supplier balances</a>
+            </span>
+          )}
+        </li>
+        <li>
+          {due.state === 'loading' && <span class="muted">Checking payment schedule…</span>}
+          {due.state === 'error' && (
+            <span role="alert">Supplier payment reminders are unavailable right now.</span>
+          )}
+          {dueSummary && dueSummary.count === 0 && (
+            <span>No scheduled supplier payment is due.</span>
+          )}
+          {dueSummary && dueSummary.count > 0 && (
+            <span>
+              <strong>{dueSummary.count}</strong> scheduled supplier payment
+              {dueSummary.count === 1 ? ' is' : 's are'} due:{' '}
+              {dueSummary.worst
+                .map(
+                  (r) =>
+                    `${r.partyName} (${r.remainingPaise === null ? 'no amount set' : rupees(r.remainingPaise)}, ${r.daysOverdue} day${r.daysOverdue === 1 ? '' : 's'} late)`,
+                )
+                .join(', ')}
+              . <a href={appRoute.suppliers}>Open suppliers</a>
             </span>
           )}
         </li>

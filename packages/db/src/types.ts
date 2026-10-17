@@ -2633,6 +2633,76 @@ export type Database = {
           },
         ]
       }
+      supplier_payment_schedules: {
+        Row: {
+          client_id: string
+          created_at: string
+          created_by: string
+          deleted_at: number | null
+          due_day: number
+          expected_amount_paise: number | null
+          id: string
+          note: string | null
+          party_id: string
+          shop_id: string
+          status: string
+          tenant_id: string
+          updated_at: number
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          created_by?: string
+          deleted_at?: number | null
+          due_day: number
+          expected_amount_paise?: number | null
+          id?: string
+          note?: string | null
+          party_id: string
+          shop_id: string
+          status?: string
+          tenant_id: string
+          updated_at?: number
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          created_by?: string
+          deleted_at?: number | null
+          due_day?: number
+          expected_amount_paise?: number | null
+          id?: string
+          note?: string | null
+          party_id?: string
+          shop_id?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_payment_schedules_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_payment_schedules_tenant_id_party_id_fkey"
+            columns: ["tenant_id", "party_id"]
+            isOneToOne: false
+            referencedRelation: "parties"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "supplier_payment_schedules_tenant_id_shop_id_fkey"
+            columns: ["tenant_id", "shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["tenant_id", "id"]
+          },
+        ]
+      }
       sync_conflicts: {
         Row: {
           client_id: string
@@ -3317,6 +3387,20 @@ export type Database = {
         Returns: Json
       }
       get_supplier_outstanding: { Args: { p_shop_id: string }; Returns: Json }
+      get_supplier_payments_due: {
+        Args: { p_on: string; p_shop_id: string }
+        Returns: {
+          days_overdue: number
+          due_date: string
+          due_day: number
+          expected_amount_paise: number
+          paid_this_month_paise: number
+          party_id: string
+          party_name: string
+          remaining_paise: number
+          schedule_id: string
+        }[]
+      }
       has_perm: { Args: { p_code: string }; Returns: boolean }
       import_legacy_dsb_master: {
         Args: { p_client_id: string; p_plan: Json; p_shop_id: string }
@@ -3675,6 +3759,10 @@ export type Database = {
         Args: { p_allocation_id: string; p_client_id: string; p_reason: string }
         Returns: string
       }
+      remove_supplier_payment_schedule: {
+        Args: { p_schedule_id: string }
+        Returns: string
+      }
       remove_tenant_user: { Args: { p_user_id: string }; Returns: undefined }
       revoke_device: { Args: { p_id: string }; Returns: undefined }
       revoke_invite: { Args: { p_id: string }; Returns: undefined }
@@ -3690,6 +3778,18 @@ export type Database = {
           p_price_paise: number
           p_shop_id: string
           p_unit_level: number
+        }
+        Returns: string
+      }
+      set_supplier_payment_schedule: {
+        Args: {
+          p_active: boolean
+          p_client_id: string
+          p_due_day: number
+          p_expected_amount_paise: number
+          p_note: string
+          p_party_id: string
+          p_shop_id: string
         }
         Returns: string
       }
