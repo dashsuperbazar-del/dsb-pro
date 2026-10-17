@@ -3,6 +3,7 @@ import type { Item, Party } from '@dsb-pro/adapters';
 import { buildBatchDrafts, type BatchError, type BatchRow } from '../lib/batchPurchase';
 import { savePurchaseDraft, scanPurchaseDrafts } from '../lib/purchaseDraft';
 import { boundedItemOptions } from '../lib/itemOptions';
+import { BATCH_CSV_HEADER, batchRowsFromCsv, parseCsv } from '../lib/csvImport';
 
 const blankRow = (date: string, previous?: BatchRow): BatchRow => ({
   billNo: '',
@@ -238,6 +239,45 @@ export function BatchPurchaseEntry({
         >
           Add another bill
         </button>
+        <label>
+          Fill from CSV{' '}
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            aria-label="Fill batch from CSV"
+            disabled={disabled}
+            onChange={(e) => {
+              const input = e.currentTarget;
+              const file = input.files?.[0];
+              input.value = '';
+              if (!file) return;
+              if (file.size > 512_000) {
+                setErrors([{ row: 0, message: 'That file is too large (over 500 KB).' }]);
+                return;
+              }
+              void file.text().then((text) => {
+                const result = batchRowsFromCsv(parseCsv(text), items, parties);
+                if (result.errors.length) {
+                  setErrors(result.errors.map((message) => ({ row: 0, message })));
+                  setMessage('Nothing was filled in. Fix the file and choose it again.');
+                  return;
+                }
+                setErrors([]);
+                setSearches({});
+                setRows(result.rows);
+                setMessage(
+                  `Filled ${result.rows.length} bill${result.rows.length === 1 ? '' : 's'} from ${file.name}. Check them, then press Save. Nothing is saved or posted yet.`,
+                );
+              });
+            }}
+          />
+        </label>
+        <a
+          href={`data:text/csv;charset=utf-8,${encodeURIComponent(BATCH_CSV_HEADER.join(',') + '\n')}`}
+          download="dsb-batch-bills-template.csv"
+        >
+          CSV template
+        </a>
         <button type="button" disabled={disabled || !draftPrefix} onClick={save}>
           Save {rows.length} draft{rows.length === 1 ? '' : 's'}
         </button>
