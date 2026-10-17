@@ -242,3 +242,5 @@ export {
   getSupplierPaymentsDue,
 } from './supplierSchedule';
 export type { SupplierSchedule, SupplierPaymentDue } from './supplierSchedule';
+export { listItemPurchasePrices } from './priceHistory';
+export type { ItemPurchasePrice } from './priceHistory';
