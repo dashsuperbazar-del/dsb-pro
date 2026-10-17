@@ -190,7 +190,10 @@ test('batch entry saves several single-line bills as drafts; nothing posts until
   // The drafts are listed; resuming one and posting it goes through the normal purchase path.
   await page.getByText('Saved purchase drafts', { exact: true }).click();
   await expect(page.getByRole('button', { name: 'Resume draft', exact: true })).toHaveCount(2);
+  // Switching from a touched form asks for confirmation; accept it like a user would.
+  page.once('dialog', (dialog) => void dialog.accept());
   await page.getByRole('button', { name: 'Resume draft', exact: true }).first().click();
+  await expect(page.getByRole('status')).toContainText('Saved purchase draft restored');
   await page.getByRole('button', { name: 'Post purchase' }).click();
   await expect(page.getByRole('status')).toContainText(/Purchase posted/);
 });
