@@ -1,3 +1,4 @@
+import { CameraScanner } from '../components/CameraScanner';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   addItemBarcode,
@@ -1211,10 +1212,18 @@ export function InventoryScreen({
           </form>
         )}
         {selectedItem && (
-          <form key={`barcode:${selectedItem.id}`} onSubmit={addBarcode}>
+          <form key={`barcode:${selectedItem.id}`} data-barcode-form onSubmit={addBarcode}>
             <label>
               Barcode <input name="barcode" placeholder="Barcode" required />
             </label>{' '}
+            <CameraScanner
+              onCode={(code) => {
+                const input = document.querySelector<HTMLInputElement>(
+                  `form[data-barcode-form] input[name="barcode"]`,
+                );
+                if (input) input.value = code;
+              }}
+            />{' '}
             <select aria-label="Unit" name="unitLevel">
               <option value="1">{selectedItem.unit1}</option>
               {selectedItem.unit2 && <option value="2">{selectedItem.unit2}</option>}

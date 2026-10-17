@@ -1,3 +1,4 @@
+import { CameraScanner } from '../components/CameraScanner';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   billRoundOff,
@@ -452,16 +453,20 @@ export function PosScreen() {
 
   async function scan(ev: Event) {
     ev.preventDefault();
+    await scanCode(barcode);
+  }
+
+  async function scanCode(code: string) {
     setError('');
     try {
       let hit;
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        hit = await findOfflineBarcode(barcode);
+        hit = await findOfflineBarcode(code);
       } else {
         try {
-          hit = await findItemByBarcode(barcode);
+          hit = await findItemByBarcode(code);
         } catch {
-          hit = await findOfflineBarcode(barcode);
+          hit = await findOfflineBarcode(code);
         }
       }
       if (!hit) throw new Error('Barcode not found.');
@@ -663,6 +668,7 @@ export function PosScreen() {
             />
           </label>
           <button>Scan / Add</button>
+          <CameraScanner disabled={busy} onCode={(code) => void scanCode(code)} />
         </form>
         <form onSubmit={addManual} class="grid-form">
           <label>
