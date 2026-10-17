@@ -7,7 +7,8 @@ export type QuickBillInput = { supplierId: string; billNo: string; date: string;
 
 // P06 quick bill: record the paper bill's supplier, number, date and TOTAL now and itemize later. It only
 // ever saves an unposted DRAFT with no lines; no money or stock moves until the itemized bill is posted
-// through the normal purchase path, which checks the items against this paper total.
+// through the normal purchase path, which checks the items against this paper total. The duplicate check
+// covers drafts on this device only; it cannot see bills already posted.
 export function buildQuickBillDraft(
   input: QuickBillInput,
   parties: Party[],
@@ -40,7 +41,9 @@ export function buildQuickBillDraft(
         d.supplier === input.supplierId && d.billNo.trim().toLowerCase() === billNo.toLowerCase(),
     )
   )
-    errors.push('A draft for this supplier and bill number is already saved. Open it instead.');
+    errors.push(
+      'A draft for this supplier and bill number is already saved on this device. Open it instead.',
+    );
   if (errors.length) return { ok: false, errors };
   return {
     ok: true,

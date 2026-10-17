@@ -189,7 +189,11 @@ export function InventoryScreen({
     const pendingId = pending?.ok ? pending.value?.clientId : undefined;
     return staleDrafts(
       savedDrafts.filter(
-        (s) => s.draft.clientId !== purchaseClientId && s.draft.clientId !== pendingId,
+        (s) =>
+          s.draft.clientId !== purchaseClientId &&
+          s.draft.clientId !== pendingId &&
+          // A quick bill is the only record of a paper bill not yet entered; never swept with old drafts.
+          !s.draft.expectedTotalPaise,
       ),
       Date.now(),
       30,
@@ -1431,7 +1435,13 @@ export function InventoryScreen({
               .map((s) => (
                 <div class="context-actions" key={s.key}>
                   <span>
-                    {s.draft.billNo || 'Untitled purchase'} · {s.draft.businessDate} ·{' '}
+                    {s.draft.expectedTotalPaise ? 'Quick bill ' : ''}
+                    {s.draft.billNo || 'Untitled purchase'} ·{' '}
+                    {parties.find((p) => p.id === s.draft.supplier)?.name ?? 'no supplier'} ·{' '}
+                    {s.draft.businessDate} ·{' '}
+                    {s.draft.expectedTotalPaise
+                      ? `paper total ${rupees(s.draft.expectedTotalPaise)} · `
+                      : ''}
                     {s.draft.cart.length} lines · saved{' '}
                     {new Date(s.draft.savedAt).toISOString().slice(0, 10)}
                   </span>
@@ -1854,7 +1864,23 @@ export function InventoryScreen({
                 ? 'The items match it.'
                 : paperCheck.diffPaise === null
                   ? 'Check the amounts.'
-                  : `Items are ${rupees(Math.abs(paperCheck.diffPaise))} ${paperCheck.diffPaise < 0 ? 'short of' : 'over'} it.`}
+                  : `Items are ${rupees(Math.abs(paperCheck.diffPaise))} ${paperCheck.diffPaise < 0 ? 'short of' : 'over'} it.`}{' '}
+              <button
+                type="button"
+                disabled={purchaseLocked || purchaseBusy}
+                onClick={() => {
+                  if (
+                    !confirm(
+                      'Remove the paper bill total from this purchase? Posting will no longer check against it.',
+                    )
+                  )
+                    return;
+                  setPurchaseExpectedTotal(undefined);
+                  setDraftTouched(true);
+                }}
+              >
+                Remove paper total
+              </button>
             </p>
           )}
           <button

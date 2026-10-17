@@ -59,3 +59,23 @@ describe('purchase draft check', () => {
     ).toThrow(/paper bill total/);
   });
 });
+
+describe('paper total edges', () => {
+  const total = (t: string) => {
+    const r = buildQuickBillDraft({ ...ok, total: t }, parties, ctx);
+    return r.ok ? r.draft.expectedTotalPaise : null;
+  };
+  it('converts exactly and accepts the largest allowed total', () => {
+    expect(total('0.01')).toBe('1');
+    expect(total('1.5')).toBe('150');
+    expect(total('007')).toBe('700');
+    const max = buildQuickBillDraft({ ...ok, total: '999999999999.99' }, parties, ctx);
+    expect(max.ok && restorePurchaseDraft(max.draft, [], parties).expectedTotalPaise).toBe(
+      '99999999999999',
+    );
+  });
+  it('refuses zero in any spelling', () => {
+    expect(total('0.00')).toBeNull();
+    expect(total('0')).toBeNull();
+  });
+});

@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import type { Party } from '@dsb-pro/adapters';
 import { buildQuickBillDraft } from '../lib/quickBill';
 import { savePurchaseDraft, scanPurchaseDrafts } from '../lib/purchaseDraft';
@@ -25,6 +25,12 @@ export function QuickBillEntry({
   const [errors, setErrors] = useState<string[]>([]);
   const [message, setMessage] = useState('');
   const [writer] = useState(() => crypto.randomUUID());
+  // The shop date can roll over while this page is open; a date still on the old default follows it.
+  const [defaultDate, setDefaultDate] = useState(today);
+  useEffect(() => {
+    if (date === defaultDate) setDate(today);
+    setDefaultDate(today);
+  }, [today]);
 
   function save() {
     setMessage('');
