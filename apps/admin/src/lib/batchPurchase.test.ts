@@ -110,3 +110,9 @@ test('drafts for other suppliers or other bill numbers do not block, and blank b
   expect(r.errors).toEqual([]);
   expect(r.drafts).toHaveLength(2);
 });
+
+test('a bad quantity on a line-total row is reported once, not once per field', () => {
+  const r = build([row({ costMode: 'total', cost: '50', qty: '0' })]);
+  expect(r.errors).toHaveLength(1);
+  expect(r.errors[0].message).toMatch(/quantity/i);
+});

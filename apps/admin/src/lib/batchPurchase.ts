@@ -67,20 +67,25 @@ export function buildBatchDrafts(
       seen.add(key);
     }
     let qty = '';
+    let qtyOk = false;
     try {
       if (!r.qty.trim()) throw new Error('empty');
       qty = canonicalQuantity(r.qty);
       if (/^0(\.0*)?$/.test(qty)) throw new Error('zero');
+      qtyOk = true;
     } catch {
       fail('Enter a quantity greater than zero (at most 6 decimals).');
     }
     let unitPricePaise = -1;
     if (r.costMode === 'total') {
-      const d = deriveUnitCostFromTotal(r.qty, r.cost);
-      if (!d.ok) fail(d.message);
-      else if (!d.exact)
-        fail('That total cannot be stored exactly; enter the cost per unit instead.');
-      else unitPricePaise = d.unitPaise;
+      // A bad quantity is already reported above; do not repeat it as a cost error.
+      if (qtyOk) {
+        const d = deriveUnitCostFromTotal(r.qty, r.cost);
+        if (!d.ok) fail(d.message);
+        else if (!d.exact)
+          fail('That total cannot be stored exactly; enter the cost per unit instead.');
+        else unitPricePaise = d.unitPaise;
+      }
     } else if (!RUPEES.test(r.cost.trim())) {
       fail('Enter the cost per unit in rupees (at most 2 decimals).');
     } else unitPricePaise = parseRupeesToPaise(r.cost.trim());
