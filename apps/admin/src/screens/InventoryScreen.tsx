@@ -108,6 +108,7 @@ export function InventoryScreen({
     [],
   );
   const draftWriter = useRef(crypto.randomUUID());
+  const barcodeInput = useRef<HTMLInputElement>(null);
   const [savedDrafts, setSavedDrafts] = useState<SavedPurchaseDraft[]>([]);
   const [draftError, setDraftError] = useState('');
   const [unreadableDrafts, setUnreadableDrafts] = useState<string[]>([]);
@@ -1212,16 +1213,14 @@ export function InventoryScreen({
           </form>
         )}
         {selectedItem && (
-          <form key={`barcode:${selectedItem.id}`} data-barcode-form onSubmit={addBarcode}>
+          <form key={`barcode:${selectedItem.id}`} onSubmit={addBarcode}>
             <label>
-              Barcode <input name="barcode" placeholder="Barcode" required />
+              Barcode <input name="barcode" placeholder="Barcode" required ref={barcodeInput} />
             </label>{' '}
             <CameraScanner
               onCode={(code) => {
-                const input = document.querySelector<HTMLInputElement>(
-                  `form[data-barcode-form] input[name="barcode"]`,
-                );
-                if (input) input.value = code;
+                if (barcodeInput.current) barcodeInput.current.value = code;
+                setMessage(`Scanned ${code}. Check the unit, then link the barcode.`);
               }}
             />{' '}
             <select aria-label="Unit" name="unitLevel">

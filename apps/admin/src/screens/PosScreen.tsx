@@ -148,6 +148,7 @@ export function PosScreen() {
   const [holdLabelResetVersion, setHoldLabelResetVersion] = useState(0);
   const [resumeBusyId, setResumeBusyId] = useState('');
   const [heldCleanup, setHeldCleanup] = useState<{ id: string; token: string } | null>(null);
+  const scanBlocked = useRef(false);
   const resumeLock = useRef(false);
 
   // The business date loads asynchronously; a sale or payment submitted before it arrives
@@ -451,12 +452,17 @@ export function PosScreen() {
     }
   }
 
+  scanBlocked.current = busy || checkout || !!heldCleanup;
+
   async function scan(ev: Event) {
     ev.preventDefault();
     await scanCode(barcode);
   }
 
   async function scanCode(code: string) {
+    // A scan may finish after the cashier moved on (finalizing, checkout, held-cart cleanup); never let it
+    // change a cart that is being settled. Read the live state, not this render's closure.
+    if (scanBlocked.current) return;
     setError('');
     try {
       let hit;
@@ -472,6 +478,7 @@ export function PosScreen() {
       if (!hit) throw new Error('Barcode not found.');
       const item = items.find((i) => i.id === hit.item_id);
       if (!item) throw new Error('Barcode item is unavailable.');
+      if (scanBlocked.current) return;
       await addLine(item, hit.unit_level, 1, 'retail');
       setBarcode('');
     } catch (e) {
@@ -668,7 +675,10 @@ export function PosScreen() {
             />
           </label>
           <button>Scan / Add</button>
-          <CameraScanner disabled={busy} onCode={(code) => void scanCode(code)} />
+          <CameraScanner
+            disabled={busy || checkout || !!heldCleanup}
+            onCode={(code) => void scanCode(code)}
+          />
         </form>
         <form onSubmit={addManual} class="grid-form">
           <label>

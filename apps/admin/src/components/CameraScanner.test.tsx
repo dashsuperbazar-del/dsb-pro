@@ -63,3 +63,30 @@ test('stopping the camera releases the stream', async () => {
   await act(async () => button().click());
   expect(stop).toHaveBeenCalled();
 });
+
+test('becoming disabled closes the camera and reports nothing', async () => {
+  const onCode = vi.fn();
+  detect.mockResolvedValue([{ rawValue: '8901234' }]);
+  await act(async () => render(<CameraScanner onCode={onCode} />, host));
+  await act(async () => button().click());
+  await act(async () => render(<CameraScanner onCode={onCode} disabled />, host));
+  expect(host.querySelector('video')).toBeNull();
+  await new Promise((r) => setTimeout(r, 800));
+  expect(onCode).not.toHaveBeenCalled();
+});
+
+test('a browser that reads no retail format says so instead of scanning', async () => {
+  vi.stubGlobal(
+    'BarcodeDetector',
+    Object.assign(
+      class {
+        detect = detect;
+      },
+      { getSupportedFormats: async () => ['qr_code'] },
+    ),
+  );
+  await act(async () => render(<CameraScanner onCode={() => {}} />, host));
+  await act(async () => button().click());
+  await vi.waitFor(() => expect(host.textContent).toContain('cannot read shop barcodes'));
+  expect(getUserMedia).not.toHaveBeenCalled();
+});
