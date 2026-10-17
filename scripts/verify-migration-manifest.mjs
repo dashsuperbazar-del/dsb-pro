@@ -48,6 +48,7 @@ export const ALLOWED_GROUPS = Object.freeze([
   'billdocs',
   'partyarchive',
   'profit',
+  'supplierschedule',
 ]);
 
 const VERSION_RE = /^[0-9]{4}$/;
@@ -219,6 +220,7 @@ const EXPECTED_IN_FLIGHT_GROUP_AND_PATH = Object.freeze({
   '0058': ['billdocs', 'supabase/migrations/0058_bill_documents.sql'],
   '0059': ['partyarchive', 'supabase/migrations/0059_party_archive.sql'],
   '0060': ['profit', 'supabase/migrations/0060_profit_report.sql'],
+  '0061': ['supplierschedule', 'supabase/migrations/0061_supplier_payment_schedule.sql'],
 });
 
 /**

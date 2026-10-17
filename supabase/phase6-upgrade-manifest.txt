@@ -30,3 +30,4 @@
 0058 billdocs supabase/migrations/0058_bill_documents.sql
 0059 partyarchive supabase/migrations/0059_party_archive.sql
 0060 profit supabase/migrations/0060_profit_report.sql
+0061 supplierschedule supabase/migrations/0061_supplier_payment_schedule.sql

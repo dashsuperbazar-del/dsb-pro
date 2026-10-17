@@ -17,7 +17,7 @@ insert into export_map values
  ('sale_return_items','saleReturnLines',null),('sale_returns','saleReturns',null),('schema_meta','schemaMeta',null),
  ('shop_financial_history','shopFinancialHistory',null),('shops','shops',null),('stock_count_lines','stockCountLines',null),
  ('stock_counts','stockCounts',null),('stock_current','stockCurrent',null),('stock_movements','stockMovements',null),
- ('sync_conflicts','syncConflicts',null),('sync_idempotency_keys','syncIdempotencyKeys',null),
+ ('supplier_payment_schedules','supplierPaymentSchedules',null),('sync_conflicts','syncConflicts',null),('sync_idempotency_keys','syncIdempotencyKeys',null),
  ('tenant_users','tenantUsers',null),('tenants','tenant',null),
  ('app_migration_receipts',null,'operator control table: rebuilt by the upgrade scripts, not business data'),
  ('backup_runs',null,'operator control table: backup job evidence, kept in the operator DR dump');

@@ -40,6 +40,7 @@ import {
 import { TaskTabs } from '../components/TaskTabs';
 import { PartyEditor } from '../components/PartyEditor';
 import { SupplierStatement } from '../components/SupplierStatement';
+import { SupplierSchedulePanel } from '../components/SupplierSchedulePanel';
 import { appRoute } from '../lib/paths';
 import { rupees, paiseToDecimal } from '../lib/money';
 import { t } from '../lib/i18n';
@@ -518,6 +519,13 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
               </a>
               <a href={appRoute.purchases}>Purchase bills</a>
             </p>
+          )}
+          {canPost && shopId && partyId && (
+            <SupplierSchedulePanel
+              shopId={shopId}
+              partyId={partyId}
+              partyName={summary.find((r) => r.partyId === partyId)?.partyName ?? ''}
+            />
           )}
           <TaskTabs
             label="Supplier tasks"

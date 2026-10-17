@@ -622,11 +622,63 @@ if [[ "$profit" != '0' && "$partyarchive" != '2' && ! ( "$profit" == '1' && "$pa
  echo 'Profit report appears ahead of completed party archive. Refusing migration.' >&2; exit 1
 fi
 
+# Supplier payment schedule (0061): additive classifier field. Four anchors, all or nothing.
+supplierschedule_probe=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -F' ' <<'SQL'
+do $$ begin
+ create temp table _supplierschedule_receipt (present boolean);
+ if to_regclass('public.app_migration_receipts') is not null then
+   insert into _supplierschedule_receipt select exists(select 1 from public.app_migration_receipts where version='0061');
+ else insert into _supplierschedule_receipt values(false); end if;
+end $$;
+select (select present from _supplierschedule_receipt),
+ (select count(*) from (values
+   (coalesce((select relrowsecurity from pg_class where oid=to_regclass('public.supplier_payment_schedules')),false)),
+   (exists(select 1 from pg_proc where oid=to_regprocedure('public.get_supplier_payments_due(uuid,date)')
+      and position('DSB_INVALID_SCHEDULE' in prosrc)>0 and position('payments' in prosrc)>0)
+    and exists(select 1 from pg_proc where oid=to_regprocedure('public.set_supplier_payment_schedule(uuid,uuid,integer,bigint,text,boolean,text)')
+      and position('DSB_INVALID_SCHEDULE' in prosrc)>0)
+    and to_regprocedure('public.remove_supplier_payment_schedule(uuid)') is not null),
+   (case when to_regclass('public.supplier_payment_schedules') is null
+          or to_regprocedure('public.get_supplier_payments_due(uuid,date)') is null
+          or to_regprocedure('public.set_supplier_payment_schedule(uuid,uuid,integer,bigint,text,boolean,text)') is null
+          or to_regprocedure('public.remove_supplier_payment_schedule(uuid)') is null then false
+     else has_function_privilege('authenticated','public.get_supplier_payments_due(uuid,date)','execute')
+      and has_function_privilege('authenticated','public.set_supplier_payment_schedule(uuid,uuid,integer,bigint,text,boolean,text)','execute')
+      and has_function_privilege('authenticated','public.remove_supplier_payment_schedule(uuid)','execute')
+      and not has_function_privilege('anon','public.get_supplier_payments_due(uuid,date)','execute')
+      and not has_function_privilege('anon','public.set_supplier_payment_schedule(uuid,uuid,integer,bigint,text,boolean,text)','execute')
+      and not has_function_privilege('anon','public.remove_supplier_payment_schedule(uuid)','execute')
+      and has_table_privilege('authenticated','public.supplier_payment_schedules','select')
+      and not has_table_privilege('authenticated','public.supplier_payment_schedules','insert')
+      and not has_table_privilege('authenticated','public.supplier_payment_schedules','update')
+      and not has_table_privilege('authenticated','public.supplier_payment_schedules','delete') end),
+   (exists(select 1 from pg_indexes where schemaname='public' and indexname='supplier_payment_schedules_one_live')
+    and exists(select 1 from pg_trigger where tgname='supplier_payment_schedules_no_delete' and not tgisinternal))
+ ) p(ok) where ok);
+SQL
+)
+read -r supplierschedule_receipt supplierschedule_anchors <<<"$(tail -n 1 <<<"$supplierschedule_probe")"
+case "$supplierschedule_receipt:$supplierschedule_anchors" in
+ f:0) supplierschedule=0; needs_supplierschedule=true ;;
+ f:4) supplierschedule=1; needs_supplierschedule=true ;;
+ t:4) supplierschedule=2; needs_supplierschedule=false ;;
+ *) echo "Supplier payment schedule partial/drift state ($supplierschedule_receipt/$supplierschedule_anchors). Refusing migration." >&2; exit 1 ;;
+esac
+if [[ "$supplierschedule" == '2' ]]; then
+ supplierschedule_expected=$(sha256sum "$repo_root/supabase/migrations/0061_supplier_payment_schedule.sql" | cut -d' ' -f1)
+ supplierschedule_recorded=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -c "select checksum_sha256 from public.app_migration_receipts where version='0061'")
+ [[ "$supplierschedule_expected" == "$supplierschedule_recorded" ]] || { echo '0061 receipt checksum mismatch. Refusing migration.' >&2; exit 1; }
+fi
+# A later packet is not allowed to appear ahead of its predecessor, except a full reset awaiting receipts.
+if [[ "$supplierschedule" != '0' && "$profit" != '2' && ! ( "$supplierschedule" == '1' && "$profit" == '1' ) ]]; then
+ echo 'Supplier payment schedule appears ahead of completed profit report. Refusing migration.' >&2; exit 1
+fi
+
 emit_state() {
   local needs_foundation=$1 needs_hardening=$2 needs_phase65=$3 needs_batcha=$4 needs_batchb=$5 needs_p1=$6 needs_p2=$7 needs_c0=$8 needs_c1=$9 needs_c2=${10} needs_c3=${11} needs_c3b=${12} needs_r0=${13} needs_d1=${14} needs_r0b=${15} needs_o1=${16} needs_o2=${17} needs_d2b=${18} needs_d3a=${19}
   local needs_upgrade=true
   if [[ "$needs_foundation:$needs_hardening:$needs_phase65:$needs_batcha:$needs_batchb:$needs_p1:$needs_p2:$needs_c0:$needs_c1:$needs_c2:$needs_c3:$needs_c3b:$needs_r0:$needs_d1:$needs_r0b:$needs_o1:$needs_o2:$needs_d2b:$needs_d3a" == "false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false" ]]; then
-    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" ]]; then needs_upgrade=false; fi
+    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" && "$needs_supplierschedule" == "false" ]]; then needs_upgrade=false; fi
   fi
   printf 'observed_state=%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s\n' "$foundation" "$hardening" "$phase65" "$batcha" "$batchb" "$p1" "$p2" "$c0" "$c1" "$c2" "$c3" "$c3b" "$r0" "$d1" "$r0b" "$o1" "$o2" "$d2b" "$d3a"
   printf 'needs_upgrade=%s\n' "$needs_upgrade"
@@ -655,6 +707,8 @@ emit_state() {
   printf 'needs_partyarchive=%s\n' "$needs_partyarchive"
   printf 'profit_state=%s\n' "$profit"
   printf 'needs_profit=%s\n' "$needs_profit"
+  printf 'supplierschedule_state=%s\n' "$supplierschedule"
+  printf 'needs_supplierschedule=%s\n' "$needs_supplierschedule"
 }
 
 # Legacy (0030-0043) classification is unchanged from before Packet P1: the
