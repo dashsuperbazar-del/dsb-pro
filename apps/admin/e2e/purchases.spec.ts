@@ -162,7 +162,7 @@ test('batch entry saves several single-line bills as drafts; nothing posts until
   await expect(page.getByRole('status')).toContainText('Created supplier Batch Supplier');
   await createItem(page, 'Batch Item A');
   await createItem(page, 'Batch Item B');
-  await stockTask(page, 'Purchases');
+  await page.goto('/purchases');
 
   await page.getByText('Batch entry (save several bills as drafts)').click();
   const batch = page.getByLabel('Batch bill entry');
