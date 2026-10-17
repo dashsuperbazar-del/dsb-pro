@@ -14,6 +14,8 @@ afterEach(async () => {
 });
 const row = (date: string, total: number) => ({
   billId: date,
+  lineNo: 1,
+  createdAt: date,
   businessDate: date,
   partyId: 'p',
   unitName: 'case',
@@ -39,7 +41,7 @@ const mount = () =>
 test('shows the last cost per base unit, its change and a trend line', async () => {
   api.listItemPurchasePrices.mockResolvedValue([row('2026-10-02', 1100), row('2026-10-01', 1000)]);
   await mount();
-  await vi.waitFor(() => expect(host.textContent).toContain('Last cost ₹1.10 per pcs'));
+  await vi.waitFor(() => expect(host.textContent).toContain('Last purchase price ₹1.10 per pcs'));
   expect(host.textContent).toContain('up ₹0.10');
   expect(host.textContent).toContain('Acme');
   expect(host.querySelector('svg polyline')).not.toBeNull();

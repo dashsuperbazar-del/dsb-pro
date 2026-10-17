@@ -1233,6 +1233,7 @@ export function InventoryScreen({
             <input type="file" accept="image/*" onChange={changeImage} />
             {canSeePurchasePrices && (
               <PriceHistory
+                key={selectedItem.id}
                 shopId={shopId}
                 itemId={selectedItem.id}
                 baseUnit={selectedItem.unit3 || selectedItem.unit2 || selectedItem.unit1}

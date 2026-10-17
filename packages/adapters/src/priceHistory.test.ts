@@ -20,6 +20,7 @@ function fake(lines: unknown[], bills: unknown[]) {
 }
 const line = (bill: string) => ({
   purchase_bill_id: bill,
+  line_no: 1,
   unit_level: 1,
   unit_name_snapshot: 'case',
   qty: '2',
@@ -56,5 +57,20 @@ describe('listItemPurchasePrices', () => {
       [{ id: 'b1', business_date: '2026-10-01', status: 'POSTED', party_id: null }],
     );
     await expect(listItemPurchasePrices('shop', 'item')).rejects.toThrow(/unexpected/);
+  });
+});
+
+describe('limit', () => {
+  it('voided lines do not use up the limit', async () => {
+    const lines = Array.from({ length: 6 }, (_, i) => line(`b${i}`));
+    const bills = lines.map((l, i) => ({
+      id: l.purchase_bill_id,
+      business_date: '2026-10-01',
+      status: i < 3 ? 'VOID' : 'POSTED',
+      party_id: null,
+    }));
+    fake(lines, bills);
+    const out = await listItemPurchasePrices('shop', 'item', 2);
+    expect(out.map((r) => r.billId)).toEqual(['b3', 'b4']);
   });
 });

@@ -33,11 +33,12 @@ export function PriceHistory(props: {
   const summary = priceSummary(points);
   if (!summary) return <p class="muted">No purchases of this item yet.</p>;
   const pts = chartPoints(points);
-  const name = (id: string | null) => props.parties.find((p) => p.id === id)?.name ?? 'No supplier';
+  const name = (id: string | null) =>
+    id === null ? 'No supplier' : (props.parties.find((p) => p.id === id)?.name ?? 'Supplier');
   return (
     <section aria-label="Purchase price history" class="price-history">
       <p>
-        Last cost {rupees(summary.last)} per {props.baseUnit}
+        Last purchase price {rupees(summary.last)} per {props.baseUnit}
         {summary.changeFromPrevious !== null && summary.changeFromPrevious !== 0 && (
           <>
             {' '}
@@ -47,6 +48,7 @@ export function PriceHistory(props: {
         )}{' '}
         · range {rupees(summary.min)}–{rupees(summary.max)}
       </p>
+      <p class="muted">Line prices before any bill discount, extra charges or round-off.</p>
       {pts.length > 1 && (
         <svg viewBox="0 0 320 100" role="img" aria-label="Purchase cost trend" class="price-chart">
           <polyline
@@ -56,7 +58,13 @@ export function PriceHistory(props: {
             stroke-width="2"
           />
           {pts.map((p) => (
-            <circle key={p.point.row.billId + p.x} cx={p.x} cy={p.y} r="3" fill="currentColor">
+            <circle
+              key={`${p.point.row.billId}:${p.point.row.lineNo}`}
+              cx={p.x}
+              cy={p.y}
+              r="3"
+              fill="currentColor"
+            >
               <title>
                 {p.point.date}: {rupees(p.point.perBasePaise)} per {props.baseUnit}
               </title>
@@ -69,7 +77,7 @@ export function PriceHistory(props: {
           .reverse()
           .slice(0, 5)
           .map((p) => (
-            <li key={p.row.billId + p.row.unitLevel + p.row.qty}>
+            <li key={`${p.row.billId}:${p.row.lineNo}`}>
               {p.date} · {name(p.row.partyId)} · {p.row.qty} {p.row.unitName} at{' '}
               {rupees(p.row.unitPricePaise)} = {rupees(p.perBasePaise)} per {props.baseUnit}
             </li>

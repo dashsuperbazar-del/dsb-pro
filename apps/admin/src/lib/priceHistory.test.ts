@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { chartPoints, pricePoints, priceSummary } from './priceHistory';
 
-const row = (date: string, baseQty: number, lineTotalPaise: number) =>
+const row = (date: string, baseQty: number, lineTotalPaise: number, createdAt = date) =>
   ({
-    billId: date,
+    billId: date + createdAt,
+    lineNo: 1,
+    createdAt,
     businessDate: date,
     partyId: null,
     unitName: 'case',
@@ -35,5 +37,15 @@ describe('price history', () => {
     expect(pts.map((p) => p.y)).toEqual([50, 50]);
     expect(pts[0]!.x).toBe(12);
     expect(pts[1]!.x).toBe(308);
+  });
+});
+
+describe('same-day purchases', () => {
+  it('the bill entered later is the last price', () => {
+    const pts = pricePoints([
+      row('2026-10-17', 10, 1100, '2026-10-17T15:00:00Z'),
+      row('2026-10-17', 10, 1000, '2026-10-17T10:00:00Z'),
+    ]);
+    expect(priceSummary(pts)).toMatchObject({ last: 110, changeFromPrevious: 10 });
   });
 });

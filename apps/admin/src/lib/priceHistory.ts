@@ -1,18 +1,24 @@
 import type { ItemPurchasePrice } from '@dsb-pro/adapters';
 
-// Cost per base (smallest) unit, so purchases in different units compare. Paise, rounded half up for
-// display only; nothing is stored or posted from it.
+// Line price per base (smallest) unit, so purchases in different units compare. It is the line price before
+// any bill-level discount, extra charges or round-off. Paise, rounded for display only; nothing is stored or
+// posted from it.
 export type PricePoint = { date: string; perBasePaise: number; row: ItemPurchasePrice };
 
 export function pricePoints(rows: ItemPurchasePrice[]): PricePoint[] {
-  return rows
-    .filter((r) => r.baseQty > 0 && r.lineTotalPaise >= 0)
-    .map((r) => ({
-      date: r.businessDate,
-      perBasePaise: Math.round(r.lineTotalPaise / r.baseQty),
-      row: r,
-    }))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  return (
+    rows
+      .filter((r) => r.baseQty > 0 && r.lineTotalPaise >= 0)
+      .map((r) => ({
+        date: r.businessDate,
+        perBasePaise: Math.round(r.lineTotalPaise / r.baseQty),
+        row: r,
+      }))
+      // Same business date: the bill entered later is the later purchase.
+      .sort(
+        (a, b) => a.date.localeCompare(b.date) || a.row.createdAt.localeCompare(b.row.createdAt),
+      )
+  );
 }
 
 export function priceSummary(points: PricePoint[]) {

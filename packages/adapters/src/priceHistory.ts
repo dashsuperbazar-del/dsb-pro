@@ -4,6 +4,8 @@ import { classifyError, errorMessage } from './errors';
 // I08: an item's recent purchase costs (old DSB price chart). Read-only; voided bills are left out.
 export type ItemPurchasePrice = {
   billId: string;
+  lineNo: number;
+  createdAt: string;
   businessDate: string;
   partyId: string | null;
   unitName: string;
@@ -30,13 +32,14 @@ export async function listItemPurchasePrices(
   const lines = await client
     .from('purchase_bill_items')
     .select(
-      'purchase_bill_id,unit_level,unit_name_snapshot,qty,base_qty,unit_price_paise,line_total_paise,created_at',
+      'purchase_bill_id,line_no,unit_level,unit_name_snapshot,qty,base_qty,unit_price_paise,line_total_paise,created_at',
     )
     .eq('shop_id', shopId)
     .eq('item_id', itemId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
-    .limit(limit);
+    // Over-fetch: voided bills' lines are dropped below and must not use up the limit.
+    .limit(limit * 3);
   if (lines.error) throw new Error(errorMessage(classifyError(lines.error), lines.error));
   if (!Array.isArray(lines.data)) throw fail();
   const ids = [...new Set(lines.data.map((l) => l.purchase_bill_id as string))];
@@ -57,6 +60,8 @@ export async function listItemPurchasePrices(
       throw fail();
     out.push({
       billId: l.purchase_bill_id as string,
+      lineNo: num(l.line_no),
+      createdAt: String(l.created_at),
       businessDate: bill.business_date,
       partyId: (bill.party_id as string | null) ?? null,
       unitName: l.unit_name_snapshot,
@@ -66,6 +71,7 @@ export async function listItemPurchasePrices(
       unitPricePaise: num(l.unit_price_paise),
       lineTotalPaise: num(l.line_total_paise),
     });
+    if (out.length >= limit) break;
   }
   return out;
 }
