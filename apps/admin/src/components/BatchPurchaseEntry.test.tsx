@@ -144,3 +144,29 @@ test('saving the same supplier and bill number again is refused while its draft 
   expect(scanPurchaseDrafts(prefix).drafts).toHaveLength(1);
   expect(host.textContent).toContain('already saved');
 });
+
+test('P10: a CSV fills the grid without saving; a bad file fills nothing', async () => {
+  await mount();
+  const input = host.querySelector<HTMLInputElement>('[aria-label="Fill batch from CSV"]')!;
+  const choose = async (text: string) => {
+    const file = Object.assign(new File([text], 'bills.csv', { type: 'text/csv' }), {
+      text: async () => text,
+    });
+    Object.defineProperty(input, 'files', { value: [file], configurable: true });
+    await act(async () => {
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 0));
+    });
+  };
+  await choose(
+    'Bill No,Supplier,Date,Item,Unit,Qty,Cost,Cost Type\nX1,Nobody,2026-10-12,Oil,,1,1,\n',
+  );
+  await vi.waitFor(() => expect(host.textContent).toContain('no supplier named “Nobody”'));
+  expect(host.textContent).toContain('Nothing was filled in');
+  await choose(
+    'Bill No,Supplier,Date,Item,Unit,Qty,Cost,Cost Type\nX1,acme,2026-10-12,oil,jar,2,50,\nX2,Acme,2026-10-12,Rice,,1,900,\n',
+  );
+  await vi.waitFor(() => expect(host.textContent).toContain('Filled 2 bills from bills.csv'));
+  expect(host.textContent).toContain('Save 2 drafts');
+  expect(scanPurchaseDrafts(prefix).drafts).toHaveLength(0);
+});
