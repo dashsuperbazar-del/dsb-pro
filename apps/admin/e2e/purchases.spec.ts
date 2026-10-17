@@ -112,3 +112,41 @@ test('a purchase whose answer is lost is retried as the same bill, never posted 
   await expect(page.getByLabel('item peek')).toContainText('Stock 3 piece');
   expect(calls).toBe(2);
 });
+
+test('a purchase line can be entered as a line total; an inexact total is shown, never silently rounded', async ({
+  page,
+}) => {
+  await createOwnerShop(page);
+  await page.goto('/inventory');
+  await createItem(page, 'Total Cost Item A');
+  await createItem(page, 'Total Cost Item B');
+
+  await stockTask(page, 'Purchases');
+  const purchase = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
+
+  // Exact: Rs 100.00 for 4 pieces is Rs 25.00 each.
+  await purchase.locator('select[name="itemId"]').selectOption({ label: 'Total Cost Item A' });
+  await purchase.getByLabel('Cost entry mode').selectOption('total');
+  await purchase.locator('input[name="qty"]').fill('4');
+  await purchase.locator('input[name="price"]').fill('100');
+  await expect(purchase.getByTestId('cost-derivation')).toContainText('₹25.00 per unit');
+  await purchase.getByRole('button', { name: 'Add line' }).click();
+  await expect(purchase.locator('table tbody tr')).toHaveCount(1);
+  await expect(purchase).toContainText('Lines total: ₹100.00');
+
+  // Inexact: Rs 100.00 for 3 pieces cannot be stored; the app says by how much and waits for a choice.
+  await purchase.locator('select[name="itemId"]').selectOption({ label: 'Total Cost Item B' });
+  await purchase.getByLabel('Cost entry mode').selectOption('total');
+  await purchase.locator('input[name="qty"]').fill('3');
+  await purchase.locator('input[name="price"]').fill('100');
+  await expect(purchase.getByTestId('cost-derivation')).toContainText('₹0.01 less');
+  await purchase.getByRole('button', { name: 'Add line' }).click();
+  await expect(purchase.locator('table tbody tr')).toHaveCount(1);
+  await purchase.getByRole('button', { name: /Use ₹33\.33 per unit/ }).click();
+  await expect(purchase.locator('input[name="price"]')).toHaveValue('33.33');
+  await purchase.getByRole('button', { name: 'Add line' }).click();
+  await expect(purchase.locator('table tbody tr')).toHaveCount(2);
+  await expect(purchase).toContainText('Lines total: ₹199.99');
+});

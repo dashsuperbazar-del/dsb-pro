@@ -141,3 +141,16 @@ test('VF-017: staleDrafts lists only snapshots older than the cut-off; removing 
   removePurchaseDrafts(stale.map((s) => s.key));
   expect(scanPurchaseDrafts(prefix).drafts.map((s) => s.draft.clientId)).toEqual(['new']);
 });
+
+test('P04: the cost entry mode is saved with the draft and an unknown mode is unreadable', () => {
+  const prefix = purchaseDraftPrefix('u', 's');
+  const key = savePurchaseDraft(prefix, 'w', { ...draft(), price: '100', costMode: 'total' });
+  expect(listPurchaseDrafts(prefix)[0].draft.costMode).toBe('total');
+  // older drafts have no mode and mean per-unit
+  localStorage.removeItem(key);
+  savePurchaseDraft(prefix, 'w', draft());
+  expect(listPurchaseDrafts(prefix)[0].draft.costMode).toBeUndefined();
+  expect(() => savePurchaseDraft(prefix, 'w', { ...draft(), costMode: 'weird' as never })).toThrow(
+    /unreadable/,
+  );
+});
