@@ -5,7 +5,7 @@ Always verify the SHA below with `git log origin/main -1` before trusting it.
 
 ## Current
 
-- 18 October: main `3d89d49` = #92–#107 (S06 schedule/0061, I09 camera scan, P06 quick bill, I14 units, SP2/SP2b instant revisits, I08 price history, S05 bulk supplier payments, N06 filters, C06 voice entry, P13 bill viewer, P10 CSV fill). LIVE: DB through 0061; production deployed at `3d89d49` (run 39084571338, user approved 18 Oct). Device checks (camera, voice, speed) pending with the user.
+- 18 October: main `daecce3` = #92–#108. LIVE: DB through 0062 (`partymerge`, run 39115935115, user approved) and production deployed at `daecce3` (run 39117013742). Device checks (camera, voice, speed, supplier merge) pending with the user. Shop how-to: docs/SHOP_START.md.
 - Measured SP0 mobile revisit p50 (main → SP2): Suppliers 957→179 ms, Customers 896→126 ms. Plan: docs/LIFETIME_PLAN.md.
 - Decision 18 Oct (user): no old-DSB import and no parallel run (confirms 2 Oct decision; LIFETIME_PLAN F0 dropped).
 - Decision 18 Oct (user) I11 party merge: keep both suppliers' data; identical records may be listed for cleanup. Built as #108 (0062 `partymerge`): rows re-attributed unchanged, duplicate archived, `party_merges` records moves; refused if both have a POSTED opening in one shop; post_purchase retry accepts merged supplier (`dsb_party_canonical`); billdocs classifier also accepts the 0062 post_purchase body. Suppliers only (old DSB had no customer merge).
