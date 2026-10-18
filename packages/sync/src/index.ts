@@ -10,3 +10,4 @@ export * from './saleIntent';
 export * from './offlineReturn';
 export * from './heldCarts';
 export * from './financialAttempts';
+export * from './routeSnapshotDb';
