@@ -1049,6 +1049,73 @@ export type Database = {
           },
         ]
       }
+      party_merges: {
+        Row: {
+          client_id: string
+          created_at: string
+          created_by: string
+          deleted_at: number | null
+          id: string
+          moved: Json
+          source_name: string
+          source_party_id: string
+          target_name: string
+          target_party_id: string
+          tenant_id: string
+          updated_at: number
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          created_by?: string
+          deleted_at?: number | null
+          id?: string
+          moved: Json
+          source_name: string
+          source_party_id: string
+          target_name: string
+          target_party_id: string
+          tenant_id: string
+          updated_at?: number
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          created_by?: string
+          deleted_at?: number | null
+          id?: string
+          moved?: Json
+          source_name?: string
+          source_party_id?: string
+          target_name?: string
+          target_party_id?: string
+          tenant_id?: string
+          updated_at?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "party_merges_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "party_merges_tenant_id_source_party_id_fkey"
+            columns: ["tenant_id", "source_party_id"]
+            isOneToOne: true
+            referencedRelation: "parties"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "party_merges_tenant_id_target_party_id_fkey"
+            columns: ["tenant_id", "target_party_id"]
+            isOneToOne: false
+            referencedRelation: "parties"
+            referencedColumns: ["tenant_id", "id"]
+          },
+        ]
+      }
       payment_allocations: {
         Row: {
           amount_paise: number
@@ -3236,6 +3303,11 @@ export type Database = {
         Args: { p_allocations: Json; p_target_field: string }
         Returns: Json
       }
+      dsb_party_canonical: { Args: { p_party_id: string }; Returns: string }
+      dsb_party_merge_move: {
+        Args: { p_new: unknown; p_old: unknown }
+        Returns: boolean
+      }
       dsb_request_result: {
         Args: {
           p_client_id: string
@@ -3386,6 +3458,10 @@ export type Database = {
         Args: { p_as_of: string; p_shop_id: string }
         Returns: Json
       }
+      get_supplier_duplicate_bills: {
+        Args: { p_party_id: string; p_shop_id: string }
+        Returns: Json
+      }
       get_supplier_outstanding: { Args: { p_shop_id: string }; Returns: Json }
       get_supplier_payments_due: {
         Args: { p_on: string; p_shop_id: string }
@@ -3415,6 +3491,14 @@ export type Database = {
           status: string
           user_id: string
         }[]
+      }
+      merge_parties: {
+        Args: {
+          p_client_id: string
+          p_source_party_id: string
+          p_target_party_id: string
+        }
+        Returns: string
       }
       next_doc_no: {
         Args: { p_series: string; p_shop_id: string }

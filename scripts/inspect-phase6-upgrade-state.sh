@@ -505,7 +505,10 @@ fi
 
 # DW2b is an additive classifier field; preserve the historical 19-part observed_state contract.
 billdocs_body_md5=$(node "$repo_root/scripts/billdocs-body-md5.mjs")
-billdocs_probe=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -F' ' -v billdocs_body_md5="$billdocs_body_md5" <<'SQL'
+# 0062 (partymerge) redefines post_purchase; its exact body is also a valid billdocs anchor. A lone 0062
+# body without the rest of 0062 is still refused by the partymerge classifier below.
+partymerge_body_md5=$(node "$repo_root/scripts/partymerge-body-md5.mjs")
+billdocs_probe=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -F' ' -v billdocs_body_md5="$billdocs_body_md5" -v partymerge_body_md5="$partymerge_body_md5" <<'SQL'
 do $$ begin
  create temp table _billdocs_receipt (present boolean);
  if to_regclass('public.app_migration_receipts') is not null then
@@ -519,7 +522,7 @@ select (select present from _billdocs_receipt),
    (exists(select 1 from pg_policies where schemaname='storage' and tablename='objects' and policyname='bill_documents_read')),
    (exists(select 1 from pg_policies where schemaname='storage' and tablename='objects' and policyname='bill_documents_insert')),
    (exists(select 1 from pg_proc where oid='public.post_purchase(uuid,uuid,text,date,bigint,bigint,text,jsonb,text)'::regprocedure
-      and md5(prosrc)=:'billdocs_body_md5'))
+      and md5(prosrc) in (:'billdocs_body_md5',:'partymerge_body_md5')))
  ) p(ok) where ok);
 SQL
 )
@@ -674,11 +677,66 @@ if [[ "$supplierschedule" != '0' && "$profit" != '2' && ! ( "$supplierschedule" 
  echo 'Supplier payment schedule appears ahead of completed profit report. Refusing migration.' >&2; exit 1
 fi
 
+# Party merge (0062): additive classifier field. Four anchors, all or nothing.
+partymerge_probe=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -F' ' -v partymerge_body_md5="$partymerge_body_md5" <<'SQL'
+do $$ begin
+ create temp table _partymerge_receipt (present boolean);
+ if to_regclass('public.app_migration_receipts') is not null then
+   insert into _partymerge_receipt select exists(select 1 from public.app_migration_receipts where version='0062');
+ else insert into _partymerge_receipt values(false); end if;
+end $$;
+select (select present from _partymerge_receipt),
+ (select count(*) from (values
+   (coalesce((select relrowsecurity from pg_class where oid=to_regclass('public.party_merges')),false)),
+   (exists(select 1 from pg_proc where oid=to_regprocedure('public.merge_parties(uuid,uuid,text)')
+      and position('DSB_MERGE_OPENING_CONFLICT' in prosrc)>0 and position('dsb.party_merge' in prosrc)>0)
+    and exists(select 1 from pg_proc where oid=to_regprocedure('public.post_purchase(uuid,uuid,text,date,bigint,bigint,text,jsonb,text)')
+      and md5(prosrc)=:'partymerge_body_md5')
+    and exists(select 1 from pg_proc where oid=to_regprocedure('public.phase4_payment_guard()')
+      and position('dsb_party_merge_move' in prosrc)>0)
+    and exists(select 1 from pg_proc where oid=to_regprocedure('public.o1_opening_guard()')
+      and position('dsb_party_merge_move' in prosrc)>0)
+    and exists(select 1 from pg_proc where oid=to_regprocedure('public.phase65_purchase_return_guard()')
+      and position('dsb_party_merge_move' in prosrc)>0)),
+   (case when to_regclass('public.party_merges') is null
+          or to_regprocedure('public.merge_parties(uuid,uuid,text)') is null
+          or to_regprocedure('public.get_supplier_duplicate_bills(uuid,uuid)') is null then false
+     else has_function_privilege('authenticated','public.merge_parties(uuid,uuid,text)','execute')
+      and has_function_privilege('authenticated','public.get_supplier_duplicate_bills(uuid,uuid)','execute')
+      and not has_function_privilege('anon','public.merge_parties(uuid,uuid,text)','execute')
+      and not has_function_privilege('anon','public.get_supplier_duplicate_bills(uuid,uuid)','execute')
+      and has_table_privilege('authenticated','public.party_merges','select')
+      and not has_table_privilege('authenticated','public.party_merges','insert')
+      and not has_table_privilege('authenticated','public.party_merges','update')
+      and not has_table_privilege('authenticated','public.party_merges','delete') end),
+   (exists(select 1 from pg_trigger where tgname='party_merges_immutable' and not tgisinternal)
+    and exists(select 1 from pg_constraint where conrelid=to_regclass('public.party_merges') and contype='u'
+      and pg_get_constraintdef(oid)='UNIQUE (tenant_id, source_party_id)'))
+ ) p(ok) where ok);
+SQL
+)
+read -r partymerge_receipt partymerge_anchors <<<"$(tail -n 1 <<<"$partymerge_probe")"
+case "$partymerge_receipt:$partymerge_anchors" in
+ f:0) partymerge=0; needs_partymerge=true ;;
+ f:4) partymerge=1; needs_partymerge=true ;;
+ t:4) partymerge=2; needs_partymerge=false ;;
+ *) echo "Party merge partial/drift state ($partymerge_receipt/$partymerge_anchors). Refusing migration." >&2; exit 1 ;;
+esac
+if [[ "$partymerge" == '2' ]]; then
+ partymerge_expected=$(sha256sum "$repo_root/supabase/migrations/0062_party_merge.sql" | cut -d' ' -f1)
+ partymerge_recorded=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -c "select checksum_sha256 from public.app_migration_receipts where version='0062'")
+ [[ "$partymerge_expected" == "$partymerge_recorded" ]] || { echo '0062 receipt checksum mismatch. Refusing migration.' >&2; exit 1; }
+fi
+# A later packet is not allowed to appear ahead of its predecessor, except a full reset awaiting receipts.
+if [[ "$partymerge" != '0' && "$supplierschedule" != '2' && ! ( "$partymerge" == '1' && "$supplierschedule" == '1' ) ]]; then
+ echo 'Party merge appears ahead of completed supplier payment schedule. Refusing migration.' >&2; exit 1
+fi
+
 emit_state() {
   local needs_foundation=$1 needs_hardening=$2 needs_phase65=$3 needs_batcha=$4 needs_batchb=$5 needs_p1=$6 needs_p2=$7 needs_c0=$8 needs_c1=$9 needs_c2=${10} needs_c3=${11} needs_c3b=${12} needs_r0=${13} needs_d1=${14} needs_r0b=${15} needs_o1=${16} needs_o2=${17} needs_d2b=${18} needs_d3a=${19}
   local needs_upgrade=true
   if [[ "$needs_foundation:$needs_hardening:$needs_phase65:$needs_batcha:$needs_batchb:$needs_p1:$needs_p2:$needs_c0:$needs_c1:$needs_c2:$needs_c3:$needs_c3b:$needs_r0:$needs_d1:$needs_r0b:$needs_o1:$needs_o2:$needs_d2b:$needs_d3a" == "false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false" ]]; then
-    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" && "$needs_supplierschedule" == "false" ]]; then needs_upgrade=false; fi
+    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" && "$needs_supplierschedule" == "false" && "$needs_partymerge" == "false" ]]; then needs_upgrade=false; fi
   fi
   printf 'observed_state=%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s\n' "$foundation" "$hardening" "$phase65" "$batcha" "$batchb" "$p1" "$p2" "$c0" "$c1" "$c2" "$c3" "$c3b" "$r0" "$d1" "$r0b" "$o1" "$o2" "$d2b" "$d3a"
   printf 'needs_upgrade=%s\n' "$needs_upgrade"
@@ -709,6 +767,8 @@ emit_state() {
   printf 'needs_profit=%s\n' "$needs_profit"
   printf 'supplierschedule_state=%s\n' "$supplierschedule"
   printf 'needs_supplierschedule=%s\n' "$needs_supplierschedule"
+  printf 'partymerge_state=%s\n' "$partymerge"
+  printf 'needs_partymerge=%s\n' "$needs_partymerge"
 }
 
 # Legacy (0030-0043) classification is unchanged from before Packet P1: the

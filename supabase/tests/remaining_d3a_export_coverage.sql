@@ -10,7 +10,7 @@ insert into export_map values
  ('expenses','expenses',null),('financial_requests','financialRequests',null),('invites','invites',null),
  ('item_barcodes','itemBarcodes',null),('item_prices','itemPrices',null),('items','items',null),
  ('legacy_import_runs','legacyImportRuns',null),('opening_settlements','openingSettlements',null),
- ('parties','parties',null),('payment_allocations','allocations',null),('payments','payments',null),
+ ('parties','parties',null),('party_merges','partyMerges',null),('payment_allocations','allocations',null),('payments','payments',null),
  ('permissions','permissions',null),('purchase_bill_items','purchaseLines',null),('purchase_bills','purchases',null),
  ('purchase_return_items','purchaseReturnLines',null),('purchase_returns','purchaseReturns',null),
  ('role_permissions','rolePermissions',null),('sale_invoice_items','saleLines',null),('sale_invoices','sales',null),

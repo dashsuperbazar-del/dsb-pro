@@ -36,6 +36,7 @@ import { TaskTabs } from '../components/TaskTabs';
 import { PartyEditor } from '../components/PartyEditor';
 import { SupplierStatement } from '../components/SupplierStatement';
 import { SupplierSchedulePanel } from '../components/SupplierSchedulePanel';
+import { DuplicateBillsCheck, PartyMergePanel } from '../components/PartyMergePanel';
 import { BulkSupplierPayments } from '../components/BulkSupplierPayments';
 import { SnapshotNote } from '../components/SnapshotNote';
 import { dropSnapshot, peekSnapshot, putSnapshot, snapshotUserId } from '../lib/routeSnapshot';
@@ -78,6 +79,7 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
   const [bills, setBills] = useState<SupplierBill[]>([]);
   const [payments, setPayments] = useState<SupplierPayment[]>([]);
   const [open, setOpen] = useState<FinancialAttempt[]>([]);
+  const [mergedInto, setMergedInto] = useState<{ id: string; name: string } | null>(null);
   const [draft, setDraft] = useState<FinancialAttempt | null>(null);
   const [amount, setAmount] = useState('');
   const [mode, setMode] = useState<PaymentMode>('cash');
@@ -491,33 +493,59 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
             const party = allParties.find((p) => p.id === partyId);
             if (!party) return null;
             return (
-              <PartyEditor
-                key={party.id}
-                kind="supplier"
-                initial={{
-                  name: party.name,
-                  phone: party.phone,
-                  gstin: party.gstin,
-                  address: party.address ?? null,
-                }}
-                onSave={async (v) => {
-                  const saved = await updateParty({
-                    id: party.id,
-                    ...v,
-                    existing: { phone: party.phone, gstin: party.gstin, address: party.address },
-                  });
-                  await refreshBase();
-                  setMessage(`Details of ${saved.name} saved.`);
-                }}
-                onArchive={async () => {
-                  await archiveParty(party.id);
-                  await changeParty('');
-                  await refreshBase();
-                  setMessage(`${party.name} archived.`);
-                }}
-              />
+              <>
+                <PartyEditor
+                  key={party.id}
+                  kind="supplier"
+                  initial={{
+                    name: party.name,
+                    phone: party.phone,
+                    gstin: party.gstin,
+                    address: party.address ?? null,
+                  }}
+                  onSave={async (v) => {
+                    const saved = await updateParty({
+                      id: party.id,
+                      ...v,
+                      existing: { phone: party.phone, gstin: party.gstin, address: party.address },
+                    });
+                    await refreshBase();
+                    setMessage(`Details of ${saved.name} saved.`);
+                  }}
+                  onArchive={async () => {
+                    await archiveParty(party.id);
+                    await changeParty('');
+                    await refreshBase();
+                    setMessage(`${party.name} archived.`);
+                  }}
+                />
+                <PartyMergePanel
+                  party={{ id: party.id, name: party.name }}
+                  others={allParties
+                    .filter((p) => p.id !== party.id)
+                    .map((p) => ({ id: p.id, name: p.name }))}
+                  blockedReason={
+                    open.length > 0 || draft
+                      ? `A payment to ${party.name} is waiting or saved as a draft. Send or discard it first.`
+                      : null
+                  }
+                  onMerged={async (targetId, targetName) => {
+                    await changeParty(targetId);
+                    await refreshBase();
+                    setMessage(`${party.name} merged into ${targetName}. Nothing was deleted.`);
+                    setMergedInto({ id: targetId, name: targetName });
+                  }}
+                />
+              </>
             );
           })()}
+        {shopId && mergedInto && mergedInto.id === partyId && (
+          <DuplicateBillsCheck
+            shopId={shopId}
+            partyId={mergedInto.id}
+            partyName={mergedInto.name}
+          />
+        )}
       </section>
 
       {partyId && (
