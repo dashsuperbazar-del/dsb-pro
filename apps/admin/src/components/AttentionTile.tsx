@@ -14,7 +14,12 @@ import { rupees } from '../lib/money';
 import { summarizeLowStock, summarizeSuppliers } from '../lib/attention';
 import { summarizeDue } from '../lib/supplierSchedule';
 import { SnapshotNote } from './SnapshotNote';
-import { peekSnapshot, putSnapshot, snapshotUserId } from '../lib/routeSnapshot';
+import {
+  peekSnapshot,
+  putSnapshot,
+  snapshotRefreshFailed,
+  snapshotUserId,
+} from '../lib/routeSnapshot';
 
 type AttentionSnapshot = {
   low?: LowStockRow[];
@@ -88,7 +93,8 @@ export function AttentionTile() {
           settled();
         },
       );
-    })().catch(() => {
+    })().catch((e) => {
+      snapshotRefreshFailed('attention', e);
       if (alive) {
         setLow({ state: 'error' });
         setSup({ state: 'error' });

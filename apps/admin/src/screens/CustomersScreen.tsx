@@ -49,7 +49,14 @@ const lookupReceipt = (a: FinancialAttempt) =>
   lookupFinancialRequest(a.shopId, a.operation as FinancialOperation, a.id);
 import { parseRupeesToPaise } from '@dsb-pro/core';
 import { SnapshotNote } from '../components/SnapshotNote';
-import { dropSnapshot, peekSnapshot, putSnapshot, snapshotUserId } from '../lib/routeSnapshot';
+import {
+  dropSnapshot,
+  noteSnapshotShops,
+  peekSnapshot,
+  putSnapshot,
+  snapshotRefreshFailed,
+  snapshotUserId,
+} from '../lib/routeSnapshot';
 
 const money = (paise: number) => `₹${(paise / 100).toFixed(2)}`;
 const toPaise = (rupees: string) => parseRupeesToPaise(rupees || '0');
@@ -121,6 +128,7 @@ export function CustomersScreen() {
       throw new Error('No tenant membership.');
     }
     const shop = await getDefaultShopId();
+    noteSnapshotShops(userId, membership.shopIds, shop);
     const [c, b, d] = await Promise.all([
       listCustomers(),
       listCustomerBalances(),
@@ -167,6 +175,7 @@ export function CustomersScreen() {
   }
   useEffect(() => {
     void refreshBase(true).catch((e) => {
+      snapshotRefreshFailed('customers', e);
       setSnapshotFailed(true);
       setError(String(e));
     });

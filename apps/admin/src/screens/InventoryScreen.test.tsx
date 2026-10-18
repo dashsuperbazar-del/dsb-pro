@@ -1150,8 +1150,19 @@ test('SP4: after a cold start the stock screen lists the saved catalogue from di
 test('SP4: a disk snapshot of another user never renders after a cold start', async () => {
   const rs = await import('../lib/routeSnapshot');
   rs.clearSnapshots();
-  rs.putSnapshot('inventory', 'someone-else', 'shop', { items: [], parties: [], stock: [] });
   await rs.snapshotDiskIdle();
+  const { openRouteSnapshotDb } = await import('@dsb-pro/sync');
+  await (
+    await openRouteSnapshotDb()
+  ).snapshots.put({
+    key: 'someone-else:inventory',
+    userId: 'someone-else',
+    name: 'inventory',
+    shopId: 'shop',
+    at: Date.now(),
+    json: '{"items":[],"parties":[],"stock":[]}',
+    size: 36,
+  });
   rs.forgetSnapshotsInMemory();
   api.listItems.mockReturnValueOnce(new Promise(() => {}));
   await act(async () => {

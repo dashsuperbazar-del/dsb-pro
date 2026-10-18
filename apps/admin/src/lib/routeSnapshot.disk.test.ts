@@ -16,27 +16,37 @@ import {
   clearSnapshots,
   dropSnapshot,
   forgetSnapshotsInMemory,
+  noteSnapshotShops,
   peekSnapshot,
   putSnapshot,
+  setSnapshotTestHooks,
   snapshotDiskIdle,
+  snapshotRefreshFailed,
   snapshotUserId,
 } from './routeSnapshot';
 
+const session = (id: string | null) => (id ? { user: { id } } : null);
 async function coldStart(userId: string | null) {
   await snapshotDiskIdle();
   forgetSnapshotsInMemory();
   auth.userId = userId;
   return snapshotUserId();
 }
+async function diskRows() {
+  await snapshotDiskIdle();
+  return (await openRouteSnapshotDb()).snapshots.toArray();
+}
 
 beforeEach(async () => {
+  setSnapshotTestHooks({ hydrateTimeoutMs: 1500, beforeDiskRead: null });
   auth.userId = 'u1';
   clearSnapshots();
   await snapshotDiskIdle();
+  await snapshotUserId();
 });
 
 describe('SP4 cold start', () => {
-  it('a saved snapshot is back after the tab was closed, for the same user only', async () => {
+  it('a saved snapshot is back after the tab was closed, for the same user and shop only', async () => {
     putSnapshot('suppliers', 'u1', 's1', { rows: [1] });
     expect(await coldStart('u1')).toBe('u1');
     const s = peekSnapshot<{ rows: number[] }>('suppliers', 'u1');
@@ -49,30 +59,50 @@ describe('SP4 cold start', () => {
     await coldStart('u2');
     expect(peekSnapshot('suppliers', 'u2')).toBeNull();
     expect(peekSnapshot('suppliers', 'u1')).toBeNull();
-    await snapshotDiskIdle();
-    expect(await (await openRouteSnapshotDb()).snapshots.count()).toBe(0);
+    expect(await diskRows()).toHaveLength(0);
   });
   it('signed out at startup shows nothing and wipes disk', async () => {
     putSnapshot('suppliers', 'u1', 's1', 1);
     expect(await coldStart(null)).toBe('');
-    await coldStart('u1');
-    expect(peekSnapshot('suppliers', 'u1')).toBeNull();
+    expect(await diskRows()).toHaveLength(0);
   });
   it('sign-out (auth event without a session) wipes disk', async () => {
     putSnapshot('suppliers', 'u1', 's1', 1);
     auth.listener!(null);
-    await coldStart('u1');
     expect(peekSnapshot('suppliers', 'u1')).toBeNull();
+    expect(await diskRows()).toHaveLength(0);
   });
-  it('an auth event for another user wipes disk; the same user keeps it', async () => {
+  it('a token refresh for the same user changes nothing; another user wipes disk', async () => {
     putSnapshot('a', 'u1', 's1', 1);
-    auth.listener!({ user: { id: 'u1' } });
-    expect(peekSnapshot('a', 'u1')).toBeNull(); // memory is still dropped on every event
-    await coldStart('u1');
+    auth.listener!(session('u1'));
     expect(peekSnapshot('a', 'u1')?.value).toBe(1);
-    auth.listener!({ user: { id: 'u9' } });
-    await coldStart('u1');
+    auth.listener!(session('u9'));
     expect(peekSnapshot('a', 'u1')).toBeNull();
+    expect(await diskRows()).toHaveLength(0);
+  });
+  it('a fetch for A that lands after sign-out is not stored, and B rows survive', async () => {
+    auth.listener!(null);
+    putSnapshot('late', 'u1', 's1', 'A figures');
+    expect(peekSnapshot('late', 'u1')).toBeNull();
+    expect(await diskRows()).toHaveLength(0);
+    auth.listener!(session('u2'));
+    putSnapshot('mine', 'u2', 's1', 'B figures');
+    putSnapshot('late', 'u1', 's1', 'A figures');
+    const rows = await diskRows();
+    expect(rows.map((r) => r.key)).toEqual(['u2:mine']);
+  });
+  it('a write queued before a user switch never reaches disk', async () => {
+    let release!: () => void;
+    setSnapshotTestHooks({ beforeDiskRead: () => new Promise((r) => (release = r)) });
+    const hold = coldStart('u1');
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    // the startup read is holding the disk queue: queue a write for u1, then switch to u2
+    putSnapshot('q', 'u1', 's1', 1);
+    auth.listener!(session('u2'));
+    release();
+    await hold;
+    setSnapshotTestHooks({ beforeDiskRead: null });
+    expect(await diskRows()).toHaveLength(0);
   });
   it('expired, corrupt and malformed rows are ignored safely', async () => {
     putSnapshot('old', 'u1', 's1', 1, Date.now() - 13 * 3600_000);
@@ -94,7 +124,7 @@ describe('SP4 cold start', () => {
       },
     ]);
     await coldStart('u1');
-    for (const n of ['old', 'bad', 'odd', 'w', 'f']) expect(peekSnapshot(n, 'u1')).toBeNull();
+    for (const n of ['old', 'bad', 'odd', 'w', 'f']) expect(peekSnapshot(n, 'u1', 's1')).toBeNull();
   });
   it('oversized values stay in memory only; total size is capped oldest-first', async () => {
     putSnapshot('huge', 'u1', 's1', 'x'.repeat(1_100_000));
@@ -105,13 +135,15 @@ describe('SP4 cold start', () => {
     expect(peekSnapshot('huge', 'u1')).toBeNull();
     expect(peekSnapshot('n0', 'u1')).toBeNull();
     expect(peekSnapshot('n5', 'u1')?.value).toBe(big);
-    const rows = await (await openRouteSnapshotDb()).snapshots.toArray();
+    const rows = await diskRows();
     expect(rows.reduce((t, r) => t + r.size, 0)).toBeLessThanOrEqual(4_000_000);
   });
-  it('drop and clear also remove the disk copy', async () => {
+  it('drop is keyed by user; clear removes everything', async () => {
     putSnapshot('a', 'u1', 's1', 1);
     putSnapshot('b', 'u1', 's1', 2);
-    dropSnapshot('a');
+    dropSnapshot('a', 'u2');
+    expect(peekSnapshot('a', 'u1')?.value).toBe(1);
+    dropSnapshot('a', 'u1');
     await coldStart('u1');
     expect(peekSnapshot('a', 'u1')).toBeNull();
     expect(peekSnapshot('b', 'u1')?.value).toBe(2);
@@ -123,8 +155,67 @@ describe('SP4 cold start', () => {
     putSnapshot('a', 'u1', 's1', 'old', Date.now() - 1000);
     await snapshotDiskIdle();
     forgetSnapshotsInMemory();
-    putSnapshot('a', 'u1', 's1', 'new');
     await snapshotUserId();
+    putSnapshot('a', 'u1', 's1', 'new');
     expect(peekSnapshot('a', 'u1')?.value).toBe('new');
+  });
+});
+
+describe('SP4 shop scoping', () => {
+  it('a snapshot of another shop than the active one is not shown', async () => {
+    putSnapshot('list', 'u1', 's1', 1);
+    noteSnapshotShops('u1', ['s1', 's2'], 's2');
+    expect(peekSnapshot('list', 'u1')).toBeNull();
+    expect(peekSnapshot('list', 'u1', 's1')?.value).toBe(1);
+  });
+  it('a shop removed from the membership is wiped from memory and disk', async () => {
+    putSnapshot('list', 'u1', 's1', 1);
+    noteSnapshotShops('u1', ['s2'], 's2');
+    expect(peekSnapshot('list', 'u1', 's1')).toBeNull();
+    expect(await diskRows()).toHaveLength(0);
+  });
+  it('a refresh refused for permission or membership drops the copy; a network error keeps it', async () => {
+    putSnapshot('list', 'u1', 's1', 1);
+    snapshotRefreshFailed('list', new Error('Failed to fetch'));
+    expect(peekSnapshot('list', 'u1')?.value).toBe(1);
+    snapshotRefreshFailed('list', Object.assign(new Error('denied'), { status: 403 }));
+    expect(peekSnapshot('list', 'u1')).toBeNull();
+    putSnapshot('list', 'u1', 's1', 1);
+    snapshotRefreshFailed('list', new Error('No tenant membership.'));
+    expect(peekSnapshot('list', 'u1')).toBeNull();
+    expect(await diskRows()).toHaveLength(0);
+  });
+});
+
+describe('SP4 slow or interrupted startup', () => {
+  it('rows that arrive after the startup wait still apply', async () => {
+    putSnapshot('a', 'u1', 's1', 1);
+    await snapshotDiskIdle();
+    let release!: () => void;
+    setSnapshotTestHooks({
+      hydrateTimeoutMs: 5,
+      beforeDiskRead: () => new Promise((r) => (release = r)),
+    });
+    expect(await coldStart('u1')).toBe('u1');
+    expect(peekSnapshot('a', 'u1')).toBeNull();
+    release();
+    await snapshotDiskIdle();
+    await Promise.resolve();
+    expect(peekSnapshot('a', 'u1')?.value).toBe(1);
+  });
+  it('an auth event during startup discards what was read', async () => {
+    putSnapshot('a', 'u1', 's1', 1);
+    await snapshotDiskIdle();
+    let release!: () => void;
+    setSnapshotTestHooks({ beforeDiskRead: () => new Promise((r) => (release = r)) });
+    const start = coldStart('u1');
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    auth.listener!(session('u2'));
+    release();
+    await start;
+    await snapshotDiskIdle();
+    expect(peekSnapshot('a', 'u1')).toBeNull();
+    expect(peekSnapshot('a', 'u2')).toBeNull();
+    expect(await diskRows()).toHaveLength(0);
   });
 });

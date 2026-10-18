@@ -13,7 +13,13 @@ import { appRoute } from '../lib/paths';
 import { rupees } from '../lib/money';
 import { purchaseStatus } from '../lib/purchaseWorkflow';
 import { filterBills, type BillStatusFilter } from '../lib/purchaseListFilter';
-import { dropSnapshot, peekSnapshot, putSnapshot, snapshotUserId } from '../lib/routeSnapshot';
+import {
+  dropSnapshot,
+  peekSnapshot,
+  putSnapshot,
+  snapshotRefreshFailed,
+  snapshotUserId,
+} from '../lib/routeSnapshot';
 import { SnapshotNote } from '../components/SnapshotNote';
 
 type PurchaseListSnapshot = { rows: PurchaseRecord[]; parties: Party[] };
@@ -42,7 +48,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
   const [snapshotFailed, setSnapshotFailed] = useState(false);
   const userRef = useRef('');
   function forgetSaved(active: boolean) {
-    dropSnapshot('purchases');
+    dropSnapshot('purchases', userRef.current);
     if (!active) return;
     setRows([]);
     setParties([]);
@@ -66,6 +72,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
     } catch (e) {
       if (token === listGeneration.current) {
         setError(String(e));
+        snapshotRefreshFailed('purchases', e, userRef.current);
         setSnapshotFailed(true);
       }
     } finally {
