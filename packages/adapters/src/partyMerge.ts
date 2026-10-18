@@ -73,3 +73,44 @@ export async function listSupplierDuplicateBills(
     };
   });
 }
+
+export type MergePreview = {
+  bills: number;
+  payments: number;
+  returns: number;
+  openings: number;
+  openingConflict: boolean;
+  combinedBalancePaise: string;
+};
+
+export async function getPartyMergePreview(
+  shopId: string,
+  sourcePartyId: string,
+  targetPartyId: string,
+): Promise<MergePreview> {
+  const { data, error } = await getSupabaseClient().rpc('get_party_merge_preview', {
+    p_shop_id: shopId,
+    p_source_party_id: sourcePartyId,
+    p_target_party_id: targetPartyId,
+  });
+  if (error) throw readError(error);
+  const count = (v: unknown) => {
+    if (typeof v !== 'number' || !Number.isSafeInteger(v) || v < 0) throw fail();
+    return v;
+  };
+  if (
+    !isRecord(data) ||
+    typeof data.openingConflict !== 'boolean' ||
+    typeof data.combinedBalancePaise !== 'string' ||
+    !/^-?\d+$/.test(data.combinedBalancePaise)
+  )
+    throw fail();
+  return {
+    bills: count(data.bills),
+    payments: count(data.payments),
+    returns: count(data.returns),
+    openings: count(data.openings),
+    openingConflict: data.openingConflict,
+    combinedBalancePaise: data.combinedBalancePaise,
+  };
+}

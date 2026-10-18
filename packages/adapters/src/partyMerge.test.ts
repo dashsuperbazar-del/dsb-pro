@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { __setSupabaseClientForTest, type DsbSupabaseClient } from './client';
-import { listSupplierDuplicateBills, mergeParties } from './partyMerge';
+import { getPartyMergePreview, listSupplierDuplicateBills, mergeParties } from './partyMerge';
 
 const rpcClient = (result: { data: unknown; error: unknown }) => {
   const rpc = vi.fn(async () => result);
@@ -64,5 +64,43 @@ describe('party merge adapter', () => {
       error: null,
     });
     await expect(listSupplierDuplicateBills('s', 'p')).rejects.toThrow('unexpected');
+  });
+  it('reads the merge preview, signed balance included', async () => {
+    const rpc = rpcClient({
+      data: {
+        bills: 2,
+        payments: 1,
+        returns: 0,
+        openings: 0,
+        openingConflict: false,
+        combinedBalancePaise: '-500',
+      },
+      error: null,
+    });
+    expect(await getPartyMergePreview('s', 'a', 'b')).toEqual({
+      bills: 2,
+      payments: 1,
+      returns: 0,
+      openings: 0,
+      openingConflict: false,
+      combinedBalancePaise: '-500',
+    });
+    expect(rpc).toHaveBeenCalledWith('get_party_merge_preview', {
+      p_shop_id: 's',
+      p_source_party_id: 'a',
+      p_target_party_id: 'b',
+    });
+    rpcClient({
+      data: {
+        bills: -1,
+        payments: 1,
+        returns: 0,
+        openings: 0,
+        openingConflict: false,
+        combinedBalancePaise: '0',
+      },
+      error: null,
+    });
+    await expect(getPartyMergePreview('s', 'a', 'b')).rejects.toThrow('unexpected');
   });
 });

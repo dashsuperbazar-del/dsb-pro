@@ -2,7 +2,7 @@
 -- rows are re-attributed (never deleted or summed), the duplicate is archived, the move is recorded.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(39);
+select plan(45);
 insert into auth.users(id) values
  ('e2000000-0000-0000-0000-000000000001'),  -- owner
  ('e2000000-0000-0000-0000-000000000003'),  -- cashier
@@ -25,8 +25,10 @@ select set_config('e2.tenant',current_tenant_id()::text,false);
 select set_config('e2.shop',(select id::text from shops where tenant_id=current_tenant_id() and is_default limit 1),false);
 insert into items(tenant_id,name,unit1,client_id) values(current_tenant_id(),'E2 Item','piece','e2-item');
 select set_config('e2.item',(select id::text from items where client_id='e2-item'),false);
+insert into parties(tenant_id,name,phone,gstin,address,client_id) values
+ (current_tenant_id(),'Ramesh Traders','9876500000','29ABCDE1234F1Z5','Old address','e2-dup'),
+ (current_tenant_id(),'Ramesh Trader',null,'',' ','e2-keep');
 insert into parties(tenant_id,name,client_id) values
- (current_tenant_id(),'Ramesh Traders','e2-dup'),(current_tenant_id(),'Ramesh Trader','e2-keep'),
  (current_tenant_id(),'Opening A','e2-oa'),(current_tenant_id(),'Opening B','e2-ob');
 select set_config('e2.dup',(select id::text from parties where client_id='e2-dup'),false);
 select set_config('e2.keep',(select id::text from parties where client_id='e2-keep'),false);
@@ -76,6 +78,15 @@ select throws_like(format($$select merge_parties(%L::uuid,%L::uuid,'e2-m-f2')$$,
 select throws_like(format($$select set_config('dsb.party_merge',%L,true); update payments set party_id=%L::uuid where id=%L::uuid$$,
   pg_temp.id('dup')||'>'||pg_temp.id('keep'),pg_temp.id('keep'),pg_temp.id('pay')),'%permission denied%','clients cannot move a payment directly');
 
+-- preview (old DSB showed counts and the combined outstanding before confirming)
+select is((get_party_merge_preview(pg_temp.id('shop'),pg_temp.id('dup'),pg_temp.id('keep'))-'combinedBalancePaise')::text,
+  '{"bills": 2, "returns": 1, "openings": 1, "payments": 1, "openingConflict": false}','preview counts what will move');
+select is((get_party_merge_preview(pg_temp.id('shop'),pg_temp.id('dup'),pg_temp.id('keep'))->>'combinedBalancePaise')::numeric,
+  current_setting('e2.sum_before')::numeric,'preview balance = both suppliers'' balances (bills, returns, payments, openings)');
+select pg_temp.act('e2000000-0000-0000-0000-000000000003');
+select throws_like(format($$select get_party_merge_preview(%L::uuid,%L::uuid,%L::uuid)$$,pg_temp.id('shop'),pg_temp.id('dup'),pg_temp.id('keep')),'%not permitted%','cashier cannot preview a merge');
+select pg_temp.act('e2000000-0000-0000-0000-000000000001');
+
 -- merge
 select set_config('e2.m',merge_parties(pg_temp.id('dup'),pg_temp.id('keep'),'e2-m-1')::text,false);
 select ok(pg_temp.id('m') is not null,'owner merges the duplicate into the kept supplier');
@@ -90,6 +101,8 @@ select is((select party_id||':'||amount_paise||':'||status from account_openings
 select is(pg_temp.total()::text,current_setting('e2.total_before'),'total supplier balance is unchanged');
 select is(pg_temp.bal('keep'),current_setting('e2.sum_before'),'kept supplier balance = both balances before');
 select is((select count(*)::int from parties where id=pg_temp.id('dup')),0,'the duplicate is archived (hidden)');
+select is((select phone||'|'||gstin||'|'||address from parties where id=pg_temp.id('keep')),'9876500000|29ABCDE1234F1Z5|Old address',
+  'contact details the kept supplier lacked are carried over');
 select is((select count(*)::int from supplier_payment_schedules where party_id=pg_temp.id('keep') and deleted_at is null),1,'one live schedule stays on the kept supplier');
 select is((select count(*)::int from supplier_payment_schedules where party_id=pg_temp.id('keep')),2,'the duplicate''s schedule is kept as history');
 select is((select jsonb_array_length(moved->'purchaseBills')||':'||jsonb_array_length(moved->'payments')||':'||jsonb_array_length(moved->'purchaseReturns')
@@ -119,12 +132,14 @@ select ok((get_supplier_duplicate_bills(pg_temp.id('shop'),pg_temp.id('keep'))->
 -- opening conflict: both suppliers have a POSTED opening in the same shop
 select record_account_opening(pg_temp.id('shop'),'SUPPLIER',pg_temp.id('oa'),'2026-08-31',100,'cutover','e2-open-a');
 select record_account_opening(pg_temp.id('shop'),'SUPPLIER',pg_temp.id('ob'),'2026-08-31',200,'cutover','e2-open-b');
+select ok((get_party_merge_preview(pg_temp.id('shop'),pg_temp.id('oa'),pg_temp.id('ob'))->>'openingConflict')::boolean,'preview warns about the opening conflict');
 select throws_like(format($$select merge_parties(%L::uuid,%L::uuid,'e2-m-3')$$,pg_temp.id('oa'),pg_temp.id('ob')),'%DSB_MERGE_OPENING_CONFLICT%','two opening balances are never summed silently');
 select is((select count(*)::int from parties where id=pg_temp.id('oa')),1,'a refused merge changes nothing');
 
 -- the record itself is immutable
 reset role;
 select throws_like(format($$update party_merges set target_name='x' where id=%L::uuid$$,pg_temp.id('m')),'%immutable%','merge record cannot be edited');
+select is((select name from parties where id=pg_temp.id('keep')),'Ramesh Trader','the kept supplier keeps its own name');
 select throws_like(format($$delete from party_merges where id=%L::uuid$$,pg_temp.id('m')),'%immutable%','merge record cannot be deleted');
 select * from finish();
 rollback;

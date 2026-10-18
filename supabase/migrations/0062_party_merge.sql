@@ -195,6 +195,14 @@ begin
  select coalesce(array_agg(id order by id),'{}') into v_schedules from m;
 
  update parties set deleted_at=v_now where id=p_source_party_id;
+ -- As old DSB did: keep a contact detail the kept supplier is missing instead of losing it with the duplicate.
+ update parties set phone=coalesce(nullif(btrim(phone),''),v_src.phone),
+   gstin=coalesce(nullif(btrim(gstin),''),v_src.gstin),
+   address=coalesce(nullif(btrim(address),''),v_src.address)
+ where id=p_target_party_id
+   and ((nullif(btrim(phone),'') is null and nullif(btrim(v_src.phone),'') is not null)
+     or (nullif(btrim(gstin),'') is null and nullif(btrim(v_src.gstin),'') is not null)
+     or (nullif(btrim(address),'') is null and nullif(btrim(v_src.address),'') is not null));
  insert into party_merges(tenant_id,source_party_id,target_party_id,source_name,target_name,moved,client_id)
  values(v_tenant,p_source_party_id,p_target_party_id,v_src.name,v_dst.name,
    jsonb_build_object('purchaseBills',to_jsonb(v_bills),'payments',to_jsonb(v_payments),
@@ -219,6 +227,39 @@ begin
          group by 1,2,3 having count(*)>1) g),'[]'::jsonb);
 end $$;
 
+
+-- Preview before confirming (old DSB showed counts and the combined outstanding): what would move, across
+-- all shops, and the combined balance in this shop (bills - returns - payments + openings, signed paise).
+create function get_party_merge_preview(p_shop_id uuid,p_source_party_id uuid,p_target_party_id uuid) returns jsonb
+language plpgsql stable security definer set search_path=public as $$
+declare v_tenant uuid:=c1_assert_supplier_read(p_shop_id);
+begin
+ if not has_perm('MANAGE_MASTER_DATA') then raise exception 'not permitted'; end if;
+ if not exists(select 1 from parties where tenant_id=v_tenant and id=p_source_party_id and deleted_at is null)
+    or not exists(select 1 from parties where tenant_id=v_tenant and id=p_target_party_id and deleted_at is null) then
+   raise exception 'DSB_PARTY_NOT_FOUND: supplier not found';
+ end if;
+ return jsonb_build_object(
+  'bills',(select count(*) from purchase_bills where tenant_id=v_tenant and party_id=p_source_party_id),
+  'payments',(select count(*) from payments where tenant_id=v_tenant and party_id=p_source_party_id),
+  'returns',(select count(*) from purchase_returns where tenant_id=v_tenant and party_id=p_source_party_id),
+  'openings',(select count(*) from account_openings where tenant_id=v_tenant and party_id=p_source_party_id),
+  'openingConflict',exists(select 1 from account_openings a join account_openings b
+     on b.tenant_id=a.tenant_id and b.shop_id=a.shop_id and b.party_id=p_target_party_id
+       and b.account_kind='SUPPLIER' and b.status='POSTED'
+   where a.tenant_id=v_tenant and a.party_id=p_source_party_id and a.account_kind='SUPPLIER' and a.status='POSTED'),
+  'combinedBalancePaise',(select coalesce(sum(amt),0) from (
+     select total_paise amt from purchase_bills where tenant_id=v_tenant and shop_id=p_shop_id and status='POSTED'
+       and party_id in (p_source_party_id,p_target_party_id)
+     union all select -total_paise from purchase_returns where tenant_id=v_tenant and shop_id=p_shop_id and status='POSTED'
+       and party_id in (p_source_party_id,p_target_party_id)
+     union all select case when direction='out' then -amount_paise else amount_paise end from payments
+       where tenant_id=v_tenant and shop_id=p_shop_id and kind='party' and status='POSTED'
+       and party_id in (p_source_party_id,p_target_party_id)
+     union all select amount_paise from account_openings where tenant_id=v_tenant and shop_id=p_shop_id
+       and account_kind='SUPPLIER' and status='POSTED' and party_id in (p_source_party_id,p_target_party_id)
+   ) e)::text);
+end $$;
 
 -- A purchase retry that names a merged supplier is the same purchase (the bill now lives under the kept one).
 create or replace function post_purchase(
@@ -298,5 +339,7 @@ revoke all on function dsb_party_merge_move(anyelement,anyelement) from public,a
 grant execute on function dsb_party_merge_move(anyelement,anyelement) to authenticated;
 revoke all on function merge_parties(uuid,uuid,text) from public,anon;
 revoke all on function get_supplier_duplicate_bills(uuid,uuid) from public,anon;
+revoke all on function get_party_merge_preview(uuid,uuid,uuid) from public,anon;
 grant execute on function merge_parties(uuid,uuid,text) to authenticated;
 grant execute on function get_supplier_duplicate_bills(uuid,uuid) to authenticated;
+grant execute on function get_party_merge_preview(uuid,uuid,uuid) to authenticated;

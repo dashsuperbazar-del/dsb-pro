@@ -3422,6 +3422,14 @@ export type Database = {
         }
         Returns: Json
       }
+      get_party_merge_preview: {
+        Args: {
+          p_shop_id: string
+          p_source_party_id: string
+          p_target_party_id: string
+        }
+        Returns: Json
+      }
       get_profit_report: {
         Args: { p_from: string; p_shop_id: string; p_to: string }
         Returns: Json

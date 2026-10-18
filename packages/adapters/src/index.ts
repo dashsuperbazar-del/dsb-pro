@@ -242,7 +242,7 @@ export {
   getSupplierPaymentsDue,
 } from './supplierSchedule';
 export type { SupplierSchedule, SupplierPaymentDue } from './supplierSchedule';
-export { mergeParties, listSupplierDuplicateBills } from './partyMerge';
-export type { DuplicateBillGroup } from './partyMerge';
+export { mergeParties, listSupplierDuplicateBills, getPartyMergePreview } from './partyMerge';
+export type { DuplicateBillGroup, MergePreview } from './partyMerge';
 export { listItemPurchasePrices } from './priceHistory';
 export type { ItemPurchasePrice } from './priceHistory';

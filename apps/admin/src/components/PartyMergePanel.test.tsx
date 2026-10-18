@@ -7,6 +7,7 @@ import { DuplicateBillsCheck, PartyMergePanel } from './PartyMergePanel';
 const api = vi.hoisted(() => ({
   mergeParties: vi.fn(),
   listSupplierDuplicateBills: vi.fn(),
+  getPartyMergePreview: vi.fn(),
 }));
 vi.mock('@dsb-pro/adapters', () => api);
 const host = document.createElement('div');
@@ -18,16 +19,28 @@ const pick = async (value: string) =>
     s.value = value;
     s.dispatchEvent(new Event('change', { bubbles: true }));
   });
-const click = async (text: string) => act(async () => button(text)!.click());
+const click = async (text: string) => {
+  await vi.waitFor(() => expect(button(text)).toBeTruthy());
+  await act(async () => button(text)!.click());
+};
 beforeEach(() => {
   document.body.append(host);
   api.mergeParties.mockReset().mockResolvedValue('m1');
   api.listSupplierDuplicateBills.mockReset().mockResolvedValue([]);
+  api.getPartyMergePreview.mockReset().mockResolvedValue(preview);
 });
 afterEach(async () => {
   await act(async () => render(null, host));
   host.remove();
 });
+const preview = {
+  bills: 2,
+  payments: 1,
+  returns: 0,
+  openings: 1,
+  openingConflict: false,
+  combinedBalancePaise: '1850050',
+};
 const others = [
   { id: 'k', name: 'Ramesh Trader' },
   { id: 'z', name: 'Zed' },
@@ -36,6 +49,7 @@ async function mount(onMerged = vi.fn(), blockedReason: string | null = null) {
   await act(async () =>
     render(
       <PartyMergePanel
+        shopId="s"
         party={{ id: 'd', name: 'Ramesh Traders' }}
         others={others}
         blockedReason={blockedReason}
@@ -110,4 +124,25 @@ test('the self-check says so when nothing is identical', async () => {
     render(<DuplicateBillsCheck shopId="s" partyId="k" partyName="Ramesh Trader" />, host),
   );
   await vi.waitFor(() => expect(host.textContent).toContain('No identical bills'));
+});
+
+test('shows what moves and the combined balance before confirming', async () => {
+  await mount();
+  await pick('k');
+  await vi.waitFor(() =>
+    expect(host.querySelector('[data-testid="merge-preview"]')?.textContent).toContain(
+      '2 bill(s), 1 payment(s), 0 return(s) and 1 opening balance(s)',
+    ),
+  );
+  expect(host.textContent).toContain('₹18,500.50 (you owe)');
+  expect(api.getPartyMergePreview).toHaveBeenCalledWith('s', 'd', 'k');
+});
+
+test('two opening balances block the merge before any request is sent', async () => {
+  api.getPartyMergePreview.mockResolvedValue({ ...preview, openingConflict: true });
+  await mount();
+  await pick('k');
+  await vi.waitFor(() => expect(host.textContent).toContain('Void one and record'));
+  expect(button('Merge Ramesh Traders into Ramesh Trader')).toBeUndefined();
+  expect(api.mergeParties).not.toHaveBeenCalled();
 });

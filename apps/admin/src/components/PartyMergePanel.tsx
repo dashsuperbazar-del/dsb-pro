@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
+  getPartyMergePreview,
   listSupplierDuplicateBills,
   mergeParties,
   type DuplicateBillGroup,
+  type MergePreview,
 } from '@dsb-pro/adapters';
 import { rupees } from '../lib/money';
 import { appRoute } from '../lib/paths';
@@ -14,6 +16,7 @@ const newRequestId = () => crypto.randomUUID();
 // Nothing is deleted or added together. One request id per attempt, so a retry after a lost reply is the
 // same merge, never a second one.
 export function PartyMergePanel(props: {
+  shopId: string;
   party: { id: string; name: string };
   others: { id: string; name: string }[];
   blockedReason: string | null;
@@ -25,6 +28,23 @@ export function PartyMergePanel(props: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const requestId = useRef(newRequestId());
+  const [preview, setPreview] = useState<MergePreview | null>(null);
+  const [previewError, setPreviewError] = useState('');
+  // Like old DSB: show what moves and the combined balance before the owner confirms.
+  useEffect(() => {
+    let live = true;
+    setPreview(null);
+    setPreviewError('');
+    if (!targetId) return;
+    getPartyMergePreview(props.shopId, party.id, targetId).then(
+      (p) => live && setPreview(p),
+      (e: unknown) =>
+        live && setPreviewError(e instanceof Error ? e.message : 'Could not load the preview.'),
+    );
+    return () => {
+      live = false;
+    };
+  }, [props.shopId, party.id, targetId]);
   useEffect(() => {
     setTargetId('');
     setConfirming(false);
@@ -89,12 +109,36 @@ export function PartyMergePanel(props: {
               ))}
             </select>
           </label>
-          {target && !confirming && (
+          {target && !preview && !previewError && (
+            <p class="muted" role="status">
+              Checking what will move…
+            </p>
+          )}
+          {previewError && (
+            <p class="alert" role="alert">
+              {previewError}
+            </p>
+          )}
+          {target && preview && (
+            <p data-testid="merge-preview">
+              {preview.bills} bill(s), {preview.payments} payment(s), {preview.returns} return(s)
+              and {preview.openings} opening balance(s) move to {target.name}. Combined balance in
+              this shop after the merge: {rupees(preview.combinedBalancePaise)}
+              {BigInt(preview.combinedBalancePaise) > 0n ? ' (you owe)' : ''}.
+            </p>
+          )}
+          {preview?.openingConflict && (
+            <p class="alert" role="alert">
+              Both suppliers have an opening balance in the same shop. Void one and record the
+              combined opening first.
+            </p>
+          )}
+          {target && preview && !preview.openingConflict && !confirming && (
             <button type="button" onClick={() => setConfirming(true)}>
               Merge {party.name} into {target.name}
             </button>
           )}
-          {target && confirming && (
+          {target && preview && !preview.openingConflict && confirming && (
             <div role="group" aria-label="Confirm merge">
               <p>
                 Move everything from <b>{party.name}</b> to <b>{target.name}</b> and archive{' '}

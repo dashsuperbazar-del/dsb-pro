@@ -520,6 +520,7 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
                   }}
                 />
                 <PartyMergePanel
+                  shopId={shopId}
                   party={{ id: party.id, name: party.name }}
                   others={allParties
                     .filter((p) => p.id !== party.id)
