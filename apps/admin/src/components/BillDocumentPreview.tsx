@@ -1,6 +1,26 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { readBillDocument } from '@dsb-pro/adapters';
 
+// P13: the viewer keeps its last position and width on this device (old DSB savePeekGeom). A convenience
+// only: unreadable or blocked storage just means the default place and size.
+const GEOM_KEY = 'dsb-bill-peek-geom';
+type Geom = { x: number; y: number; w: number };
+function readGeom(): Geom | null {
+  try {
+    const g = JSON.parse(localStorage.getItem(GEOM_KEY) ?? 'null') as Geom | null;
+    return g && [g.x, g.y, g.w].every((v) => Number.isFinite(v)) ? g : null;
+  } catch {
+    return null;
+  }
+}
+function saveGeom(g: Geom) {
+  try {
+    localStorage.setItem(GEOM_KEY, JSON.stringify(g));
+  } catch {
+    // ignore: storage blocked or full
+  }
+}
+
 export function BillDocumentPreview({
   blob,
   path,
@@ -16,6 +36,7 @@ export function BillDocumentPreview({
   const [error, setError] = useState('');
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
+  const [width, setWidth] = useState(() => readGeom()?.w ?? 420);
   const [viewport, setViewport] = useState({ width: innerWidth, height: innerHeight });
   const panel = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; dx: number; dy: number } | null>(null);
@@ -26,7 +47,6 @@ export function BillDocumentPreview({
     setError('');
     setUrl('');
     setZoom(1);
-    setOffset({ x: 0, y: 0 });
     void (async () => {
       try {
         const file = blob ?? (path ? await readBillDocument(path) : null);
@@ -50,7 +70,8 @@ export function BillDocumentPreview({
       if (e.key === 'Escape') setOpen(false);
     };
     const reset = () => {
-      setOffset({ x: 0, y: 0 });
+      const saved = readGeom();
+      setOffset(saved ? { x: saved.x, y: saved.y } : { x: 0, y: 0 });
       setViewport({
         width: window.visualViewport?.width ?? innerWidth,
         height: window.visualViewport?.height ?? innerHeight,
@@ -66,6 +87,10 @@ export function BillDocumentPreview({
       window.visualViewport?.removeEventListener('resize', reset);
     };
   }, [open]);
+  // Remember where the user left it (drag, arrow keys or size buttons) for the next bill.
+  useEffect(() => {
+    if (open) saveGeom({ ...offset, w: width });
+  }, [open, offset, width]);
   function move(x: number, y: number) {
     const bounds = panel.current?.getBoundingClientRect();
     const width = window.visualViewport?.width ?? innerWidth;
@@ -89,7 +114,7 @@ export function BillDocumentPreview({
           ref={panel}
           style={{
             transform: `translate(${offset.x}px, ${offset.y}px)`,
-            width: `${Math.max(200, Math.min(420, viewport.width - 24))}px`,
+            width: `${Math.max(200, Math.min(width, viewport.width - 24))}px`,
             maxHeight: `${Math.max(120, viewport.height - 24)}px`,
           }}
         >
@@ -129,6 +154,24 @@ export function BillDocumentPreview({
               Move ↔
             </button>
             <strong>{name}</strong>
+            <button
+              type="button"
+              aria-label="Make bill viewer smaller"
+              onClick={() => {
+                setWidth((w) => Math.max(200, w - 60));
+              }}
+            >
+              −
+            </button>
+            <button
+              type="button"
+              aria-label="Make bill viewer larger"
+              onClick={() => {
+                setWidth((w) => Math.min(900, w + 60));
+              }}
+            >
+              +
+            </button>
             <button type="button" onClick={() => setOpen(false)} aria-label="Close bill viewer">
               Close
             </button>
