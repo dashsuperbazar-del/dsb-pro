@@ -505,8 +505,8 @@ fi
 
 # DW2b is an additive classifier field; preserve the historical 19-part observed_state contract.
 billdocs_body_md5=$(node "$repo_root/scripts/billdocs-body-md5.mjs")
-# 0062 (partymerge) redefines post_purchase; its exact body is also a valid billdocs anchor. A lone 0062
-# body without the rest of 0062 is still refused by the partymerge classifier below.
+# 0062 (partymerge) redefines post_purchase; its exact body is also a valid billdocs anchor. The partymerge
+# classifier below refuses that body when the rest of 0062 is absent.
 partymerge_body_md5=$(node "$repo_root/scripts/partymerge-body-md5.mjs")
 billdocs_probe=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -F' ' -v billdocs_body_md5="$billdocs_body_md5" -v partymerge_body_md5="$partymerge_body_md5" <<'SQL'
 do $$ begin
@@ -716,6 +716,14 @@ select (select present from _partymerge_receipt),
 SQL
 )
 read -r partymerge_receipt partymerge_anchors <<<"$(tail -n 1 <<<"$partymerge_probe")"
+partymerge_body_present=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -v partymerge_body_md5="$partymerge_body_md5" <<'SQL'
+select exists(select 1 from pg_proc where oid=to_regprocedure('public.post_purchase(uuid,uuid,text,date,bigint,bigint,text,jsonb,text)')
+  and md5(prosrc)=:'partymerge_body_md5');
+SQL
+)
+if [[ "$partymerge_receipt:$partymerge_anchors" == 'f:0' && "$partymerge_body_present" == 't' ]]; then
+ echo 'Party merge purchase wrapper present without the rest of 0062. Refusing migration.' >&2; exit 1
+fi
 case "$partymerge_receipt:$partymerge_anchors" in
  f:0) partymerge=0; needs_partymerge=true ;;
  f:4) partymerge=1; needs_partymerge=true ;;

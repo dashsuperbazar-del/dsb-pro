@@ -2,7 +2,7 @@
 -- rows are re-attributed (never deleted or summed), the duplicate is archived, the move is recorded.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(45);
+select plan(49);
 insert into auth.users(id) values
  ('e2000000-0000-0000-0000-000000000001'),  -- owner
  ('e2000000-0000-0000-0000-000000000003'),  -- cashier
@@ -103,6 +103,8 @@ select is(pg_temp.bal('keep'),current_setting('e2.sum_before'),'kept supplier ba
 select is((select count(*)::int from parties where id=pg_temp.id('dup')),0,'the duplicate is archived (hidden)');
 select is((select phone||'|'||gstin||'|'||address from parties where id=pg_temp.id('keep')),'9876500000|29ABCDE1234F1Z5|Old address',
   'contact details the kept supplier lacked are carried over');
+select is((select moved->'contactCarriedOver' from party_merges where id=pg_temp.id('m')),
+  '{"gstin": "29ABCDE1234F1Z5", "phone": "9876500000", "address": "Old address"}'::jsonb,'the merge record lists the carried-over details');
 select is((select count(*)::int from supplier_payment_schedules where party_id=pg_temp.id('keep') and deleted_at is null),1,'one live schedule stays on the kept supplier');
 select is((select count(*)::int from supplier_payment_schedules where party_id=pg_temp.id('keep')),2,'the duplicate''s schedule is kept as history');
 select is((select jsonb_array_length(moved->'purchaseBills')||':'||jsonb_array_length(moved->'payments')||':'||jsonb_array_length(moved->'purchaseReturns')
@@ -118,6 +120,16 @@ select is(post_purchase(pg_temp.id('shop'),pg_temp.id('dup'),'RT-1','2026-09-10'
 select is(record_supplier_payment(pg_temp.id('shop'),pg_temp.id('dup'),'2026-09-12',4000,'cash',null,
   jsonb_build_array(jsonb_build_object('purchase_bill_id',pg_temp.id('bd1'),'amount_paise',4000)),'e2000000-0000-0000-0000-0000000000a1'),pg_temp.id('pay'),
   'an offline payment retry naming the duplicate is acknowledged');
+select set_config('e2.pay2',record_supplier_payment(pg_temp.id('shop'),pg_temp.id('dup'),'2026-09-14',700,'cash',null,
+  jsonb_build_array(jsonb_build_object('purchase_bill_id',pg_temp.id('bk1'),'amount_paise',700)),'e2000000-0000-0000-0000-0000000000a3')::text,false);
+select is((select party_id from payments where id=pg_temp.id('pay2')),pg_temp.id('keep'),'a payment queued for the merged supplier posts to the kept one');
+reset role;
+select is((select request->>'partyId' from financial_requests where client_id='e2000000-0000-0000-0000-0000000000a3'),pg_temp.id('dup')::text,'the stored request keeps the name the device sent');
+set role authenticated;
+select pg_temp.act('e2000000-0000-0000-0000-000000000001');
+select is(record_supplier_payment(pg_temp.id('shop'),pg_temp.id('dup'),'2026-09-14',700,'cash',null,
+  jsonb_build_array(jsonb_build_object('purchase_bill_id',pg_temp.id('bk1'),'amount_paise',700)),'e2000000-0000-0000-0000-0000000000a3'),pg_temp.id('pay2'),
+  'its retry returns the same payment');
 select throws_like(format($$select post_purchase(%L::uuid,%L::uuid,'RT-9','2026-09-14',0,0,'e2-new',jsonb_build_array(jsonb_build_object('item_id',%L,'qty','1','unit_price_paise',100)))$$,
   pg_temp.id('shop'),pg_temp.id('dup'),pg_temp.id('item')),'%party%','a new bill for the archived duplicate is refused');
 select throws_like(format($$select merge_parties(%L::uuid,%L::uuid,'e2-m-2')$$,pg_temp.id('dup'),pg_temp.id('keep')),'%DSB_PARTY_ARCHIVED%','a merged supplier cannot be merged again');

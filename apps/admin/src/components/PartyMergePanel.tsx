@@ -63,12 +63,19 @@ export function PartyMergePanel(props: {
         targetPartyId: target.id,
         requestId: requestId.current,
       });
-      requestId.current = newRequestId();
       setConfirming(false);
-      await props.onMerged(target.id, target.name);
     } catch (e) {
       // Keep the request id: trying again after a lost reply returns the same merge.
       setError(e instanceof Error ? e.message : 'Could not merge the suppliers.');
+      setBusy(false);
+      return;
+    }
+    // The merge is committed; a failed refresh must not read as a failed merge.
+    requestId.current = newRequestId();
+    try {
+      await props.onMerged(target.id, target.name);
+    } catch {
+      setError('Merged. The screen could not refresh; reopen Suppliers to see the kept supplier.');
     } finally {
       setBusy(false);
     }
@@ -192,22 +199,22 @@ export function DuplicateBillsCheck(props: { shopId: string; partyId: string; pa
   if (groups === null)
     return (
       <p class="muted" role="status" data-testid="duplicate-bills">
-        Checking {props.partyName} for identical bills…
+        Checking {props.partyName} for identical bills in this shop…
       </p>
     );
   if (groups.length === 0)
     return (
       <p class="muted" role="status" data-testid="duplicate-bills">
-        No identical bills found for {props.partyName}.
+        No identical bills found for {props.partyName} in this shop.
       </p>
     );
   return (
     <section class="alert" role="alert" data-testid="duplicate-bills">
       <h2>Possible duplicate bills</h2>
       <p>
-        These bills of {props.partyName} have the same date, total and bill number. If one was
-        entered twice, void the extra one in <a href={appRoute.purchases}>Purchase bills</a>.
-        Nothing was removed automatically.
+        These bills of {props.partyName} in this shop have the same date, total and bill number. If
+        one was entered twice, void the extra one in <a href={appRoute.purchases}>Purchase bills</a>
+        . Nothing was removed automatically.
       </p>
       <ul>
         {groups.map((g) => (

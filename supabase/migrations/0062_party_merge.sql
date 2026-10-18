@@ -133,7 +133,7 @@ create function merge_parties(p_source_party_id uuid,p_target_party_id uuid,p_cl
 language plpgsql security definer set search_path=public as $$
 declare v_tenant uuid:=current_tenant_id(); v_prev party_merges%rowtype; v_src parties%rowtype; v_dst parties%rowtype;
  v_shop uuid; v_now bigint:=(extract(epoch from clock_timestamp())*1000)::bigint; v_id uuid;
- v_bills uuid[]; v_payments uuid[]; v_returns uuid[]; v_openings uuid[]; v_schedules uuid[]; v_removed uuid[];
+ v_carried jsonb; v_bills uuid[]; v_payments uuid[]; v_returns uuid[]; v_openings uuid[]; v_schedules uuid[]; v_removed uuid[];
 begin
  if not has_perm('MANAGE_MASTER_DATA') then raise exception 'not permitted'; end if;
  if v_tenant is null then raise exception 'not permitted'; end if;
@@ -196,9 +196,13 @@ begin
 
  update parties set deleted_at=v_now where id=p_source_party_id;
  -- As old DSB did: keep a contact detail the kept supplier is missing instead of losing it with the duplicate.
- update parties set phone=coalesce(nullif(btrim(phone),''),v_src.phone),
-   gstin=coalesce(nullif(btrim(gstin),''),v_src.gstin),
-   address=coalesce(nullif(btrim(address),''),v_src.address)
+ v_carried:=jsonb_strip_nulls(jsonb_build_object(
+   'phone',case when nullif(btrim(v_dst.phone),'') is null then nullif(btrim(v_src.phone),'') end,
+   'gstin',case when nullif(btrim(v_dst.gstin),'') is null then nullif(btrim(v_src.gstin),'') end,
+   'address',case when nullif(btrim(v_dst.address),'') is null then nullif(btrim(v_src.address),'') end));
+ update parties set phone=coalesce(nullif(btrim(phone),''),nullif(btrim(v_src.phone),''),phone),
+   gstin=coalesce(nullif(btrim(gstin),''),nullif(btrim(v_src.gstin),''),gstin),
+   address=coalesce(nullif(btrim(address),''),nullif(btrim(v_src.address),''),address)
  where id=p_target_party_id
    and ((nullif(btrim(phone),'') is null and nullif(btrim(v_src.phone),'') is not null)
      or (nullif(btrim(gstin),'') is null and nullif(btrim(v_src.gstin),'') is not null)
@@ -207,7 +211,7 @@ begin
  values(v_tenant,p_source_party_id,p_target_party_id,v_src.name,v_dst.name,
    jsonb_build_object('purchaseBills',to_jsonb(v_bills),'payments',to_jsonb(v_payments),
      'purchaseReturns',to_jsonb(v_returns),'accountOpenings',to_jsonb(v_openings),
-     'paymentSchedules',to_jsonb(v_schedules),'paymentSchedulesRemoved',to_jsonb(v_removed)),
+     'paymentSchedules',to_jsonb(v_schedules),'paymentSchedulesRemoved',to_jsonb(v_removed),'contactCarriedOver',v_carried),
    p_client_id)
  returning id into v_id;
  return v_id;
@@ -310,6 +314,58 @@ begin
  return c0_post_purchase_body(p_shop_id,p_party_id,p_bill_no,p_business_date,p_discount_paise,p_extra_charges_paise,p_client_id,p_lines,p_bill_image_path);
 end $$;
 
+-- A supplier payment that names a merged supplier is recorded for the kept one (not rejected).
+create or replace function record_supplier_payment(p_shop_id uuid,p_party_id uuid,p_business_date date,
+ p_amount_paise bigint,p_mode text,p_reference text,p_allocations jsonb,p_client_id text)
+returns uuid language plpgsql security definer set search_path=public as $$
+declare v_tenant uuid; v_req uuid; v_allocs jsonb; v_request jsonb; v_prev jsonb; v_today date; v_date date;
+ v_payment uuid; v_party uuid; v_item jsonb; v_alloc uuid; v_ids jsonb:='[]'::jsonb; v_sum bigint;
+begin
+ v_req:=c1_assert_request_uuid(p_client_id);
+ if not has_perm('POST_PURCHASES') then raise exception 'not permitted'; end if;
+ v_tenant:=phase3_assert_shop(p_shop_id);
+ if p_allocations is null then raise exception 'DSB_INVALID_ALLOCATIONS: allocations required (use [] for an advance)'; end if;
+ v_allocs:=dsb_normalize_allocations(p_allocations,'purchase_bill_id');
+ if p_amount_paise is null or p_amount_paise<=0 then raise exception 'DSB_INVALID_AMOUNT: amount must be positive'; end if;
+ perform dsb_assert_safe_paise(p_amount_paise);
+ if p_mode is null or p_mode not in ('cash','upi','card','bank','other') then raise exception 'DSB_INVALID_MODE: invalid payment mode'; end if;
+ if p_reference is not null and char_length(p_reference)>200 then raise exception 'DSB_INVALID_REFERENCE: reference too long'; end if;
+ v_request:=jsonb_build_object('shopId',p_shop_id,'partyId',p_party_id,'businessDate',p_business_date,
+   'amountPaise',p_amount_paise::text,'mode',p_mode,'reference',p_reference,'allocations',v_allocs);
+
+ perform dsb_lock_shop_finance(v_tenant,p_shop_id);
+ perform dsb_lock_request(v_tenant,'supplier.record.v1',v_req::text);
+ v_prev:=dsb_request_result(v_tenant,p_shop_id,'supplier.record.v1',v_req::text,v_request);
+ if v_prev is not null then return (v_prev->>'paymentId')::uuid; end if;
+ -- partymerge: a payment queued (offline, or on another device) for a supplier that was merged posts to the
+ -- kept supplier. The stored request keeps the name the device sent, so its replay still matches.
+ v_party:=dsb_party_canonical(p_party_id);
+
+ if not exists(select 1 from parties where tenant_id=v_tenant and id=v_party and deleted_at is null) then
+   raise exception 'DSB_PARTY_UNAVAILABLE: supplier unavailable';
+ end if;
+ v_today:=shop_business_date(p_shop_id);
+ v_date:=coalesce(p_business_date,v_today);
+ if v_date>v_today then raise exception 'DSB_FUTURE_DATE: payment date is after today'; end if;
+ v_sum:=c1_check_bill_targets(v_tenant,p_shop_id,v_party,v_allocs,v_date);
+ if v_sum>p_amount_paise then raise exception 'DSB_ALLOCATION_EXCEEDS_PAYMENT: allocations exceed payment amount'; end if;
+
+ insert into payments(tenant_id,shop_id,kind,party_id,business_date,amount_paise,mode,reference,direction,client_id)
+ values(v_tenant,p_shop_id,'party',v_party,v_date,p_amount_paise,p_mode,p_reference,'out','supplier.record.v1:'||v_req::text)
+ returning id into v_payment;
+ for v_item in select value from jsonb_array_elements(v_allocs) loop
+   insert into payment_allocations(tenant_id,payment_id,doc_type,purchase_bill_id,amount_paise,client_id)
+   values(v_tenant,v_payment,'PURCHASE',(v_item->>'purchase_bill_id')::uuid,(v_item->>'amount_paise')::bigint,
+     'supplier.record.v1:'||v_req::text||':bill:'||(v_item->>'purchase_bill_id'))
+   returning id into v_alloc;
+   v_ids:=v_ids||to_jsonb(v_alloc);
+ end loop;
+ insert into financial_requests(tenant_id,shop_id,operation,request,result,client_id)
+ values(v_tenant,p_shop_id,'supplier.record.v1',v_request,
+   jsonb_build_object('paymentId',v_payment,'allocationIds',v_ids,'businessDate',v_date),v_req::text);
+ return v_payment;
+end $$;
+
 -- The business export carries the merge records (tenant-wide, like parties).
 create or replace function phase6_export_tenant(p_shop_id uuid)
 returns jsonb language plpgsql stable security definer set search_path=public as $$
@@ -335,8 +391,7 @@ end $$;
 
 revoke all on function party_merge_immutable() from public;
 revoke all on function dsb_party_canonical(uuid) from public,anon,authenticated;
-revoke all on function dsb_party_merge_move(anyelement,anyelement) from public,anon;
-grant execute on function dsb_party_merge_move(anyelement,anyelement) to authenticated;
+revoke all on function dsb_party_merge_move(anyelement,anyelement) from public,anon,authenticated;
 revoke all on function merge_parties(uuid,uuid,text) from public,anon;
 revoke all on function get_supplier_duplicate_bills(uuid,uuid) from public,anon;
 revoke all on function get_party_merge_preview(uuid,uuid,uuid) from public,anon;
