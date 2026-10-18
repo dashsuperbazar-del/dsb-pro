@@ -60,6 +60,7 @@ import { BillAttachmentEditor } from '../components/BillAttachmentEditor';
 import { removeLocalDocument } from '../lib/billDocumentStore';
 import { TaskTabs } from '../components/TaskTabs';
 import { appRoute } from '../lib/paths';
+import { useDirtyGuard } from '../lib/dirtyGuard';
 import { clearPendingIntent, loadPendingIntent, savePendingIntent } from '../lib/pendingIntent';
 
 import {
@@ -71,6 +72,7 @@ import {
   staleDrafts,
   clearPurchaseDrafts,
   restorePurchaseDraft,
+  hasTypedPurchaseInput,
   type PurchaseDraft,
   type SavedPurchaseDraft,
 } from '../lib/purchaseDraft';
@@ -522,6 +524,13 @@ export function InventoryScreen({
     document: billDocument,
     documentIssue: documentSaveError,
   };
+  // N08: ask before leaving the purchase editor with typed input; its autosaved draft is kept either way.
+  useDirtyGuard(
+    purchaseOnly &&
+      purchaseContextActive &&
+      !accountChanged &&
+      hasTypedPurchaseInput(draftSnapshot),
+  );
   // Layout effect runs after each committed edit, without a debounce that could lose picker/reload work.
   useLayoutEffect(() => {
     if (accountChanged || !draftPrefix || !catalogLoaded || contextBusy || purchaseLocked) return;
@@ -1441,7 +1450,7 @@ export function InventoryScreen({
             ))}
           </div>
         )}
-        {purchaseOnly && shopToday && (
+        {purchaseOnly && purchaseContextActive && shopToday && (
           <QuickBillEntry
             parties={parties}
             today={shopToday}
@@ -1456,7 +1465,7 @@ export function InventoryScreen({
             onSaved={refreshDrafts}
           />
         )}
-        {purchaseOnly && shopToday && (
+        {purchaseOnly && purchaseContextActive && shopToday && (
           <BatchPurchaseEntry
             items={items}
             parties={parties}

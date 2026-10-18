@@ -2,6 +2,7 @@ import { useState } from 'preact/hooks';
 import type { Item, Party } from '@dsb-pro/adapters';
 import { buildBatchDrafts, type BatchError, type BatchRow } from '../lib/batchPurchase';
 import { savePurchaseDraft, scanPurchaseDrafts } from '../lib/purchaseDraft';
+import { DISCARD_PROMPT, useDirtyGuard } from '../lib/dirtyGuard';
 import { boundedItemOptions } from '../lib/itemOptions';
 import { BATCH_CSV_HEADER, batchRowsFromCsv, parseCsv } from '../lib/csvImport';
 
@@ -38,6 +39,21 @@ export function BatchPurchaseEntry({
   const [errors, setErrors] = useState<BatchError[]>([]);
   const [message, setMessage] = useState('');
   const [writer] = useState(() => crypto.randomUUID());
+  // N08: rows typed but not yet saved as drafts (a carried-over supplier or date alone does not count).
+  const dirty = rows.some((r) => r.billNo.trim() || r.itemId || r.qty.trim() || r.cost.trim());
+  useDirtyGuard(dirty);
+  function onToggle(e: Event) {
+    const el = e.currentTarget as HTMLDetailsElement;
+    if (el.open || !dirty) return;
+    if (!window.confirm(DISCARD_PROMPT)) {
+      el.open = true;
+      return;
+    }
+    setRows([blankRow(today)]);
+    setSearches({});
+    setErrors([]);
+    setMessage('');
+  }
   const patch = (i: number, p: Partial<BatchRow>) =>
     setRows((v) => v.map((r, n) => (n === i ? { ...r, ...p } : r)));
 
@@ -86,7 +102,7 @@ export function BatchPurchaseEntry({
   }
 
   return (
-    <details class="card" aria-label="Batch bill entry">
+    <details class="card" aria-label="Batch bill entry" onToggle={onToggle}>
       <summary>Batch entry (save several bills as drafts)</summary>
       <p class="muted">
         One line per bill. Bills are saved as drafts and nothing posts until you review and post

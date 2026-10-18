@@ -10,6 +10,7 @@ import {
   restorePurchaseDraft,
   staleDrafts,
   removePurchaseDrafts,
+  hasTypedPurchaseInput,
   type PurchaseDraft,
 } from './purchaseDraft';
 const item = { id: 'a', name: 'Oil', unit1: 'case', unit2: 'jar', conv1: 6 } as Item;
@@ -153,4 +154,24 @@ test('P04: the cost entry mode is saved with the draft and an unknown mode is un
   expect(() => savePurchaseDraft(prefix, 'w', { ...draft(), costMode: 'weird' as never })).toThrow(
     /unreadable/,
   );
+});
+
+test('N08: typed purchase input is dirty; a preselected supplier alone is not', () => {
+  const blank = {
+    ...draft(),
+    supplier: 's',
+    billNo: '',
+    discount: '',
+    extra: '',
+    cart: [],
+    qty: '',
+    price: '',
+    lineItem: null,
+    document: null,
+  };
+  expect(hasTypedPurchaseInput(blank)).toBe(false);
+  expect(hasTypedPurchaseInput({ ...blank, billNo: 'A1' })).toBe(true);
+  expect(hasTypedPurchaseInput({ ...blank, qty: '2' })).toBe(true);
+  expect(hasTypedPurchaseInput({ ...blank, lineItem: item })).toBe(true);
+  expect(hasTypedPurchaseInput({ ...blank, cart: [{} as never] })).toBe(true);
 });

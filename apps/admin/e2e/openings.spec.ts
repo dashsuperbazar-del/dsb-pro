@@ -1,9 +1,26 @@
 import { stockTask } from './design-helpers';
 // O1: opening balances at cutover feed the account balances; a wrong one is voided and re-entered.
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 const PASSWORD = 'TestOnly-2026!pw';
 const email = () => `openings-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`;
+
+async function supplierOutstanding(page: Page) {
+  // N09: the shadow-run compare page is gone; the as-of supplier report shows the same aging v2 balance.
+  await page.goto('/reports');
+  await page
+    .getByRole('navigation', { name: 'Report categories' })
+    .getByRole('button', { name: 'Outstanding', exact: true })
+    .click();
+  await page.getByRole('button', { name: 'Refresh' }).click();
+  return page
+    .locator('section')
+    .filter({
+      has: page.getByRole('heading', { name: 'Supplier outstanding (as of the To date)' }),
+    })
+    .locator('tr')
+    .filter({ hasText: 'Opening Traders' });
+}
 
 test('owner records a supplier opening, sees it in balances, voids it and re-enters it', async ({
   page,
@@ -49,11 +66,7 @@ test('owner records a supplier opening, sees it in balances, voids it and re-ent
   await page.getByRole('button', { name: 'Record opening' }).click();
   await expect(page.getByRole('status')).toContainText('Not recorded');
 
-  await page.goto('/compare');
-  const suppliers = page.getByRole('region', { name: 'Supplier balances' });
-  await expect(suppliers.locator('tr').filter({ hasText: 'Opening Traders' })).toContainText(
-    '₹500.00',
-  );
+  await expect(await supplierOutstanding(page)).toContainText('₹500.00');
 
   await page.goto('/openings');
   page.once('dialog', (d) => void d.accept('typed wrong amount'));
@@ -69,10 +82,7 @@ test('owner records a supplier opening, sees it in balances, voids it and re-ent
   await page.getByRole('button', { name: 'Record opening' }).click();
   await expect(page.getByRole('status')).toContainText('Opening recorded');
 
-  await page.goto('/compare');
-  await expect(suppliers.locator('tr').filter({ hasText: 'Opening Traders' })).toContainText(
-    '₹450.00',
-  );
+  await expect(await supplierOutstanding(page)).toContainText('₹450.00');
 
   // O2: pay the supplier 300, settle it against the opening; the opening has 150 left.
   await page.goto('/');

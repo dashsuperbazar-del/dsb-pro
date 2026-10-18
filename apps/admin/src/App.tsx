@@ -21,7 +21,6 @@ import { SettingsScreen } from './screens/SettingsScreen';
 import { SuppliersScreen } from './screens/SuppliersScreen';
 import { ExpensesScreen } from './screens/ExpensesScreen';
 import { StockAdjustScreen } from './screens/StockAdjustScreen';
-import { CompareScreen } from './screens/CompareScreen';
 import { OpeningsScreen } from './screens/OpeningsScreen';
 import { SearchScreen } from './screens/SearchScreen';
 import { DayBookTile } from './components/DayBookTile';
@@ -92,7 +91,6 @@ export function App() {
         <Route path={appRoute.suppliers} component={SuppliersScreen} />
         <Route path={appRoute.expenses} component={ExpensesScreen} />
         <Route path={appRoute.stockAdjust} component={StockAdjustScreen} />
-        <Route path={appRoute.compare} component={CompareScreen} />
         <Route path={appRoute.openings} component={OpeningsScreen} />
         <Route path={appRoute.search} component={SearchScreen} />
         <Route default component={() => <Home session={session} />} />

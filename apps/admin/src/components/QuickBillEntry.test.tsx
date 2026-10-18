@@ -68,3 +68,38 @@ test('a bad entry saves nothing', async () => {
   expect(scanPurchaseDrafts(prefix).drafts).toHaveLength(0);
   expect(host.textContent).toContain('Choose a supplier.');
 });
+
+test('N08: closing with a typed entry asks first; declining keeps it, confirming clears it', async () => {
+  await mount();
+  const details = host.querySelector('details')!;
+  const ask = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  await act(async () => {
+    details.open = true;
+    details.dispatchEvent(new Event('toggle'));
+  });
+  await set('Quick bill total', '12');
+  const unload = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(unload);
+  expect(unload.defaultPrevented).toBe(true);
+  await act(async () => {
+    details.open = false;
+    details.dispatchEvent(new Event('toggle'));
+  });
+  expect(ask).toHaveBeenCalledWith('Discard unsaved entry?');
+  expect(details.open).toBe(true);
+  expect((host.querySelector('[aria-label="Quick bill total"]') as HTMLInputElement).value).toBe(
+    '12',
+  );
+  ask.mockReturnValue(true);
+  await act(async () => {
+    details.open = false;
+    details.dispatchEvent(new Event('toggle'));
+  });
+  expect((host.querySelector('[aria-label="Quick bill total"]') as HTMLInputElement).value).toBe(
+    '',
+  );
+  const after = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(after);
+  expect(after.defaultPrevented).toBe(false);
+  ask.mockRestore();
+});
