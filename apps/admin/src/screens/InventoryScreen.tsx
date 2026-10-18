@@ -4,7 +4,12 @@ import { learnedUnits } from '../lib/unitLearning';
 import { VoiceEntryButton } from '../components/VoiceEntryButton';
 import { matchItems, parseVoiceEntry, unitLevelFor } from '../lib/voiceEntry';
 import { SnapshotNote } from '../components/SnapshotNote';
-import { peekSnapshot, putSnapshot, snapshotUserId } from '../lib/routeSnapshot';
+import {
+  peekSnapshot,
+  putSnapshot,
+  snapshotRefreshFailed,
+  snapshotUserId,
+} from '../lib/routeSnapshot';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   addItemBarcode,
@@ -303,6 +308,7 @@ export function InventoryScreen({
         setItems(device.items as unknown as Item[]);
       })
       .catch((e) => {
+        snapshotRefreshFailed('inventory', e);
         setSnapshotFailed(true);
         setError(String(e));
       });

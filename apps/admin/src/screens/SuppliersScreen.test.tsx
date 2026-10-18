@@ -163,3 +163,29 @@ test('SP2: lost membership or a cashier role clears the saved summary', async ()
   await vi.waitFor(() => expect(host.textContent).toContain('not available to cashiers'));
   expect(host.textContent).not.toContain('Saved Co');
 });
+
+test('SP4: a saved summary of another shop than the active one is not shown', async () => {
+  const rs = await import('../lib/routeSnapshot');
+  rs.clearSnapshots();
+  rs.putSnapshot('suppliers', 'u', 'old-shop', {
+    summary: [row('Other Shop Co', '1')],
+    parties: [],
+  });
+  rs.noteSnapshotShops('u', ['shop'], 'shop');
+  api.getSupplierOutstanding.mockReturnValueOnce(new Promise(() => {}));
+  await openList();
+  await new Promise((r) => setTimeout(r, 30));
+  expect(host.textContent).not.toContain('Other Shop Co');
+  expect(host.querySelector('[data-testid="snapshot-note"]')).toBeNull();
+});
+
+test('SP4: a refresh refused with 403 (membership revoked) drops the saved summary', async () => {
+  const rs = await import('../lib/routeSnapshot');
+  rs.clearSnapshots();
+  rs.putSnapshot('suppliers', 'u', 'shop', { summary: [row('Saved Co', '1000')], parties: [] });
+  api.getSupplierOutstanding.mockRejectedValueOnce(
+    Object.assign(new Error('permission denied'), { status: 403 }),
+  );
+  await openList();
+  await vi.waitFor(() => expect(rs.peekSnapshot('suppliers', 'u')).toBeNull());
+});

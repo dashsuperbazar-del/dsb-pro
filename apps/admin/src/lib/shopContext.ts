@@ -7,6 +7,7 @@ import {
   type Membership,
   type Session,
 } from '@dsb-pro/adapters';
+import { noteSnapshotShops } from './routeSnapshot';
 
 // Every screen used to re-read membership, default shop, session and business date on open. This shares one
 // short-lived answer between screens. It is deliberately not a store: a result lives 30 s (date: 60 s), is
@@ -79,6 +80,8 @@ export function createShopContext(deps: Deps) {
       if ((await deps.getSession())?.user.id !== userId) throw new StaleRead();
       if (startedIn !== generation) throw new StaleRead();
       const value = { session, membership, shopId };
+      // SP4: saved screen copies of shops this user no longer belongs to are dropped.
+      noteSnapshotShops(userId, membership.shopIds, shopId);
       stored = { userId, at: deps.now(), value };
       return value;
     })();

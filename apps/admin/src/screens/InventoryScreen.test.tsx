@@ -1119,3 +1119,56 @@ test('SP2b: a revisit of the stock screen lists the last catalogue at once; a wr
   await new Promise((r) => setTimeout(r, 50));
   expect(host.querySelectorAll('option[value="a"]').length).toBe(0);
 });
+
+test('SP4: after a cold start the stock screen lists the saved catalogue from disk, labelled, then refreshes', async () => {
+  const rs = await import('../lib/routeSnapshot');
+  rs.clearSnapshots();
+  await act(async () => {
+    render(<InventoryScreen />, host);
+  });
+  await vi.waitFor(() =>
+    expect(host.querySelectorAll('option[value="a"]').length).toBeGreaterThan(0),
+  );
+  await act(async () => render(null, host));
+  await rs.snapshotDiskIdle();
+  rs.forgetSnapshotsInMemory(); // the tab was closed: only the disk copy is left
+  let finish!: (v: unknown) => void;
+  api.listItems.mockReturnValueOnce(new Promise((r) => (finish = r)));
+  await act(async () => {
+    render(<InventoryScreen />, host);
+  });
+  await vi.waitFor(() =>
+    expect(host.querySelectorAll('option[value="a"]').length).toBeGreaterThan(0),
+  );
+  expect(host.querySelector('[data-testid="snapshot-note"]')?.textContent).toContain('refreshing');
+  await act(async () => finish([]));
+  await vi.waitFor(() => expect(host.querySelector('[data-testid="snapshot-note"]')).toBeNull());
+  rs.clearSnapshots();
+  await rs.snapshotDiskIdle();
+});
+
+test('SP4: a disk snapshot of another user never renders after a cold start', async () => {
+  const rs = await import('../lib/routeSnapshot');
+  rs.clearSnapshots();
+  await rs.snapshotDiskIdle();
+  const { openRouteSnapshotDb } = await import('@dsb-pro/sync');
+  await (
+    await openRouteSnapshotDb()
+  ).snapshots.put({
+    key: 'someone-else:inventory',
+    userId: 'someone-else',
+    name: 'inventory',
+    shopId: 'shop',
+    at: Date.now(),
+    json: '{"items":[],"parties":[],"stock":[]}',
+    size: 36,
+  });
+  rs.forgetSnapshotsInMemory();
+  api.listItems.mockReturnValueOnce(new Promise(() => {}));
+  await act(async () => {
+    render(<InventoryScreen />, host);
+  });
+  await new Promise((r) => setTimeout(r, 50));
+  expect(host.querySelector('[data-testid="snapshot-note"]')).toBeNull();
+  expect(rs.peekSnapshot('inventory', 'someone-else')).toBeNull();
+});

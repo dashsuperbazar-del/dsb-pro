@@ -39,7 +39,14 @@ import { SupplierSchedulePanel } from '../components/SupplierSchedulePanel';
 import { DuplicateBillsCheck, PartyMergePanel } from '../components/PartyMergePanel';
 import { BulkSupplierPayments } from '../components/BulkSupplierPayments';
 import { SnapshotNote } from '../components/SnapshotNote';
-import { dropSnapshot, peekSnapshot, putSnapshot, snapshotUserId } from '../lib/routeSnapshot';
+import {
+  dropSnapshot,
+  noteSnapshotShops,
+  peekSnapshot,
+  putSnapshot,
+  snapshotRefreshFailed,
+  snapshotUserId,
+} from '../lib/routeSnapshot';
 
 type SupplierBaseSnapshot = { summary: SupplierOutstandingRow[]; parties: Party[] };
 import { appRoute } from '../lib/paths';
@@ -133,6 +140,7 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
     const shop = m.shopIds[0] ?? (await getDefaultShopId());
     if (gen !== baseGeneration.current) return;
     setShopId(shop);
+    noteSnapshotShops(userId, m.shopIds, shop);
     const [s, d, parties] = await Promise.all([
       getSupplierOutstanding(shop),
       getShopBusinessDate(shop),
@@ -186,6 +194,7 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
   }
   useEffect(() => {
     void refreshBase(true).catch((e) => {
+      snapshotRefreshFailed('suppliers', e);
       setSnapshotFailed(true);
       setError(String(e));
     });
