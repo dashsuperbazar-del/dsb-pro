@@ -15,7 +15,10 @@ afterEach(async () => {
 });
 const mount = () =>
   act(async () =>
-    render(<DemandChart shopId="s" itemId="i" baseUnit="<b>pcs" today="2026-10-18" />, host),
+    render(
+      <DemandChart shopId="s" itemId="i" baseUnit="<b>pcs" today="2026-10-18" canReadReturns />,
+      host,
+    ),
   );
 
 test('shows weekly net units with bars, an aria summary and a text fallback', async () => {
@@ -26,10 +29,11 @@ test('shows weekly net units with bars, an aria summary and a text fallback', as
     ],
     returns: [{ businessDate: '2026-10-17', baseQty: 0.5 }],
     truncated: false,
+    returnsIncluded: true,
   });
   await mount();
   await vi.waitFor(() => expect(host.textContent).toContain('Sold in last 8 weeks: 6 <b>pcs'));
-  expect(api.listItemSaleMovements).toHaveBeenCalledWith('s', 'i', '2026-08-24');
+  expect(api.listItemSaleMovements).toHaveBeenCalledWith('s', 'i', '2026-08-24', true);
   const svg = host.querySelector('svg[role="img"]')!;
   expect(svg.getAttribute('aria-label')).toContain('6 <b>pcs over 8 weeks');
   expect(host.querySelectorAll('svg rect').length).toBe(8);
@@ -58,4 +62,29 @@ test('says when the read was capped', async () => {
   });
   await mount();
   await vi.waitFor(() => expect(host.textContent).toContain('may be incomplete'));
+});
+
+test('without return access the label says returns are not included', async () => {
+  api.listItemSaleMovements.mockResolvedValue({
+    sales: [{ businessDate: '2026-10-18', baseQty: 3 }],
+    returns: [],
+    truncated: false,
+    returnsIncluded: false,
+  });
+  await act(async () =>
+    render(
+      <DemandChart
+        shopId="s"
+        itemId="i"
+        baseUnit="pcs"
+        today="2026-10-18"
+        canReadReturns={false}
+      />,
+      host,
+    ),
+  );
+  await vi.waitFor(() => expect(host.textContent).toContain('units sold (returns not included)'));
+  expect(api.listItemSaleMovements).toHaveBeenCalledWith('s', 'i', '2026-08-24', false);
+  expect(host.textContent).not.toContain('net of returns');
+  expect(host.querySelector('svg')!.getAttribute('aria-label')).toContain('returns not included');
 });

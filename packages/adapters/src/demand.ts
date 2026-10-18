@@ -9,6 +9,9 @@ export type ItemSaleMovements = {
   returns: SaleMovement[];
   // True when a row cap was hit: the newest rows are shown but older ones in the window may be missing.
   truncated: boolean;
+  // False when returns could not be read (role lacks POST_SALES/VIEW_REPORTS, or the read failed): `returns`
+  // is then empty and the figures are gross units sold.
+  returnsIncluded: boolean;
 };
 
 const CAP = 2000;
@@ -44,11 +47,14 @@ export async function listItemSaleMovements(
   shopId: string,
   itemId: string,
   since: string,
+  // RLS hides returns from roles without POST_SALES/VIEW_REPORTS as empty rows, not an error, so the caller
+  // says whether this user can read them.
+  canReadReturns = true,
 ): Promise<ItemSaleMovements> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(since)) throw new Error('Invalid date.');
   const from = new Date(Date.parse(`${since}T00:00:00Z`) - 86_400_000).toISOString();
   const client = getSupabaseClient();
-  const [lines, rets] = await Promise.all([
+  const [lines, retsRead] = await Promise.all([
     client
       .from('sale_invoice_items')
       .select('sale_invoice_id,base_qty')
@@ -58,19 +64,23 @@ export async function listItemSaleMovements(
       .gte('created_at', from)
       .order('created_at', { ascending: false })
       .limit(CAP),
-    client
-      .from('sale_return_items')
-      .select('sale_return_id,base_qty')
-      .eq('shop_id', shopId)
-      .eq('item_id', itemId)
-      .is('deleted_at', null)
-      .gte('created_at', from)
-      .order('created_at', { ascending: false })
-      .limit(CAP),
+    canReadReturns
+      ? client
+          .from('sale_return_items')
+          .select('sale_return_id,base_qty')
+          .eq('shop_id', shopId)
+          .eq('item_id', itemId)
+          .is('deleted_at', null)
+          .gte('created_at', from)
+          .order('created_at', { ascending: false })
+          .limit(CAP)
+      : null,
   ]);
   if (lines.error) raise(lines.error);
-  if (rets.error) raise(rets.error);
-  if (!Array.isArray(lines.data) || !Array.isArray(rets.data)) throw fail();
+  if (!Array.isArray(lines.data)) throw fail();
+  // A failed returns read shows gross sales, labelled so, rather than hiding the chart.
+  const returnsIncluded = !!retsRead && !retsRead.error && Array.isArray(retsRead.data);
+  const rets = { data: returnsIncluded ? retsRead!.data! : [] };
   const inv = await headers('sale_invoices', [
     ...new Set(lines.data.map((l) => l.sale_invoice_id as string)),
   ]);
@@ -102,5 +112,6 @@ export async function listItemSaleMovements(
     ),
     returns: pick(rets.data, (r: { sale_return_id: string }) => r.sale_return_id, ret, 'POSTED'),
     truncated: lines.data.length >= CAP || rets.data.length >= CAP,
+    returnsIncluded,
   };
 }
