@@ -32,6 +32,7 @@ const api = vi.hoisted(() => ({
   getPurchaseDetail: vi.fn(),
   postPurchaseOutcome: vi.fn(),
   listItemPurchasePrices: vi.fn().mockResolvedValue([]),
+  listItemSaleMovements: vi.fn().mockResolvedValue({ sales: [], returns: [], truncated: false }),
 }));
 vi.mock('@dsb-pro/adapters', () => api);
 const offline = vi.hoisted(() => ({

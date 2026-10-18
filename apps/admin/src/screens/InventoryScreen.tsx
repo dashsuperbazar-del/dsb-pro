@@ -1,5 +1,6 @@
 import { CameraScanner } from '../components/CameraScanner';
 import { PriceHistory } from '../components/PriceHistory';
+import { DemandChart } from '../components/DemandChart';
 import { learnedUnits } from '../lib/unitLearning';
 import { VoiceEntryButton } from '../components/VoiceEntryButton';
 import { matchItems, parseVoiceEntry, unitLevelFor } from '../lib/voiceEntry';
@@ -136,6 +137,7 @@ export function InventoryScreen({
   // The shop's own date, never changed by the purchase form or a resumed draft (limits batch entry dates).
   const [shopToday, setShopToday] = useState('');
   const [canSeePurchasePrices, setCanSeePurchasePrices] = useState(false);
+  const [canReadSaleReturns, setCanReadSaleReturns] = useState(false);
   // P06: the paper bill's total (paise) when this purchase started as a quick bill; checked before posting.
   const [purchaseExpectedTotal, setPurchaseExpectedTotal] = useState<string | undefined>(undefined);
   const [selected, setSelected] = useState('');
@@ -253,6 +255,8 @@ export function InventoryScreen({
     setTenantId(membership.tenantId);
     setShopId(shop);
     setCanSeePurchasePrices(['owner', 'manager', 'accountant'].includes(membership.role));
+    // Roles granted POST_SALES or VIEW_REPORTS (sale_returns RLS).
+    setCanReadSaleReturns(['owner', 'manager', 'accountant', 'cashier'].includes(membership.role));
     if (['owner', 'manager'].includes(membership.role)) {
       draftUser.current = session.user.id;
       setDraftPrefix(purchaseDraftPrefix(session.user.id, shop));
@@ -1290,6 +1294,16 @@ export function InventoryScreen({
                 itemId={selectedItem.id}
                 baseUnit={selectedItem.unit3 || selectedItem.unit2 || selectedItem.unit1}
                 parties={parties}
+              />
+            )}
+            {shopToday && (
+              <DemandChart
+                key={`demand:${selectedItem.id}`}
+                shopId={shopId}
+                itemId={selectedItem.id}
+                baseUnit={selectedItem.unit3 || selectedItem.unit2 || selectedItem.unit1}
+                today={shopToday}
+                canReadReturns={canReadSaleReturns}
               />
             )}
           </div>
