@@ -53,6 +53,7 @@ const GROUP_ORDER = [
   'partyarchive',
   'profit',
   'supplierschedule',
+  'partymerge',
 ];
 
 /**

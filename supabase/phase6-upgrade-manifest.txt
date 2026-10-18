@@ -31,3 +31,4 @@
 0059 partyarchive supabase/migrations/0059_party_archive.sql
 0060 profit supabase/migrations/0060_profit_report.sql
 0061 supplierschedule supabase/migrations/0061_supplier_payment_schedule.sql
+0062 partymerge supabase/migrations/0062_party_merge.sql
