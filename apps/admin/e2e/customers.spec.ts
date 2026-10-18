@@ -36,7 +36,7 @@ test('owner can open customer ledger and allocation workflow', async ({ page }) 
     .getByRole('navigation', { name: 'Customer tasks' })
     .getByRole('button', { name: 'Ledger', exact: true })
     .click();
-  await expect(page.getByRole('heading', { name: 'Customer ledger' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Customer ledger', exact: true })).toBeVisible();
   // Statement over the real PostgREST path (empty ledger: no balance row yet).
   const empty = page.getByLabel('Prepared customer statement');
   await expect(empty).toContainText('Closing ₹0.00');
