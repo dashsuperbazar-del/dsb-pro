@@ -246,3 +246,5 @@ export { mergeParties, listSupplierDuplicateBills, getPartyMergePreview } from '
 export type { DuplicateBillGroup, MergePreview } from './partyMerge';
 export { listItemPurchasePrices } from './priceHistory';
 export type { ItemPurchasePrice } from './priceHistory';
+export { listItemSaleMovements } from './demand';
+export type { ItemSaleMovements, SaleMovement } from './demand';

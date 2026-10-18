@@ -1,5 +1,6 @@
 import { CameraScanner } from '../components/CameraScanner';
 import { PriceHistory } from '../components/PriceHistory';
+import { DemandChart } from '../components/DemandChart';
 import { learnedUnits } from '../lib/unitLearning';
 import { VoiceEntryButton } from '../components/VoiceEntryButton';
 import { matchItems, parseVoiceEntry, unitLevelFor } from '../lib/voiceEntry';
@@ -1290,6 +1291,15 @@ export function InventoryScreen({
                 itemId={selectedItem.id}
                 baseUnit={selectedItem.unit3 || selectedItem.unit2 || selectedItem.unit1}
                 parties={parties}
+              />
+            )}
+            {shopToday && (
+              <DemandChart
+                key={`demand:${selectedItem.id}`}
+                shopId={shopId}
+                itemId={selectedItem.id}
+                baseUnit={selectedItem.unit3 || selectedItem.unit2 || selectedItem.unit1}
+                today={shopToday}
               />
             )}
           </div>
