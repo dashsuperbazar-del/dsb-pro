@@ -1,6 +1,7 @@
 import { canonicalQuantity, quantityTimesPaise } from '@dsb-pro/core';
 import { BILL_DOCUMENT_PATH, type Item, type Party, type BillDocument } from '@dsb-pro/adapters';
 import type { PurchaseDraftLine } from './purchaseWorkflow';
+import type { BillCardDraft } from './billCards';
 
 export type PurchaseDraft = {
   version: 1;
@@ -24,6 +25,9 @@ export type PurchaseDraft = {
   editingLine: number | null;
   document?: BillDocument | null;
   documentIssue?: string;
+  /** Bill entry cards (every item editable at once). Absent in drafts saved by the older single-form editor,
+   * which restore from `cart` plus the half-typed form instead. `cart` always holds the complete cards. */
+  cards?: BillCardDraft[];
 };
 export type SavedPurchaseDraft = { key: string; draft: PurchaseDraft };
 /** N08: the purchase editor holds typed input (a preselected supplier alone does not count). */
@@ -36,7 +40,8 @@ export function hasTypedPurchaseInput(d: PurchaseDraft): boolean {
     d.extra ||
     d.lineItem ||
     d.qty ||
-    d.price,
+    d.price ||
+    d.cards?.some((c) => c.item || c.qty || c.price),
   );
 }
 // VF-017: a snapshot stores only what restore compares (id, name, units, conversions); restore swaps in
@@ -54,6 +59,9 @@ function compactDraft(d: PurchaseDraft): PurchaseDraft {
     ...d,
     cart: d.cart.map((l) => ({ ...l, item: compactItem(l.item) })),
     lineItem: d.lineItem ? compactItem(d.lineItem) : null,
+    ...(d.cards
+      ? { cards: d.cards.map((c) => ({ ...c, item: c.item ? compactItem(c.item) : null })) }
+      : {}),
   };
 }
 export function purchaseDraftPrefix(userId: string, shopId: string) {
@@ -93,6 +101,24 @@ function checked(value: unknown): PurchaseDraft {
     )
   )
     throw new Error('A saved purchase draft is unreadable. It has been kept on this device.');
+  if (
+    d.cards !== undefined &&
+    !(
+      Array.isArray(d.cards) &&
+      d.cards.every(
+        (c) =>
+          c &&
+          (c.item === null ||
+            (typeof c.item?.id === 'string' && typeof c.item.unit1 === 'string')) &&
+          [1, 2, 3].includes(c.unitLevel) &&
+          typeof c.search === 'string' &&
+          typeof c.qty === 'string' &&
+          typeof c.price === 'string' &&
+          (c.costMode === 'unit' || c.costMode === 'total'),
+      )
+    )
+  )
+    throw new Error('Saved bill items are unreadable. The draft has been kept.');
   if (d.costMode !== undefined && d.costMode !== 'unit' && d.costMode !== 'total')
     throw new Error('Saved cost entry mode is unreadable. The draft has been kept.');
   if (
@@ -157,7 +183,7 @@ export function savePurchaseDraft(prefix: string, writer: string, draft: Purchas
   const text = JSON.stringify(compactDraft(checked(draft)));
   if (text.length > MAX_DRAFT_BYTES)
     throw new Error(
-      `This draft is too large to save on this device (${draft.cart.length} lines). Post it in smaller bills; the page keeps your work meanwhile`,
+      `This draft is too large to save on this device (${draft.cards?.length ?? draft.cart.length} items). Post it in smaller bills; the page keeps your work meanwhile`,
     );
   localStorage.setItem(key, text);
   if (localStorage.getItem(key) !== text) throw new Error('This device did not keep the draft.');
@@ -209,5 +235,13 @@ export function restorePurchaseDraft(
     ...draft,
     cart: draft.cart.map((l) => ({ ...l, item: current(l.item, l.unitLevel) })),
     lineItem: draft.lineItem ? current(draft.lineItem, draft.unitLevel) : null,
+    ...(draft.cards
+      ? {
+          cards: draft.cards.map((c) => ({
+            ...c,
+            item: c.item ? current(c.item, c.unitLevel) : null,
+          })),
+        }
+      : {}),
   };
 }

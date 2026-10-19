@@ -175,3 +175,41 @@ test('N08: typed purchase input is dirty; a preselected supplier alone is not', 
   expect(hasTypedPurchaseInput({ ...blank, lineItem: item })).toBe(true);
   expect(hasTypedPurchaseInput({ ...blank, cart: [{} as never] })).toBe(true);
 });
+
+test('bill entry cards (complete or half-typed) survive a save and restore against the current catalog', () => {
+  const prefix = purchaseDraftPrefix('u', 's');
+  const cards = [
+    { item, search: 'Oil', unitLevel: 2 as const, qty: '3', price: '', costMode: 'unit' as const },
+    {
+      item: null,
+      search: 'ric',
+      unitLevel: 1 as const,
+      qty: '',
+      price: '',
+      costMode: 'total' as const,
+    },
+  ];
+  const d = { ...draft(), editingLine: null, cards };
+  savePurchaseDraft(prefix, 'window', d);
+  expect(listPurchaseDrafts(prefix)[0].draft.cards).toEqual(cards);
+  const fresh = { ...item, name: 'Oil (renamed)' };
+  expect(restorePurchaseDraft(d, [fresh], []).cards?.[0]?.item?.name).toBe('Oil (renamed)');
+  expect(() => restorePurchaseDraft(d, [{ ...item, unit2: 'tin' }], [])).toThrow(/units changed/);
+  localStorage.setItem(
+    `${prefix}x:y`,
+    JSON.stringify({ ...d, cards: [{ ...cards[0], costMode: 'x' }] }),
+  );
+  expect(scanPurchaseDrafts(prefix).unreadable).toEqual([`${prefix}x:y`]);
+  const blank = {
+    ...d,
+    billNo: '',
+    discount: '',
+    extra: '',
+    cart: [],
+    qty: '',
+    price: '',
+    lineItem: null,
+  };
+  expect(hasTypedPurchaseInput({ ...blank, cards: [{ ...cards[1]!, search: '' }] })).toBe(false);
+  expect(hasTypedPurchaseInput({ ...blank, cards: [{ ...cards[1]!, qty: '1' }] })).toBe(true);
+});

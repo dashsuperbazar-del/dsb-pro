@@ -1,4 +1,4 @@
-import { stockTask, addItemForm, reviewPayment } from './design-helpers';
+import { stockTask, addItemForm, reviewPayment, fillBillItem } from './design-helpers';
 import { test, expect } from '@playwright/test';
 
 const PASSWORD = 'TestOnly-2026!pw';
@@ -37,13 +37,10 @@ async function seedOfflineItem(page: import('@playwright/test').Page) {
   const purchase = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
-  await purchase.locator('select[name="itemId"]').selectOption({ label: 'Offline E2E Item' });
-  await purchase.locator('input[name="qty"]').fill('3');
-  await purchase.locator('input[name="price"]').fill('5');
-  await purchase.getByRole('button', { name: 'Add line' }).click();
+  await fillBillItem(purchase, 1, 'Offline E2E Item', '3', '5');
   await purchase.getByRole('button', { name: 'Post purchase' }).click();
   await expect(page.getByRole('status')).toContainText(
-    'Purchase posted (1 line) and stock updated',
+    'Purchase posted (1 item) and stock updated',
   );
   await page.waitForTimeout(1200);
   await page.goto('/sync');

@@ -182,23 +182,14 @@ test('editing a repeated purchase line updates one row rather than duplicating s
     render(<InventoryScreen purchaseOnly purchaseRepeatId="old" />, host);
   });
   await vi.waitFor(() => expect(host.textContent).toContain('Draft repeated from OLD'));
-  await act(async () => {
-    (host.querySelector('[aria-label="Edit purchase line 1"]') as HTMLButtonElement).click();
-  });
   const post = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Post purchase')!;
-  expect(post.disabled).toBe(true);
-  const qty = host.querySelector<HTMLInputElement>('input[name="qty"]')!;
-  await act(async () => {
-    qty.value = '3';
-    qty.dispatchEvent(new Event('input', { bubbles: true }));
-  });
-  const update = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Update line')!;
-  await act(async () => {
-    update.click();
-  });
   expect(post.disabled).toBe(false);
-  expect(host.querySelectorAll('[aria-label^="Edit purchase line"]')).toHaveLength(1);
-  expect(host.querySelector('[aria-label="Purchase cart"]')?.textContent).toContain('₹3.00');
+  // The repeated item is a card, edited in place: no separate edit/update step, no second row.
+  await enterLabel(host, 'Item 1 quantity', '3');
+  expect(post.disabled).toBe(false);
+  expect(host.querySelectorAll('section[aria-label^="Item "]')).toHaveLength(1);
+  expect(host.querySelector('[data-testid="bill-total"]')?.textContent).toContain('₹3.00');
+  expect(host.querySelector('.bill-bar')?.textContent).toContain('Total ₹3.00');
 });
 
 test('opening the purchase bill list preserves the repeated draft without a replacement prompt', async () => {
@@ -234,12 +225,12 @@ test('opening the purchase bill list preserves the repeated draft without a repl
       render(<InventoryScreen purchaseOnly purchaseContextActive={false} />, host);
     });
     expect(prompt).not.toHaveBeenCalled();
-    expect(host.querySelector('[aria-label="Purchase cart"]')?.textContent).toContain('₹2.00');
+    expect(host.querySelector('[data-testid="bill-total"]')?.textContent).toContain('₹2.00');
     await act(async () => {
       render(<InventoryScreen purchaseOnly purchaseRepeatId="old" />, host);
     });
     expect(prompt).not.toHaveBeenCalled();
-    expect(host.querySelector('[aria-label="Purchase cart"]')?.textContent).toContain('₹2.00');
+    expect(host.querySelector('[data-testid="bill-total"]')?.textContent).toContain('₹2.00');
   } finally {
     prompt.mockRestore();
   }
@@ -291,6 +282,13 @@ test('a cancelled slow repeat can be loaded again when its purchase task is reop
   await vi.waitFor(() => expect(host.textContent).toContain('Draft repeated from SLOW'));
 });
 
+async function enterLabel(host: HTMLElement, label: string, value: string) {
+  await act(async () => {
+    const field = host.querySelector<HTMLInputElement>(`[aria-label="${label}"]`)!;
+    field.value = value;
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
 async function enter(host: HTMLElement, name: string, value: string) {
   await act(async () => {
     const field = host.querySelector<HTMLInputElement>(`input[name="${name}"]`)!;
@@ -330,11 +328,14 @@ test('reload restores all draft fields and unfinished edit without posting; conf
   await enter(host, 'date', '2026-10-01');
   await enter(host, 'discount', '0.75');
   await enter(host, 'extra', '0.35');
+  await enterLabel(host, 'Item 1 quantity', '3.25');
+  await enterLabel(host, 'Item 1 rate ₹', '1.45');
+  // An unfinished second card (no item chosen yet) is part of the draft too.
   await act(async () => {
-    (host.querySelector('[aria-label="Edit purchase line 1"]') as HTMLButtonElement).click();
+    [...host.querySelectorAll('button')].find((b) => b.textContent === '+ Add item')!.click();
   });
-  await enter(host, 'qty', '3.25');
-  await enter(host, 'price', '1.45');
+  await enterLabel(host, 'Item 2 name', 'Item');
+  await enterLabel(host, 'Item 2 quantity', '1');
   await vi.waitFor(() => expect(host.textContent).toContain('Draft saved on this device'));
   const before = Object.keys(localStorage).filter((k) => k.startsWith('dsb-purchase-draft:'));
   const clientId = JSON.parse(localStorage.getItem(before[0])!).clientId;
@@ -356,14 +357,24 @@ test('reload restores all draft fields and unfinished edit without posting; conf
   expect(host.querySelector<HTMLInputElement>('input[name="date"]')!.value).toBe('2026-10-01');
   expect(host.querySelector<HTMLInputElement>('input[name="discount"]')!.value).toBe('0.75');
   expect(host.querySelector<HTMLInputElement>('input[name="extra"]')!.value).toBe('0.35');
-  expect(host.querySelector<HTMLInputElement>('input[name="qty"]')!.value).toBe('3.25');
-  expect(host.querySelector<HTMLInputElement>('input[name="price"]')!.value).toBe('1.45');
-  expect(
-    [...host.querySelectorAll('button')].find((b) => b.textContent === 'Post purchase')!.disabled,
-  ).toBe(true);
+  const field = (label: string) =>
+    host.querySelector<HTMLInputElement>(`[aria-label="${label}"]`)!.value;
+  expect(field('Item 1 quantity')).toBe('3.25');
+  expect(field('Item 1 rate ₹')).toBe('1.45');
+  expect(field('Item 2 name')).toBe('Item');
+  expect(field('Item 2 quantity')).toBe('1');
+  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  // A started card that cannot post blocks the bill and says which item needs a look.
+  await act(async () => {
+    host
+      .querySelector('input[name="billNo"]')!
+      .closest('form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  });
+  expect(host.textContent).toContain('Item 2: Choose the item.');
   expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
   await act(async () => {
-    [...host.querySelectorAll('button')].find((b) => b.textContent === 'Update line')!.click();
+    host.querySelector<HTMLButtonElement>('[aria-label="Remove item 2"]')!.click();
   });
   api.postPurchaseOutcome.mockResolvedValue({ kind: 'confirmed', value: {} });
   await act(async () => {
@@ -454,7 +465,7 @@ test('a rejected restored payload never rotates its identity into a new potentia
   expect(api.postPurchaseOutcome.mock.calls[1][0].clientId).toBe(
     api.postPurchaseOutcome.mock.calls[0][0].clientId,
   );
-  expect(host.querySelector('[aria-label="Purchase cart"]')?.textContent).toContain('₹2.00');
+  expect(host.querySelector('[data-testid="bill-total"]')?.textContent).toContain('₹2.00');
 });
 
 test('UNKNOWN posting hides the unposted draft label and retains the exact request ahead of draft recovery', async () => {
@@ -739,7 +750,7 @@ test('picker eviction preserves the document intent and requires a decision afte
     [...host.querySelectorAll('button')].find((b) => b.textContent === 'Resume draft')!.click();
   });
   expect(host.querySelector<HTMLInputElement>('input[name="billNo"]')!.value).toBe('PICKER-DRAFT');
-  expect(host.querySelector('[aria-label="Purchase cart"]')?.textContent).toContain('₹2.00');
+  expect(host.querySelector('[data-testid="bill-total"]')?.textContent).toContain('₹2.00');
   expect(host.textContent).toContain('Document selection needs review');
   const post = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Post purchase')!;
   expect(post.disabled).toBe(true);
@@ -826,7 +837,7 @@ test('resume stays disabled through the catalogue-to-new-context gap and preserv
     });
     expect(host.querySelector<HTMLInputElement>('input[name="billNo"]')!.value).toBe('RESUME-GAP');
     expect(host.querySelector<HTMLInputElement>('input[name="date"]')!.value).toBe('2026-10-01');
-    expect(host.querySelector('[aria-label="Purchase cart"]')?.textContent).toContain('₹2.00');
+    expect(host.querySelector('[data-testid="bill-total"]')?.textContent).toContain('₹2.00');
     expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
   } finally {
     observer.disconnect();

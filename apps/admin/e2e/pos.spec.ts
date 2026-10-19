@@ -1,4 +1,4 @@
-import { stockTask, addItemForm, reviewPayment } from './design-helpers';
+import { stockTask, addItemForm, reviewPayment, fillBillItem } from './design-helpers';
 import { test, expect } from '@playwright/test';
 
 const PASSWORD = 'TestOnly-2026!pw';
@@ -56,13 +56,10 @@ test('real browser money path posts stock then finalizes a paid sale', async ({
   const purchase = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
-  await purchase.locator('select[name="itemId"]').selectOption({ label: 'POS E2E Item' });
-  await purchase.locator('input[name="qty"]').fill('5');
-  await purchase.locator('input[name="price"]').fill('5');
-  await purchase.getByRole('button', { name: 'Add line' }).click();
+  await fillBillItem(purchase, 1, 'POS E2E Item', '5', '5');
   await purchase.getByRole('button', { name: 'Post purchase' }).click();
   await expect(page.getByRole('status')).toContainText(
-    'Purchase posted (1 line) and stock updated',
+    'Purchase posted (1 item) and stock updated',
   );
 
   await page.goto('/pos');
@@ -380,10 +377,7 @@ test('bill total rounds to the nearest rupee while the item keeps exact paise (R
   const purchase = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
-  await purchase.locator('select[name="itemId"]').selectOption({ label: 'Round Item' });
-  await purchase.locator('input[name="qty"]').fill('5');
-  await purchase.locator('input[name="price"]').fill('5');
-  await purchase.getByRole('button', { name: 'Add line' }).click();
+  await fillBillItem(purchase, 1, 'Round Item', '5', '5');
   await purchase.getByRole('button', { name: 'Post purchase' }).click();
   await expect(page.getByRole('status')).toContainText('Purchase posted');
 

@@ -1,4 +1,4 @@
-import { stockTask, addItemForm } from './design-helpers';
+import { stockTask, addItemForm, fillBillItem } from './design-helpers';
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
@@ -31,10 +31,7 @@ async function ownerWithBill(page: Page) {
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
   await purchase.locator('select[name="partyId"]').selectOption({ label: 'Acme Traders' });
-  await purchase.locator('select[name="itemId"]').selectOption({ label: 'Rice bag' });
-  await purchase.locator('input[name="qty"]').fill('10');
-  await purchase.locator('input[name="price"]').fill('10');
-  await purchase.getByRole('button', { name: 'Add line' }).click();
+  await fillBillItem(purchase, 1, 'Rice bag', '10', '10');
   await purchase.locator('input[name="billNo"]').fill('ACME-1');
   await purchase.getByRole('button', { name: 'Post purchase' }).click();
   await expect(page.getByRole('status')).toContainText('Purchase posted');

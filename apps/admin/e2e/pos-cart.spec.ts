@@ -1,4 +1,4 @@
-import { stockTask, addItemForm, reviewPayment } from './design-helpers';
+import { stockTask, addItemForm, reviewPayment, fillBillItem } from './design-helpers';
 import { test, expect } from '@playwright/test';
 
 const PASSWORD = 'TestOnly-2026!pw';
@@ -37,13 +37,10 @@ async function createItemWithStock(
   const purchase = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
-  await purchase.locator('select[name="itemId"]').selectOption({ label: name });
-  await purchase.locator('input[name="qty"]').fill(stockQty);
-  await purchase.locator('input[name="price"]').fill(priceRupees);
-  await purchase.getByRole('button', { name: 'Add line' }).click();
+  await fillBillItem(purchase, 1, name, stockQty, priceRupees);
   await purchase.getByRole('button', { name: 'Post purchase' }).click();
   await expect(page.getByRole('status')).toContainText(
-    'Purchase posted (1 line) and stock updated',
+    'Purchase posted (1 item) and stock updated',
   );
 }
 

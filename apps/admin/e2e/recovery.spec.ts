@@ -1,4 +1,4 @@
-import { stockTask, addItemForm, addCustomerForm } from './design-helpers';
+import { stockTask, addItemForm, addCustomerForm, fillBillItem } from './design-helpers';
 // V002 verifier findings VF-005/006/007: a write whose outcome is unknown is stored on the device
 // before it is sent, survives reload, is retried with the same request id, and is never replaced by
 // a new id. Each case commits on the real local database and then loses or withholds the answer.
@@ -142,10 +142,7 @@ test('purchase: a crash after commit keeps the bill locked; the retry posts it o
   const purchase = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
-  await purchase.locator('select[name="itemId"]').selectOption({ label: 'Rice bag' });
-  await purchase.locator('input[name="qty"]').fill('10');
-  await purchase.locator('input[name="price"]').fill('5');
-  await purchase.getByRole('button', { name: 'Add line' }).click();
+  await fillBillItem(purchase, 1, 'Rice bag', '10', '5');
   await purchase.locator('input[name="billNo"]').fill('REC-1');
   await purchase.getByRole('button', { name: 'Post purchase' }).click();
   await expect.poll(() => net.state.committed).toBe(true);
@@ -429,10 +426,7 @@ test('purchase without a supplier: a 502 after commit is retried in the same win
   const purchase = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
-  await purchase.locator('select[name="itemId"]').selectOption({ label: 'Loose item' });
-  await purchase.locator('input[name="qty"]').fill('4');
-  await purchase.locator('input[name="price"]').fill('5');
-  await purchase.getByRole('button', { name: 'Add line' }).click();
+  await fillBillItem(purchase, 1, 'Loose item', '4', '5');
   await purchase.getByRole('button', { name: 'Post purchase' }).click(); // no supplier, no bill no
   await expect(purchase.getByRole('button', { name: 'Retry same purchase' })).toBeVisible();
   await purchase.getByRole('button', { name: 'Retry same purchase' }).click();

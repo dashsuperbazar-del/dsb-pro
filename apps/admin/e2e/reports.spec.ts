@@ -1,4 +1,4 @@
-import { stockTask, addItemForm, reviewPayment } from './design-helpers';
+import { stockTask, addItemForm, reviewPayment, fillBillItem } from './design-helpers';
 import { test, expect } from '@playwright/test';
 
 const PASSWORD = 'TestOnly-2026!pw';
@@ -79,13 +79,10 @@ test('the missing reports show real low stock, item-wise sales, purchase registe
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
   await purchase.locator('input[name="billNo"]').fill('RPT-BILL-1');
-  await purchase.locator('select[name="itemId"]').selectOption({ label: 'Reports E2E Item' });
-  await purchase.locator('input[name="qty"]').fill('10');
-  await purchase.locator('input[name="price"]').fill('5');
-  await purchase.getByRole('button', { name: 'Add line' }).click();
+  await fillBillItem(purchase, 1, 'Reports E2E Item', '10', '5');
   await purchase.getByRole('button', { name: 'Post purchase' }).click();
   await expect(page.getByRole('status')).toContainText(
-    'Purchase posted (1 line) and stock updated',
+    'Purchase posted (1 item) and stock updated',
   );
 
   // Sell 8 of the 10 in stock: on_hand becomes 2, at or below the 5 threshold.

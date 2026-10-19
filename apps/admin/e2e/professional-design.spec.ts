@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { addItemForm, reviewPayment, stockTask } from './design-helpers';
+import { addItemForm, reviewPayment, stockTask, fillBillItem } from './design-helpers';
 test('professional phone workspace preserves drafts across task views and has reachable controls', async ({
   page,
 }, testInfo) => {
@@ -53,14 +53,11 @@ test('professional phone workspace preserves drafts across task views and has re
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
   await purchase.locator('input[name="billNo"]').fill('PREVIEW-1');
   await purchase.locator('select[name="partyId"]').selectOption({ label: 'Daily Traders' });
-  await purchase.locator('select[name="itemId"]').selectOption({ label: 'Daily rice' });
-  await purchase.locator('input[name="qty"]').fill('12');
-  await purchase.locator('input[name="price"]').fill('10');
+  await fillBillItem(purchase, 1, 'Daily rice', '12', '10');
   await stockTask(page, 'Items');
   await stockTask(page, 'Purchases');
-  await expect(purchase.locator('input[name="qty"]')).toHaveValue('12');
-  await expect(purchase.locator('input[name="price"]')).toHaveValue('10');
-  await purchase.getByRole('button', { name: 'Add line' }).click();
+  await expect(purchase.getByLabel('Item 1 quantity', { exact: true })).toHaveValue('12');
+  await expect(purchase.getByLabel('Item 1 rate ₹', { exact: true })).toHaveValue('10');
   await capture('02-purchase-phone');
   await purchase.getByRole('button', { name: 'Post purchase' }).click();
   await expect(page.getByRole('status')).toContainText('Purchase posted');

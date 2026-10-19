@@ -5,9 +5,12 @@ import { speechRecognitionCtor } from '../lib/voiceEntry';
 export function VoiceEntryButton({
   onText,
   disabled,
+  name,
 }: {
   onText: (text: string) => void;
   disabled?: boolean;
+  /** Accessible name when several Speak buttons share a screen, e.g. "Speak item 2". */
+  name?: string;
 }) {
   const [listening, setListening] = useState(false);
   const [error, setError] = useState('');
@@ -32,8 +35,8 @@ export function VoiceEntryButton({
     r.onerror = (e) =>
       setError(
         e.error === 'not-allowed'
-          ? 'Microphone permission was denied. Type the line instead.'
-          : 'Could not hear that. Try again or type the line.',
+          ? 'Microphone permission was denied. Type it instead.'
+          : 'Could not hear that. Try again or type it.',
       );
     r.onend = () => {
       rec.current = null;
@@ -45,8 +48,14 @@ export function VoiceEntryButton({
   }
   return (
     <span>
-      <button type="button" disabled={disabled} aria-pressed={listening} onClick={toggle}>
-        {listening ? 'Stop listening' : 'Speak line'}
+      <button
+        type="button"
+        disabled={disabled}
+        aria-pressed={listening}
+        aria-label={listening || !name ? undefined : name}
+        onClick={toggle}
+      >
+        {listening ? 'Stop listening' : 'Speak'}
       </button>
       {listening && (
         <span class="muted" role="status">
