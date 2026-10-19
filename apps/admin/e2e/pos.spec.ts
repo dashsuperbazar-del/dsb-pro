@@ -1,4 +1,4 @@
-import { stockTask, addItemForm, reviewPayment } from './design-helpers';
+import { stockTask, addItemForm, reviewPayment, fillBillItem } from './design-helpers';
 import { test, expect } from '@playwright/test';
 
 const PASSWORD = 'TestOnly-2026!pw';
@@ -43,26 +43,27 @@ test('real browser money path posts stock then finalizes a paid sale', async ({
   await page.getByPlaceholder('SKU', { exact: true }).fill(`POS-${Date.now()}`);
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
-  await expect(page.getByRole('status')).toContainText('Created POS E2E Item');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Created POS E2E Item' }).first(),
+  ).toBeVisible();
 
   await stockTask(page, 'Items');
   await page.getByLabel('Item details').selectOption({ label: 'POS E2E Item' });
   const priceForm = page.getByRole('button', { name: 'Set price' }).locator('xpath=..');
   await priceForm.locator('input[name="price"]').fill('10');
   await page.getByRole('button', { name: 'Set price' }).click();
-  await expect(page.getByRole('status')).toContainText('Price history updated');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Price history updated' }).first(),
+  ).toBeVisible();
 
   await stockTask(page, 'Purchases');
   const purchase = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
-  await purchase.locator('select[name="itemId"]').selectOption({ label: 'POS E2E Item' });
-  await purchase.locator('input[name="qty"]').fill('5');
-  await purchase.locator('input[name="price"]').fill('5');
-  await purchase.getByRole('button', { name: 'Add line' }).click();
+  await fillBillItem(purchase, 1, 'POS E2E Item', '5', '5');
   await purchase.getByRole('button', { name: 'Post purchase' }).click();
   await expect(page.getByRole('status')).toContainText(
-    'Purchase posted (1 line) and stock updated',
+    'Purchase posted (1 item) and stock updated',
   );
 
   await page.goto('/pos');
@@ -76,7 +77,9 @@ test('real browser money path posts stock then finalizes a paid sale', async ({
   await page.getByLabel('Amount ₹').first().fill('10');
   await reviewPayment(page);
   await page.getByRole('button', { name: 'Finalize sale' }).click();
-  await expect(page.getByRole('status')).toContainText('Sale finalized');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Sale finalized' }).first(),
+  ).toBeVisible();
   await expect(page.locator('table').last()).toContainText('₹10.00');
 
   await page.goto('/sales-history');
@@ -137,8 +140,12 @@ test('real browser money path posts stock then finalizes a paid sale', async ({
   await context.setOffline(true);
   await page.getByLabel('Return quantity for POS E2E Item').fill('1');
   await page.getByRole('button', { name: 'Post return' }).click();
-  await expect(page.getByRole('status')).toContainText('Refund pending confirmation');
-  await expect(page.getByRole('status')).toContainText('do not hand over cash');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Refund pending confirmation' }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'do not hand over cash' }).first(),
+  ).toBeVisible();
   // The provisional document and stock overlay survive a full app restart.
   await page.reload();
   const queue = page
@@ -259,7 +266,9 @@ test('real browser money path posts stock then finalizes a paid sale', async ({
   await page.getByLabel('Source document').selectOption({ index: 1 });
   await page.getByLabel('Return quantity for POS E2E Item').fill('1');
   await page.getByRole('button', { name: 'Post return' }).click();
-  await expect(page.getByRole('status')).toContainText('Refund pending confirmation');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Refund pending confirmation' }).first(),
+  ).toBeVisible();
   await context.setOffline(false);
   await expect(
     page
@@ -369,23 +378,26 @@ test('bill total rounds to the nearest rupee while the item keeps exact paise (R
   await page.getByPlaceholder('Item name').fill('Round Item');
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
-  await expect(page.getByRole('status')).toContainText('Created Round Item');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Created Round Item' }).first(),
+  ).toBeVisible();
   await stockTask(page, 'Items');
   await page.getByLabel('Item details').selectOption({ label: 'Round Item' });
   const priceForm = page.getByRole('button', { name: 'Set price' }).locator('xpath=..');
   await priceForm.locator('input[name="price"]').fill('10.49');
   await page.getByRole('button', { name: 'Set price' }).click();
-  await expect(page.getByRole('status')).toContainText('Price history updated');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Price history updated' }).first(),
+  ).toBeVisible();
   await stockTask(page, 'Purchases');
   const purchase = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
-  await purchase.locator('select[name="itemId"]').selectOption({ label: 'Round Item' });
-  await purchase.locator('input[name="qty"]').fill('5');
-  await purchase.locator('input[name="price"]').fill('5');
-  await purchase.getByRole('button', { name: 'Add line' }).click();
+  await fillBillItem(purchase, 1, 'Round Item', '5', '5');
   await purchase.getByRole('button', { name: 'Post purchase' }).click();
-  await expect(page.getByRole('status')).toContainText('Purchase posted');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Purchase posted' }).first(),
+  ).toBeVisible();
 
   await page.goto('/pos');
   await page.getByLabel('Find product').fill('Round Item');
@@ -398,7 +410,9 @@ test('bill total rounds to the nearest rupee while the item keeps exact paise (R
   await page.getByLabel('Amount ₹').first().fill('10');
   await reviewPayment(page);
   await page.getByRole('button', { name: 'Finalize sale' }).click();
-  await expect(page.getByRole('status')).toContainText('Sale finalized');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Sale finalized' }).first(),
+  ).toBeVisible();
   await expect(page.locator('table').last()).toContainText('₹10.00');
 });
 

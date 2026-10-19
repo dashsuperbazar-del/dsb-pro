@@ -59,7 +59,12 @@ test('password reset requires an email and then gives privacy-safe feedback', as
 
   await page.getByLabel('Email').fill(uniqueEmail());
   await page.getByRole('button', { name: 'Forgot password?' }).click();
-  await expect(page.getByRole('status')).toContainText(/if that account exists/i);
+  await expect(
+    page
+      .getByRole('status')
+      .filter({ hasText: /if that account exists/i })
+      .first(),
+  ).toBeVisible();
 });
 
 test('signup rejects mismatched passwords before calling the server', async ({ page }) => {

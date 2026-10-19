@@ -38,7 +38,7 @@ test('reports the heard text once and resets after the recogniser ends', async (
     last.onend();
   });
   expect(onText).toHaveBeenCalledWith('oil 2');
-  expect(host.textContent).toContain('Speak line');
+  expect(host.textContent).toContain('Speak');
   await act(async () => host.querySelector('button')!.click());
   await act(async () => {
     last.onerror({ error: 'not-allowed' });

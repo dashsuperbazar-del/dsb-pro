@@ -1,4 +1,4 @@
-import { stockTask, addItemForm, reviewPayment } from './design-helpers';
+import { stockTask, addItemForm, reviewPayment, fillBillItem } from './design-helpers';
 import { test, expect } from '@playwright/test';
 
 const PASSWORD = 'TestOnly-2026!pw';
@@ -48,7 +48,9 @@ test('Phase 6 reports and recovery surface loads and invariant check passes', as
   await page.getByRole('button', { name: 'Save full device backup ZIP' }).click();
   const backup = await downloadPromise;
   expect(backup.suggestedFilename()).toMatch(/^dsb-pro-full-device-backup-\d{4}-\d{2}-\d{2}\.zip$/);
-  await expect(page.getByRole('status')).toContainText('one PDF per invoice');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'one PDF per invoice' }).first(),
+  ).toBeVisible();
 });
 
 test('the missing reports show real low stock, item-wise sales, purchase register and customer aging data', async ({
@@ -61,14 +63,18 @@ test('the missing reports show real low stock, item-wise sales, purchase registe
   await page.getByPlaceholder('Item name').fill('Reports E2E Item');
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
-  await expect(page.getByRole('status')).toContainText('Created Reports E2E Item');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Created Reports E2E Item' }).first(),
+  ).toBeVisible();
   await stockTask(page, 'Items');
   await page.getByLabel('Item details').selectOption({ label: 'Reports E2E Item' });
 
   // The reorder threshold has never been settable from the UI before this.
   await page.getByLabel('Reorder threshold').fill('5');
   await page.getByRole('button', { name: 'Save reorder threshold' }).click();
-  await expect(page.getByRole('status')).toContainText('Reorder threshold saved');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Reorder threshold saved' }).first(),
+  ).toBeVisible();
 
   const priceForm = page.getByRole('button', { name: 'Set price' }).locator('xpath=..');
   await priceForm.locator('input[name="price"]').fill('10');
@@ -79,13 +85,10 @@ test('the missing reports show real low stock, item-wise sales, purchase registe
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
   await purchase.locator('input[name="billNo"]').fill('RPT-BILL-1');
-  await purchase.locator('select[name="itemId"]').selectOption({ label: 'Reports E2E Item' });
-  await purchase.locator('input[name="qty"]').fill('10');
-  await purchase.locator('input[name="price"]').fill('5');
-  await purchase.getByRole('button', { name: 'Add line' }).click();
+  await fillBillItem(purchase, 1, 'Reports E2E Item', '10', '5');
   await purchase.getByRole('button', { name: 'Post purchase' }).click();
   await expect(page.getByRole('status')).toContainText(
-    'Purchase posted (1 line) and stock updated',
+    'Purchase posted (1 item) and stock updated',
   );
 
   // Sell 8 of the 10 in stock: on_hand becomes 2, at or below the 5 threshold.
@@ -99,7 +102,9 @@ test('the missing reports show real low stock, item-wise sales, purchase registe
   await page.getByLabel('Amount ₹').first().fill('80');
   await reviewPayment(page);
   await page.getByRole('button', { name: 'Finalize sale' }).click();
-  await expect(page.getByRole('status')).toContainText('Sale finalized');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Sale finalized' }).first(),
+  ).toBeVisible();
 
   // A credit sale to a real customer, left unpaid, feeds customer aging.
   await page.getByLabel('Find product').fill('Reports E2E Item');
@@ -110,10 +115,14 @@ test('the missing reports show real low stock, item-wise sales, purchase registe
   await page.getByText('Add a new customer', { exact: true }).click();
   await page.getByLabel('Quick customer').fill('Aging E2E Customer');
   await page.getByRole('button', { name: 'Create & select' }).click();
-  await expect(page.getByRole('status')).toContainText('Aging E2E Customer created');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Aging E2E Customer created' }).first(),
+  ).toBeVisible();
   await reviewPayment(page);
   await page.getByRole('button', { name: 'Finalize sale' }).click();
-  await expect(page.getByRole('status')).toContainText('Sale finalized');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Sale finalized' }).first(),
+  ).toBeVisible();
 
   await page.goto('/reports');
   await page.getByRole('button', { name: 'Refresh' }).click();

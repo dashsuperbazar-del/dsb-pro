@@ -2,8 +2,17 @@ import { CameraScanner } from '../components/CameraScanner';
 import { PriceHistory } from '../components/PriceHistory';
 import { DemandChart } from '../components/DemandChart';
 import { learnedUnits } from '../lib/unitLearning';
-import { VoiceEntryButton } from '../components/VoiceEntryButton';
-import { matchItems, parseVoiceEntry, unitLevelFor } from '../lib/voiceEntry';
+import { PurchaseBillCards } from '../components/PurchaseBillCards';
+import {
+  addLineAsCard,
+  billFromCards,
+  cardDrafts,
+  cardFromLine,
+  cardsFromDraft,
+  emptyCard,
+  isBlankCard,
+  type BillCard,
+} from '../lib/billCards';
 import { SnapshotNote } from '../components/SnapshotNote';
 import {
   peekSnapshot,
@@ -16,6 +25,7 @@ import {
   addItemBarcode,
   createItem,
   createParty,
+  findItemByBarcode,
   onAuthStateChange,
   getPurchaseDetail,
   listPurchaseHistory,
@@ -39,21 +49,17 @@ import {
 } from '@dsb-pro/adapters';
 import {
   buildLegacyDsbImportPlan,
-  canonicalQuantity,
   parseRupeesToPaise,
-  quantityTimesPaise,
   type LegacyDsbImportPlan,
 } from '@dsb-pro/core';
 import { repeatPurchase, rankedPurchaseParties } from '../lib/purchaseWorkflow';
 import { readCatalogForScreen, markCatalogDirty, catalogDirtySince } from '../lib/catalogRead';
 import { boundedItemOptions } from '../lib/itemOptions';
-import { deriveUnitCostFromTotal } from '../lib/purchaseCost';
-import { CostDerivation } from '../components/CostDerivation';
 import { BatchPurchaseEntry } from '../components/BatchPurchaseEntry';
 import { QuickBillEntry } from '../components/QuickBillEntry';
 import { paperTotalCheck } from '../lib/quickBill';
 import { shopContext } from '../lib/shopContext';
-import { getSyncedOfflineCatalog, runSyncNow } from '../lib/offlineSync';
+import { findOfflineBarcode, getSyncedOfflineCatalog, runSyncNow } from '../lib/offlineSync';
 import { paiseToDecimal, rupees } from '../lib/money';
 import { compressItemImage } from '../lib/compressImage';
 import { BillDocumentPreview } from '../components/BillDocumentPreview';
@@ -147,21 +153,14 @@ export function InventoryScreen({
   selectedRef.current = selected;
   const [pricesLoading, setPricesLoading] = useState(false);
   const [pricesFailed, setPricesFailed] = useState(false);
-  const [purchaseLineItemId, setPurchaseLineItemId] = useState('');
   const [prices, setPrices] = useState<ItemPrice[]>([]);
-  const [purchaseLineUnitLevel, setPurchaseLineUnitLevel] = useState<1 | 2 | 3>(1);
-  const [purchaseLineQty, setPurchaseLineQty] = useState('');
-  const [purchaseLinePrice, setPurchaseLinePrice] = useState('');
-  // 'total': purchaseLinePrice holds the whole line total and the unit cost is derived (never silently rounded).
-  const [purchaseCostMode, setPurchaseCostMode] = useState<'unit' | 'total'>('unit');
-  const [purchaseCart, setPurchaseCart] = useState<
-    { item: Item; unitLevel: 1 | 2 | 3; qty: string; unitPricePaise: number }[]
-  >([]);
+  // Bill entry cards (old DSB layout): every item of the bill is editable at once. The posted lines are
+  // derived from the cards by lib/billCards with the old add-line rules; a total is never silently rounded.
+  const [purchaseCards, setPurchaseCards] = useState<BillCard[]>(() => [emptyCard()]);
   const [purchaseSupplier, setPurchaseSupplier] = useState('');
   const [purchaseBillNo, setPurchaseBillNo] = useState('');
   const [purchaseDiscount, setPurchaseDiscount] = useState('');
   const [purchaseExtra, setPurchaseExtra] = useState('');
-  const [purchaseItemSearch, setPurchaseItemSearch] = useState('');
   const [recentBills, setRecentBills] = useState<PurchaseRecord[]>([]);
   const [recentDetail, setRecentDetail] = useState<Awaited<
     ReturnType<typeof getPurchaseDetail>
@@ -177,7 +176,6 @@ export function InventoryScreen({
   partiesRef.current = parties;
   const [contextBusy, setContextBusy] = useState(false);
   const [purchaseContextReady, setPurchaseContextReady] = useState(!purchaseOnly);
-  const [editingPurchaseLine, setEditingPurchaseLine] = useState<number | null>(null);
   const [purchaseClientId, setPurchaseClientId] = useState<string>(() => crypto.randomUUID());
   const purchaseClientRef = useRef(purchaseClientId);
   purchaseClientRef.current = purchaseClientId;
@@ -406,12 +404,10 @@ export function InventoryScreen({
     if (
       (billDocument ||
         draftTouched ||
-        purchaseCart.length ||
+        purchaseCards.some((c) => !isBlankCard(c)) ||
         purchaseBillNo ||
         purchaseDiscount ||
-        purchaseExtra ||
-        purchaseLineQty ||
-        purchaseLinePrice) &&
+        purchaseExtra) &&
       !confirm('Replace this unfinished purchase with the selected new draft?')
     ) {
       contextNeedsReset.current = true;
@@ -433,7 +429,7 @@ export function InventoryScreen({
           if (d.bill.party_id && !partiesRef.current.some((p) => p.id === d.bill.party_id))
             throw new Error('The original supplier is unavailable. Start a new purchase manually.');
           setPurchaseSupplier(d.bill.party_id || '');
-          setPurchaseCart(cart);
+          setPurchaseCards(cart.map(cardFromLine));
           setPurchaseDiscount(paiseToDecimal(d.bill.discount_paise));
           setPurchaseExtra(paiseToDecimal(d.bill.extra_charges_paise));
           setMessage(
@@ -443,7 +439,7 @@ export function InventoryScreen({
           if (purchaseSupplierId && !partiesRef.current.some((p) => p.id === purchaseSupplierId))
             throw new Error('Supplier is unavailable.');
           setPurchaseSupplier(purchaseSupplierId);
-          setPurchaseCart([]);
+          setPurchaseCards([emptyCard()]);
           setPurchaseDiscount('');
           setPurchaseExtra('');
         }
@@ -453,11 +449,6 @@ export function InventoryScreen({
         setBillDocument(null);
         setDocumentBusy(false);
         setDocumentSaveError('');
-        setEditingPurchaseLine(null);
-        setPurchaseItemSearch('');
-        setPurchaseLineItemId('');
-        setPurchaseLineQty('');
-        setPurchaseLinePrice('');
         setPurchaseClientId(crypto.randomUUID());
         completed = true;
       } catch (e) {
@@ -507,6 +498,11 @@ export function InventoryScreen({
     window.addEventListener('storage', changed);
     return () => window.removeEventListener('storage', changed);
   }, [draftPrefix]);
+  const purchaseBill = useMemo(() => billFromCards(purchaseCards), [purchaseCards]);
+  const postButton = useRef<HTMLButtonElement>(null);
+  // A refused post's reason, shown next to the Post button until the items change.
+  const [barProblem, setBarProblem] = useState('');
+  useEffect(() => setBarProblem(''), [purchaseCards]);
   const draftSnapshot: PurchaseDraft = {
     version: 1,
     clientId: purchaseClientId,
@@ -516,15 +512,18 @@ export function InventoryScreen({
     businessDate,
     discount: purchaseDiscount,
     extra: purchaseExtra,
-    cart: purchaseCart,
-    search: purchaseItemSearch,
-    lineItem: items.find((i) => i.id === purchaseLineItemId) ?? null,
-    unitLevel: purchaseLineUnitLevel,
-    qty: purchaseLineQty,
-    price: purchaseLinePrice,
-    costMode: purchaseCostMode,
+    // `cart` keeps the complete cards (what would post) for older readers and the draft list;
+    // `cards` keeps every card as typed, including unfinished ones.
+    cart: purchaseBill.lines,
+    search: '',
+    lineItem: null,
+    unitLevel: 1,
+    qty: '',
+    price: '',
+    costMode: 'unit',
     ...(purchaseExpectedTotal ? { expectedTotalPaise: purchaseExpectedTotal } : {}),
-    editingLine: editingPurchaseLine,
+    editingLine: null,
+    cards: cardDrafts(purchaseCards),
     document: billDocument,
     documentIssue: documentSaveError,
   };
@@ -541,13 +540,10 @@ export function InventoryScreen({
     if (!(
       billDocument ||
       draftTouched ||
-      purchaseCart.length ||
+      purchaseCards.some((c) => !isBlankCard(c)) ||
       purchaseBillNo ||
       purchaseDiscount ||
-      purchaseExtra ||
-      purchaseLineItemId ||
-      purchaseLineQty ||
-      purchaseLinePrice
+      purchaseExtra
     ))
       return;
     try {
@@ -575,13 +571,7 @@ export function InventoryScreen({
     businessDate,
     purchaseDiscount,
     purchaseExtra,
-    purchaseCart,
-    purchaseItemSearch,
-    purchaseLineItemId,
-    purchaseLineUnitLevel,
-    purchaseLineQty,
-    purchaseLinePrice,
-    editingPurchaseLine,
+    purchaseCards,
     billDocument,
     documentSaveError,
   ]);
@@ -597,7 +587,7 @@ export function InventoryScreen({
     )
       return;
     if (
-      (draftTouched || purchaseCart.length || purchaseBillNo || purchaseLineItemId) &&
+      (draftTouched || purchaseCards.some((c) => !isBlankCard(c)) || purchaseBillNo) &&
       !confirm('Switch to this saved draft? Your current draft stays saved on this device.')
     )
       return;
@@ -614,15 +604,8 @@ export function InventoryScreen({
       setBusinessDate(d.businessDate);
       setPurchaseDiscount(d.discount);
       setPurchaseExtra(d.extra);
-      setPurchaseCart(d.cart);
-      setPurchaseItemSearch(d.search);
-      setPurchaseLineItemId(d.lineItem?.id ?? '');
-      setPurchaseLineUnitLevel(d.unitLevel);
-      setPurchaseLineQty(d.qty);
-      setPurchaseLinePrice(d.price);
-      setPurchaseCostMode(d.costMode ?? 'unit');
+      setPurchaseCards(cardsFromDraft(d));
       setPurchaseExpectedTotal(d.expectedTotalPaise);
-      setEditingPurchaseLine(d.editingLine);
       setDraftTouched(true);
       setView('purchase');
       setError('');
@@ -633,17 +616,12 @@ export function InventoryScreen({
   }
   const unitSuggestions = useMemo(() => learnedUnits(items), [items]);
   const selectedItem = items.find((i) => i.id === selected);
-  const purchaseLineItem = items.find((i) => i.id === purchaseLineItemId);
   const detailPicker = boundedItemOptions(items, itemSearch, selected);
-  const purchasePicker = boundedItemOptions(items, purchaseItemSearch, purchaseLineItemId);
   const selectedStock = useMemo(
     () => stock.find((s) => s.item_id === selected)?.qty_base ?? 0,
     [stock, selected],
   );
-  const purchaseTotalPaise = useMemo(
-    () => purchaseCart.reduce((sum, l) => sum + quantityTimesPaise(l.qty, l.unitPricePaise), 0),
-    [purchaseCart],
-  );
+  const purchaseTotalPaise = purchaseBill.itemsTotalPaise;
   const payablePaise = (() => {
     try {
       return purchaseTotalPaise - paise(purchaseDiscount) + paise(purchaseExtra);
@@ -659,12 +637,6 @@ export function InventoryScreen({
       return 'Check amounts';
     }
   })();
-  const unitLabel = (item: Item, unitLevel: 1 | 2 | 3) =>
-    unitLevel === 1
-      ? item.unit1
-      : unitLevel === 2
-        ? item.unit2 || item.unit1
-        : item.unit3 || item.unit2 || item.unit1;
 
   async function chooseLegacyBackup(ev: Event) {
     setError('');
@@ -796,62 +768,72 @@ export function InventoryScreen({
       setError(String(e));
     }
   }
-  function addPurchaseLine(ev: Event) {
-    ev.preventDefault();
-    setError('');
-    const item = items.find((i) => i.id === purchaseLineItemId);
-    let qty: string;
-    let unitPricePaise = purchaseCostMode === 'unit' ? paise(purchaseLinePrice) : 0;
-    if (!item) {
-      setError('Choose an item for the purchase line.');
-      return;
-    }
-    try {
-      qty = canonicalQuantity(purchaseLineQty);
-    } catch {
-      setError('Enter a purchase quantity with at most 6 decimal places.');
-      return;
-    }
-    if (purchaseCostMode === 'total') {
-      const derived = deriveUnitCostFromTotal(purchaseLineQty, purchaseLinePrice);
-      if (!derived.ok) {
-        setError(derived.message);
-        return;
+  // Card camera scan: the device copy first when offline, as on the POS screen. Fills that card only.
+  async function findBarcodeForCard(code: string) {
+    let hit;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) hit = await findOfflineBarcode(code);
+    else {
+      try {
+        hit = await findItemByBarcode(code);
+      } catch {
+        hit = await findOfflineBarcode(code);
       }
-      if (!derived.exact) {
-        setError(
-          'This total cannot be stored exactly as a unit cost. Use the suggested unit cost shown below, or enter the unit cost yourself.',
-        );
-        return;
-      }
-      unitPricePaise = derived.unitPaise;
-    } else if (!purchaseLinePrice.trim() || !(unitPricePaise >= 0)) {
-      setError('Enter a unit cost.');
-      return;
     }
-    const line = { item, unitLevel: purchaseLineUnitLevel, qty, unitPricePaise };
-    setPurchaseCart((v) =>
-      editingPurchaseLine === null
-        ? [...v, line]
-        : v.map((old, n) => (n === editingPurchaseLine ? line : old)),
-    );
-    setEditingPurchaseLine(null);
-    setPurchaseItemSearch('');
-    setPurchaseLineItemId('');
-    setPurchaseLineUnitLevel(1);
-    setPurchaseLineQty('');
-    setPurchaseLinePrice('');
-    setPurchaseCostMode('unit');
+    if (!hit) return null;
+    const item = itemsRef.current.find((i) => i.id === hit.item_id);
+    if (!item) throw new Error('Barcode item is unavailable.');
+    return { item, unitLevel: hit.unit_level };
   }
-  function removePurchaseLine(index: number) {
-    setPurchaseCart((v) => v.filter((_, i) => i !== index));
-    setEditingPurchaseLine(null);
-    setPurchaseLineItemId('');
-    setPurchaseLineQty('');
-    setPurchaseLinePrice('');
+  // Old DSB "↺ Repeat": the items of this supplier's last bill replace the cards (discount/extra untouched).
+  function repeatLastBill() {
+    if (!recentDetail) return;
+    let cards: BillCard[];
+    try {
+      cards = repeatPurchase(recentDetail.bill, recentDetail.lines, items).map(cardFromLine);
+    } catch (e) {
+      setError(String(e));
+      return;
+    }
+    if (
+      purchaseCards.some((c) => !isBlankCard(c)) &&
+      !confirm(
+        `Replace the items on this bill with the ${cards.length} item${cards.length === 1 ? '' : 's'} of the last bill from this supplier?`,
+      )
+    )
+      return;
+    setPurchaseCards(cards);
+    setDraftTouched(true);
+    setMessage('Items copied from the last bill. Check each quantity and rate.');
+  }
+  // Enter in a field moves to the next control instead of submitting: implicit form submission would post
+  // a half-entered bill. Posting happens only from the Post button.
+  function purchaseFormKeyDown(ev: KeyboardEvent) {
+    const target = ev.target as HTMLElement;
+    if (
+      ev.key !== 'Enter' ||
+      !(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)
+    )
+      return;
+    ev.preventDefault();
+    const form = target.form;
+    if (!form) return;
+    const controls = [...form.elements].filter(
+      (el): el is HTMLElement =>
+        (el instanceof HTMLInputElement ||
+          el instanceof HTMLSelectElement ||
+          el instanceof HTMLButtonElement) &&
+        !el.disabled &&
+        !(el instanceof HTMLInputElement && el.type === 'hidden') &&
+        !el.closest('[hidden], details:not([open])'),
+    );
+    const at = controls.indexOf(target);
+    const next = controls[at + 1];
+    if (next && next !== postButton.current) next.focus();
   }
   async function addPurchase(ev: Event) {
     ev.preventDefault();
+    // Only the Post button posts (never Enter in a field, never a script-driven submit without it).
+    if (!postButton.current || (ev as SubmitEvent).submitter !== postButton.current) return;
     if (purchaseBusy || contextBusy || (!purchaseLocked && !purchaseContextReady) || accountChanged)
       return;
     setError('');
@@ -862,16 +844,28 @@ export function InventoryScreen({
       setError('Confirm the document upload, or explicitly remove the attachment, before posting.');
       return;
     }
-    if (!purchaseLocked && editingPurchaseLine !== null) {
-      setError('Update or cancel the line edit before posting this purchase.');
+    if (!purchaseLocked && purchaseBill.problems.length) {
+      const first = purchaseBill.problems[0]!;
+      const problem = `Item ${first.index + 1}: ${first.message}${purchaseBill.problems.length > 1 ? ` (${purchaseBill.problems.length} items need a look.)` : ''}`;
+      setError(problem);
+      setBarProblem(problem);
+      // Take the user to the first card that needs a look, at the field to fix.
+      const bad = purchaseCards[first.index];
+      const field = !bad?.item ? 'name' : /quantity/i.test(first.message) ? 'qty' : 'price';
+      const badCard = (ev.currentTarget as HTMLFormElement).querySelectorAll('.bill-card')[
+        first.index
+      ];
+      const input = badCard?.querySelector<HTMLInputElement>(`[data-field="${field}"]`);
+      input?.scrollIntoView?.({ block: 'center' });
+      input?.focus();
       return;
     }
     if (!shopId || !businessDate) {
       setError('Shop data is still loading.');
       return;
     }
-    if (!purchaseCart.length && !(purchaseLocked && lockedPurchase.current)) {
-      setError('Add at least one purchase line.');
+    if (!purchaseBill.lines.length && !(purchaseLocked && lockedPurchase.current)) {
+      setError('Add at least one item.');
       return;
     }
     if (!purchaseLocked) {
@@ -886,7 +880,7 @@ export function InventoryScreen({
     const lineCount =
       purchaseLocked && lockedPurchase.current
         ? lockedPurchase.current.lines.length
-        : purchaseCart.length;
+        : purchaseBill.lines.length;
     // A retry after an unknown outcome resends the frozen request byte for byte.
     const request = (purchaseLocked && lockedPurchase.current) || {
       shopId,
@@ -897,7 +891,7 @@ export function InventoryScreen({
       extraChargesPaise: paise(String(f.get('extra'))),
       clientId: purchaseClientId,
       billImagePath: billDocument?.path,
-      lines: purchaseCart.map((l) => ({
+      lines: purchaseBill.lines.map((l) => ({
         itemId: l.item.id,
         unitLevel: l.unitLevel,
         qty: l.qty,
@@ -954,7 +948,7 @@ export function InventoryScreen({
         setPurchaseLocked(true);
       }
       const anotherNote = another
-        ? ' Another unconfirmed purchase from this device is locked in the form now — retry it first; your cart is kept.'
+        ? ' Another unconfirmed purchase from this device is locked in the form now — retry it first; your items are kept.'
         : '';
       if (outcome.kind === 'rejected') {
         // The database refused and rolled back: nothing posted; the cart stays for correction.
@@ -971,16 +965,11 @@ export function InventoryScreen({
         setBillDocument(null);
         setDocumentBusy(false);
         setDocumentSaveError('');
-        setPurchaseCart([]);
+        setPurchaseCards([emptyCard()]);
         setPurchaseExpectedTotal(undefined);
         setPurchaseBillNo('');
         setPurchaseDiscount('');
         setPurchaseExtra('');
-        setEditingPurchaseLine(null);
-        setPurchaseLineItemId('');
-        setPurchaseItemSearch('');
-        setPurchaseLineQty('');
-        setPurchaseLinePrice('');
         contextNeedsReset.current = true;
       }
       if (draftPrefix) {
@@ -1002,7 +991,7 @@ export function InventoryScreen({
       let refreshNote = '';
       await refresh(true).catch((e) => (refreshNote = ` (Refresh failed: ${String(e)})`));
       setMessage(
-        `Purchase posted (${lineCount} line${lineCount === 1 ? '' : 's'}) and stock updated.${refreshNote}`,
+        `Purchase posted (${lineCount} item${lineCount === 1 ? '' : 's'}) and stock updated.${refreshNote}`,
       );
     } finally {
       setPurchaseBusy(false);
@@ -1537,7 +1526,7 @@ export function InventoryScreen({
                     {s.draft.expectedTotalPaise
                       ? `paper total ${rupees(s.draft.expectedTotalPaise)} · `
                       : ''}
-                    {s.draft.cart.length} lines · saved{' '}
+                    {s.draft.cart.length} item{s.draft.cart.length === 1 ? '' : 's'} · saved{' '}
                     {new Date(s.draft.savedAt).toISOString().slice(0, 10)}
                   </span>
                   <button
@@ -1575,7 +1564,7 @@ export function InventoryScreen({
               ))}
           </details>
         )}
-        <form onSubmit={addPurchase}>
+        <form onSubmit={addPurchase} onKeyDown={purchaseFormKeyDown}>
           {purchaseLocked && (
             <div class="alert" role="alert">
               <p>
@@ -1590,6 +1579,63 @@ export function InventoryScreen({
               )}
             </div>
           )}
+          <fieldset
+            disabled={purchaseLocked || contextBusy || documentBusy || !purchaseContextReady}
+            class="plain"
+          >
+            <label>
+              Supplier
+              <select
+                name="partyId"
+                value={purchaseSupplier}
+                onChange={(e) => setPurchaseSupplier(e.currentTarget.value)}
+              >
+                <option value="">No supplier</option>
+                {parties.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>{' '}
+            {purchaseOnly && (
+              <div class="shortcut-chips" aria-label="Recent suppliers">
+                {rankedPurchaseParties(parties, recentBills, businessDate)
+                  .slice(0, 6)
+                  .map((p) => (
+                    <button
+                      type="button"
+                      aria-pressed={purchaseSupplier === p.id}
+                      onClick={() => {
+                        setPurchaseSupplier(p.id);
+                        setDraftTouched(true);
+                      }}
+                    >
+                      {p.name}
+                    </button>
+                  ))}
+              </div>
+            )}
+            <label>
+              Bill no.{' '}
+              <input
+                name="billNo"
+                placeholder="Bill no."
+                value={purchaseBillNo}
+                onInput={(e) => setPurchaseBillNo(e.currentTarget.value)}
+              />
+            </label>{' '}
+            <label>
+              Business date
+              <input
+                name="date"
+                type="date"
+                value={businessDate}
+                onInput={(e) => setBusinessDate((e.currentTarget as HTMLInputElement).value)}
+                required
+              />
+            </label>{' '}
+          </fieldset>
           {draftPrefix && (
             <BillAttachmentEditor
               key={purchaseClientId}
@@ -1667,320 +1713,83 @@ export function InventoryScreen({
             disabled={purchaseLocked || contextBusy || documentBusy || !purchaseContextReady}
             class="plain"
           >
-            <label>
-              Bill no.{' '}
-              <input
-                name="billNo"
-                placeholder="Bill no."
-                value={purchaseBillNo}
-                onInput={(e) => setPurchaseBillNo(e.currentTarget.value)}
-              />
-            </label>{' '}
-            <label>
-              Business date
-              <input
-                name="date"
-                type="date"
-                value={businessDate}
-                onInput={(e) => setBusinessDate((e.currentTarget as HTMLInputElement).value)}
-                required
-              />
-            </label>{' '}
-            <label>
-              Supplier
-              <select
-                name="partyId"
-                value={purchaseSupplier}
-                onChange={(e) => setPurchaseSupplier(e.currentTarget.value)}
-              >
-                <option value="">No supplier</option>
-                {parties.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </label>{' '}
-            {purchaseOnly && (
-              <div class="shortcut-chips" aria-label="Recent suppliers">
-                {rankedPurchaseParties(parties, recentBills, businessDate)
-                  .slice(0, 6)
-                  .map((p) => (
-                    <button
-                      type="button"
-                      aria-pressed={purchaseSupplier === p.id}
-                      onClick={() => {
-                        setPurchaseSupplier(p.id);
-                        setDraftTouched(true);
-                      }}
-                    >
-                      {p.name}
-                    </button>
-                  ))}
-              </div>
-            )}
-            {purchaseOnly && recentDetail && (
-              <div class="shortcut-chips" aria-label="Recent supplier items">
-                {recentDetail.lines.slice(0, 8).map((l) => (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      try {
-                        const line = repeatPurchase(recentDetail.bill, [l], items)[0];
-                        setPurchaseCart((c) => [...c, line]);
-                        setMessage(
-                          'Added from the last supplier bill. Review quantity and historical cost.',
-                        );
-                      } catch (e) {
-                        setError(String(e));
-                      }
-                    }}
-                  >
-                    {l.item_name_snapshot} · {rupees(l.unit_price_paise)}/{l.unit_name_snapshot}
-                  </button>
-                ))}
-              </div>
-            )}
-            <label>
-              Discount ₹{' '}
-              <input
-                name="discount"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="Discount ₹"
-                value={purchaseDiscount}
-                onInput={(e) => setPurchaseDiscount(e.currentTarget.value)}
-              />
-            </label>{' '}
-            <label>
-              Extra ₹{' '}
-              <input
-                name="extra"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="Extra ₹"
-                value={purchaseExtra}
-                onInput={(e) => setPurchaseExtra(e.currentTarget.value)}
-              />
-            </label>
-            <fieldset>
-              <legend>Add purchase line</legend>
-              <VoiceEntryButton
-                disabled={purchaseLocked || editingPurchaseLine !== null}
-                onText={(text) => {
-                  const v = parseVoiceEntry(text);
-                  if (!v) {
-                    setMessage(
-                      `Did not understand “${text}”. Say the item name, then the quantity.`,
-                    );
-                    return;
-                  }
-                  setPurchaseItemSearch(v.name);
-                  const hits = matchItems(items, v.name);
-                  if (hits.length !== 1) {
-                    setPurchaseLineItemId('');
-                    setPurchaseLineQty('');
-                    setPurchaseLinePrice('');
-                    setMessage(
-                      hits.length
-                        ? `Heard “${text}”: ${hits.length} items match. Pick one, then check the quantity and price.`
-                        : `Heard “${text}”: no item matches “${v.name}”.`,
-                    );
-                    return;
-                  }
-                  const item = hits[0]!;
-                  setPurchaseLineItemId(item.id);
-                  setPurchaseLineUnitLevel(unitLevelFor(item, v.unitWord) ?? 1);
-                  setPurchaseCostMode('unit');
-                  setPurchaseLineQty(v.qty ?? '');
-                  setPurchaseLinePrice(v.rate ?? '');
-                  setMessage(
-                    `Heard “${text}”. Check ${item.name}, the unit, quantity and price, then press Add line.`,
-                  );
-                }}
-              />
+            <PurchaseBillCards
+              cards={purchaseCards}
+              items={items}
+              onChange={(next) => {
+                setPurchaseCards(next);
+                setDraftTouched(true);
+              }}
+              disabled={purchaseLocked || contextBusy || documentBusy || !purchaseContextReady}
+              shopId={shopId}
+              parties={parties}
+              canSeePrices={canSeePurchasePrices}
+              onMessage={setMessage}
+              findBarcode={findBarcodeForCard}
+              onRepeat={purchaseOnly && recentDetail ? repeatLastBill : undefined}
+              recent={
+                purchaseOnly && recentDetail
+                  ? recentDetail.lines.slice(0, 8).map((l, n) => ({
+                      key: `${l.item_id}:${l.unit_level}:${n}`,
+                      label: `${l.item_name_snapshot} · ${rupees(l.unit_price_paise)}/${l.unit_name_snapshot}`,
+                      onAdd: () => {
+                        try {
+                          const line = repeatPurchase(recentDetail.bill, [l], items)[0]!;
+                          setPurchaseCards((c) => addLineAsCard(c, line));
+                          setDraftTouched(true);
+                          setMessage(
+                            'Added from the last supplier bill. Check the quantity and rate.',
+                          );
+                        } catch (e) {
+                          setError(String(e));
+                        }
+                      },
+                    }))
+                  : undefined
+              }
+            />
+            <div class="bill-adjustments">
               <label>
-                Find purchase item
+                Extra charges ₹
                 <input
-                  placeholder="Search by name or SKU"
-                  value={purchaseItemSearch}
-                  onInput={(e) => {
-                    setPurchaseItemSearch(e.currentTarget.value);
-                    setPurchaseLineItemId('');
-                    setPurchaseLineQty('');
-                    setPurchaseLinePrice('');
-                  }}
-                />
-              </label>
-              <select
-                aria-label="Purchase item"
-                name="itemId"
-                value={purchaseLineItemId}
-                onChange={(e) => {
-                  setPurchaseLineItemId((e.currentTarget as HTMLSelectElement).value);
-                  setPurchaseLineUnitLevel(1);
-                  setPurchaseLineQty('');
-                  setPurchaseLinePrice('');
-                }}
-              >
-                <option value="">Item…</option>
-                {purchasePicker.options.map((i) => (
-                  <option key={i.id} value={i.id}>
-                    {i.name}
-                  </option>
-                ))}
-              </select>{' '}
-              {purchasePicker.truncated && (
-                <p class="muted">
-                  Showing up to 50 of {purchasePicker.matches} matching items. Type in “Find
-                  purchase item” to narrow the list.
-                </p>
-              )}
-              <select
-                aria-label="Unit"
-                name="unitLevel"
-                disabled={!purchaseLineItem}
-                value={purchaseLineUnitLevel}
-                onChange={(e) =>
-                  setPurchaseLineUnitLevel(
-                    Number((e.currentTarget as HTMLSelectElement).value) as 1 | 2 | 3,
-                  )
-                }
-              >
-                <option value="1">{purchaseLineItem?.unit1 || 'Big unit'}</option>
-                {purchaseLineItem?.unit2 && <option value="2">{purchaseLineItem.unit2}</option>}
-                {purchaseLineItem?.unit3 && <option value="3">{purchaseLineItem.unit3}</option>}
-              </select>{' '}
-              <label>
-                Quantity
-                <input
-                  name="qty"
+                  name="extra"
                   type="number"
-                  min="0.000001"
-                  step="any"
-                  placeholder="Qty"
-                  value={purchaseLineQty}
-                  onInput={(e) => setPurchaseLineQty((e.currentTarget as HTMLInputElement).value)}
-                />
-              </label>{' '}
-              <label>
-                Enter cost as
-                <select
-                  aria-label="Cost entry mode"
-                  value={purchaseCostMode}
-                  onChange={(e) => {
-                    setPurchaseCostMode(
-                      (e.currentTarget as HTMLSelectElement).value === 'total' ? 'total' : 'unit',
-                    );
-                    setPurchaseLinePrice('');
-                  }}
-                >
-                  <option value="unit">Cost per unit</option>
-                  <option value="total">Line total</option>
-                </select>
-              </label>{' '}
-              <label>
-                {purchaseCostMode === 'total' ? 'Line total ₹' : 'Unit cost ₹'}
-                <input
-                  name="price"
-                  type="number"
+                  inputMode="decimal"
                   min="0"
                   step="0.01"
-                  placeholder={purchaseCostMode === 'total' ? 'Line total ₹' : 'Unit cost ₹'}
-                  value={purchaseLinePrice}
-                  onInput={(e) => setPurchaseLinePrice((e.currentTarget as HTMLInputElement).value)}
+                  placeholder="Transport, packing…"
+                  value={purchaseExtra}
+                  onInput={(e) => setPurchaseExtra(e.currentTarget.value)}
                 />
-              </label>{' '}
-              {purchaseCostMode === 'total' &&
-                purchaseLinePrice.trim() &&
-                purchaseLineQty.trim() && (
-                  <CostDerivation
-                    derived={deriveUnitCostFromTotal(purchaseLineQty, purchaseLinePrice)}
-                    onUse={(unitPaise) => {
-                      setPurchaseCostMode('unit');
-                      setPurchaseLinePrice(paiseToDecimal(unitPaise));
-                    }}
-                  />
-                )}
-              <button type="button" onClick={addPurchaseLine}>
-                {editingPurchaseLine === null ? 'Add line' : 'Update line'}
-              </button>
-              {editingPurchaseLine !== null && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingPurchaseLine(null);
-                    setPurchaseLineItemId('');
-                    setPurchaseLineQty('');
-                    setPurchaseLinePrice('');
-                  }}
-                >
-                  Cancel line edit
-                </button>
-              )}
-            </fieldset>
-            {purchaseCart.length > 0 && (
-              <div class="table-wrap mobile-records" aria-label="Purchase cart">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Item</th>
-                      <th>Qty</th>
-                      <th>Unit cost</th>
-                      <th>Line total</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {purchaseCart.map((l, n) => (
-                      <tr key={n}>
-                        <td class="record-title" data-label="Item">
-                          {l.item.name}
-                          <small> {unitLabel(l.item, l.unitLevel)}</small>
-                        </td>
-                        <td data-label="Quantity">{l.qty}</td>
-                        <td data-label="Unit cost">₹{(l.unitPricePaise / 100).toFixed(2)}</td>
-                        <td data-label="Line total">
-                          ₹{(quantityTimesPaise(l.qty, l.unitPricePaise) / 100).toFixed(2)}
-                        </td>
-                        <td>
-                          {purchaseOnly && (
-                            <button
-                              type="button"
-                              aria-label={`Edit purchase line ${n + 1}`}
-                              onClick={() => {
-                                setEditingPurchaseLine(n);
-                                setPurchaseItemSearch(l.item.name);
-                                setPurchaseLineItemId(l.item.id);
-                                setPurchaseLineUnitLevel(l.unitLevel);
-                                setPurchaseLineQty(l.qty);
-                                setPurchaseCostMode('unit');
-                                setPurchaseLinePrice(paiseToDecimal(l.unitPricePaise));
-                              }}
-                            >
-                              Edit
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            aria-label={`Remove purchase line ${n + 1}`}
-                            onClick={() => removePurchaseLine(n)}
-                          >
-                            Remove
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <p>Lines total: {rupees(purchaseTotalPaise)}</p>
-                <p>
-                  <strong>Payable preview: {payablePreview}</strong>
-                </p>
-              </div>
-            )}
+              </label>
+              <label>
+                Bill discount ₹
+                <input
+                  name="discount"
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  placeholder="Discount on the whole bill"
+                  value={purchaseDiscount}
+                  onInput={(e) => setPurchaseDiscount(e.currentTarget.value)}
+                />
+              </label>
+            </div>
+            <div class="bill-total card" aria-label="Bill total" data-testid="bill-total">
+              <p>
+                <span>Items ({purchaseBill.lines.length})</span>
+                <span>{rupees(purchaseTotalPaise)}</span>
+              </p>
+              <p class="muted">
+                <span>Round off</span>
+                <span>₹0.00 (purchases are not rounded)</span>
+              </p>
+              <p class="bill-total-main">
+                <span>Bill total</span>
+                <strong>{payablePreview}</strong>
+              </p>
+            </div>
           </fieldset>
           {paperCheck && purchaseExpectedTotal && (
             <p
@@ -2012,24 +1821,36 @@ export function InventoryScreen({
               </button>
             </p>
           )}
-          <button
-            class="primary"
-            disabled={
-              purchaseBusy ||
-              contextBusy ||
-              (!purchaseLocked &&
-                (!purchaseContextReady ||
-                  documentBusy ||
-                  !!documentSaveError ||
-                  (!!billDocument && !billDocument.uploaded))) ||
-              (!purchaseLocked && editingPurchaseLine !== null) ||
-              !shopId ||
-              !businessDate ||
-              (!purchaseCart.length && !purchaseLocked)
-            }
-          >
-            {purchaseBusy ? 'Posting…' : purchaseLocked ? 'Retry same purchase' : 'Post purchase'}
-          </button>
+          <div class="bill-bar">
+            {!purchaseLocked && barProblem && (
+              <span class="bill-bar-problem" role="alert">
+                {barProblem}
+              </span>
+            )}
+            {!purchaseLocked && (
+              <span class="bill-bar-total" aria-live="polite">
+                Total {payablePreview} ·
+              </span>
+            )}
+            <button
+              ref={postButton}
+              class="primary"
+              disabled={
+                purchaseBusy ||
+                contextBusy ||
+                (!purchaseLocked &&
+                  (!purchaseContextReady ||
+                    documentBusy ||
+                    !!documentSaveError ||
+                    (!!billDocument && !billDocument.uploaded))) ||
+                !shopId ||
+                !businessDate ||
+                (!purchaseBill.lines.length && !purchaseLocked)
+              }
+            >
+              {purchaseBusy ? 'Posting…' : purchaseLocked ? 'Retry same purchase' : 'Post purchase'}
+            </button>
+          </div>
         </form>
       </section>
     </Container>

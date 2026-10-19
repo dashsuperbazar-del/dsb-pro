@@ -105,8 +105,8 @@ export function BatchPurchaseEntry({
     <details class="card" aria-label="Batch bill entry" onToggle={onToggle}>
       <summary>Batch entry (save several bills as drafts)</summary>
       <p class="muted">
-        One line per bill. Bills are saved as drafts and nothing posts until you review and post
-        each one. For bills with several lines, use the normal purchase form.
+        One row per bill. Bills are saved as drafts and nothing posts until you review and post each
+        one. For bills with several items, use the normal purchase form.
       </p>
       {rows.map((r, i) => {
         const item = items.find((x) => x.id === r.itemId);

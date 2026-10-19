@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { test, expect, type Request, type Response } from '@playwright/test';
-import { addItemForm } from './design-helpers';
+import { addItemForm, fillBillItem } from './design-helpers';
 test('DSB purchase detail, repeat and contextual payment use the same financial records', async ({
   page,
 }, testInfo) => {
@@ -72,14 +72,9 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
   await purchase.locator('input[name="date"]').fill(olderDate.toISOString().slice(0, 10));
   await purchase.locator('input[name="billNo"]').fill('DSB-1');
   await expect(purchase.locator('select[name="partyId"]')).toHaveValue(/.+/);
-  await purchase.getByLabel('Purchase item', { exact: true }).selectOption({ label: 'Daily oil' });
-  await purchase.locator('input[name="qty"]').fill('2');
-  await purchase.locator('input[name="price"]').fill('120');
-  await purchase.getByRole('button', { name: 'Add line', exact: true }).click();
+  await fillBillItem(purchase, 1, 'Daily oil', '2', '120');
   await purchase.locator('input[name="discount"]').fill('5');
   await purchase.locator('input[name="extra"]').fill('5');
-  await purchase.getByRole('button', { name: 'Edit purchase line 1' }).click();
-  await purchase.locator('input[name="qty"]').fill('2');
   await expect(purchase).toContainText('Draft saved on this device');
   const image = await page.evaluate(() => {
     const c = document.createElement('canvas');
@@ -108,7 +103,7 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
     buffer: Buffer.from(image, 'base64'),
   });
   await expect(purchase.getByLabel('Bill attachment')).toContainText('Upload confirmed');
-  await expect(purchase.getByRole('button', { name: 'Post purchase', exact: true })).toBeDisabled(); // line edit still requires review
+  await expect(purchase.getByRole('button', { name: 'Post purchase', exact: true })).toBeEnabled();
   const originalSupplier = await purchase.locator('select[name="partyId"]').inputValue();
   await page.reload();
   await page.getByText('Saved purchase drafts', { exact: true }).click();
@@ -123,9 +118,10 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
   await expect(purchase.locator('select[name="partyId"]')).toHaveValue(originalSupplier);
   await expect(purchase.locator('input[name="discount"]')).toHaveValue('5');
   await expect(purchase.locator('input[name="extra"]')).toHaveValue('5');
-  await expect(purchase.locator('input[name="qty"]')).toHaveValue('2');
-  await expect(purchase.locator('input[name="price"]')).toHaveValue('120.00');
-  await expect(purchase.getByRole('button', { name: 'Post purchase', exact: true })).toBeDisabled();
+  await expect(purchase.getByLabel('Item 1 name', { exact: true })).toHaveValue('Daily oil');
+  await expect(purchase.getByLabel('Item 1 quantity', { exact: true })).toHaveValue('2');
+  await expect(purchase.getByLabel('Item 1 rate ₹', { exact: true })).toHaveValue('120');
+  await expect(purchase.getByTestId('bill-total')).toContainText('₹240.00');
   await purchase.getByRole('button', { name: 'View bill document', exact: true }).click();
   const photo = page.getByRole('dialog', { name: 'Bill document viewer' });
   await expect(photo.getByRole('img', { name: 'Attached supplier bill' })).toBeVisible();
@@ -137,7 +133,6 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
     fullPage: true,
   });
   await photo.getByRole('button', { name: 'Close bill viewer' }).click();
-  await purchase.getByRole('button', { name: 'Update line', exact: true }).click();
   await purchase.getByRole('button', { name: 'Post purchase', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Purchase posted' })).toContainText(
     'Purchase posted',
@@ -193,7 +188,7 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
   await expect(
     page.getByRole('status').filter({ hasText: 'Draft repeated from DSB-1' }),
   ).toContainText('Draft repeated from DSB-1');
-  await expect(purchase.getByLabel('Purchase cart')).toContainText('₹240.00');
+  await expect(purchase.getByTestId('bill-total')).toContainText('₹240.00');
   // N08: leaving the unposted draft asks first; declining stays on it, accepting leaves (draft kept).
   const prompts: string[] = [];
   page.once('dialog', (d) => {
@@ -202,7 +197,7 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
   });
   await page.getByRole('link', { name: 'Bill list', exact: true }).click();
   await expect.poll(() => prompts).toEqual(['Discard unsaved entry?']);
-  await expect(purchase.getByLabel('Purchase cart')).toContainText('₹240.00');
+  await expect(purchase.getByTestId('bill-total')).toContainText('₹240.00');
   page.once('dialog', (d) => void d.accept());
   await page.getByRole('link', { name: 'Bill list', exact: true }).click();
   await page.getByRole('button', { name: /Daily Supplier.*DSB-2/ }).click();

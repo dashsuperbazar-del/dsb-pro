@@ -28,7 +28,9 @@ test('expenses, stock adjust and the day book tile work as daily-entry screens',
   await page.getByLabel('Category').fill('Tea & snacks');
   await page.getByLabel('Amount ₹').fill('45.50');
   await page.getByRole('button', { name: 'Post expense' }).click();
-  await expect(page.getByRole('status')).toContainText('Expense posted.');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Expense posted.' }).first(),
+  ).toBeVisible();
   await expect(page.getByRole('region', { name: 'Expenses today' })).toContainText('45.50');
 
   await page.goto('/inventory');
@@ -36,14 +38,18 @@ test('expenses, stock adjust and the day book tile work as daily-entry screens',
   await page.getByPlaceholder('Item name').fill('Count Item');
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
-  await expect(page.getByRole('status')).toContainText('Created Count Item');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Created Count Item' }).first(),
+  ).toBeVisible();
   await page.goto('/stock-adjust');
   await page.getByLabel('Item').selectOption({ label: 'Count Item' });
   await expect(page.getByLabel('expected stock')).toContainText('Expected 0');
   await page.getByLabel('Counted quantity (smallest unit)').fill('7');
   await page.getByLabel('Reason').selectOption('found extra');
   await page.getByRole('button', { name: 'Post stock count' }).click();
-  await expect(page.getByRole('status')).toContainText('Stock adjusted');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Stock adjusted' }).first(),
+  ).toBeVisible();
   await expect(page.getByLabel('expected stock')).toContainText('Expected 7');
 
   await page.goto('/');
@@ -77,10 +83,12 @@ test('an expense whose answer is lost is retried as the same expense, never post
   await page.getByLabel('Category').fill('Rent');
   await page.getByLabel('Amount ₹').fill('1000');
   await page.getByRole('button', { name: 'Post expense' }).click();
-  await expect(page.getByRole('status')).toContainText('Not confirmed');
+  await expect(page.getByRole('status').filter({ hasText: 'Not confirmed' }).first()).toBeVisible();
   await expect(page.getByLabel('Amount ₹')).toBeDisabled();
   await page.getByRole('button', { name: 'Retry same expense' }).click();
-  await expect(page.getByRole('status')).toContainText('Expense posted.');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Expense posted.' }).first(),
+  ).toBeVisible();
   await expect(page.getByRole('region', { name: 'Expenses today' })).toContainText('1,000.00');
   expect(calls).toBe(2);
 });
@@ -93,7 +101,7 @@ test('a pending expense survives a reload; a definitive rejection unlocks the fo
   await page.getByLabel('Category').fill('Rent');
   await page.getByLabel('Amount ₹').fill('0');
   await page.getByRole('button', { name: 'Post expense' }).click();
-  await expect(page.getByRole('status')).toContainText('Not posted');
+  await expect(page.getByRole('status').filter({ hasText: 'Not posted' }).first()).toBeVisible();
   await expect(page.getByLabel('Amount ₹')).toBeEnabled();
 
   let calls = 0;
@@ -105,10 +113,12 @@ test('a pending expense survives a reload; a definitive rejection unlocks the fo
   });
   await page.getByLabel('Amount ₹').fill('250');
   await page.getByRole('button', { name: 'Post expense' }).click();
-  await expect(page.getByRole('status')).toContainText('Not confirmed');
+  await expect(page.getByRole('status').filter({ hasText: 'Not confirmed' }).first()).toBeVisible();
   await page.reload();
   await expect(page.getByRole('button', { name: 'Retry same expense' })).toBeVisible();
   await page.getByRole('button', { name: 'Retry same expense' }).click();
-  await expect(page.getByRole('status')).toContainText('Expense posted.');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Expense posted.' }).first(),
+  ).toBeVisible();
   await expect(page.getByRole('region', { name: 'Expenses today' })).toContainText('250.00');
 });

@@ -1,4 +1,4 @@
-import { stockTask, addItemForm, addCustomerForm } from './design-helpers';
+import { stockTask, addItemForm, addCustomerForm, fillBillItem } from './design-helpers';
 // V002 verifier findings VF-005/006/007: a write whose outcome is unknown is stored on the device
 // before it is sent, survives reload, is retried with the same request id, and is never replaced by
 // a new id. Each case commits on the real local database and then loses or withholds the answer.
@@ -52,7 +52,9 @@ test('expense: a crash after commit keeps the request; the retry posts it exactl
   await expect(page.getByRole('button', { name: 'Retry same expense' })).toBeVisible();
   await expect(page.getByLabel('Amount ₹')).toBeDisabled();
   await page.getByRole('button', { name: 'Retry same expense' }).click();
-  await expect(page.getByRole('status')).toContainText('Expense posted.');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Expense posted.' }).first(),
+  ).toBeVisible();
   await expect(page.getByRole('region', { name: 'Expenses today' })).toContainText('1,000.00');
   expect(net.state.calls).toBe(2);
 });
@@ -70,10 +72,12 @@ test('expense: a gateway error after commit is unknown, not a refusal', async ({
   await page.getByLabel('Category').fill('Rent');
   await page.getByLabel('Amount ₹').fill('300');
   await page.getByRole('button', { name: 'Post expense' }).click();
-  await expect(page.getByRole('status')).toContainText('Not confirmed');
+  await expect(page.getByRole('status').filter({ hasText: 'Not confirmed' }).first()).toBeVisible();
   await expect(page.getByLabel('Amount ₹')).toBeDisabled();
   await page.getByRole('button', { name: 'Retry same expense' }).click();
-  await expect(page.getByRole('status')).toContainText('Expense posted.');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Expense posted.' }).first(),
+  ).toBeVisible();
   await expect(page.getByRole('region', { name: 'Expenses today' })).toContainText('300.00');
   expect(calls).toBe(2);
 });
@@ -97,7 +101,9 @@ test('expense: if the device cannot store the request, nothing is sent', async (
   await page.getByLabel('Category').fill('Rent');
   await page.getByLabel('Amount ₹').fill('50');
   await page.getByRole('button', { name: 'Post expense' }).click();
-  await expect(page.getByRole('status')).toContainText('Nothing was sent');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Nothing was sent' }).first(),
+  ).toBeVisible();
   expect(calls).toBe(0);
 });
 
@@ -110,7 +116,9 @@ test('stock count: answer lost after posting; the retry after reload never appli
   await page.getByPlaceholder('Item name').fill('Count Item');
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
-  await expect(page.getByRole('status')).toContainText('Created Count Item');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Created Count Item' }).first(),
+  ).toBeVisible();
   await page.goto('/stock-adjust');
   const net = commitThenCrash(page, '**/rpc/post_stock_count');
   await page.getByLabel('Item').selectOption({ label: 'Count Item' });
@@ -121,7 +129,9 @@ test('stock count: answer lost after posting; the retry after reload never appli
   net.release();
   await expect(page.getByRole('button', { name: 'Retry posting this count' })).toBeVisible();
   await page.getByRole('button', { name: 'Retry posting this count' }).click();
-  await expect(page.getByRole('status')).toContainText('already posted by an earlier attempt');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'already posted by an earlier attempt' }).first(),
+  ).toBeVisible();
   await page.getByLabel('Item').selectOption({ label: 'Count Item' });
   await expect(page.getByLabel('expected stock')).toContainText('Expected 7');
   expect(net.state.calls).toBe(1); // status was read; the count was not posted again
@@ -136,16 +146,15 @@ test('purchase: a crash after commit keeps the bill locked; the retry posts it o
   await page.getByPlaceholder('Item name').fill('Rice bag');
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
-  await expect(page.getByRole('status')).toContainText('Created Rice bag');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Created Rice bag' }).first(),
+  ).toBeVisible();
   const net = commitThenCrash(page, '**/rpc/post_purchase');
   await stockTask(page, 'Purchases');
   const purchase = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
-  await purchase.locator('select[name="itemId"]').selectOption({ label: 'Rice bag' });
-  await purchase.locator('input[name="qty"]').fill('10');
-  await purchase.locator('input[name="price"]').fill('5');
-  await purchase.getByRole('button', { name: 'Add line' }).click();
+  await fillBillItem(purchase, 1, 'Rice bag', '10', '5');
   await purchase.locator('input[name="billNo"]').fill('REC-1');
   await purchase.getByRole('button', { name: 'Post purchase' }).click();
   await expect.poll(() => net.state.committed).toBe(true);
@@ -156,7 +165,9 @@ test('purchase: a crash after commit keeps the bill locked; the retry posts it o
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
   await expect(again.getByRole('button', { name: 'Retry same purchase' })).toBeVisible();
   await again.getByRole('button', { name: 'Retry same purchase' }).click();
-  await expect(page.getByRole('status')).toContainText('Purchase posted');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Purchase posted' }).first(),
+  ).toBeVisible();
   await page.goto('/stock-adjust');
   await page.getByLabel('Item').selectOption({ label: 'Rice bag' });
   await expect(page.getByLabel('expected stock')).toContainText('Expected 10');
@@ -230,7 +241,7 @@ test('expense: a second window cannot overwrite the first window’s unconfirmed
   await page.getByLabel('Category').fill('Rent');
   await page.getByLabel('Amount ₹').fill('1000');
   await page.getByRole('button', { name: 'Post expense' }).click();
-  await expect(page.getByRole('status')).toContainText('Not confirmed');
+  await expect(page.getByRole('status').filter({ hasText: 'Not confirmed' }).first()).toBeVisible();
 
   await other.getByLabel('Category').fill('Tea & snacks');
   await other.getByLabel('Amount ₹').fill('20');
@@ -239,7 +250,9 @@ test('expense: a second window cannot overwrite the first window’s unconfirmed
   expect(calls).toBe(1);
 
   await page.getByRole('button', { name: 'Retry same expense' }).click();
-  await expect(page.getByRole('status')).toContainText('Expense posted.');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Expense posted.' }).first(),
+  ).toBeVisible();
   await expect(page.getByRole('region', { name: 'Expenses today' })).toContainText('1,000.00');
 });
 
@@ -340,7 +353,7 @@ test('expense: two unconfirmed expenses from racing windows are each finished on
   await page.getByLabel('Category').fill('Rent');
   await page.getByLabel('Amount ₹').fill('100');
   await page.getByRole('button', { name: 'Post expense' }).click();
-  await expect(page.getByRole('status')).toContainText('Not confirmed');
+  await expect(page.getByRole('status').filter({ hasText: 'Not confirmed' }).first()).toBeVisible();
   // A second window raced past the check and stored B (never sent) under its own key.
   await page.evaluate(() => {
     const key = Object.keys(localStorage).find((k) => k.startsWith('dsb-pending-expense:'))!;
@@ -355,10 +368,16 @@ test('expense: two unconfirmed expenses from racing windows are each finished on
   });
   await page.reload();
   await page.getByRole('button', { name: 'Retry same expense' }).click();
-  await expect(page.getByRole('status')).toContainText('Expense posted.');
-  await expect(page.getByRole('status')).toContainText('Another expense from this device');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Expense posted.' }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Another expense from this device' }).first(),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'Retry same expense' }).click();
-  await expect(page.getByRole('status')).toContainText('Expense posted.');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Expense posted.' }).first(),
+  ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Post expense' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Expenses today' })).toContainText('125.00');
 });
@@ -417,7 +436,9 @@ test('purchase without a supplier: a 502 after commit is retried in the same win
   await page.getByPlaceholder('Item name').fill('Loose item');
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
-  await expect(page.getByRole('status')).toContainText('Created Loose item');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Created Loose item' }).first(),
+  ).toBeVisible();
   let calls = 0;
   await page.route('**/rpc/post_purchase', async (route) => {
     if (calls++ === 0) {
@@ -429,14 +450,13 @@ test('purchase without a supplier: a 502 after commit is retried in the same win
   const purchase = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
-  await purchase.locator('select[name="itemId"]').selectOption({ label: 'Loose item' });
-  await purchase.locator('input[name="qty"]').fill('4');
-  await purchase.locator('input[name="price"]').fill('5');
-  await purchase.getByRole('button', { name: 'Add line' }).click();
+  await fillBillItem(purchase, 1, 'Loose item', '4', '5');
   await purchase.getByRole('button', { name: 'Post purchase' }).click(); // no supplier, no bill no
   await expect(purchase.getByRole('button', { name: 'Retry same purchase' })).toBeVisible();
   await purchase.getByRole('button', { name: 'Retry same purchase' }).click();
-  await expect(page.getByRole('status')).toContainText('Purchase posted');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Purchase posted' }).first(),
+  ).toBeVisible();
   await page.goto('/stock-adjust');
   await page.getByLabel('Item').selectOption({ label: 'Loose item' });
   await expect(page.getByLabel('expected stock')).toContainText('Expected 4');
