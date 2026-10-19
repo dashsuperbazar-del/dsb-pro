@@ -20,12 +20,16 @@ async function ownerWithBill(page: Page) {
   await stockTask(page, 'Suppliers');
   await page.getByPlaceholder('Supplier name').fill('Acme Traders');
   await page.getByRole('button', { name: 'Create supplier' }).click();
-  await expect(page.getByRole('status')).toContainText('Created supplier Acme Traders');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Created supplier Acme Traders' }).first(),
+  ).toBeVisible();
   await addItemForm(page);
   await page.getByPlaceholder('Item name').fill('Rice bag');
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
-  await expect(page.getByRole('status')).toContainText('Created Rice bag');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Created Rice bag' }).first(),
+  ).toBeVisible();
   await stockTask(page, 'Purchases');
   const purchase = page
     .locator('section')
@@ -34,7 +38,9 @@ async function ownerWithBill(page: Page) {
   await fillBillItem(purchase, 1, 'Rice bag', '10', '10');
   await purchase.locator('input[name="billNo"]').fill('ACME-1');
   await purchase.getByRole('button', { name: 'Post purchase' }).click();
-  await expect(page.getByRole('status')).toContainText('Purchase posted');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Purchase posted' }).first(),
+  ).toBeVisible();
   await page.goto('/');
   await page.getByRole('link', { name: 'Suppliers & payments' }).click();
   await page.getByLabel('Supplier', { exact: true }).selectOption({ label: 'Acme Traders' });
@@ -97,7 +103,9 @@ test.describe('supplier statements', () => {
     await ownerWithBill(page);
     expect(policyApplied).toBeGreaterThanOrEqual(4); // Signup, Home, Stock, Home; SPA routes retain it.
     await record(page, '30');
-    await expect(page.getByRole('status')).toContainText('confirmed by the server');
+    await expect(
+      page.getByRole('status').filter({ hasText: 'confirmed by the server' }).first(),
+    ).toBeVisible();
     const statement = await ledgerTask(page);
     await expect(statement.getByLabel('Prepared supplier statement')).toContainText(
       'Closing ₹70.00',
@@ -215,7 +223,9 @@ test('Full keeps cash plus advance; release the match and void', async ({ page }
   // Keep the existing partial-allocation/advance lifecycle coverage as well.
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await record(page, '100', '40');
-  await expect(page.getByRole('status')).toContainText('confirmed by the server');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'confirmed by the server' }).first(),
+  ).toBeVisible();
   await expect(bills(page).locator('tbody tr')).toContainText('₹60.00');
   await page
     .getByRole('navigation', { name: 'Supplier tasks' })
@@ -231,7 +241,9 @@ test('Full keeps cash plus advance; release the match and void', async ({ page }
     (d) => void d.accept(d.type() === 'prompt' ? (answers.shift() ?? 'test reason') : undefined),
   );
   await row.getByRole('button', { name: 'Allocate advance' }).click();
-  await expect(page.getByRole('status')).toContainText('confirmed by the server');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'confirmed by the server' }).first(),
+  ).toBeVisible();
   await expect(bills(page).locator('tbody tr').first().locator('td').nth(5)).toHaveText('₹0.00');
 
   await page
@@ -244,7 +256,9 @@ test('Full keeps cash plus advance; release the match and void', async ({ page }
     .getByRole('button', { name: 'Payments', exact: true })
     .click();
   await history(page).getByRole('button', { name: 'Release' }).first().click();
-  await expect(page.getByRole('status')).toContainText('confirmed by the server');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'confirmed by the server' }).first(),
+  ).toBeVisible();
   await expect(history(page).locator('tbody tr').first()).toContainText('POSTED'); // cash stays recorded
 
   await page
@@ -252,7 +266,9 @@ test('Full keeps cash plus advance; release the match and void', async ({ page }
     .getByRole('button', { name: 'Payments', exact: true })
     .click();
   await history(page).locator('tbody tr').first().getByRole('button', { name: 'Void' }).click();
-  await expect(page.getByRole('status')).toContainText('confirmed by the server');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'confirmed by the server' }).first(),
+  ).toBeVisible();
   await expect(history(page).locator('tbody tr').first()).toContainText('VOID');
   await expect(bills(page).locator('tbody tr').first().locator('td').nth(5)).toHaveText('₹100.00');
 });
@@ -282,7 +298,9 @@ test('a response lost after commit is reconciled by request id, never recorded t
   await page.reload();
   await page.getByLabel('Supplier', { exact: true }).selectOption({ label: 'Acme Traders' });
   await page.getByRole('button', { name: 'Check status' }).click();
-  await expect(page.getByRole('status')).toContainText('confirmed by the server');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'confirmed by the server' }).first(),
+  ).toBeVisible();
   await expect(history(page).locator('tbody tr')).toHaveCount(1);
   expect(dropped).toBe(1);
 });
@@ -301,7 +319,9 @@ test('offline before dispatch keeps the request and sends it exactly once later'
   await record(page, '25');
   await expect(page.getByRole('alert', { name: 'Unresolved payments' })).toContainText('UNKNOWN');
   await page.getByRole('button', { name: 'Check status' }).click(); // NOT_FOUND → same id resent
-  await expect(page.getByRole('status')).toContainText('confirmed by the server');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'confirmed by the server' }).first(),
+  ).toBeVisible();
   await expect(history(page).locator('tbody tr')).toHaveCount(1);
   expect(calls).toBe(2);
   await context.clearCookies();

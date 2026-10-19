@@ -37,16 +37,22 @@ test('professional phone workspace preserves drafts across task views and has re
   await page.getByPlaceholder('Item name').fill('Daily rice');
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
-  await expect(page.getByRole('status')).toContainText('Created Daily rice');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Created Daily rice' }).first(),
+  ).toBeVisible();
   await page.getByLabel('Item details').selectOption({ label: 'Daily rice' });
   const price = page.getByRole('button', { name: 'Set price' }).locator('xpath=..');
   await price.locator('input[name="price"]').fill('20');
   await page.getByRole('button', { name: 'Set price' }).click();
-  await expect(page.getByRole('status')).toContainText('Price history updated');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Price history updated' }).first(),
+  ).toBeVisible();
   await stockTask(page, 'Suppliers');
   await page.getByPlaceholder('Supplier name', { exact: true }).fill('Daily Traders');
   await page.getByRole('button', { name: 'Create supplier', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('Created supplier Daily Traders');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Created supplier Daily Traders' }).first(),
+  ).toBeVisible();
   await stockTask(page, 'Purchases');
   const purchase = page
     .locator('section')
@@ -60,7 +66,9 @@ test('professional phone workspace preserves drafts across task views and has re
   await expect(purchase.getByLabel('Item 1 rate ₹', { exact: true })).toHaveValue('10');
   await capture('02-purchase-phone');
   await purchase.getByRole('button', { name: 'Post purchase' }).click();
-  await expect(page.getByRole('status')).toContainText('Purchase posted');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Purchase posted' }).first(),
+  ).toBeVisible();
   await nav.getByRole('link', { name: 'Sales', exact: true }).click();
   await page.getByLabel('Item', { exact: true }).selectOption({ label: 'Daily rice' });
   await page.getByLabel('Quantity', { exact: true }).fill('2');
@@ -78,7 +86,9 @@ test('professional phone workspace preserves drafts across task views and has re
   await expect(amount).toHaveAttribute('data-draft-node', 'retained');
   await capture('04-checkout-phone');
   await page.getByRole('button', { name: 'Finalize sale' }).click();
-  await expect(page.getByRole('status')).toContainText('Sale finalized');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Sale finalized' }).first(),
+  ).toBeVisible();
   await nav.getByRole('link', { name: 'Ledger', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Suppliers & payments' })).toBeVisible();
   await page.getByLabel('Supplier', { exact: true }).selectOption({ label: 'Daily Traders' });
@@ -98,7 +108,9 @@ test('professional phone workspace preserves drafts across task views and has re
   await page.getByLabel('Confirm payment').scrollIntoViewIfNeeded();
   await capture('05b-supplier-payment-phone', false);
   await page.getByRole('button', { name: 'Confirm and record', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('confirmed by the server');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'confirmed by the server' }).first(),
+  ).toBeVisible();
   await page.goto('/inventory');
   await expect(page.getByRole('button', { name: /Daily rice/ }).first()).toBeVisible();
   await capture('06-stock-phone');
@@ -124,7 +136,9 @@ test('professional phone workspace preserves drafts across task views and has re
       (await page.getByLabel(date, { exact: true }).boundingBox())!.width,
     ).toBeGreaterThanOrEqual(160);
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('Invariant check: PASS');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Invariant check: PASS' }).first(),
+  ).toBeVisible();
   await capture('09-reports-phone');
   await page.goto('/sync');
   await expect(page.getByTestId('sync-outbox-count')).toHaveText('0');

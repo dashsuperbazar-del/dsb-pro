@@ -22,7 +22,12 @@ async function createItem(page: import('@playwright/test').Page, name: string) {
   await page.getByPlaceholder('Item name').fill(name);
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
-  await expect(page.getByRole('status')).toContainText(`Created ${name}`);
+  await expect(
+    page
+      .getByRole('status')
+      .filter({ hasText: `Created ${name}` })
+      .first(),
+  ).toBeVisible();
 }
 
 test('a single supplier bill carries several items, each an editable card', async ({ page }) => {
@@ -99,7 +104,9 @@ test('a purchase whose answer is lost is retried as the same bill, never posted 
   await page.reload();
   await expect(purchase.getByRole('button', { name: 'Retry same purchase' })).toBeVisible();
   await purchase.getByRole('button', { name: 'Retry same purchase' }).click();
-  await expect(page.getByRole('status')).toContainText('Purchase posted (1 item)');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Purchase posted (1 item)' }).first(),
+  ).toBeVisible();
   await stockTask(page, 'Items');
   await page.getByLabel('Item details').selectOption({ label: 'Retry Item' });
   await expect(page.getByLabel('item peek')).toContainText('Stock 3 piece');
@@ -148,7 +155,9 @@ test('batch entry saves several single-line bills as drafts; nothing posts until
   await stockTask(page, 'Suppliers');
   await page.getByPlaceholder('Supplier name').fill('Batch Supplier');
   await page.getByRole('button', { name: 'Create supplier' }).click();
-  await expect(page.getByRole('status')).toContainText('Created supplier Batch Supplier');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Created supplier Batch Supplier' }).first(),
+  ).toBeVisible();
   await createItem(page, 'Batch Item A');
   await createItem(page, 'Batch Item B');
   await page.goto('/purchases?new=1');
@@ -182,7 +191,14 @@ test('batch entry saves several single-line bills as drafts; nothing posts until
   // Switching from a touched form asks for confirmation; accept it like a user would.
   page.once('dialog', (dialog) => void dialog.accept());
   await page.getByRole('button', { name: 'Resume draft', exact: true }).first().click();
-  await expect(page.getByRole('status')).toContainText('Saved purchase draft restored');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Saved purchase draft restored' }).first(),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'Post purchase' }).click();
-  await expect(page.getByRole('status')).toContainText(/Purchase posted/);
+  await expect(
+    page
+      .getByRole('status')
+      .filter({ hasText: /Purchase posted/ })
+      .first(),
+  ).toBeVisible();
 });

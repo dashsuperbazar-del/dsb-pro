@@ -107,5 +107,7 @@ test('owner can import a legacy DSB backup into an empty shop and sell imported 
   await page.getByLabel('Amount ₹').first().fill('10');
   await reviewPayment(page);
   await page.getByRole('button', { name: 'Finalize sale' }).click();
-  await expect(page.getByRole('status')).toContainText('Sale finalized');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Sale finalized' }).first(),
+  ).toBeVisible();
 });

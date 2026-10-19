@@ -27,7 +27,12 @@ async function createItemWithStock(
   await page.getByPlaceholder('Item name').fill(name);
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
-  await expect(page.getByRole('status')).toContainText(`Created ${name}`);
+  await expect(
+    page
+      .getByRole('status')
+      .filter({ hasText: `Created ${name}` })
+      .first(),
+  ).toBeVisible();
   await stockTask(page, 'Items');
   await page.getByLabel('Item details').selectOption({ label: name });
   const priceForm = page.getByRole('button', { name: 'Set price' }).locator('xpath=..');
@@ -121,13 +126,15 @@ test('cart lines edit in place, and a held cart survives being parked and comes 
   await page.getByLabel('Amount ₹').first().fill('20');
   await reviewPayment(page);
   await page.getByRole('button', { name: 'Finalize sale' }).click();
-  await expect(page.getByRole('status')).toContainText('Sale finalized');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Sale finalized' }).first(),
+  ).toBeVisible();
 
   // Resume restores the exact edited quantity/discount, not the original add.
   // A double click must still yield one claimant, one active cart and one
   // cleanup. The Dexie token is the authority; button disabling is only UX.
   await page.getByRole('button', { name: 'Resume Table 3' }).dblclick();
-  await expect(page.getByRole('status')).toContainText('Cart resumed');
+  await expect(page.getByRole('status').filter({ hasText: 'Cart resumed' }).first()).toBeVisible();
   await expect(page.getByRole('cell', { name: /Cart Edit Item A/ })).toBeVisible();
   await expect(cartSection.locator('tbody tr')).toHaveCount(1);
   await expect(cartSection).toContainText('₹25.00');
@@ -137,7 +144,9 @@ test('cart lines edit in place, and a held cart survives being parked and comes 
   await page.getByLabel('Amount ₹').first().fill('25');
   await reviewPayment(page);
   await page.getByRole('button', { name: 'Finalize sale' }).click();
-  await expect(page.getByRole('status')).toContainText('Sale finalized');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Sale finalized' }).first(),
+  ).toBeVisible();
 });
 
 // An online sale finalized while a background sync cycle is already in flight must still post
@@ -181,5 +190,7 @@ test('an online sale finalized during an in-flight sync cycle is posted, not lef
   await reviewPayment(page);
   await page.getByRole('button', { name: 'Finalize sale' }).click();
   setTimeout(release, 3000);
-  await expect(page.getByRole('status')).toContainText('Sale finalized', { timeout: 15000 });
+  await expect(page.getByRole('status').filter({ hasText: 'Sale finalized' }).first()).toBeVisible({
+    timeout: 15000,
+  });
 });

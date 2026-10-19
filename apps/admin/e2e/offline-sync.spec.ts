@@ -26,13 +26,17 @@ async function seedOfflineItem(page: import('@playwright/test').Page) {
   await page.getByPlaceholder('SKU', { exact: true }).fill(`OFF-${Date.now()}`);
   await page.getByPlaceholder('Big unit (e.g. case)').fill('piece');
   await page.getByRole('button', { name: 'Create item' }).click();
-  await expect(page.getByRole('status')).toContainText('Created Offline E2E Item');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Created Offline E2E Item' }).first(),
+  ).toBeVisible();
   await stockTask(page, 'Items');
   await page.getByLabel('Item details').selectOption({ label: 'Offline E2E Item' });
   const priceForm = page.getByRole('button', { name: 'Set price' }).locator('xpath=..');
   await priceForm.locator('input[name="price"]').fill('10');
   await page.getByRole('button', { name: 'Set price' }).click();
-  await expect(page.getByRole('status')).toContainText('Price history updated');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Price history updated' }).first(),
+  ).toBeVisible();
   await stockTask(page, 'Purchases');
   const purchase = page
     .locator('section')
@@ -98,7 +102,9 @@ test('chaos: airplane mode + app restart + logical one-hour outage preserves and
   await context.setOffline(true);
   await reviewPayment(page);
   await page.getByRole('button', { name: 'Finalize sale' }).click();
-  await expect(page.getByRole('status')).toContainText('Saved locally as T-');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Saved locally as T-' }).first(),
+  ).toBeVisible();
   await expect(page.locator('section[aria-label="Local offline sales"]')).toContainText('QUEUED');
   await page.getByRole('button', { name: 'Print provisional' }).first().click();
   await expect(page.locator('[aria-label="provisional offline receipt"]')).toContainText(
@@ -159,7 +165,9 @@ test('chaos: airplane mode + app restart + logical one-hour outage preserves and
   await addOnePaidLine(page);
   await reviewPayment(page);
   await page.getByRole('button', { name: 'Finalize sale' }).click();
-  await expect(page.getByRole('status')).toContainText('Saved locally as T-');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Saved locally as T-' }).first(),
+  ).toBeVisible();
 
   // Navigate through the running SPA while still offline. This is the real
   // PWA user path; it must not depend on a new network navigation.

@@ -40,7 +40,9 @@ test('owner records a supplier opening, sees it in balances, voids it and re-ent
   await stockTask(page, 'Suppliers');
   await page.getByPlaceholder('Supplier name').fill('Opening Traders');
   await page.getByRole('button', { name: 'Create supplier' }).click();
-  await expect(page.getByRole('status')).toContainText('Created supplier Opening Traders');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Created supplier Opening Traders' }).first(),
+  ).toBeVisible();
 
   await page.goto('/reports');
   await page
@@ -54,7 +56,9 @@ test('owner records a supplier opening, sees it in balances, voids it and re-ent
     .selectOption({ label: 'Opening Traders' });
   await page.getByLabel('Amount ₹', { exact: true }).fill('500');
   await page.getByRole('button', { name: 'Record opening' }).click();
-  await expect(page.getByRole('status')).toContainText('Opening recorded for Opening Traders');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Opening recorded for Opening Traders' }).first(),
+  ).toBeVisible();
   const list = page.getByRole('region', { name: 'Openings' });
   await expect(list.locator('tr').filter({ hasText: 'Opening Traders' })).toContainText('₹500.00');
 
@@ -64,14 +68,16 @@ test('owner records a supplier opening, sees it in balances, voids it and re-ent
     .selectOption({ label: 'Opening Traders' });
   await page.getByLabel('Amount ₹', { exact: true }).fill('10');
   await page.getByRole('button', { name: 'Record opening' }).click();
-  await expect(page.getByRole('status')).toContainText('Not recorded');
+  await expect(page.getByRole('status').filter({ hasText: 'Not recorded' }).first()).toBeVisible();
 
   await expect(await supplierOutstanding(page)).toContainText('₹500.00');
 
   await page.goto('/openings');
   page.once('dialog', (d) => void d.accept('typed wrong amount'));
   await list.getByRole('button', { name: 'Void' }).click();
-  await expect(page.getByRole('status')).toContainText('Opening voided');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Opening voided' }).first(),
+  ).toBeVisible();
   await expect(list).toContainText('Voided: typed wrong amount');
 
   await page.getByLabel('Account type').selectOption('SUPPLIER');
@@ -80,7 +86,9 @@ test('owner records a supplier opening, sees it in balances, voids it and re-ent
     .selectOption({ label: 'Opening Traders' });
   await page.getByLabel('Amount ₹', { exact: true }).fill('450');
   await page.getByRole('button', { name: 'Record opening' }).click();
-  await expect(page.getByRole('status')).toContainText('Opening recorded');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Opening recorded' }).first(),
+  ).toBeVisible();
 
   await expect(await supplierOutstanding(page)).toContainText('₹450.00');
 
