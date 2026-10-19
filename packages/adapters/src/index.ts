@@ -53,6 +53,7 @@ export {
   listItems,
   listParties,
   createItem,
+  findItemByClientId,
   createParty,
   addItemBarcode,
   findItemByBarcode,

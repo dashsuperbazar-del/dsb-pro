@@ -1189,6 +1189,37 @@ body {
 .bill-card-matches small {
   align-self: center;
 }
+.bill-card-create {
+  font-weight: 650;
+  border-style: dashed;
+}
+.bill-card-new {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 10px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+.bill-card-new > small,
+.bill-card-new-name,
+.bill-card-new-error,
+.bill-card-new-actions {
+  grid-column: 1 / -1;
+}
+.bill-card-new-error {
+  margin: 0;
+  color: #b3261e;
+}
+.bill-card-new-actions {
+  display: flex;
+  gap: 8px;
+}
+.bill-card-new-actions button {
+  flex: 1;
+  min-height: 44px;
+}
 .bill-card-units,
 .bill-card-mode {
   display: flex;
