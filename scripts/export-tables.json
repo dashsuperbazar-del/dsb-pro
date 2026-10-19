@@ -20,6 +20,13 @@
     { "key": "documentSequences", "table": "doc_sequences", "scope": "shop" },
     { "key": "purchases", "table": "purchase_bills", "scope": "shop" },
     { "key": "purchaseLines", "table": "purchase_bill_items", "scope": "shop" },
+    {
+      "key": "purchaseCharges",
+      "table": "purchase_bill_charges",
+      "scope": "shop",
+      "optional": true
+    },
+    { "key": "purchaseImages", "table": "purchase_bill_images", "scope": "shop", "optional": true },
     { "key": "sales", "table": "sale_invoices", "scope": "shop" },
     { "key": "saleLines", "table": "sale_invoice_items", "scope": "shop" },
     { "key": "payments", "table": "payments", "scope": "shop" },

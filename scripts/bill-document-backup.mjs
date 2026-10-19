@@ -120,10 +120,20 @@ export async function readInventory(db) {
     )
   ).rows.map((row) => ({ ...row, size: Number(row.size) }));
   // Do not filter status/deleted_at: original bills still own their original documents.
+  // billextras (0064): every image of a multi-image bill is a reference too (the first is also
+  // bill_image_path). Older schemas have no image table.
+  const hasImages = (
+    await db.query(`select to_regclass('public.purchase_bill_images') is not null as present`)
+  ).rows[0].present;
   const references = (
     await db.query(`select id::text,tenant_id::text as "tenantId",shop_id::text as "shopId",
     client_id as "clientId",bill_image_path as path from public.purchase_bills
-    where bill_image_path is not null order by id`)
+    where bill_image_path is not null${
+      hasImages
+        ? ` union all select i.id::text,i.tenant_id::text,i.shop_id::text,b.client_id,i.storage_path
+    from public.purchase_bill_images i join public.purchase_bills b on b.id=i.purchase_bill_id`
+        : ''
+    } order by 1`)
   ).rows;
   return { bucket, objects, references };
 }

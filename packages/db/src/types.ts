@@ -1360,6 +1360,151 @@ export type Database = {
         }
         Relationships: []
       }
+      purchase_bill_charges: {
+        Row: {
+          amount_paise: number
+          client_id: string
+          created_at: string
+          created_by: string
+          deleted_at: number | null
+          id: string
+          label: string
+          line_no: number
+          purchase_bill_id: string
+          shop_id: string
+          tenant_id: string
+          updated_at: number
+        }
+        Insert: {
+          amount_paise: number
+          client_id: string
+          created_at?: string
+          created_by?: string
+          deleted_at?: number | null
+          id?: string
+          label: string
+          line_no: number
+          purchase_bill_id: string
+          shop_id: string
+          tenant_id: string
+          updated_at?: number
+        }
+        Update: {
+          amount_paise?: number
+          client_id?: string
+          created_at?: string
+          created_by?: string
+          deleted_at?: number | null
+          id?: string
+          label?: string
+          line_no?: number
+          purchase_bill_id?: string
+          shop_id?: string
+          tenant_id?: string
+          updated_at?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_bill_charges_purchase_bill_id_fkey"
+            columns: ["purchase_bill_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_bill_outstanding"
+            referencedColumns: ["purchase_bill_id"]
+          },
+          {
+            foreignKeyName: "purchase_bill_charges_purchase_bill_id_fkey"
+            columns: ["purchase_bill_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_bills"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_bill_charges_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_bill_charges_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_bill_images: {
+        Row: {
+          client_id: string
+          created_at: string
+          created_by: string
+          deleted_at: number | null
+          id: string
+          purchase_bill_id: string
+          shop_id: string
+          sort_order: number
+          storage_path: string
+          tenant_id: string
+          updated_at: number
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          created_by?: string
+          deleted_at?: number | null
+          id?: string
+          purchase_bill_id: string
+          shop_id: string
+          sort_order: number
+          storage_path: string
+          tenant_id: string
+          updated_at?: number
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          created_by?: string
+          deleted_at?: number | null
+          id?: string
+          purchase_bill_id?: string
+          shop_id?: string
+          sort_order?: number
+          storage_path?: string
+          tenant_id?: string
+          updated_at?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_bill_images_purchase_bill_id_fkey"
+            columns: ["purchase_bill_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_bill_outstanding"
+            referencedColumns: ["purchase_bill_id"]
+          },
+          {
+            foreignKeyName: "purchase_bill_images_purchase_bill_id_fkey"
+            columns: ["purchase_bill_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_bills"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_bill_images_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_bill_images_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       purchase_bill_items: {
         Row: {
           base_qty: number
@@ -1369,6 +1514,8 @@ export type Database = {
           created_at: string
           created_by: string
           deleted_at: number | null
+          discount_bp: number
+          gst_bp: number | null
           hsn_snapshot: string | null
           id: string
           item_id: string
@@ -1393,6 +1540,8 @@ export type Database = {
           created_at?: string
           created_by?: string
           deleted_at?: number | null
+          discount_bp?: number
+          gst_bp?: number | null
           hsn_snapshot?: string | null
           id?: string
           item_id: string
@@ -1417,6 +1566,8 @@ export type Database = {
           created_at?: string
           created_by?: string
           deleted_at?: number | null
+          discount_bp?: number
+          gst_bp?: number | null
           hsn_snapshot?: string | null
           id?: string
           item_id?: string
@@ -1511,7 +1662,9 @@ export type Database = {
           discount_paise: number
           extra_charges_paise: number
           id: string
+          notes: string | null
           party_id: string | null
+          payment_type: string
           shop_id: string
           status: string
           subtotal_paise: number
@@ -1531,7 +1684,9 @@ export type Database = {
           discount_paise?: number
           extra_charges_paise?: number
           id?: string
+          notes?: string | null
           party_id?: string | null
+          payment_type?: string
           shop_id: string
           status?: string
           subtotal_paise: number
@@ -1551,7 +1706,9 @@ export type Database = {
           discount_paise?: number
           extra_charges_paise?: number
           id?: string
+          notes?: string | null
           party_id?: string | null
+          payment_type?: string
           shop_id?: string
           status?: string
           subtotal_paise?: number
@@ -3118,6 +3275,15 @@ export type Database = {
         Returns: string
       }
       archive_party: { Args: { p_party_id: string }; Returns: string }
+      bx_purchase_line_total: {
+        Args: {
+          p_discount_bp: number
+          p_gst_bp: number
+          p_price: number
+          p_qty: number
+        }
+        Returns: number
+      }
       c0_post_purchase_body: {
         Args: {
           p_bill_image_path?: string
@@ -3728,6 +3894,10 @@ export type Database = {
         }
         Returns: string
       }
+      post_purchase_v2: {
+        Args: { p_bill: Json; p_client_id: string; p_shop_id: string }
+        Returns: Json
+      }
       post_return: {
         Args: {
           p_business_date: string
@@ -3925,6 +4095,10 @@ export type Database = {
       void_opening_settlement: {
         Args: { p_reason: string; p_settlement_id: string }
         Returns: string
+      }
+      void_paid_purchase: {
+        Args: { p_client_id: string; p_purchase_id: string; p_reason: string }
+        Returns: Json
       }
       void_payment: { Args: { p_payment_id: string }; Returns: string }
       void_purchase: {

@@ -778,11 +778,72 @@ if [[ "$itemindex" != '0' && "$partymerge" != '2' && ! ( "$itemindex" == '1' && 
  echo 'Item history indexes appear ahead of completed party merge. Refusing migration.' >&2; exit 1
 fi
 
+# Purchase bill extras (0064): additive classifier field. Six anchors, all or nothing. post_purchase (v1) is
+# not redefined, so the billdocs/partymerge/c3b body anchors are unaffected.
+billextras_probe=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -F' ' <<'SQL'
+do $$ begin
+ create temp table _billextras_receipt (present boolean);
+ if to_regclass('public.app_migration_receipts') is not null then
+   insert into _billextras_receipt select exists(select 1 from public.app_migration_receipts where version='0064');
+ else insert into _billextras_receipt values(false); end if;
+end $$;
+select (select present from _billextras_receipt),
+ (select count(*) from (values
+   (coalesce((select relrowsecurity from pg_class where oid=to_regclass('public.purchase_bill_charges')),false)
+    and coalesce((select relrowsecurity from pg_class where oid=to_regclass('public.purchase_bill_images')),false)),
+   (exists(select 1 from pg_constraint where conrelid=to_regclass('public.purchase_bills') and contype='c'
+      and pg_get_constraintdef(oid)='CHECK ((payment_type = ANY (ARRAY[''credit''::text, ''cash''::text, ''upi''::text])))')
+    and exists(select 1 from pg_constraint where conrelid=to_regclass('public.purchase_bill_items')
+      and conname='purchase_bill_items_gst_snapshot_check')
+    and exists(select 1 from information_schema.columns where table_schema='public' and table_name='purchase_bills' and column_name='notes')
+    and exists(select 1 from information_schema.columns where table_schema='public' and table_name='purchase_bill_items' and column_name='discount_bp')),
+   (exists(select 1 from pg_proc where oid=to_regprocedure('public.post_purchase_v2(uuid,text,jsonb)')
+      and position('dsb.purchase.v2.payment:' in prosrc)>0 and position('DSB_TOTAL_MISMATCH' in prosrc)>0)
+    and exists(select 1 from pg_proc where oid=to_regprocedure('public.void_paid_purchase(uuid,text,text)')
+      and position('void_supplier_payment' in prosrc)>0)
+    and to_regprocedure('public.bx_purchase_line_total(numeric,bigint,integer,integer)') is not null
+    and exists(select 1 from pg_constraint where conname='financial_requests_operation_check'
+      and position('purchase.post.v2' in pg_get_constraintdef(oid))>0)),
+   (case when to_regclass('public.purchase_bill_charges') is null or to_regclass('public.purchase_bill_images') is null
+          or to_regprocedure('public.post_purchase_v2(uuid,text,jsonb)') is null
+          or to_regprocedure('public.void_paid_purchase(uuid,text,text)') is null then false
+     else has_function_privilege('authenticated','public.post_purchase_v2(uuid,text,jsonb)','execute')
+      and has_function_privilege('authenticated','public.void_paid_purchase(uuid,text,text)','execute')
+      and not has_function_privilege('anon','public.post_purchase_v2(uuid,text,jsonb)','execute')
+      and not has_function_privilege('anon','public.void_paid_purchase(uuid,text,text)','execute')
+      and has_table_privilege('authenticated','public.purchase_bill_charges','select')
+      and has_table_privilege('authenticated','public.purchase_bill_images','select')
+      and not has_table_privilege('authenticated','public.purchase_bill_charges','insert,update,delete')
+      and not has_table_privilege('authenticated','public.purchase_bill_images','insert,update,delete') end),
+   ((select count(*) from pg_trigger where not tgisinternal and tgname in ('purchase_bill_charges_check','purchase_bill_images_check',
+      'purchase_bill_charges_immutable','purchase_bill_images_immutable'))=4),
+   (position('''purchaseCharges'',coalesce' in coalesce(pg_get_functiondef(to_regprocedure('public.phase6_export_tenant(uuid)')),''))>0
+    and position('''purchaseImages'',coalesce' in coalesce(pg_get_functiondef(to_regprocedure('public.phase6_export_tenant(uuid)')),''))>0)
+ ) p(ok) where ok);
+SQL
+)
+read -r billextras_receipt billextras_anchors <<<"$(tail -n 1 <<<"$billextras_probe")"
+case "$billextras_receipt:$billextras_anchors" in
+ f:0) billextras=0; needs_billextras=true ;;
+ f:6) billextras=1; needs_billextras=true ;;
+ t:6) billextras=2; needs_billextras=false ;;
+ *) echo "Purchase bill extras partial/drift state ($billextras_receipt/$billextras_anchors). Refusing migration." >&2; exit 1 ;;
+esac
+if [[ "$billextras" == '2' ]]; then
+ billextras_expected=$(sha256sum "$repo_root/supabase/migrations/0064_purchase_bill_extras.sql" | cut -d' ' -f1)
+ billextras_recorded=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -c "select checksum_sha256 from public.app_migration_receipts where version='0064'")
+ [[ "$billextras_expected" == "$billextras_recorded" ]] || { echo '0064 receipt checksum mismatch. Refusing migration.' >&2; exit 1; }
+fi
+# A later packet is not allowed to appear ahead of its predecessor, except a full reset awaiting receipts.
+if [[ "$billextras" != '0' && "$itemindex" != '2' && ! ( "$billextras" == '1' && "$itemindex" == '1' ) ]]; then
+ echo 'Purchase bill extras appear ahead of completed item history indexes. Refusing migration.' >&2; exit 1
+fi
+
 emit_state() {
   local needs_foundation=$1 needs_hardening=$2 needs_phase65=$3 needs_batcha=$4 needs_batchb=$5 needs_p1=$6 needs_p2=$7 needs_c0=$8 needs_c1=$9 needs_c2=${10} needs_c3=${11} needs_c3b=${12} needs_r0=${13} needs_d1=${14} needs_r0b=${15} needs_o1=${16} needs_o2=${17} needs_d2b=${18} needs_d3a=${19}
   local needs_upgrade=true
   if [[ "$needs_foundation:$needs_hardening:$needs_phase65:$needs_batcha:$needs_batchb:$needs_p1:$needs_p2:$needs_c0:$needs_c1:$needs_c2:$needs_c3:$needs_c3b:$needs_r0:$needs_d1:$needs_r0b:$needs_o1:$needs_o2:$needs_d2b:$needs_d3a" == "false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false" ]]; then
-    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" && "$needs_supplierschedule" == "false" && "$needs_partymerge" == "false" && "$needs_itemindex" == "false" ]]; then needs_upgrade=false; fi
+    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" && "$needs_supplierschedule" == "false" && "$needs_partymerge" == "false" && "$needs_itemindex" == "false" && "$needs_billextras" == "false" ]]; then needs_upgrade=false; fi
   fi
   printf 'observed_state=%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s\n' "$foundation" "$hardening" "$phase65" "$batcha" "$batchb" "$p1" "$p2" "$c0" "$c1" "$c2" "$c3" "$c3b" "$r0" "$d1" "$r0b" "$o1" "$o2" "$d2b" "$d3a"
   printf 'needs_upgrade=%s\n' "$needs_upgrade"
@@ -817,6 +878,8 @@ emit_state() {
   printf 'needs_partymerge=%s\n' "$needs_partymerge"
   printf 'itemindex_state=%s\n' "$itemindex"
   printf 'needs_itemindex=%s\n' "$needs_itemindex"
+  printf 'billextras_state=%s\n' "$billextras"
+  printf 'needs_billextras=%s\n' "$needs_billextras"
 }
 
 # Legacy (0030-0043) classification is unchanged from before Packet P1: the
