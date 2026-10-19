@@ -104,6 +104,18 @@ export async function createItem(input: {
     .single();
   return must(data, error) as Item;
 }
+/** The item this tenant saved under a create's client id (the plain RLS items read), or null. Used to
+ * confirm a create whose answer was lost: the retry is refused by unique(tenant_id, client_id). */
+export async function findItemByClientId(tenantId: string, clientId: string): Promise<Item | null> {
+  const { data, error } = await getSupabaseClient()
+    .from('items')
+    .select('id,name,sku,unit1,unit2,unit3,conv1,conv2,tax_rate_bp,min_stock,image_path')
+    .eq('tenant_id', tenantId)
+    .eq('client_id', clientId)
+    .maybeSingle();
+  if (error) throw new Error(friendly(error));
+  return (data ?? null) as Item | null;
+}
 export async function setItemMinStock(itemId: string, minStock: number): Promise<Item> {
   if (!Number.isFinite(minStock) || minStock < 0)
     throw new Error('Minimum stock must be zero or more.');

@@ -27,6 +27,7 @@ const api = vi.hoisted(() => ({
   ]),
   listParties: vi.fn().mockResolvedValue([]),
   createItem: vi.fn(),
+  findItemByClientId: vi.fn(),
   listStock: vi.fn().mockResolvedValue([]),
   listCurrentPrices: vi.fn(),
   listPurchaseHistory: vi.fn().mockResolvedValue([]),
@@ -1168,6 +1169,85 @@ test('P03: an item created inside a bill card goes through the Add item adapter,
     { id: 'a', name: 'Item A', unit1: 'piece', min_stock: 0 },
     { id: 'b', name: 'Item B', unit1: 'piece', min_stock: 0 },
   ]);
+});
+
+const CLIENT_ID_CONFLICT =
+  'duplicate key value violates unique constraint "items_tenant_id_client_id_key"';
+async function createInCardTwice(lookup: () => Promise<unknown>) {
+  // The first answer is lost after the server saved the item; the retry is refused as a duplicate client id.
+  api.createItem
+    .mockRejectedValueOnce(new Error("Something didn't save. Please try again in a moment."))
+    .mockRejectedValueOnce(new Error(CLIENT_ID_CONFLICT));
+  api.findItemByClientId.mockImplementationOnce(lookup);
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly />, host);
+  });
+  await vi.waitFor(() =>
+    expect(
+      host.querySelector<HTMLInputElement>('[aria-label="Item 1 name"]')!.closest('fieldset')!
+        .disabled,
+    ).toBe(false),
+  );
+  await enterLabel(host, 'Item 1 name', 'Lost Rice');
+  const tap = (text: string) =>
+    act(async () => {
+      [...host.querySelectorAll('button')].find((b) => b.textContent === text)!.click();
+    });
+  await tap('+ Create “Lost Rice”');
+  await enterLabel(host, 'Item 1 base unit', 'bag');
+  await tap('Save item');
+  await vi.waitFor(() => expect(host.textContent).toContain("Something didn't save"));
+  await tap('Save item');
+  await vi.waitFor(() => expect(api.findItemByClientId).toHaveBeenCalledTimes(1));
+  const clientId = api.createItem.mock.calls[1]![0].clientId;
+  expect(clientId).toBe(api.createItem.mock.calls[0]![0].clientId);
+  expect(api.findItemByClientId).toHaveBeenCalledWith('tenant', clientId);
+}
+
+test('P03: a retry refused as a duplicate client id finds the saved item and selects it, with no raw error', async () => {
+  const saved = {
+    id: 'lost',
+    name: 'Lost Rice',
+    sku: null,
+    unit1: 'bag',
+    unit2: null,
+    unit3: null,
+    conv1: null,
+    conv2: null,
+    min_stock: 0,
+  };
+  await createInCardTwice(async () => saved);
+  await vi.waitFor(() =>
+    expect(host.querySelector('[aria-label="Item 1 purchased in"]')).toBeTruthy(),
+  );
+  expect(host.querySelector('[aria-label="New item for item 1"]')).toBeNull();
+  expect(host.textContent).not.toContain('duplicate key');
+  expect(host.textContent).toContain('Created Lost Rice');
+  expect(api.createItem).toHaveBeenCalledTimes(2);
+});
+
+test('P03: when the saved item cannot be found after a duplicate client id, the card says so plainly', async () => {
+  await createInCardTwice(async () => {
+    throw new Error('network down');
+  });
+  await vi.waitFor(() =>
+    expect(host.textContent).toContain(
+      'Could not confirm the new item. Check Stock, then search for it here.',
+    ),
+  );
+  expect(host.textContent).not.toContain('duplicate key');
+  expect(host.querySelector('[aria-label="Item 1 purchased in"]')).toBeNull();
+  expect(host.querySelector<HTMLInputElement>('[aria-label="Item 1 base unit"]')!.value).toBe(
+    'bag',
+  );
+});
+
+test('P03: a duplicate client id with no item found by it is reported the same plain way', async () => {
+  await createInCardTwice(async () => null);
+  await vi.waitFor(() =>
+    expect(host.textContent).toContain('Could not confirm the new item. Check Stock'),
+  );
+  expect(host.textContent).not.toContain('duplicate key');
 });
 
 test('SP2b: a revisit of the stock screen lists the last catalogue at once; a write since then skips it', async () => {

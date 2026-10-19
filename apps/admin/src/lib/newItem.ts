@@ -26,6 +26,12 @@ export function newItemInput(f: NewItemFields) {
   };
 }
 
+/** A create refused because this client id was already saved (a retry after a lost answer). Only the
+ * items unique(tenant_id, client_id) constraint counts; any other duplicate (e.g. SKU) is a real error. */
+export function isItemClientIdConflict(error: unknown): boolean {
+  return error instanceof Error && error.message.includes('items_tenant_id_client_id_key');
+}
+
 /** The item already called this (ignoring case and outer spaces); a bill card chooses it, never re-creates it. */
 export function exactItemMatch<T extends Pick<Item, 'name'>>(
   items: T[],

@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { Item } from '@dsb-pro/adapters';
-import { exactItemMatch, newItemInput } from './newItem';
+import { exactItemMatch, isItemClientIdConflict, newItemInput } from './newItem';
 
 test('maps typed fields exactly as the Add item form does: blanks are omitted, conversions are numbers', () => {
   expect(
@@ -40,6 +40,21 @@ test('maps typed fields exactly as the Add item form does: blanks are omitted, c
     conv1: 12,
     conv2: 0.5,
   });
+});
+
+test('only the items client_id unique violation counts as an already-saved create', () => {
+  expect(
+    isItemClientIdConflict(
+      new Error('duplicate key value violates unique constraint "items_tenant_id_client_id_key"'),
+    ),
+  ).toBe(true);
+  expect(
+    isItemClientIdConflict(
+      new Error('duplicate key value violates unique constraint "items_tenant_id_sku_key"'),
+    ),
+  ).toBe(false);
+  expect(isItemClientIdConflict(new Error('network down'))).toBe(false);
+  expect(isItemClientIdConflict('x')).toBe(false);
 });
 
 test('an exact name match ignores case and outer spaces; a partial name is not a match', () => {

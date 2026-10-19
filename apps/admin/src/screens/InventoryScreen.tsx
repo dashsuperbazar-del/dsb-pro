@@ -2,7 +2,7 @@ import { CameraScanner } from '../components/CameraScanner';
 import { PriceHistory } from '../components/PriceHistory';
 import { DemandChart } from '../components/DemandChart';
 import { learnedUnits } from '../lib/unitLearning';
-import { newItemInput, type NewItemFields } from '../lib/newItem';
+import { isItemClientIdConflict, newItemInput, type NewItemFields } from '../lib/newItem';
 import { PurchaseBillCards } from '../components/PurchaseBillCards';
 import {
   addLineAsCard,
@@ -25,6 +25,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/ho
 import {
   addItemBarcode,
   createItem,
+  findItemByClientId,
   createParty,
   findItemByBarcode,
   onAuthStateChange,
@@ -730,7 +731,17 @@ export function InventoryScreen({
     } catch (e) {
       // The answer may be lost after the server saved it: re-read, so a retry finds the name instead.
       void refresh(true).catch(() => {});
-      throw e;
+      if (!isItemClientIdConflict(e)) throw e;
+      // A retry refused because this create was already saved: it succeeded, so find that item.
+      const found = await findItemByClientId(tenantId, clientId).catch((lookupError: unknown) => {
+        console.warn('New item lookup by client id failed', lookupError);
+        return null;
+      });
+      if (!found)
+        throw new Error('Could not confirm the new item. Check Stock, then search for it here.', {
+          cause: e,
+        });
+      item = found;
     }
     setItems((now) =>
       now.some((i) => i.id === item.id)
