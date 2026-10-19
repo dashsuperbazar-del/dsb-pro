@@ -1294,6 +1294,10 @@ body {
   justify-content: space-between;
   gap: 8px;
 }
+.price-retry-actions {
+  display: flex;
+  gap: 8px;
+}
 .bill-add-bottom {
   width: 100%;
   border-style: dashed;

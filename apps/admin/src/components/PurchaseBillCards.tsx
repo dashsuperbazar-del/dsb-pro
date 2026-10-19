@@ -710,10 +710,9 @@ function SalePriceBox(props: {
         <input
           aria-label={`Item ${n} retail ₹`}
           data-field="sale-retail"
-          type="number"
+          type="text"
           inputMode="decimal"
-          min="0"
-          step="0.01"
+          autocomplete="off"
           placeholder="Sale price"
           value={f.retail}
           disabled={props.disabled}
@@ -726,10 +725,9 @@ function SalePriceBox(props: {
           <input
             aria-label={`Item ${n} wholesale qty`}
             data-field="sale-wsqty"
-            type="number"
+            type="text"
             inputMode="numeric"
-            min="1"
-            step="1"
+            autocomplete="off"
             placeholder="1"
             value={f.wsQty}
             disabled={props.disabled}
@@ -741,17 +739,21 @@ function SalePriceBox(props: {
           <input
             aria-label={`Item ${n} wholesale price ₹`}
             data-field="sale-wsprice"
-            type="number"
+            type="text"
             inputMode="decimal"
-            min="0"
-            step="0.01"
-            placeholder="Wholesale ₹"
+            autocomplete="off"
+            placeholder={f.wsNowPaise === null ? 'Wholesale ₹' : paiseToDecimal(f.wsNowPaise)}
             value={f.wsPrice}
             disabled={props.disabled}
             onInput={(e) => type('wsPrice', e.currentTarget.value)}
           />
         </label>
       </div>
+      {f.wsNowPaise !== null && (
+        <small class="muted">
+          Current wholesale {rupees(f.wsNowPaise)} per {unit}
+        </small>
+      )}
       {result.wsPerUnitPaise !== undefined && (
         <small class="muted">
           Wholesale {rupees(result.wsPerUnitPaise)} per {unit}

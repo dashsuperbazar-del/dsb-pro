@@ -218,7 +218,8 @@ test('a bill card shows the unit conversion and sets a retail price that POS the
     .getByRole('button', { name: 'Card Biscuit', exact: true })
     .click();
   await expect(sale.getByLabel('Item 1 retail ₹')).toHaveValue('10.00');
-  await expect(sale.getByLabel('Item 1 wholesale price ₹')).toHaveValue('9.00');
+  await expect(sale.getByLabel('Item 1 wholesale price ₹')).toHaveValue('');
+  await expect(sale).toContainText('Current wholesale ₹9.00 per pcs');
 
   // Leaving the started second bill: accept the unsaved-entry prompt (its draft is kept).
   page.on('dialog', (d) => void d.accept());

@@ -80,14 +80,21 @@ import { TaskTabs } from '../components/TaskTabs';
 import { appRoute } from '../lib/paths';
 import { useDirtyGuard } from '../lib/dirtyGuard';
 import {
+  ageText,
+  currentPricePaise,
+  isPermanentPriceError,
   listPricePlans,
   loadPricePlan,
+  planKey,
+  PLAN_MAX_AGE_MS,
+  removePricePlan,
   salePricePlan,
   savePricePlan,
-  storePricePlan,
+  updatePricePlan,
   writePriceList,
   type PlannedPriceWrite,
   type PriceLoad,
+  type StoredPlan,
 } from '../lib/billSalePrices';
 import { clearPendingIntent, loadPendingIntent, savePendingIntent } from '../lib/pendingIntent';
 
@@ -109,7 +116,18 @@ const paise = (rupees: string) => parseRupeesToPaise(rupees || '0');
 
 type InventorySnapshot = { items: Item[]; parties: Party[]; stock: StockRow[] };
 
-type PriceRetry = { shop: string; bill: string; write: PlannedPriceWrite; message: string };
+// A sale price of a bill that was not written. failed: bill saved, write failed (Retry). check: found on
+// this device after a reload, bill state unknown (check, then Retry). late: the bill confirmed more than a
+// day after the price was entered (not written by itself; Retry). expired / refused: Discard only.
+type PriceRetry = {
+  key: string;
+  shop: string;
+  savedAt: number;
+  write: PlannedPriceWrite;
+  state: 'failed' | 'check' | 'late' | 'expired' | 'refused';
+  message: string;
+};
+const RETRYABLE = new Set<PriceRetry['state']>(['failed', 'check', 'late']);
 
 export function InventoryScreen({
   purchaseOnly = false,
@@ -171,13 +189,19 @@ export function InventoryScreen({
   const [canReadSaleReturns, setCanReadSaleReturns] = useState(false);
   // Bill card "Sale prices" box: only roles that set_item_price accepts (MANAGE_MASTER_DATA).
   const [canSetSalePrices, setCanSetSalePrices] = useState(false);
+  const [saleUser, setSaleUser] = useState('');
+  const saleEnabled = canSetSalePrices && !!saleUser;
   const [saleLoads, setSaleLoads] = useState<Record<string, PriceLoad>>({});
   const saleLoadsAsked = useRef(new Set<string>());
+  const [salePriceGen, setSalePriceGen] = useState(0);
+  const saleGenSeen = useRef(0);
+  // This page's own key for its stored plans (a second window never touches them).
+  const saleWindowId = useRef(crypto.randomUUID());
   // Sale prices of a posted bill that were not written; each can be retried with its own client id.
   const [priceRetries, setPriceRetries] = useState<PriceRetry[]>([]);
   const [priceRetryBusy, setPriceRetryBusy] = useState('');
-  // In-memory copy of each sent bill's sale price plan (the device copy is read first).
-  const pricePlans = useRef(new Map<string, PlannedPriceWrite[]>());
+  // Bills this page has sent: bill client id → its stored plan key (null = no prices to write).
+  const ownPlans = useRef(new Map<string, string | null>());
   // P06: the paper bill's total (paise) when this purchase started as a quick bill; checked before posting.
   const [purchaseExpectedTotal, setPurchaseExpectedTotal] = useState<string | undefined>(undefined);
   const [selected, setSelected] = useState('');
@@ -290,6 +314,7 @@ export function InventoryScreen({
     // Roles granted POST_SALES or VIEW_REPORTS (sale_returns RLS).
     setCanReadSaleReturns(['owner', 'manager', 'accountant', 'cashier'].includes(membership.role));
     setCanSetSalePrices(['owner', 'manager'].includes(membership.role));
+    setSaleUser(session.user.id);
     if (['owner', 'manager'].includes(membership.role)) {
       draftUser.current = session.user.id;
       setDraftPrefix(purchaseDraftPrefix(session.user.id, shop));
@@ -532,32 +557,46 @@ export function InventoryScreen({
     return () => window.removeEventListener('storage', changed);
   }, [draftPrefix]);
   const purchaseBill = useMemo(() => billFromCards(purchaseCards), [purchaseCards]);
-  // Current sale prices of the items on the cards, read once per item for the sale price box.
-  const saleItemIds = canSetSalePrices
-    ? [...new Set(purchaseCards.flatMap((c) => (c.item ? [c.item.id] : [])))].sort().join(',')
+  // Current sale prices of the items on the cards (and of retry alerts), read once per item and read
+  // again after any price write, so "unchanged" is judged against fresh prices.
+  const saleItemIds = saleEnabled
+    ? [
+        ...new Set([
+          ...purchaseCards.flatMap((c) => (c.item ? [c.item.id] : [])),
+          ...priceRetries.map((r) => r.write.itemId),
+        ]),
+      ]
+        .sort()
+        .join(',')
     : '';
   useEffect(() => {
     if (!saleItemIds) return;
+    if (saleGenSeen.current !== salePriceGen) {
+      saleGenSeen.current = salePriceGen;
+      saleLoadsAsked.current.clear();
+    }
+    const gen = salePriceGen;
     for (const id of saleItemIds.split(',')) {
       if (saleLoadsAsked.current.has(id)) continue;
       saleLoadsAsked.current.add(id);
       setSaleLoads((l) => ({ ...l, [id]: { state: 'loading' } }));
+      const settle = (load: PriceLoad) => {
+        if (saleGenSeen.current === gen) setSaleLoads((l) => ({ ...l, [id]: load }));
+      };
       void Promise.resolve()
         .then(() => listCurrentPrices(id))
         .then(
-          (prices) => setSaleLoads((l) => ({ ...l, [id]: { state: 'ok', prices: prices ?? [] } })),
-          () => setSaleLoads((l) => ({ ...l, [id]: { state: 'failed' } })),
+          (prices) => settle({ state: 'ok', prices: prices ?? [] }),
+          () => settle({ state: 'failed' }),
         );
     }
-  }, [saleItemIds]);
-  function reloadSalePrices() {
-    saleLoadsAsked.current.clear();
-    setSaleLoads({});
-  }
-  // A stored plan with no unconfirmed bill behind it belongs to a posted bill whose prices were not all
-  // written (the page closed or a write failed): offer each for retry.
+  }, [saleItemIds, salePriceGen]);
+  const reloadSalePrices = () => setSalePriceGen((g) => g + 1);
+  // Plans of this user on this device with no unconfirmed bill behind them: the page closed before their
+  // prices were written, or a write failed. Whether the bill posted is not known here, so each is offered
+  // as "check the bill, then Retry or Discard"; plans older than a day only as Discard.
   useEffect(() => {
-    if (!shopId || !canSetSalePrices) return;
+    if (!shopId || !saleEnabled) return;
     const pending = new Set<string>();
     try {
       const head = pendingKey(shopId);
@@ -568,13 +607,14 @@ export function InventoryScreen({
         if (typeof v?.clientId === 'string') pending.add(v.clientId);
       }
     } catch {
-      return; // Cannot tell posted from unconfirmed: offer nothing rather than a wrong retry.
+      return; // Cannot tell an unconfirmed bill from a finished one: offer nothing.
     }
-    const left = listPricePlans(shopId).filter(
+    const now = Date.now();
+    const left = listPricePlans(saleUser, shopId).filter(
       (p) =>
-        !pending.has(p.billClientId) &&
-        p.billClientId !== lockedPurchase.current?.clientId &&
-        !pricePlans.current.has(p.billClientId),
+        !pending.has(p.bill) &&
+        p.bill !== lockedPurchase.current?.clientId &&
+        !ownPlans.current.has(p.bill),
     );
     if (!left.length) return;
     setPriceRetries((r) => [
@@ -582,41 +622,84 @@ export function InventoryScreen({
       ...left.flatMap((p) =>
         p.writes
           .filter((w) => !r.some((x) => x.write.clientId === w.clientId))
-          .map((write) => ({
+          .map((write): PriceRetry => ({
+            key: p.key,
             shop: shopId,
-            bill: p.billClientId,
+            savedAt: p.savedAt,
             write,
-            message: 'Not confirmed before the page was closed.',
+            state: now - p.savedAt > PLAN_MAX_AGE_MS ? 'expired' : 'check',
+            message: '',
           })),
       ),
     ]);
-  }, [shopId, canSetSalePrices]);
+  }, [shopId, saleEnabled, saleUser]);
   async function writeSalePrices(shop: string, bill: string): Promise<string> {
-    const writes = loadPricePlan(shop, bill) ?? pricePlans.current.get(bill) ?? [];
-    pricePlans.current.delete(bill);
-    if (!writes.length) return '';
-    const failed = await writePriceList(writes, (w) =>
-      setItemPrice({
-        itemId: w.itemId,
-        shopId: shop,
-        kind: w.kind,
-        unitLevel: w.unitLevel,
-        pricePaise: w.pricePaise,
-        clientId: w.clientId,
-      }),
-    );
-    storePricePlan(
-      shop,
-      bill,
-      failed.map((f) => f.write),
-    );
+    const own = ownPlans.current.get(bill);
+    ownPlans.current.delete(bill);
+    // This window's plan; after a reload (plan saved by the earlier page) every plan kept for this bill.
+    const plans =
+      own === undefined
+        ? saleUser
+          ? listPricePlans(saleUser, shop).filter((p) => p.bill === bill)
+          : []
+        : own
+          ? [loadPricePlan(own)].filter((p): p is StoredPlan => !!p)
+          : [];
+    if (!plans.length) return '';
+    const entries: PriceRetry[] = [];
+    let done = 0;
+    for (const plan of plans) {
+      const base = { key: plan.key, shop, savedAt: plan.savedAt };
+      if (Date.now() - plan.savedAt > PLAN_MAX_AGE_MS) {
+        // Confirmed more than a day after the prices were entered: never written by itself.
+        entries.push(
+          ...plan.writes.map((write) => ({ ...base, write, state: 'late' as const, message: '' })),
+        );
+        continue;
+      }
+      const failed = await writePriceList(plan.writes, (w) =>
+        setItemPrice({
+          itemId: w.itemId,
+          shopId: shop,
+          kind: w.kind,
+          unitLevel: w.unitLevel,
+          pricePaise: w.pricePaise,
+          clientId: w.clientId,
+        }),
+      );
+      done += plan.writes.length - failed.length;
+      const retryable = failed.filter((f) => !isPermanentPriceError(f.message));
+      updatePricePlan(
+        plan.key,
+        retryable.map((f) => f.write),
+      );
+      entries.push(
+        ...failed.map((f) => ({
+          ...base,
+          write: f.write,
+          state: isPermanentPriceError(f.message) ? ('refused' as const) : ('failed' as const),
+          message: f.message,
+        })),
+      );
+    }
     setPriceRetries((r) => [
-      ...r.filter((x) => x.bill !== bill),
-      ...failed.map((f) => ({ shop, bill, write: f.write, message: f.message })),
+      ...r.filter((x) => !entries.some((e) => e.write.clientId === x.write.clientId)),
+      ...entries,
     ]);
     reloadSalePrices();
-    const done = writes.length - failed.length;
     return done ? ` Sale price${done === 1 ? '' : 's'} updated: ${done}.` : '';
+  }
+  function dropFromPlan(entry: PriceRetry) {
+    const plan = loadPricePlan(entry.key);
+    if (plan)
+      updatePricePlan(
+        entry.key,
+        plan.writes.filter((w) => w.clientId !== entry.write.clientId),
+      );
+  }
+  function discardPrice(entry: PriceRetry) {
+    dropFromPlan(entry);
+    setPriceRetries((r) => r.filter((x) => x.write.clientId !== entry.write.clientId));
   }
   async function retryPrice(entry: PriceRetry) {
     if (priceRetryBusy) return;
@@ -631,21 +714,19 @@ export function InventoryScreen({
         pricePaise: w.pricePaise,
         clientId: w.clientId,
       });
-      setPriceRetries((r) => {
-        const next = r.filter((x) => x.write.clientId !== w.clientId);
-        storePricePlan(
-          entry.shop,
-          entry.bill,
-          next.filter((x) => x.bill === entry.bill).map((x) => x.write),
-        );
-        return next;
-      });
+      discardPrice(entry);
       reloadSalePrices();
       setMessage(`Sale price updated for ${w.itemName}.`);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
+      const permanent = isPermanentPriceError(message);
+      if (permanent) dropFromPlan(entry);
       setPriceRetries((r) =>
-        r.map((x) => (x.write.clientId === entry.write.clientId ? { ...x, message } : x)),
+        r.map((x) =>
+          x.write.clientId === entry.write.clientId
+            ? { ...x, message, state: permanent ? 'refused' : x.state }
+            : x,
+        ),
       );
     } finally {
       setPriceRetryBusy('');
@@ -1069,7 +1150,7 @@ export function InventoryScreen({
     }
     // Sale prices typed on the cards: checked before anything is sent, written only after the bill posts.
     let salePlan: PlannedPriceWrite[] = [];
-    if (!purchaseLocked && canSetSalePrices) {
+    if (!purchaseLocked && saleEnabled) {
       const plan = salePricePlan(purchaseCards, saleLoads, shopId, purchaseClientId);
       if (plan.problems.length) {
         const first = plan.problems[0]!;
@@ -1138,25 +1219,30 @@ export function InventoryScreen({
     const isRetry = Boolean(purchaseLocked && lockedPurchase.current);
     // The sale price plan is stored before the bill (and never inside its request, which stays as it was),
     // so prices are written or offered for retry once the bill posts, even after a reload.
+    const ownKey = saleUser
+      ? planKey(saleUser, request.shopId, request.clientId, saleWindowId.current)
+      : '';
     if (!isRetry) {
       try {
-        if (salePlan.length) savePricePlan(request.shopId, request.clientId, salePlan);
-        else storePricePlan(request.shopId, request.clientId, []);
+        if (salePlan.length)
+          savePricePlan(ownKey, { bill: request.clientId, savedAt: Date.now(), writes: salePlan });
+        else if (ownKey) removePricePlan(ownKey);
       } catch (e) {
         setError(
           `Sale prices could not be kept on this device, so the bill was not sent: ${e instanceof Error ? e.message : String(e)}`,
         );
         return;
       }
-      pricePlans.current.set(request.clientId, salePlan);
+      ownPlans.current.set(request.clientId, salePlan.length ? ownKey : null);
     }
     // Durable before dispatch, or not sent at all.
     try {
       savePendingIntent(pendingKey(request.shopId), request, { retry: isRetry });
     } catch (e) {
+      // Only this window's own plan is removed; another window's plan for the same bill is kept.
       if (!isRetry) {
-        storePricePlan(request.shopId, request.clientId, []);
-        pricePlans.current.delete(request.clientId);
+        if (ownKey) removePricePlan(ownKey);
+        ownPlans.current.delete(request.clientId);
       }
       setError(e instanceof Error ? e.message : String(e));
       return;
@@ -1192,8 +1278,8 @@ export function InventoryScreen({
         // Keep this identity after rejection too: another editor may already have posted
         // a different payload under it. Rotating would turn a mismatch into a duplicate bill.
         // Nothing posted, so no sale price is written; the next attempt plans them again from the cards.
-        storePricePlan(request.shopId, request.clientId, []);
-        pricePlans.current.delete(request.clientId);
+        if (ownKey) removePricePlan(ownKey);
+        ownPlans.current.delete(request.clientId);
         setError(`Not posted: ${outcome.message}.${anotherNote}`);
         return;
       }
@@ -1258,6 +1344,7 @@ export function InventoryScreen({
       });
       const updatedPrices = await listCurrentPrices(selected);
       if (selectedRef.current === selected) setPrices(updatedPrices);
+      reloadSalePrices();
       setMessage('Price history updated atomically.');
     } catch (e) {
       setError(String(e));
@@ -1381,23 +1468,52 @@ export function InventoryScreen({
       {error && <p role="alert">{error}</p>}
       {!purchaseOnly && <SnapshotNote at={snapshotAt} failed={snapshotFailed} />}
       {message && <p role="status">{message}</p>}
-      {priceRetries.map((r) => (
-        <div class="alert price-retry" role="alert" key={r.write.clientId}>
-          <span>
-            Bill saved. Sale price not updated for {r.write.itemName} ({r.write.kind}{' '}
-            {rupees(r.write.pricePaise)} per {r.write.unitName}).{' '}
-            <small class="muted">{r.message}</small>
-          </span>
-          <button
-            type="button"
-            aria-label={`Retry sale price for ${r.write.itemName}`}
-            disabled={!!priceRetryBusy}
-            onClick={() => void retryPrice(r)}
-          >
-            {priceRetryBusy === r.write.clientId ? 'Retrying…' : 'Retry'}
-          </button>
-        </div>
-      ))}
+      {priceRetries.map((r) => {
+        const w = r.write;
+        const what = `${w.itemName} (${w.kind} ${rupees(w.pricePaise)} per ${w.unitName})`;
+        const load = saleLoads[w.itemId];
+        const now =
+          load?.state === 'ok' ? currentPricePaise(load.prices, r.shop, w.kind, w.unitLevel) : null;
+        const text = {
+          failed: `Bill saved. Sale price not updated for ${what}.`,
+          check: `Sale price for ${what} was entered with a bill and not written. Check that the bill was posted, then Retry or Discard.`,
+          late: `Bill saved. Sale price for ${what} was not written: it was entered more than a day before the bill was confirmed. Retry to write it now, or Discard.`,
+          expired: `Sale price for ${what} was not written and has expired.`,
+          refused: `Sale price for ${what} cannot be written: ${r.message}.`,
+        }[r.state];
+        return (
+          <div class="alert price-retry" role="alert" key={w.clientId}>
+            <span>
+              {text}{' '}
+              <small class="muted">
+                Entered {ageText(r.savedAt, Date.now())} · Now{' '}
+                {load?.state === 'ok' ? (now === null ? 'no price' : rupees(now)) : '…'}
+                {r.state === 'failed' && r.message ? ` · ${r.message}` : ''}
+              </small>
+            </span>
+            <span class="price-retry-actions">
+              {RETRYABLE.has(r.state) && (
+                <button
+                  type="button"
+                  aria-label={`Retry sale price for ${w.itemName}`}
+                  disabled={!!priceRetryBusy}
+                  onClick={() => void retryPrice(r)}
+                >
+                  {priceRetryBusy === w.clientId ? 'Retrying…' : 'Retry'}
+                </button>
+              )}
+              <button
+                type="button"
+                aria-label={`Discard sale price for ${w.itemName}`}
+                disabled={priceRetryBusy === w.clientId}
+                onClick={() => discardPrice(r)}
+              >
+                Discard
+              </button>
+            </span>
+          </div>
+        );
+      })}
       <section hidden={purchaseOnly || view !== 'advanced'} aria-label="Import old DSB backup">
         <h2>Import old DSB backup</h2>
         <p class="muted">
@@ -1987,7 +2103,7 @@ export function InventoryScreen({
               shopId={shopId}
               parties={parties}
               canSeePrices={canSeePurchasePrices}
-              saleLoads={canSetSalePrices ? saleLoads : undefined}
+              saleLoads={saleEnabled ? saleLoads : undefined}
               onMessage={setMessage}
               findBarcode={findBarcodeForCard}
               onCreateItem={tenantId ? createItemFromCard : undefined}

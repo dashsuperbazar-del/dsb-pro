@@ -6,13 +6,18 @@ import {
   conversionLines,
   currentPricePaise,
   defaultSaleLevel,
+  ageText,
+  isPermanentPriceError,
   listPricePlans,
   loadPricePlan,
+  planKey,
+  PLAN_MAX_AGE_MS,
   priceClientId,
+  removePricePlan,
   salePricePlan,
   saleFields,
   savePricePlan,
-  storePricePlan,
+  updatePricePlan,
   writePriceList,
   type PriceLoad,
 } from './billSalePrices';
@@ -88,7 +93,7 @@ describe('prefill', () => {
     expect(defaultSaleLevel(ctn, { state: 'loading' }, 'shop')).toBe(3);
     expect(defaultSaleLevel(one, ok([]), 'shop')).toBe(1);
   });
-  test('fields show the current retail and wholesale for the chosen unit', () => {
+  test('fields show the current retail; the current wholesale is only a hint, never a value', () => {
     const load = ok([
       price({ unit_level: 3, price_paise: 1000 }),
       price({ kind: 'wholesale', unit_level: 3, price_paise: 900 }),
@@ -97,8 +102,9 @@ describe('prefill', () => {
     expect(saleFields(card(ctn), load, 'shop')).toMatchObject({
       level: 3,
       retail: '10.00',
-      wsQty: '1',
-      wsPrice: '9.00',
+      wsQty: '',
+      wsPrice: '',
+      wsNowPaise: 900,
     });
     expect(saleFields(card(ctn, { level: 2 }), load, 'shop')).toMatchObject({
       level: 2,
@@ -119,9 +125,18 @@ describe('what a card writes', () => {
     expect(cardSaleResult(card(ctn, { level: 3, retail: '10.00' }), load, 'shop')).toEqual({
       writes: [],
     });
-    expect(cardSaleResult(card(ctn, { level: 3, wsQty: '12', wsPrice: '' }), load, 'shop')).toEqual(
-      { writes: [] },
-    );
+    expect(cardSaleResult(card(ctn, { level: 3, wsQty: '', wsPrice: '' }), load, 'shop')).toEqual({
+      writes: [],
+    });
+  });
+  test('a wholesale qty without a typed wholesale price is a problem, never the current price divided', () => {
+    const withWs = ok([
+      price({ unit_level: 3, price_paise: 1000 }),
+      price({ kind: 'wholesale', unit_level: 3, price_paise: 900 }),
+    ]);
+    const r = cardSaleResult(card(ctn, { level: 3, wsQty: '12' }), withWs, 'shop');
+    expect(r.writes).toEqual([]);
+    expect(r.problem).toBe('Enter the wholesale price for 12 pcs, or clear the wholesale qty.');
   });
   test('a changed retail price writes one retail price at that unit, in paise', () => {
     expect(cardSaleResult(card(ctn, { level: 3, retail: '12.5' }), load, 'shop')).toEqual({
@@ -172,7 +187,7 @@ describe('what a card writes', () => {
 
 describe('bill plan', () => {
   const loads = { i1: ok([]), i2: ok([]) };
-  test('one write per changed price with a client id from bill + item number + kind + unit', () => {
+  test('one write per changed price with a client id from bill + item + kind + unit', () => {
     const plan = salePricePlan(
       [
         card(ctn, { level: 3, retail: '10', wsPrice: '9' }),
@@ -185,11 +200,11 @@ describe('bill plan', () => {
     );
     expect(plan.problems).toEqual([]);
     expect(plan.writes.map((w) => w.clientId)).toEqual([
-      priceClientId('bill-1', 1, 'retail', 3),
-      priceClientId('bill-1', 1, 'wholesale', 3),
-      priceClientId('bill-1', 3, 'retail', 2),
+      priceClientId('bill-1', 'i1', 'retail', 3),
+      priceClientId('bill-1', 'i1', 'wholesale', 3),
+      priceClientId('bill-1', 'i2', 'retail', 2),
     ]);
-    expect(priceClientId('bill-1', 1, 'retail', 3)).toBe('bill-price:bill-1:1:retail:3');
+    expect(priceClientId('bill-1', 'i1', 'retail', 3)).toBe('bill-price:bill-1:i1:retail:3');
   });
   test('the same price twice is written once; different prices for one unit are refused', () => {
     const same = salePricePlan(
@@ -230,20 +245,45 @@ describe('stored plan and writes', () => {
     unitName: 'pcs',
     pricePaise: 1000,
   };
-  test('saved per bill, listed per shop, removed when empty', () => {
-    savePricePlan('shop', 'b', [w]);
-    savePricePlan('other', 'c', [w]);
-    expect(loadPricePlan('shop', 'b')).toEqual([w]);
-    expect(listPricePlans('shop')).toEqual([{ billClientId: 'b', writes: [w] }]);
-    storePricePlan('shop', 'b', []);
-    expect(loadPricePlan('shop', 'b')).toBeNull();
+  test('saved per user, shop, bill and window; listed for that user and shop only', () => {
+    const mine = planKey('u1', 'shop', 'b', 'win1');
+    savePricePlan(mine, { bill: 'b', savedAt: 5, writes: [w] });
+    savePricePlan(planKey('u1', 'other', 'c', 'win1'), { bill: 'c', savedAt: 5, writes: [w] });
+    savePricePlan(planKey('u2', 'shop', 'd', 'win1'), { bill: 'd', savedAt: 5, writes: [w] });
+    expect(loadPricePlan(mine)).toEqual({ key: mine, bill: 'b', savedAt: 5, writes: [w] });
+    expect(listPricePlans('u1', 'shop')).toEqual([
+      { key: mine, bill: 'b', savedAt: 5, writes: [w] },
+    ]);
+    // A second window's plan for the same bill lives under its own key: removing it keeps the first.
+    const other = planKey('u1', 'shop', 'b', 'win2');
+    savePricePlan(other, { bill: 'b', savedAt: 6, writes: [w] });
+    removePricePlan(other);
+    expect(loadPricePlan(mine)?.writes).toEqual([w]);
+    updatePricePlan(mine, []);
+    expect(loadPricePlan(mine)).toBeNull();
     // Never under the pending purchase prefix (it would be read as an unconfirmed bill).
     expect(Object.keys(localStorage).some((k) => k.startsWith('dsb-pending-purchase'))).toBe(false);
   });
   test('unreadable stored plans are ignored', () => {
-    localStorage.setItem('dsb-bill-sale-prices:shop:z', '{bad');
-    localStorage.setItem('dsb-bill-sale-prices:shop:y', JSON.stringify({ writes: [{ x: 1 }] }));
-    expect(listPricePlans('shop')).toEqual([]);
+    localStorage.setItem(planKey('u', 'shop', 'z', 'w'), '{bad');
+    localStorage.setItem(
+      planKey('u', 'shop', 'y', 'w'),
+      JSON.stringify({ bill: 'y', savedAt: 1, writes: [{ x: 1 }] }),
+    );
+    expect(listPricePlans('u', 'shop')).toEqual([]);
+  });
+  test('errors that a retry cannot fix, plan age and its wording', () => {
+    expect(isPermanentPriceError('item not in tenant')).toBe(true);
+    expect(isPermanentPriceError('not permitted')).toBe(true);
+    expect(isPermanentPriceError('invalid price')).toBe(true);
+    expect(isPermanentPriceError("Something didn't save. Please try again in a moment.")).toBe(
+      false,
+    );
+    expect(PLAN_MAX_AGE_MS).toBe(24 * 60 * 60 * 1000);
+    expect(ageText(1_000, 1_000 + 30_000)).toBe('just now');
+    expect(ageText(0, 5 * 60_000)).toBe('5 min ago');
+    expect(ageText(0, 3 * 3_600_000)).toBe('3 h ago');
+    expect(ageText(0, 2 * 86_400_000)).toBe('2 days ago');
   });
   test('writes run in order, one at a time; failures are returned with their reason', async () => {
     const order: string[] = [];

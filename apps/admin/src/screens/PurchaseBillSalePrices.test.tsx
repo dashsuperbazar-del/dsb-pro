@@ -140,8 +140,10 @@ test('the sale price box is prefilled with the current prices for the chosen uni
       'aria-pressed',
     ),
   ).toBe('true');
-  expect(input('Item 1 wholesale qty').value).toBe('1');
-  expect(input('Item 1 wholesale price ₹').value).toBe('9.00');
+  // The current wholesale is a hint, never a value that a typed qty would divide.
+  expect(input('Item 1 wholesale qty').value).toBe('');
+  expect(input('Item 1 wholesale price ₹').value).toBe('');
+  expect(host.textContent).toContain('Current wholesale ₹9.00 per pcs');
   await click(button('pkt', host.querySelector(label('Item 1 prices entered per'))!));
   expect(input('Item 1 retail ₹').value).toBe('95.00');
   expect(input('Item 1 wholesale price ₹').value).toBe('');
@@ -159,6 +161,30 @@ test('blank or unchanged prices write nothing; the bill still posts', async () =
   await vi.waitFor(() => expect(host.textContent).toContain('Purchase posted (1 item)'));
   expect(api.setItemPrice).not.toHaveBeenCalled();
   expect(host.textContent).not.toContain('Sale price');
+});
+
+test('a wholesale qty alone never divides the current wholesale price; it blocks posting', async () => {
+  await mountEditor();
+  await fillCard(1, 'Biscuit');
+  await vi.waitFor(() => expect(host.textContent).toContain('Current wholesale ₹9.00 per pcs'));
+  await setField(label('Item 1 wholesale qty'), '12');
+  expect(host.querySelector('[data-testid="item-1-sale-problem"]')!.textContent).toBe(
+    'Enter the wholesale price for 12 pcs, or clear the wholesale qty.',
+  );
+  await post();
+  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  expect(api.setItemPrice).not.toHaveBeenCalled();
+});
+
+test('a price that is not a number is a problem, not a blank', async () => {
+  await mountEditor();
+  await fillCard(1, 'Biscuit');
+  await setField(label('Item 1 retail ₹'), '12..5');
+  expect(host.querySelector('[data-testid="item-1-sale-problem"]')!.textContent).toMatch(
+    /retail price in rupees/,
+  );
+  await post();
+  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
 });
 
 test('wholesale price for N units that is not whole paise per unit is refused before posting', async () => {
@@ -205,7 +231,7 @@ test('prices are written only after the bill posts, one call each, with derived 
       kind: 'retail',
       unitLevel: 3,
       pricePaise: 1250,
-      clientId: `bill-price:${bill}:1:retail:3`,
+      clientId: `bill-price:${bill}:bis:retail:3`,
     },
     {
       itemId: 'bis',
@@ -213,10 +239,14 @@ test('prices are written only after the bill posts, one call each, with derived 
       kind: 'wholesale',
       unitLevel: 3,
       pricePaise: 1000,
-      clientId: `bill-price:${bill}:1:wholesale:3`,
+      clientId: `bill-price:${bill}:bis:wholesale:3`,
     },
   ]);
   expect(Object.keys(localStorage).filter((k) => k.startsWith('dsb-bill-sale-prices'))).toEqual([]);
+  // Current prices are read again after the write, so the next bill compares against fresh prices.
+  api.listCurrentPrices.mockResolvedValue([price('retail', 3, 1250)]);
+  await pickItem(1, 'Biscuit');
+  await vi.waitFor(() => expect(input('Item 1 retail ₹').value).toBe('12.50'));
 });
 
 test('a refused bill writes no price', async () => {
@@ -246,6 +276,28 @@ test('an unconfirmed bill writes prices only once its retry confirms', async () 
   expect(api.setItemPrice.mock.calls[0][0]).toMatchObject({ kind: 'retail', pricePaise: 1250 });
 });
 
+test('a bill that confirms more than a day after its prices were entered writes none by itself', async () => {
+  await mountEditor();
+  await fillCard(1, 'Biscuit');
+  await setField(label('Item 1 retail ₹'), '12.50');
+  api.postPurchaseOutcome.mockResolvedValueOnce({ kind: 'unknown', message: 'timeout' });
+  await post();
+  await vi.waitFor(() => expect(host.textContent).toContain('Not confirmed: timeout'));
+  const later = Date.now() + 25 * 3_600_000;
+  vi.spyOn(Date, 'now').mockReturnValue(later);
+  api.postPurchaseOutcome.mockResolvedValueOnce({ kind: 'confirmed', value: {} });
+  await click(button('Retry same purchase'));
+  await vi.waitFor(() =>
+    expect(host.textContent).toContain(
+      'Sale price for Biscuit (retail ₹12.50 per pcs) was not written',
+    ),
+  );
+  expect(api.setItemPrice).not.toHaveBeenCalled();
+  expect(host.textContent).toContain('1 day ago');
+  await click(host.querySelector<HTMLButtonElement>(label('Retry sale price for Biscuit'))!);
+  await vi.waitFor(() => expect(api.setItemPrice).toHaveBeenCalledTimes(1));
+});
+
 test('a failed price write keeps the bill posted and offers a retry with the same client id', async () => {
   await mountEditor();
   await fillCard(1, 'Biscuit');
@@ -258,12 +310,18 @@ test('a failed price write keeps the bill posted and offers a retry with the sam
   );
   expect(host.textContent).toContain('Purchase posted (1 item)');
   const first = api.setItemPrice.mock.calls[0][0];
-  // Still offered after a reload of the screen.
+  // The alert shows its age and the item's current price next to Retry and Discard.
+  const alert = () => host.querySelector<HTMLElement>('.price-retry')!;
+  await vi.waitFor(() => expect(alert().textContent).toContain('Now ₹10.00'));
+  expect(alert().textContent).toContain('just now');
+  expect(alert().querySelector(label('Discard sale price for Biscuit'))).not.toBeNull();
+  // After a reload the bill's state is not known here: it asks to check the bill, never says saved.
   act(() => render(null, host));
   await mountEditor();
   await vi.waitFor(() =>
-    expect(host.textContent).toContain('Bill saved. Sale price not updated for Biscuit'),
+    expect(host.textContent).toContain('Check that the bill was posted, then Retry or Discard.'),
   );
+  expect(host.textContent).not.toContain('Bill saved.');
   await click(host.querySelector<HTMLButtonElement>(label('Retry sale price for Biscuit'))!);
   await vi.waitFor(() => expect(host.textContent).toContain('Sale price updated for Biscuit.'));
   expect(api.setItemPrice).toHaveBeenCalledTimes(2);
@@ -295,4 +353,64 @@ test('a typed sale price counts as unsaved entry for the leave guard', async () 
     level: 3,
     retail: '11',
   });
+});
+
+const key = (bill: string, user = 'user') => `dsb-bill-sale-prices:${user}:shop:${bill}:old-window`;
+const stored = (bill: string, savedAt: number) =>
+  JSON.stringify({
+    bill,
+    savedAt,
+    writes: [
+      {
+        clientId: `bill-price:${bill}:bis:retail:3`,
+        itemId: 'bis',
+        itemName: 'Biscuit',
+        kind: 'retail',
+        unitLevel: 3,
+        unitName: 'pcs',
+        pricePaise: 1250,
+      },
+    ],
+  });
+
+test('a retry alert can be discarded; it is then gone for good', async () => {
+  localStorage.setItem(key('b1'), stored('b1', Date.now() - 60_000));
+  await mountEditor();
+  await vi.waitFor(() => expect(host.querySelector('.price-retry')).not.toBeNull());
+  await click(host.querySelector<HTMLButtonElement>(label('Discard sale price for Biscuit'))!);
+  expect(host.querySelector('.price-retry')).toBeNull();
+  expect(localStorage.getItem(key('b1'))).toBeNull();
+  expect(api.setItemPrice).not.toHaveBeenCalled();
+});
+
+test('a plan older than a day is offered only for discard', async () => {
+  localStorage.setItem(key('b2'), stored('b2', Date.now() - 2 * 86_400_000));
+  await mountEditor();
+  await vi.waitFor(() => expect(host.textContent).toContain('expired'));
+  expect(host.textContent).toContain('2 days ago');
+  expect(host.querySelector(label('Retry sale price for Biscuit'))).toBeNull();
+  expect(host.querySelector(label('Discard sale price for Biscuit'))).not.toBeNull();
+});
+
+test('an error a retry cannot fix (item gone) is offered only for discard', async () => {
+  await mountEditor();
+  await fillCard(1, 'Biscuit');
+  await setField(label('Item 1 retail ₹'), '12.50');
+  api.postPurchaseOutcome.mockResolvedValue({ kind: 'confirmed', value: {} });
+  api.setItemPrice.mockRejectedValueOnce(new Error('item not in tenant'));
+  await post();
+  await vi.waitFor(() =>
+    expect(host.textContent).toContain('cannot be written: item not in tenant'),
+  );
+  expect(host.querySelector(label('Retry sale price for Biscuit'))).toBeNull();
+  await click(host.querySelector<HTMLButtonElement>(label('Discard sale price for Biscuit'))!);
+  expect(host.querySelector('.price-retry')).toBeNull();
+});
+
+test('another user’s stored sale prices are never shown or written', async () => {
+  localStorage.setItem(key('b3', 'someone-else'), stored('b3', Date.now() - 60_000));
+  await mountEditor();
+  await pickItem(1, 'Biscuit');
+  expect(host.querySelector('.price-retry')).toBeNull();
+  expect(localStorage.getItem(key('b3', 'someone-else'))).not.toBeNull();
 });

@@ -67,17 +67,19 @@ function current(load: PriceLoad | undefined, shopId: string, kind: SaleKind, le
   return load?.state === 'ok' ? currentPricePaise(load.prices, shopId, kind, level) : null;
 }
 
-/** What the box shows: typed values, else the current prices for the chosen unit. */
+/** What the box shows: typed values, else the current retail for the chosen unit. The current wholesale
+ * is only returned as a hint (wsNowPaise): it is never a field value, so a typed wholesale qty can never
+ * divide it. */
 export function saleFields(card: BillCardDraft, load: PriceLoad | undefined, shopId: string) {
   const item = card.item;
   const level = card.sale?.level ?? (item ? defaultSaleLevel(item, load, shopId) : 1);
   const r = current(load, shopId, 'retail', level);
-  const w = current(load, shopId, 'wholesale', level);
   return {
     level,
     retail: card.sale?.retail ?? (r === null ? '' : paiseToDecimal(r)),
-    wsQty: card.sale?.wsQty ?? '1',
-    wsPrice: card.sale?.wsPrice ?? (w === null ? '' : paiseToDecimal(w)),
+    wsQty: card.sale?.wsQty ?? '',
+    wsPrice: card.sale?.wsPrice ?? '',
+    wsNowPaise: current(load, shopId, 'wholesale', level),
   };
 }
 
@@ -103,7 +105,8 @@ export function cardSaleResult(
 ): {
   writes: PriceWrite[];
   problem?: string;
-  /** Typed wholesale for more than 1 unit, per unit. */ wsPerUnitPaise?: number;
+  /** Typed wholesale for more than 1 unit, per unit. */
+  wsPerUnitPaise?: number;
 } {
   const item = card.item;
   if (!item || !hasTypedSale(card)) return { writes: [] };
@@ -126,15 +129,18 @@ export function cardSaleResult(
     if (p !== current(load, shopId, 'retail', level))
       writes.push({ ...base, kind: 'retail', pricePaise: p });
   }
-  if ((card.sale!.wsQty !== undefined || card.sale!.wsPrice !== undefined) && f.wsPrice.trim()) {
-    const qtyText = f.wsQty.trim() || '1';
-    if (!/^[1-9]\d{0,5}$/.test(qtyText))
-      return {
-        writes: [],
-        problem: `Wholesale qty must be a whole number of ${unit}, 1 or more.`,
-      };
-    const qty = Number(qtyText);
-    const p = rupeesToPaise(f.wsPrice);
+  const qtyText = f.wsQty.trim();
+  const priceText = f.wsPrice.trim();
+  if (qtyText && !/^[1-9]\d{0,5}$/.test(qtyText))
+    return { writes: [], problem: `Wholesale qty must be a whole number of ${unit}, 1 or more.` };
+  if (qtyText && !priceText)
+    return {
+      writes: [],
+      problem: `Enter the wholesale price for ${qtyText} ${unit}, or clear the wholesale qty.`,
+    };
+  if (priceText) {
+    const qty = Number(qtyText || '1');
+    const p = rupeesToPaise(priceText);
     if (p === null)
       return {
         writes: [],
@@ -155,14 +161,14 @@ export function cardSaleResult(
   return { writes };
 }
 
-/** Same bill + item number + kind + unit → same id, so a retry never writes a price twice. */
+/** Same bill + item + kind + unit → same id, so a retry never writes a price twice. */
 export function priceClientId(
   billClientId: string,
-  itemNo: number,
+  itemId: string,
   kind: SaleKind,
   level: 1 | 2 | 3,
 ) {
-  return `bill-price:${billClientId}:${itemNo}:${kind}:${level}`;
+  return `bill-price:${billClientId}:${itemId}:${kind}:${level}`;
 }
 
 /** Every sale price this bill would write, in card order, or the cards that need a look first. */
@@ -190,16 +196,26 @@ export function salePricePlan(
         continue;
       }
       seen.set(key, { index, pricePaise: w.pricePaise });
-      writes.push({ ...w, clientId: priceClientId(billClientId, index + 1, w.kind, w.unitLevel) });
+      writes.push({ ...w, clientId: priceClientId(billClientId, w.itemId, w.kind, w.unitLevel) });
     }
   });
   return { writes, problems };
 }
 
-// Stored before the bill is sent, so prices still get written (or offered for retry) after a reload.
-// Never under the pending purchase prefix: that one is read as an unconfirmed bill.
+// Stored before the bill is sent, so prices still get written (or offered) after a reload. One key per
+// user, shop, bill and window: a second window that is refused removes only its own plan. Never under the
+// pending purchase prefix: that one is read as an unconfirmed bill.
 const PREFIX = 'dsb-bill-sale-prices';
-const planKey = (shop: string, bill: string) => `${PREFIX}:${shop}:${bill}`;
+export const PLAN_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+export type StoredPlan = {
+  key: string;
+  bill: string;
+  savedAt: number;
+  writes: PlannedPriceWrite[];
+};
+const userShopPrefix = (user: string, shop: string) => `${PREFIX}:${user}:${shop}:`;
+export const planKey = (user: string, shop: string, bill: string, windowId: string) =>
+  `${userShopPrefix(user, shop)}${bill}:${windowId}`;
 
 function validWrite(w: unknown): w is PlannedPriceWrite {
   const x = w as PlannedPriceWrite;
@@ -215,54 +231,85 @@ function validWrite(w: unknown): w is PlannedPriceWrite {
     x.pricePaise > 0
   );
 }
-function parse(raw: string | null): PlannedPriceWrite[] | null {
+function parse(key: string, raw: string | null): StoredPlan | null {
   if (!raw) return null;
   try {
-    const v = JSON.parse(raw) as { writes?: unknown };
-    return Array.isArray(v.writes) && v.writes.length && v.writes.every(validWrite)
-      ? v.writes
-      : null;
+    const v = JSON.parse(raw) as { bill?: unknown; savedAt?: unknown; writes?: unknown };
+    if (
+      typeof v.bill !== 'string' ||
+      !Number.isSafeInteger(v.savedAt) ||
+      !Array.isArray(v.writes) ||
+      !v.writes.length ||
+      !v.writes.every(validWrite)
+    )
+      return null;
+    return { key, bill: v.bill, savedAt: v.savedAt as number, writes: v.writes };
   } catch {
     return null;
   }
 }
 
 /** Throws when the device cannot store it (the bill is then not sent). */
-export function savePricePlan(shop: string, bill: string, writes: PlannedPriceWrite[]) {
-  localStorage.setItem(planKey(shop, bill), JSON.stringify({ writes, savedAt: Date.now() }));
+export function savePricePlan(key: string, plan: Omit<StoredPlan, 'key'>) {
+  localStorage.setItem(
+    key,
+    JSON.stringify({ bill: plan.bill, savedAt: plan.savedAt, writes: plan.writes }),
+  );
 }
-/** Keeps what is still to write; removes the plan when nothing is left. Never throws. */
-export function storePricePlan(shop: string, bill: string, writes: PlannedPriceWrite[]) {
+export function removePricePlan(key: string) {
   try {
-    if (writes.length) savePricePlan(shop, bill, writes);
-    else localStorage.removeItem(planKey(shop, bill));
+    localStorage.removeItem(key);
   } catch {
-    /* the in-page retry list still holds them */
+    /* nothing more to do */
   }
 }
-export function loadPricePlan(shop: string, bill: string): PlannedPriceWrite[] | null {
+/** Keeps what is still to write (same bill and age); removes the plan when nothing is left. */
+export function updatePricePlan(key: string, writes: PlannedPriceWrite[]) {
   try {
-    return parse(localStorage.getItem(planKey(shop, bill)));
+    const plan = loadPricePlan(key);
+    if (!plan || !writes.length) return removePricePlan(key);
+    savePricePlan(key, { ...plan, writes });
+  } catch {
+    /* the in-page list still holds them */
+  }
+}
+export function loadPricePlan(key: string): StoredPlan | null {
+  try {
+    return parse(key, localStorage.getItem(key));
   } catch {
     return null;
   }
 }
-export function listPricePlans(
-  shop: string,
-): { billClientId: string; writes: PlannedPriceWrite[] }[] {
-  const out: { billClientId: string; writes: PlannedPriceWrite[] }[] = [];
+/** This user's plans in this shop, oldest first. */
+export function listPricePlans(user: string, shop: string): StoredPlan[] {
+  const out: StoredPlan[] = [];
   try {
-    const head = `${PREFIX}:${shop}:`;
+    const head = userShopPrefix(user, shop);
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (!key?.startsWith(head)) continue;
-      const writes = parse(localStorage.getItem(key));
-      if (writes) out.push({ billClientId: key.slice(head.length), writes });
+      const plan = parse(key, localStorage.getItem(key));
+      if (plan) out.push(plan);
     }
   } catch {
     /* storage unreadable: nothing to offer */
   }
-  return out;
+  return out.sort((a, b) => a.savedAt - b.savedAt);
+}
+
+/** set_item_price refusals that the same request can never pass (item removed, role, bad price). */
+export function isPermanentPriceError(message: string): boolean {
+  return /item not in tenant|not permitted|invalid price/i.test(message);
+}
+
+export function ageText(savedAt: number, now: number): string {
+  const min = Math.floor((now - savedAt) / 60_000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min} min ago`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} h ago`;
+  const d = Math.floor(h / 24);
+  return `${d} day${d === 1 ? '' : 's'} ago`;
 }
 
 /** One write at a time, in order; returns the ones that failed with their reason. */
