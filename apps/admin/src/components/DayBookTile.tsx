@@ -28,7 +28,7 @@ export function DayBookTile() {
   }, []);
   if (error)
     return (
-      <section class="card daybook-tile" aria-label="Day book today">
+      <section class="card daybook-tile daybook-error" aria-label="Day book today">
         <p role="alert">
           Today’s totals are unavailable. <a href={appRoute.reports}>Open reports</a>
         </p>

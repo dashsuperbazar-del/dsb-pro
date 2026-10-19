@@ -336,8 +336,9 @@ table input {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
 }
-/* Day book: the section is a frame; each figure is its own stat card. */
-.dashboard > .daybook-tile {
+/* Day book: the section is a frame; each figure is its own stat card. The unavailable state
+   (.daybook-error) keeps the normal card frame so its alert stays visibly boxed. */
+.dashboard > .daybook-tile:not(.daybook-error) {
   padding: 0;
   background: none;
   border: 0;
@@ -446,7 +447,7 @@ table input {
   border-radius: 50%;
   background: var(--accent);
 }
-/* Quick entry: big buttons; the first is the filled primary action, as old DSB's New Bill. */
+/* Quick entry: big outline buttons; New sale (.quick-primary) is the filled primary action for every role. */
 .quick-entry {
   display: flex;
   gap: 8px;
@@ -471,7 +472,7 @@ table input {
   border: 1.5px solid var(--accent);
   border-radius: 8px;
 }
-.quick-entry a:first-child {
+.quick-entry a.quick-primary {
   background: var(--accent);
   color: var(--accent-text);
 }
