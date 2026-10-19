@@ -97,9 +97,9 @@ test('a new item is created inside a bill card, chosen there, findable in other 
   await purchase.getByRole('button', { name: '+ Create “Card New Rice”' }).click();
   const form = card(1).getByRole('group', { name: 'New item for item 1' });
   await expect(form.getByLabel('Item 1 new item name')).toHaveValue('Card New Rice');
-  await form.getByLabel('Item 1 base unit').fill('bag');
-  await form.getByLabel('Item 1 second unit', { exact: true }).fill('pkt');
-  await form.getByLabel('Item 1 second units per base unit').fill('10');
+  await form.getByLabel('Item 1 big unit').fill('bag');
+  await form.getByLabel('Item 1 small unit', { exact: true }).fill('pkt');
+  await form.getByLabel('Item 1 small units per big').fill('10');
   await form.getByRole('button', { name: 'Save item' }).click();
   await expect(form).toHaveCount(0);
   const units = card(1).getByRole('group', { name: 'Item 1 purchased in' });
@@ -128,6 +128,43 @@ test('a new item is created inside a bill card, chosen there, findable in other 
   await stockTask(page, 'Items');
   await page.getByLabel('Item details').selectOption({ label: 'Card New Rice' });
   await expect(page.getByLabel('item peek')).toContainText('15 pkt');
+});
+
+test('a card-created three-unit item posted in its second unit is stocked in the smallest unit', async ({
+  page,
+}) => {
+  await createOwnerShop(page);
+  await page.goto('/inventory');
+  await stockTask(page, 'Purchases');
+  const purchase = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
+  await purchase.getByLabel('Item 1 name', { exact: true }).fill('Card Soap');
+  await purchase.getByRole('button', { name: '+ Create “Card Soap”' }).click();
+  const form = purchase.getByRole('group', { name: 'New item for item 1' });
+  // Level 1 is the BIG unit, as on the Add item form.
+  await expect(form).toContainText('Big unit (e.g. case)');
+  await form.getByLabel('Item 1 big unit').fill('ctn');
+  await form.getByLabel('Item 1 small unit', { exact: true }).fill('box');
+  await form.getByLabel('Item 1 small units per big').fill('12');
+  await form.getByLabel('Item 1 piece unit').fill('pc');
+  await form.getByLabel('Item 1 pieces per small').fill('10');
+  await form.getByRole('button', { name: 'Save item' }).click();
+  await expect(form).toHaveCount(0);
+  await purchase
+    .getByRole('group', { name: 'Item 1 purchased in' })
+    .getByRole('button', { name: 'box', exact: true })
+    .click();
+  await purchase.getByLabel('Item 1 quantity', { exact: true }).fill('3');
+  await purchase.getByLabel('Item 1 rate ₹', { exact: true }).fill('50');
+  await expect(purchase.getByTestId('item-1-amount')).toHaveText('Amount ₹150.00');
+  await purchase.locator('input[name="billNo"]').fill('CARD-SOAP-1');
+  await purchase.getByRole('button', { name: 'Post purchase' }).click();
+  await expect(page.getByRole('status')).toContainText('Purchase posted (1 item)');
+  // 3 box × 10 pc = 30 pc, held in the smallest unit.
+  await stockTask(page, 'Items');
+  await page.getByLabel('Item details').selectOption({ label: 'Card Soap' });
+  await expect(page.getByLabel('item peek')).toContainText('30 pc');
 });
 
 test('a purchase whose answer is lost is retried as the same bill, never posted twice', async ({

@@ -2,7 +2,16 @@ import { CameraScanner } from '../components/CameraScanner';
 import { PriceHistory } from '../components/PriceHistory';
 import { DemandChart } from '../components/DemandChart';
 import { learnedUnits } from '../lib/unitLearning';
-import { isItemClientIdConflict, newItemInput, type NewItemFields } from '../lib/newItem';
+import {
+  ITEM_FIELD_LABELS,
+  ITEM_UNITS_HINT,
+  describeItemUnits,
+  isItemClientIdConflict,
+  newItemInput,
+  newItemProblem,
+  sameUnits,
+  type NewItemFields,
+} from '../lib/newItem';
 import { PurchaseBillCards } from '../components/PurchaseBillCards';
 import {
   addLineAsCard,
@@ -698,19 +707,26 @@ export function InventoryScreen({
     }
     const form = ev.currentTarget as HTMLFormElement;
     const f = new FormData(form);
+    const text = (key: string) => String(f.get(key) || '');
+    const fields: NewItemFields = {
+      name: text('name'),
+      sku: text('sku'),
+      unit1: text('unit1'),
+      unit2: text('unit2'),
+      unit3: text('unit3'),
+      conv1: text('conv1'),
+      conv2: text('conv2'),
+    };
+    // The same plain unit rules as "+ Create" in a bill card, before anything is sent.
+    const problem = newItemProblem(fields);
+    if (problem) {
+      setError(problem);
+      return;
+    }
     try {
-      const text = (key: string) => String(f.get(key) || '');
       const item = await createItem({
         tenantId,
-        ...newItemInput({
-          name: String(f.get('name')),
-          sku: text('sku'),
-          unit1: String(f.get('unit1')),
-          unit2: text('unit2'),
-          unit3: text('unit3'),
-          conv1: text('conv1'),
-          conv2: text('conv2'),
-        }),
+        ...newItemInput(fields),
         clientId: crypto.randomUUID(),
       });
       form.reset();
@@ -741,6 +757,12 @@ export function InventoryScreen({
         throw new Error('Could not confirm the new item. Check Stock, then search for it here.', {
           cause: e,
         });
+      // Only the item that was asked for counts as created; anything else is reported, never selected.
+      if (!sameUnits(found, fields))
+        throw new Error(
+          `Saved earlier as: ${found.name} — ${describeItemUnits(found)}. Check it in Stock before using it.`,
+          { cause: e },
+        );
       item = found;
     }
     setItems((now) =>
@@ -1231,45 +1253,43 @@ export function InventoryScreen({
       </section>
       <section id="stock-item-details" hidden={purchaseOnly || view !== 'items'}>
         <h2>Item setup</h2>
-        <p>
-          Unit order follows DSB: big → small → piece. Stock is stored in the smallest configured
-          unit.
-        </p>
+        <p>{ITEM_UNITS_HINT}</p>
         <details id="stock-add-item">
           <summary>Add item</summary>
           <form onSubmit={addItem}>
             <label>
-              Item name <input name="name" placeholder="Item name" required />
+              {ITEM_FIELD_LABELS.name}{' '}
+              <input name="name" placeholder={ITEM_FIELD_LABELS.name} required />
             </label>{' '}
             <label>
               SKU <input name="sku" placeholder="SKU" />
             </label>{' '}
             <label>
-              Big unit (e.g. case){' '}
+              {ITEM_FIELD_LABELS.unit1}{' '}
               <input
                 name="unit1"
-                placeholder="Big unit (e.g. case)"
+                placeholder={ITEM_FIELD_LABELS.unit1}
                 required
                 list="learned-units"
               />
             </label>{' '}
             <label>
-              Small unit (e.g. pack){' '}
-              <input name="unit2" placeholder="Small unit (e.g. pack)" list="learned-units" />
+              {ITEM_FIELD_LABELS.unit2}{' '}
+              <input name="unit2" placeholder={ITEM_FIELD_LABELS.unit2} list="learned-units" />
             </label>{' '}
             <label>
-              Small units per big{' '}
+              {ITEM_FIELD_LABELS.conv1}{' '}
               <input
                 name="conv1"
                 type="number"
                 min="0"
                 step="any"
-                placeholder="Small units per big"
+                placeholder={ITEM_FIELD_LABELS.conv1}
               />
             </label>{' '}
             <label>
-              Piece unit (optional){' '}
-              <input name="unit3" placeholder="Piece unit (optional)" list="learned-units" />
+              {ITEM_FIELD_LABELS.unit3}{' '}
+              <input name="unit3" placeholder={ITEM_FIELD_LABELS.unit3} list="learned-units" />
               <datalist id="learned-units">
                 {unitSuggestions.map((u) => (
                   <option key={u} value={u} />
@@ -1277,8 +1297,14 @@ export function InventoryScreen({
               </datalist>
             </label>{' '}
             <label>
-              Pieces per small{' '}
-              <input name="conv2" type="number" min="0" step="any" placeholder="Pieces per small" />
+              {ITEM_FIELD_LABELS.conv2}{' '}
+              <input
+                name="conv2"
+                type="number"
+                min="0"
+                step="any"
+                placeholder={ITEM_FIELD_LABELS.conv2}
+              />
             </label>{' '}
             <button disabled={!tenantId}>Create item</button>
           </form>

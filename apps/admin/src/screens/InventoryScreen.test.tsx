@@ -6,6 +6,7 @@ import 'fake-indexeddb/auto';
 import { InventoryScreen } from './InventoryScreen';
 import { shopContext } from '../lib/shopContext';
 import { markCatalogDirty, resetCatalogDirtyForTests } from '../lib/catalogRead';
+import { ITEM_FIELD_LABELS, ITEM_UNITS_HINT } from '../lib/newItem';
 const api = vi.hoisted(() => ({
   BILL_DOCUMENT_PATH:
     /^([0-9a-f-]{36})\/([0-9a-f-]{36})\/([0-9a-f-]{36})\/([0-9a-f-]{36})\.(webp|pdf)$/,
@@ -1133,9 +1134,9 @@ test('P03: an item created inside a bill card goes through the Add item adapter,
       [...host.querySelectorAll('button')].find((b) => b.textContent === text)!.click();
     });
   await tap('+ Create “New Rice”');
-  await enterLabel(host, 'Item 1 base unit', 'bag');
-  await enterLabel(host, 'Item 1 second unit', 'pkt');
-  await enterLabel(host, 'Item 1 second units per base unit', '10');
+  await enterLabel(host, 'Item 1 big unit', 'bag');
+  await enterLabel(host, 'Item 1 small unit', 'pkt');
+  await enterLabel(host, 'Item 1 small units per big', '10');
   await tap('Save item');
   await vi.waitFor(() => expect(host.textContent).toContain("Something didn't save"));
   const reads = api.listItems.mock.calls.length;
@@ -1194,7 +1195,7 @@ async function createInCardTwice(lookup: () => Promise<unknown>) {
       [...host.querySelectorAll('button')].find((b) => b.textContent === text)!.click();
     });
   await tap('+ Create “Lost Rice”');
-  await enterLabel(host, 'Item 1 base unit', 'bag');
+  await enterLabel(host, 'Item 1 big unit', 'bag');
   await tap('Save item');
   await vi.waitFor(() => expect(host.textContent).toContain("Something didn't save"));
   await tap('Save item');
@@ -1237,9 +1238,7 @@ test('P03: when the saved item cannot be found after a duplicate client id, the 
   );
   expect(host.textContent).not.toContain('duplicate key');
   expect(host.querySelector('[aria-label="Item 1 purchased in"]')).toBeNull();
-  expect(host.querySelector<HTMLInputElement>('[aria-label="Item 1 base unit"]')!.value).toBe(
-    'bag',
-  );
+  expect(host.querySelector<HTMLInputElement>('[aria-label="Item 1 big unit"]')!.value).toBe('bag');
 });
 
 test('P03: a duplicate client id with no item found by it is reported the same plain way', async () => {
@@ -1248,6 +1247,62 @@ test('P03: a duplicate client id with no item found by it is reported the same p
     expect(host.textContent).toContain('Could not confirm the new item. Check Stock'),
   );
   expect(host.textContent).not.toContain('duplicate key');
+});
+
+test('P03: an item found by client id with other units than submitted is not reported as created', async () => {
+  await createInCardTwice(async () => ({
+    id: 'lost',
+    name: 'Lost Rice',
+    sku: null,
+    unit1: 'bag',
+    unit2: 'pkt',
+    unit3: null,
+    conv1: 5,
+    conv2: null,
+    min_stock: 0,
+  }));
+  await vi.waitFor(() =>
+    expect(host.textContent).toContain('Saved earlier as: Lost Rice — bag; 5 pkt per bag.'),
+  );
+  expect(host.textContent).not.toContain('Created Lost Rice');
+  expect(host.querySelector('[aria-label="Item 1 purchased in"]')).toBeNull();
+});
+
+test('P03: the Add item form uses the same labels, trimming and unit rules as the card form', async () => {
+  api.createItem.mockResolvedValue({ id: 'z', name: 'Tea' });
+  await act(async () => {
+    render(<InventoryScreen />, host);
+  });
+  const form = host.querySelector<HTMLFormElement>('#stock-add-item form')!;
+  const labels = [...form.querySelectorAll('label')].map((l) =>
+    l.childNodes[0]!.textContent!.trim(),
+  );
+  for (const label of Object.values(ITEM_FIELD_LABELS)) expect(labels).toContain(label);
+  expect(host.querySelector('#stock-item-details')!.textContent).toContain(ITEM_UNITS_HINT);
+  const set = (name: string, value: string) => {
+    form.querySelector<HTMLInputElement>(`input[name="${name}"]`)!.value = value;
+  };
+  set('name', ' Tea ');
+  set('unit1', ' box ');
+  set('unit2', 'pkt');
+  await vi.waitFor(() => expect(form.querySelector('button')!.disabled).toBe(false));
+  await act(async () => {
+    form.requestSubmit();
+  });
+  expect(api.createItem).not.toHaveBeenCalled();
+  expect(host.textContent).toContain(
+    'Enter how many small units make one big unit (more than zero).',
+  );
+  set('conv1', '10');
+  await act(async () => {
+    form.requestSubmit();
+  });
+  await vi.waitFor(() =>
+    expect(api.createItem).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Tea', unit1: 'box', unit2: 'pkt', conv1: 10 }),
+    ),
+  );
+  api.createItem.mockReset();
 });
 
 test('SP2b: a revisit of the stock screen lists the last catalogue at once; a write since then skips it', async () => {

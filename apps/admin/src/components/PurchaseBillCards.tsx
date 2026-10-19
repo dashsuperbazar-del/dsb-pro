@@ -15,7 +15,13 @@ import { boundedItemOptions } from '../lib/itemOptions';
 import { deriveUnitCostFromTotal } from '../lib/purchaseCost';
 import { matchItems, parseVoiceEntry, unitLevelFor } from '../lib/voiceEntry';
 import { paiseToDecimal, rupees } from '../lib/money';
-import { exactItemMatch, type NewItemFields } from '../lib/newItem';
+import {
+  ITEM_FIELD_LABELS,
+  ITEM_UNITS_HINT,
+  exactItemMatch,
+  newItemProblem,
+  type NewItemFields,
+} from '../lib/newItem';
 import { learnedUnits } from '../lib/unitLearning';
 import { CameraScanner } from './CameraScanner';
 import { VoiceEntryButton } from './VoiceEntryButton';
@@ -29,26 +35,32 @@ const OFFLINE_NOT_CREATED =
 
 // "+ Create" form of one card. clientId is kept for the life of the form, so a retry after a lost answer
 // is refused by the database (unique client_id) instead of creating the item twice.
+// After a create was sent and failed, it may still have been saved: the fields are locked (read-only) so a
+// retry can only resend the same item; Cancel discards the form, and a new form gets a new clientId.
 type NewItemForm = Required<Omit<NewItemFields, 'sku'>> & {
   clientId: string;
   error: string;
   busy: boolean;
+  attempted: boolean;
 };
-// Same constraint attributes as the Inventory "Add item" form (required name and base unit, conversions
-// are numbers of zero or more); the database checks the rest exactly as it does for that form.
+const LOCKED_NOTE =
+  ' The details are locked so a retry cannot save a different item; Cancel to change them.';
+// The Add item form's labels and constraint attributes (required name and big unit, conversions are
+// numbers of zero or more), then the shared plain unit rules (lib/newItem) before anything is sent.
 const NEW_ITEM_FIELDS: {
   key: keyof Omit<NewItemFields, 'sku'>;
-  label: string;
+  /** aria-label after "Item n " */
+  aria: string;
   required?: true;
   number?: true;
   units?: true;
 }[] = [
-  { key: 'name', label: 'New item name', required: true },
-  { key: 'unit1', label: 'Base unit', required: true, units: true },
-  { key: 'unit2', label: 'Second unit', units: true },
-  { key: 'conv1', label: 'Second units per base unit', number: true },
-  { key: 'unit3', label: 'Third unit', units: true },
-  { key: 'conv2', label: 'Third units per second unit', number: true },
+  { key: 'name', aria: 'new item name', required: true },
+  { key: 'unit1', aria: 'big unit', required: true, units: true },
+  { key: 'unit2', aria: 'small unit', units: true },
+  { key: 'conv1', aria: 'small units per big', number: true },
+  { key: 'unit3', aria: 'piece unit', units: true },
+  { key: 'conv2', aria: 'pieces per small', number: true },
 ];
 
 // Old DSB bill entry: an ITEMS header (Repeat, + Add item), recent supplier items to tap, then one card per
@@ -78,6 +90,8 @@ export function PurchaseBillCards(props: {
   const [pricesOpen, setPricesOpen] = useState<string[]>([]);
   const [newForms, setNewForms] = useState<Record<string, NewItemForm>>({});
   const creating = useRef(new Set<string>());
+  // Names (trimmed, lower case) whose create is running in any card: a second card cannot race it.
+  const creatingNames = useRef(new Set<string>());
   const unitSuggestions = useMemo(() => learnedUnits(items), [items]);
   useEffect(() => {
     if (!focusKey) return;
@@ -125,55 +139,66 @@ export function PurchaseBillCards(props: {
         conv2: '',
         error: '',
         busy: false,
+        attempted: false,
       },
     }));
     setFocusKey(`${card.key}|unit1`);
   }
-  // The browser's own checks on the same attributes as the Add item form, plus a name and base unit that
-  // are not only spaces. Returns the first problem, and focuses its field.
-  function formProblem(key: string, form: NewItemForm): string {
+  // The browser's own checks on the same attributes as the Add item form (numbers of zero or more), then
+  // the shared plain unit rules. Returns the first problem, and focuses a number field it concerns.
+  function formProblem(key: string, fields: NewItemFields): string {
     for (const f of NEW_ITEM_FIELDS) {
+      if (!f.number) continue;
       const el = host.current?.querySelector<HTMLInputElement>(
         `[data-new-item="${key}"] [data-field="${f.key}"]`,
       );
-      const blank = f.required && !form[f.key].trim();
-      if (!blank && (!el || el.checkValidity())) continue;
-      el?.focus();
-      return blank
-        ? `Enter the ${f.label.toLowerCase()}.`
-        : `${f.label} must be a number, zero or more.`;
+      if (!el || el.checkValidity()) continue;
+      el.focus();
+      return `${ITEM_FIELD_LABELS[f.key]} must be a number, zero or more.`;
     }
-    return '';
+    return newItemProblem(fields);
   }
   async function saveNew(key: string) {
     const form = newForms[key];
     const create = latest.current.onCreateItem;
     if (!form || !create || creating.current.has(key)) return;
-    const problem = formProblem(key, form);
-    if (problem) return updateForm(key, { error: problem });
-    const existing = exactItemMatch(latest.current.items, form.name);
+    const fields: NewItemFields = {
+      name: form.name.trim(),
+      unit1: form.unit1.trim(),
+      unit2: form.unit2.trim(),
+      conv1: form.conv1.trim(),
+      unit3: form.unit3.trim(),
+      conv2: form.conv2.trim(),
+    };
+    const keep = form.attempted ? LOCKED_NOTE : '';
+    const problem = formProblem(key, fields);
+    if (problem) return updateForm(key, { error: problem + keep });
+    const nameKey = fields.name.toLowerCase();
+    if (creatingNames.current.has(nameKey))
+      return updateForm(key, {
+        error: `“${fields.name}” is already being created in another item card. Wait for it, then choose it from the matches.`,
+      });
+    // A retry of a create that may have been saved is not refused by name: its clientId settles it.
+    const existing = form.attempted ? undefined : exactItemMatch(latest.current.items, fields.name);
     if (existing)
       return updateForm(key, {
         error: `“${existing.name}” already exists. Choose it from the matches.`,
       });
     if (typeof navigator !== 'undefined' && navigator.onLine === false)
-      return updateForm(key, { error: OFFLINE_NOT_CREATED });
-    const fields: NewItemFields = {
-      name: form.name,
-      unit1: form.unit1,
-      unit2: form.unit2,
-      conv1: form.conv1,
-      unit3: form.unit3,
-      conv2: form.conv2,
-    };
+      return updateForm(key, { error: OFFLINE_NOT_CREATED + keep });
     creating.current.add(key);
+    creatingNames.current.add(nameKey);
     updateForm(key, { busy: true, error: '' });
     try {
       const item = await create(fields, form.clientId);
       closeForm(key);
       const now = latest.current.cards;
       const index = now.findIndex((c) => c.key === key);
-      if (index >= 0 && !now[index]!.item) {
+      if (latest.current.disabled)
+        latest.current.onMessage(
+          `Created ${item.name}. It was not put on the bill because the bill is locked.`,
+        );
+      else if (index >= 0 && !now[index]!.item) {
         // Selected with nothing carried over: the quantity and cost are entered for this item.
         patch(key, (c) => ({
           ...c,
@@ -198,15 +223,17 @@ export function PurchaseBillCards(props: {
     } catch (e) {
       updateForm(key, {
         busy: false,
+        attempted: true,
         error:
-          typeof navigator !== 'undefined' && navigator.onLine === false
+          (typeof navigator !== 'undefined' && navigator.onLine === false
             ? OFFLINE_NOT_CREATED
             : e instanceof Error
               ? e.message
-              : String(e),
+              : String(e)) + LOCKED_NOTE,
       });
     } finally {
       creating.current.delete(key);
+      creatingNames.current.delete(nameKey);
     }
   }
 
@@ -307,7 +334,7 @@ export function PurchaseBillCards(props: {
                   autocomplete="off"
                   data-field="name"
                   value={card.search}
-                  disabled={disabled}
+                  disabled={disabled || !!newForm?.busy}
                   onInput={(e) => {
                     const search = e.currentTarget.value;
                     // Typing over a chosen item drops it, with the quantity and cost entered for it.
@@ -428,13 +455,12 @@ export function PurchaseBillCards(props: {
                 aria-label={`New item for item ${n}`}
                 data-new-item={card.key}
               >
-                <small class="muted">New item, saved to your items list</small>
+                <small class="muted">New item, saved to your items list. {ITEM_UNITS_HINT}</small>
                 {NEW_ITEM_FIELDS.map((f) => (
                   <label key={f.key} class={f.key === 'name' ? 'bill-card-new-name' : undefined}>
-                    {f.label}
-                    {f.required ? '' : ' (optional)'}
+                    {ITEM_FIELD_LABELS[f.key]}
                     <input
-                      aria-label={`Item ${n} ${f.label.toLowerCase()}`}
+                      aria-label={`Item ${n} ${f.aria}`}
                       data-field={f.key}
                       autocomplete="off"
                       required={f.required}
@@ -442,16 +468,9 @@ export function PurchaseBillCards(props: {
                       {...(f.number
                         ? { type: 'number', inputMode: 'decimal', min: '0', step: 'any' }
                         : {})}
-                      placeholder={
-                        f.key === 'unit1'
-                          ? 'e.g. ctn'
-                          : f.key === 'unit2'
-                            ? 'e.g. pkt'
-                            : f.number
-                              ? 'e.g. 12'
-                              : undefined
-                      }
+                      placeholder={ITEM_FIELD_LABELS[f.key]}
                       value={newForm[f.key]}
+                      readOnly={newForm.attempted}
                       disabled={disabled || newForm.busy}
                       onInput={(e) => {
                         const value = e.currentTarget.value;
