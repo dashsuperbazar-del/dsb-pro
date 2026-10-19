@@ -1,0 +1,298 @@
+// @vitest-environment jsdom
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { render } from 'preact';
+import { act } from 'preact/test-utils';
+import 'fake-indexeddb/auto';
+import { InventoryScreen } from './InventoryScreen';
+import { shopContext } from '../lib/shopContext';
+import { resetCatalogDirtyForTests } from '../lib/catalogRead';
+const api = vi.hoisted(() => ({
+  BILL_DOCUMENT_PATH:
+    /^([0-9a-f-]{36})\/([0-9a-f-]{36})\/([0-9a-f-]{36})\/([0-9a-f-]{36})\.(webp|pdf)$/,
+  billDocumentPath: vi.fn(),
+  billDocumentHash: vi.fn(),
+  uploadBillDocument: vi.fn(),
+  readBillDocument: vi.fn(),
+  onAuthStateChange: vi.fn().mockReturnValue(() => {}),
+  getSession: vi.fn().mockResolvedValue({ user: { id: 'user' } }),
+  getCurrentMembership: vi.fn(),
+  getDefaultShopId: vi.fn(),
+  getShopBusinessDate: vi.fn().mockResolvedValue('2026-10-12'),
+  listItems: vi.fn(),
+  listParties: vi.fn().mockResolvedValue([]),
+  listStock: vi.fn().mockResolvedValue([]),
+  listCurrentPrices: vi.fn(),
+  setItemPrice: vi.fn(),
+  listPurchaseHistory: vi.fn().mockResolvedValue([]),
+  getPurchaseDetail: vi.fn(),
+  postPurchaseOutcome: vi.fn(),
+  listItemPurchasePrices: vi.fn().mockResolvedValue([]),
+  listItemSaleMovements: vi.fn().mockResolvedValue({ sales: [], returns: [], truncated: false }),
+}));
+vi.mock('@dsb-pro/adapters', () => api);
+const offline = vi.hoisted(() => ({ getSyncedOfflineCatalog: vi.fn(), runSyncNow: vi.fn() }));
+vi.mock('../lib/offlineSync', () => offline);
+
+// Biscuit: bought in ctn (12 pkt), pkt (10 pcs), pcs. Soap: ctn of 12 pcs.
+const biscuit = {
+  id: 'bis',
+  name: 'Biscuit',
+  unit1: 'ctn',
+  unit2: 'pkt',
+  unit3: 'pcs',
+  conv1: 12,
+  conv2: 10,
+  min_stock: 0,
+};
+const soap = { id: 'soap', name: 'Soap', unit1: 'ctn', unit2: 'pcs', conv1: 12, min_stock: 0 };
+const price = (
+  kind: string,
+  unit_level: number,
+  price_paise: number,
+  shop_id: string | null = 'shop',
+) => ({
+  id: `${kind}${unit_level}`,
+  item_id: 'bis',
+  shop_id,
+  kind,
+  unit_level,
+  price_paise,
+  effective_from: '2026-10-01',
+  effective_to: null,
+});
+const host = document.createElement('div');
+beforeEach(() => {
+  shopContext.invalidate();
+  resetCatalogDirtyForTests();
+  offline.getSyncedOfflineCatalog.mockResolvedValue(null);
+  offline.runSyncNow.mockResolvedValue(undefined);
+  api.getCurrentMembership.mockResolvedValue({ tenantId: 'tenant', role: 'owner' });
+  api.getDefaultShopId.mockResolvedValue('shop');
+  api.listItems.mockResolvedValue([biscuit, soap]);
+  api.listCurrentPrices.mockImplementation(async (id: string) =>
+    id === 'bis'
+      ? [price('retail', 3, 1000), price('wholesale', 3, 900), price('retail', 2, 9500, null)]
+      : [],
+  );
+  api.setItemPrice.mockResolvedValue('price-id');
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  document.body.append(host);
+});
+afterEach(() => {
+  act(() => render(null, host));
+  vi.clearAllMocks();
+  localStorage.clear();
+  vi.restoreAllMocks();
+});
+
+async function setField(sel: string, value: string, event = 'input') {
+  await act(async () => {
+    const el = host.querySelector<HTMLInputElement>(sel)!;
+    el.value = value;
+    el.dispatchEvent(new Event(event, { bubbles: true }));
+  });
+}
+const label = (text: string) => `[aria-label="${text}"]`;
+const input = (text: string) => host.querySelector<HTMLInputElement>(label(text))!;
+const button = (text: string, root: ParentNode = host) =>
+  [...root.querySelectorAll('button')].find((b) => b.textContent === text)!;
+const click = (el: HTMLElement) => act(async () => el.click());
+async function mountEditor() {
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly />, host);
+  });
+  await vi.waitFor(() =>
+    expect(host.querySelector<HTMLInputElement>('input[name="date"]')!.value).toBe('2026-10-12'),
+  );
+}
+async function pickItem(n: number, name: string) {
+  await setField(label(`Item ${n} name`), name);
+  await click(button(name, host.querySelector(label(`Matches for item ${n}`))!));
+}
+async function fillCard(n: number, name: string) {
+  await pickItem(n, name);
+  await setField(label(`Item ${n} quantity`), '2');
+  await setField(label(`Item ${n} rate ₹`), '50');
+}
+const post = () => click(button('Post purchase'));
+
+test('the item master conversion shows under the purchased-in chips', async () => {
+  await mountEditor();
+  await pickItem(1, 'Biscuit');
+  expect(host.querySelector('[data-testid="item-1-conversion"]')!.textContent).toBe(
+    '1 ctn = 12 pkt · 1 pkt = 10 pcs',
+  );
+  await click(button('+ Add item'));
+  await pickItem(2, 'Soap');
+  expect(host.querySelector('[data-testid="item-2-conversion"]')!.textContent).toBe(
+    '1 ctn = 12 pcs',
+  );
+  // Read only: no input edits the conversion.
+  expect(host.querySelector(label('Item 1 purchased in'))!.querySelector('input')).toBeNull();
+});
+
+test('the sale price box is prefilled with the current prices for the chosen unit', async () => {
+  await mountEditor();
+  await pickItem(1, 'Biscuit');
+  await vi.waitFor(() => expect(input('Item 1 retail ₹').value).toBe('10.00'));
+  expect(
+    button('pcs', host.querySelector(label('Item 1 prices entered per'))!).getAttribute(
+      'aria-pressed',
+    ),
+  ).toBe('true');
+  expect(input('Item 1 wholesale qty').value).toBe('1');
+  expect(input('Item 1 wholesale price ₹').value).toBe('9.00');
+  await click(button('pkt', host.querySelector(label('Item 1 prices entered per'))!));
+  expect(input('Item 1 retail ₹').value).toBe('95.00');
+  expect(input('Item 1 wholesale price ₹').value).toBe('');
+  expect(host.textContent).toContain('Retail ₹ per pkt');
+});
+
+test('blank or unchanged prices write nothing; the bill still posts', async () => {
+  await mountEditor();
+  await fillCard(1, 'Biscuit');
+  await vi.waitFor(() => expect(input('Item 1 retail ₹').value).toBe('10.00'));
+  await setField(label('Item 1 retail ₹'), '10');
+  await setField(label('Item 1 wholesale price ₹'), '');
+  api.postPurchaseOutcome.mockResolvedValue({ kind: 'confirmed', value: {} });
+  await post();
+  await vi.waitFor(() => expect(host.textContent).toContain('Purchase posted (1 item)'));
+  expect(api.setItemPrice).not.toHaveBeenCalled();
+  expect(host.textContent).not.toContain('Sale price');
+});
+
+test('wholesale price for N units that is not whole paise per unit is refused before posting', async () => {
+  await mountEditor();
+  await fillCard(1, 'Biscuit');
+  await setField(label('Item 1 wholesale qty'), '12');
+  await setField(label('Item 1 wholesale price ₹'), '100');
+  expect(host.querySelector('[data-testid="item-1-sale-problem"]')!.textContent).toContain(
+    '₹100.00 for 12 pcs is not a whole number of paise per pcs',
+  );
+  await post();
+  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  expect(host.querySelector('.bill-bar')!.textContent).toContain('Item 1: ₹100.00 for 12 pcs');
+  expect(document.activeElement).toBe(input('Item 1 wholesale price ₹'));
+  // ₹108 for 12 is exactly ₹9.00 per pcs: shown, and allowed.
+  await setField(label('Item 1 wholesale price ₹'), '108');
+  expect(host.textContent).toContain('Wholesale ₹9.00 per pcs');
+});
+
+test('prices are written only after the bill posts, one call each, with derived client ids', async () => {
+  await mountEditor();
+  await fillCard(1, 'Biscuit');
+  await setField(label('Item 1 retail ₹'), '12.50');
+  await setField(label('Item 1 wholesale qty'), '12');
+  await setField(label('Item 1 wholesale price ₹'), '120');
+  const order: string[] = [];
+  api.postPurchaseOutcome.mockImplementation(async () => {
+    order.push('post');
+    expect(api.setItemPrice).not.toHaveBeenCalled();
+    return { kind: 'confirmed', value: {} };
+  });
+  api.setItemPrice.mockImplementation(async (w: { kind: string }) => {
+    order.push(w.kind);
+    return 'id';
+  });
+  await post();
+  await vi.waitFor(() => expect(host.textContent).toContain('Sale prices updated: 2.'));
+  expect(order).toEqual(['post', 'retail', 'wholesale']);
+  const bill = api.postPurchaseOutcome.mock.calls[0][0].clientId as string;
+  expect(api.setItemPrice.mock.calls.map((c) => c[0])).toEqual([
+    {
+      itemId: 'bis',
+      shopId: 'shop',
+      kind: 'retail',
+      unitLevel: 3,
+      pricePaise: 1250,
+      clientId: `bill-price:${bill}:1:retail:3`,
+    },
+    {
+      itemId: 'bis',
+      shopId: 'shop',
+      kind: 'wholesale',
+      unitLevel: 3,
+      pricePaise: 1000,
+      clientId: `bill-price:${bill}:1:wholesale:3`,
+    },
+  ]);
+  expect(Object.keys(localStorage).filter((k) => k.startsWith('dsb-bill-sale-prices'))).toEqual([]);
+});
+
+test('a refused bill writes no price', async () => {
+  await mountEditor();
+  await fillCard(1, 'Biscuit');
+  await setField(label('Item 1 retail ₹'), '12.50');
+  api.postPurchaseOutcome.mockResolvedValue({ kind: 'rejected', message: 'no' });
+  await post();
+  await vi.waitFor(() => expect(host.textContent).toContain('Not posted: no.'));
+  expect(api.setItemPrice).not.toHaveBeenCalled();
+  expect(Object.keys(localStorage).some((k) => k.startsWith('dsb-bill-sale-prices'))).toBe(false);
+});
+
+test('an unconfirmed bill writes prices only once its retry confirms', async () => {
+  await mountEditor();
+  await fillCard(1, 'Biscuit');
+  await setField(label('Item 1 retail ₹'), '12.50');
+  api.postPurchaseOutcome.mockResolvedValueOnce({ kind: 'unknown', message: 'timeout' });
+  await post();
+  await vi.waitFor(() => expect(host.textContent).toContain('Not confirmed: timeout'));
+  expect(api.setItemPrice).not.toHaveBeenCalled();
+  api.postPurchaseOutcome.mockResolvedValueOnce({ kind: 'confirmed', value: {} });
+  await click(button('Retry same purchase'));
+  await vi.waitFor(() => expect(api.postPurchaseOutcome).toHaveBeenCalledTimes(2));
+  expect(api.postPurchaseOutcome.mock.calls[1][1]).toBe(true);
+  await vi.waitFor(() => expect(api.setItemPrice).toHaveBeenCalledTimes(1));
+  expect(api.setItemPrice.mock.calls[0][0]).toMatchObject({ kind: 'retail', pricePaise: 1250 });
+});
+
+test('a failed price write keeps the bill posted and offers a retry with the same client id', async () => {
+  await mountEditor();
+  await fillCard(1, 'Biscuit');
+  await setField(label('Item 1 retail ₹'), '12.50');
+  api.postPurchaseOutcome.mockResolvedValue({ kind: 'confirmed', value: {} });
+  api.setItemPrice.mockRejectedValueOnce(new Error('network down'));
+  await post();
+  await vi.waitFor(() =>
+    expect(host.textContent).toContain('Bill saved. Sale price not updated for Biscuit'),
+  );
+  expect(host.textContent).toContain('Purchase posted (1 item)');
+  const first = api.setItemPrice.mock.calls[0][0];
+  // Still offered after a reload of the screen.
+  act(() => render(null, host));
+  await mountEditor();
+  await vi.waitFor(() =>
+    expect(host.textContent).toContain('Bill saved. Sale price not updated for Biscuit'),
+  );
+  await click(host.querySelector<HTMLButtonElement>(label('Retry sale price for Biscuit'))!);
+  await vi.waitFor(() => expect(host.textContent).toContain('Sale price updated for Biscuit.'));
+  expect(api.setItemPrice).toHaveBeenCalledTimes(2);
+  expect(api.setItemPrice.mock.calls[1][0]).toEqual(first);
+  expect(host.textContent).not.toContain('Sale price not updated');
+  expect(Object.keys(localStorage).some((k) => k.startsWith('dsb-bill-sale-prices'))).toBe(false);
+});
+
+test('roles that cannot set prices see no sale price box', async () => {
+  api.getCurrentMembership.mockResolvedValue({ tenantId: 'tenant', role: 'accountant' });
+  await mountEditor();
+  await pickItem(1, 'Biscuit');
+  expect(host.querySelector(label('Item 1 purchased in'))).not.toBeNull();
+  expect(host.querySelector(label('Item 1 sale prices'))).toBeNull();
+  expect(api.listCurrentPrices).not.toHaveBeenCalled();
+});
+
+test('a typed sale price counts as unsaved entry for the leave guard', async () => {
+  await mountEditor();
+  await pickItem(1, 'Biscuit');
+  await setField(label('Item 1 retail ₹'), '11');
+  const ev = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(ev);
+  expect(ev.defaultPrevented).toBe(true);
+  // The typed price is in the autosaved draft too.
+  const drafts = Object.keys(localStorage).filter((k) => k.startsWith('dsb-purchase-draft:'));
+  expect(drafts).toHaveLength(1);
+  expect(JSON.parse(localStorage.getItem(drafts[0]!)!).cards[0].sale).toEqual({
+    level: 3,
+    retail: '11',
+  });
+});

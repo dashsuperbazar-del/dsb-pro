@@ -28,6 +28,7 @@ const api = vi.hoisted(() => ({
   listParties: vi.fn().mockResolvedValue([]),
   listStock: vi.fn().mockResolvedValue([]),
   listCurrentPrices: vi.fn(),
+  setItemPrice: vi.fn(),
   listPurchaseHistory: vi.fn().mockResolvedValue([]),
   getPurchaseDetail: vi.fn(),
   postPurchaseOutcome: vi.fn(),
@@ -302,4 +303,38 @@ test('a refused post focuses the first item that needs a look and says so in the
   expect(host.querySelector('.bill-bar')!.textContent).toContain(
     'Item 2: Enter the cost per unit.',
   );
+});
+
+test('sale prices typed on the cards leave the posted payload identical', async () => {
+  api.listCurrentPrices.mockResolvedValue([]);
+  api.setItemPrice.mockResolvedValue('price-id');
+  await mountEditor();
+  await setField('select[name="partyId"]', 'p1', 'change');
+  await setField('input[name="billNo"]', 'G-1');
+  await pickItem(1, 'Item A');
+  await setField(label('Item 1 quantity'), '2');
+  await setField(label('Item 1 rate ₹'), '10.50');
+  await setField(label('Item 1 retail ₹'), '15');
+  await click(button('+ Add item'));
+  await pickItem(2, 'Item C');
+  await click(button('pack', host.querySelector(label('Item 2 purchased in'))!));
+  await setField(label('Item 2 quantity'), '1.5');
+  await click(button('Total', host.querySelector(label('Item 2 cost entered as'))!));
+  await setField(label('Item 2 total ₹'), '30');
+  await setField(label('Item 2 wholesale qty'), '12');
+  await setField(label('Item 2 wholesale price ₹'), '240');
+  await click(button('+ Add item'));
+  await pickItem(3, 'Item A');
+  await setField(label('Item 3 quantity'), '3');
+  await setField(label('Item 3 rate ₹'), '0.07');
+  await setField('input[name="extra"]', '2.25');
+  await setField('input[name="discount"]', '5.50');
+  api.postPurchaseOutcome.mockResolvedValue({ kind: 'confirmed', value: {} });
+  await click(button('Post purchase'));
+  await vi.waitFor(() => expect(api.postPurchaseOutcome).toHaveBeenCalledTimes(1));
+  const [request, isRetry] = api.postPurchaseOutcome.mock.calls[0];
+  expect(isRetry).toBe(false);
+  expect(Object.keys(request)).toEqual(GOLDEN_KEYS);
+  expect(request).toStrictEqual({ ...GOLDEN, clientId: expect.any(String) });
+  await vi.waitFor(() => expect(host.textContent).toContain('Sale prices updated: 2.'));
 });

@@ -2,6 +2,7 @@ import { canonicalQuantity, quantityTimesPaise } from '@dsb-pro/core';
 import { BILL_DOCUMENT_PATH, type Item, type Party, type BillDocument } from '@dsb-pro/adapters';
 import type { PurchaseDraftLine } from './purchaseWorkflow';
 import type { BillCardDraft } from './billCards';
+import { hasTypedSale } from './billSalePrices';
 
 export type PurchaseDraft = {
   version: 1;
@@ -41,7 +42,9 @@ export function hasTypedPurchaseInput(d: PurchaseDraft): boolean {
     d.lineItem ||
     d.qty ||
     d.price ||
-    d.cards?.some((c) => c.item || c.search.trim() || c.qty || c.price),
+    // Typed sale prices sit on a card with an item, so they count through c.item; hasTypedSale is
+    // checked as well so a price edit can never be the one unsaved entry the guard misses.
+    d.cards?.some((c) => c.item || c.search.trim() || c.qty || c.price || hasTypedSale(c)),
   );
 }
 // VF-017: a snapshot stores only what restore compares (id, name, units, conversions); restore swaps in
@@ -115,7 +118,13 @@ function checked(value: unknown): PurchaseDraft {
           typeof c.qty === 'string' &&
           typeof c.price === 'string' &&
           (c.costMode === 'unit' || c.costMode === 'total') &&
-          (c.unitHint === undefined || (Number.isSafeInteger(c.unitHint) && c.unitHint >= 0)),
+          (c.unitHint === undefined || (Number.isSafeInteger(c.unitHint) && c.unitHint >= 0)) &&
+          (c.sale === undefined ||
+            (!!c.sale &&
+              [1, 2, 3].includes(c.sale.level) &&
+              (['retail', 'wsQty', 'wsPrice'] as const).every(
+                (k) => c.sale![k] === undefined || typeof c.sale![k] === 'string',
+              ))),
       )
     )
   )

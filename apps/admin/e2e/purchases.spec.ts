@@ -167,6 +167,73 @@ test('a card-created three-unit item posted in its second unit is stocked in the
   await expect(page.getByLabel('item peek')).toContainText('30 pc');
 });
 
+test('a bill card shows the unit conversion and sets a retail price that POS then uses', async ({
+  page,
+}) => {
+  test.setTimeout(60000);
+  await createOwnerShop(page);
+  await page.goto('/inventory');
+  await stockTask(page, 'Purchases');
+  const purchase = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
+  await purchase.getByLabel('Item 1 name', { exact: true }).fill('Card Biscuit');
+  await purchase.getByRole('button', { name: '+ Create “Card Biscuit”' }).click();
+  const form = purchase.getByRole('group', { name: 'New item for item 1' });
+  await form.getByLabel('Item 1 big unit').fill('ctn');
+  await form.getByLabel('Item 1 small unit', { exact: true }).fill('pcs');
+  await form.getByLabel('Item 1 small units per big').fill('12');
+  await form.getByRole('button', { name: 'Save item' }).click();
+  await expect(form).toHaveCount(0);
+  await expect(purchase.getByTestId('item-1-conversion')).toHaveText('1 ctn = 12 pcs');
+  await purchase.getByLabel('Item 1 quantity', { exact: true }).fill('2');
+  await purchase.getByLabel('Item 1 rate ₹', { exact: true }).fill('96');
+
+  const sale = purchase.getByRole('group', { name: 'Item 1 sale prices' });
+  // Opens on the smallest unit; nothing set yet.
+  await expect(sale.getByRole('button', { name: 'pcs', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(sale.getByLabel('Item 1 retail ₹')).toHaveValue('');
+  await sale.getByLabel('Item 1 retail ₹').fill('10');
+  // ₹100 for 12 pcs is not whole paise per pcs: refused, nothing posted.
+  await sale.getByLabel('Item 1 wholesale qty').fill('12');
+  await sale.getByLabel('Item 1 wholesale price ₹').fill('100');
+  await expect(sale).toContainText('is not a whole number of paise per pcs');
+  await purchase.getByRole('button', { name: 'Post purchase' }).click();
+  await expect(purchase.locator('.bill-bar')).toContainText('Item 1: ₹100.00 for 12 pcs');
+  await sale.getByLabel('Item 1 wholesale price ₹').fill('108');
+  await expect(sale).toContainText('Wholesale ₹9.00 per pcs');
+  await purchase.locator('input[name="billNo"]').fill('PRICE-1');
+  await purchase.getByRole('button', { name: 'Post purchase' }).click();
+  await expect(page.getByRole('status')).toContainText(
+    'Purchase posted (1 item) and stock updated. Sale prices updated: 2.',
+  );
+
+  // The next bill for the same item opens with the new prices.
+  await purchase.getByLabel('Item 1 name', { exact: true }).fill('Card Biscuit');
+  await purchase
+    .getByRole('group', { name: 'Matches for item 1', exact: true })
+    .getByRole('button', { name: 'Card Biscuit', exact: true })
+    .click();
+  await expect(sale.getByLabel('Item 1 retail ₹')).toHaveValue('10.00');
+  await expect(sale.getByLabel('Item 1 wholesale price ₹')).toHaveValue('9.00');
+
+  // Leaving the started second bill: accept the unsaved-entry prompt (its draft is kept).
+  page.on('dialog', (d) => void d.accept());
+  await page.goto('/pos');
+  await page.getByLabel('Find product').fill('Card Biscuit');
+  await expect(page.getByLabel('Item').locator('option')).toHaveCount(2);
+  await page.getByLabel('Item').selectOption({ index: 1 });
+  await page.locator('select[name="unitLevel"]').selectOption('2');
+  await page.getByLabel('Quantity').fill('3');
+  await page.getByRole('button', { name: 'Add line' }).click();
+  const row = page.locator('#pos-cart tr').filter({ hasText: 'Card Biscuit' });
+  await expect(row).toContainText('₹10.00');
+  await expect(row).toContainText('₹30.00');
+});
+
 test('a purchase whose answer is lost is retried as the same bill, never posted twice', async ({
   page,
 }) => {

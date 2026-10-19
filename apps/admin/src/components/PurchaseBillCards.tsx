@@ -23,6 +23,13 @@ import {
   type NewItemFields,
 } from '../lib/newItem';
 import { learnedUnits } from '../lib/unitLearning';
+import {
+  cardSaleResult,
+  conversionLines,
+  saleFields,
+  type CardSale,
+  type PriceLoad,
+} from '../lib/billSalePrices';
 import { CameraScanner } from './CameraScanner';
 import { VoiceEntryButton } from './VoiceEntryButton';
 import { CostDerivation } from './CostDerivation';
@@ -81,6 +88,8 @@ export function PurchaseBillCards(props: {
   recent?: { key: string; label: string; onAdd: () => void }[];
   /** Creates an item with the Add item adapter and refreshes the item list; absent = no "+ Create". */
   onCreateItem?: (fields: NewItemFields, clientId: string) => Promise<Item>;
+  /** Current sale prices per item id. Absent = the user's role cannot set prices: no sale price box. */
+  saleLoads?: Record<string, PriceLoad>;
 }) {
   const { cards, items, disabled } = props;
   const latest = useRef(props);
@@ -209,6 +218,7 @@ export function PurchaseBillCards(props: {
           price: '',
           costMode: 'unit',
           unitHint: undefined,
+          sale: undefined,
         }));
         setFocusKey(`${key}|qty`);
         latest.current.onMessage(
@@ -349,6 +359,7 @@ export function PurchaseBillCards(props: {
                             price: '',
                             costMode: 'unit',
                             unitHint: undefined,
+                            sale: undefined,
                           }
                         : { ...c, search },
                     );
@@ -519,6 +530,11 @@ export function PurchaseBillCards(props: {
                     {u.name}
                   </button>
                 ))}
+                {conversionLines(item).length > 0 && (
+                  <small class="bill-card-conv" data-testid={`item-${n}-conversion`}>
+                    {conversionLines(item).join(' · ')}
+                  </small>
+                )}
               </div>
             )}
             <div class="bill-card-figures">
@@ -596,6 +612,17 @@ export function PurchaseBillCards(props: {
                 <span class="muted">{result.message}</span>
               ) : null}
             </p>
+            {item && props.saleLoads && (
+              <SalePriceBox
+                n={n}
+                card={card}
+                item={item}
+                load={props.saleLoads[item.id]}
+                shopId={props.shopId}
+                disabled={disabled}
+                onSale={(sale) => patch(card.key, (c) => ({ ...c, sale }))}
+              />
+            )}
             {item && props.canSeePrices && (
               <div>
                 <button
@@ -637,6 +664,111 @@ export function PurchaseBillCards(props: {
         <button type="button" class="bill-add-bottom" disabled={disabled} onClick={addCard}>
           + Add another item
         </button>
+      )}
+    </div>
+  );
+}
+
+// Old DSB "Sale prices (optional — updates item)": prices for one unit of the item, shown from its current
+// prices. Typing pins the unit; switching the unit drops what was typed (it was for the other unit).
+function SalePriceBox(props: {
+  n: number;
+  card: BillCard;
+  item: Item;
+  load: PriceLoad | undefined;
+  shopId: string;
+  disabled?: boolean;
+  onSale: (sale: CardSale) => void;
+}) {
+  const { n, card, item, load } = props;
+  const f = saleFields(card, load, props.shopId);
+  const unit = unitName(item, f.level);
+  const result = cardSaleResult(card, load, props.shopId);
+  const type = (field: 'retail' | 'wsQty' | 'wsPrice', value: string) =>
+    props.onSale({ ...(card.sale ?? {}), level: f.level, [field]: value });
+  return (
+    <div class="bill-card-sale" role="group" aria-label={`Item ${n} sale prices`}>
+      <strong class="bill-card-sale-title">
+        Sale prices <span>(optional, updates item)</span>
+      </strong>
+      <div class="bill-card-units" role="group" aria-label={`Item ${n} prices entered per`}>
+        <small class="muted">Prices entered per</small>
+        {unitChoices(item).map((u) => (
+          <button
+            type="button"
+            key={u.level}
+            aria-pressed={f.level === u.level}
+            disabled={props.disabled}
+            onClick={() => f.level !== u.level && props.onSale({ level: u.level })}
+          >
+            {u.name}
+          </button>
+        ))}
+      </div>
+      <label>
+        Retail ₹ per {unit}
+        <input
+          aria-label={`Item ${n} retail ₹`}
+          data-field="sale-retail"
+          type="number"
+          inputMode="decimal"
+          min="0"
+          step="0.01"
+          placeholder="Sale price"
+          value={f.retail}
+          disabled={props.disabled}
+          onInput={(e) => type('retail', e.currentTarget.value)}
+        />
+      </label>
+      <div class="bill-card-figures">
+        <label>
+          Wholesale qty ({unit})
+          <input
+            aria-label={`Item ${n} wholesale qty`}
+            data-field="sale-wsqty"
+            type="number"
+            inputMode="numeric"
+            min="1"
+            step="1"
+            placeholder="1"
+            value={f.wsQty}
+            disabled={props.disabled}
+            onInput={(e) => type('wsQty', e.currentTarget.value)}
+          />
+        </label>
+        <label>
+          Wholesale price ₹
+          <input
+            aria-label={`Item ${n} wholesale price ₹`}
+            data-field="sale-wsprice"
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="0.01"
+            placeholder="Wholesale ₹"
+            value={f.wsPrice}
+            disabled={props.disabled}
+            onInput={(e) => type('wsPrice', e.currentTarget.value)}
+          />
+        </label>
+      </div>
+      {result.wsPerUnitPaise !== undefined && (
+        <small class="muted">
+          Wholesale {rupees(result.wsPerUnitPaise)} per {unit}
+        </small>
+      )}
+      {result.problem ? (
+        <p class="bill-card-sale-problem" data-testid={`item-${n}-sale-problem`}>
+          {result.problem}
+        </p>
+      ) : load?.state === 'loading' ? (
+        <small class="muted">Loading current prices…</small>
+      ) : load?.state === 'failed' ? (
+        <small class="muted">
+          Current prices could not be loaded. A price typed here replaces the current one.
+        </small>
+      ) : (
+        <small class="muted">Saved to the item only after the bill is posted.</small>
       )}
     </div>
   );
