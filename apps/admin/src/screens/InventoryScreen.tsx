@@ -128,6 +128,9 @@ type PriceRetry = {
   message: string;
 };
 const RETRYABLE = new Set<PriceRetry['state']>(['failed', 'check', 'late']);
+const entryId = (key: string, clientId: string) => `${key}|${clientId}`;
+const sameEntry = (a: PriceRetry, b: PriceRetry) =>
+  a.key === b.key && a.write.clientId === b.write.clientId;
 
 export function InventoryScreen({
   purchaseOnly = false,
@@ -202,6 +205,8 @@ export function InventoryScreen({
   const [priceRetryBusy, setPriceRetryBusy] = useState('');
   // Bills this page has sent: bill client id → its stored plan key (null = no prices to write).
   const ownPlans = useRef(new Map<string, string | null>());
+  // Alerts discarded on this page (plan key | write id): never stored again by a write still running.
+  const discarded = useRef(new Set<string>());
   // P06: the paper bill's total (paise) when this purchase started as a quick bill; checked before posting.
   const [purchaseExpectedTotal, setPurchaseExpectedTotal] = useState<string | undefined>(undefined);
   const [selected, setSelected] = useState('');
@@ -621,7 +626,7 @@ export function InventoryScreen({
       ...r,
       ...left.flatMap((p) =>
         p.writes
-          .filter((w) => !r.some((x) => x.write.clientId === w.clientId))
+          .filter((w) => !r.some((x) => x.key === p.key && x.write.clientId === w.clientId))
           .map((write): PriceRetry => ({
             key: p.key,
             shop: shopId,
@@ -668,13 +673,19 @@ export function InventoryScreen({
         }),
       );
       done += plan.writes.length - failed.length;
-      const retryable = failed.filter((f) => !isPermanentPriceError(f.message));
+      // Re-read before storing: a write discarded while these ran is never stored again.
+      const kept = loadPricePlan(plan.key)?.writes ?? [];
+      const live = failed.filter(
+        (f) =>
+          !discarded.current.has(entryId(plan.key, f.write.clientId)) &&
+          kept.some((w) => w.clientId === f.write.clientId),
+      );
       updatePricePlan(
         plan.key,
-        retryable.map((f) => f.write),
+        live.filter((f) => !isPermanentPriceError(f.message)).map((f) => f.write),
       );
       entries.push(
-        ...failed.map((f) => ({
+        ...live.map((f) => ({
           ...base,
           write: f.write,
           state: isPermanentPriceError(f.message) ? ('refused' as const) : ('failed' as const),
@@ -682,10 +693,7 @@ export function InventoryScreen({
         })),
       );
     }
-    setPriceRetries((r) => [
-      ...r.filter((x) => !entries.some((e) => e.write.clientId === x.write.clientId)),
-      ...entries,
-    ]);
+    setPriceRetries((r) => [...r.filter((x) => !entries.some((e) => sameEntry(e, x))), ...entries]);
     reloadSalePrices();
     return done ? ` Sale price${done === 1 ? '' : 's'} updated: ${done}.` : '';
   }
@@ -697,9 +705,11 @@ export function InventoryScreen({
         plan.writes.filter((w) => w.clientId !== entry.write.clientId),
       );
   }
+  // Discard is per plan and write: a duplicate plan of the same bill keeps its own alert.
   function discardPrice(entry: PriceRetry) {
+    discarded.current.add(entryId(entry.key, entry.write.clientId));
     dropFromPlan(entry);
-    setPriceRetries((r) => r.filter((x) => x.write.clientId !== entry.write.clientId));
+    setPriceRetries((r) => r.filter((x) => !sameEntry(x, entry)));
   }
   async function retryPrice(entry: PriceRetry) {
     if (priceRetryBusy) return;
@@ -714,7 +724,11 @@ export function InventoryScreen({
         pricePaise: w.pricePaise,
         clientId: w.clientId,
       });
-      discardPrice(entry);
+      // Written: the same id in any other plan is written too.
+      setPriceRetries((r) => {
+        for (const x of r) if (x.write.clientId === w.clientId) dropFromPlan(x);
+        return r.filter((x) => x.write.clientId !== w.clientId);
+      });
       reloadSalePrices();
       setMessage(`Sale price updated for ${w.itemName}.`);
     } catch (e) {
@@ -723,9 +737,7 @@ export function InventoryScreen({
       if (permanent) dropFromPlan(entry);
       setPriceRetries((r) =>
         r.map((x) =>
-          x.write.clientId === entry.write.clientId
-            ? { ...x, message, state: permanent ? 'refused' : x.state }
-            : x,
+          sameEntry(x, entry) ? { ...x, message, state: permanent ? 'refused' : x.state } : x,
         ),
       );
     } finally {
@@ -1277,8 +1289,12 @@ export function InventoryScreen({
         // The database refused and rolled back: nothing posted; the cart stays for correction.
         // Keep this identity after rejection too: another editor may already have posted
         // a different payload under it. Rotating would turn a mismatch into a duplicate bill.
-        // Nothing posted, so no sale price is written; the next attempt plans them again from the cards.
-        if (ownKey) removePricePlan(ownKey);
+        // Nothing posted, so no sale price of this bill may ever be written: every stored plan for it
+        // (this window's, or an earlier page's after a reload or takeover) is removed. The next attempt
+        // plans them again from the cards.
+        if (saleUser)
+          for (const plan of listPricePlans(saleUser, request.shopId))
+            if (plan.bill === request.clientId) removePricePlan(plan.key);
         ownPlans.current.delete(request.clientId);
         setError(`Not posted: ${outcome.message}.${anotherNote}`);
         return;
@@ -1482,7 +1498,7 @@ export function InventoryScreen({
           refused: `Sale price for ${what} cannot be written: ${r.message}.`,
         }[r.state];
         return (
-          <div class="alert price-retry" role="alert" key={w.clientId}>
+          <div class="alert price-retry" role="alert" key={entryId(r.key, w.clientId)}>
             <span>
               {text}{' '}
               <small class="muted">

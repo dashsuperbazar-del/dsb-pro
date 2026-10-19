@@ -200,11 +200,17 @@ describe('bill plan', () => {
     );
     expect(plan.problems).toEqual([]);
     expect(plan.writes.map((w) => w.clientId)).toEqual([
-      priceClientId('bill-1', 'i1', 'retail', 3),
-      priceClientId('bill-1', 'i1', 'wholesale', 3),
-      priceClientId('bill-1', 'i2', 'retail', 2),
+      priceClientId('bill-1', 'i1', 'retail', 3, 1000),
+      priceClientId('bill-1', 'i1', 'wholesale', 3, 900),
+      priceClientId('bill-1', 'i2', 'retail', 2, 500),
     ]);
-    expect(priceClientId('bill-1', 'i1', 'retail', 3)).toBe('bill-price:bill-1:i1:retail:3');
+    expect(priceClientId('bill-1', 'i1', 'retail', 3, 1000)).toBe(
+      'bill-price:bill-1:i1:retail:3:1000',
+    );
+    // A corrected price under the same bill id is a different write, never deduped into the old one.
+    expect(priceClientId('bill-1', 'i1', 'retail', 3, 1100)).not.toBe(
+      priceClientId('bill-1', 'i1', 'retail', 3, 1000),
+    );
   });
   test('the same price twice is written once; different prices for one unit are refused', () => {
     const same = salePricePlan(

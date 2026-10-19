@@ -161,14 +161,17 @@ export function cardSaleResult(
   return { writes };
 }
 
-/** Same bill + item + kind + unit → same id, so a retry never writes a price twice. */
+/** Same bill + item + kind + unit + price → same id, so a retry never writes a price twice. The price is
+ * part of the id because set_item_price returns the earlier row for a known id whatever its price: a
+ * corrected price under the same bill id must be a new write, never deduped into the old value. */
 export function priceClientId(
   billClientId: string,
   itemId: string,
   kind: SaleKind,
   level: 1 | 2 | 3,
+  pricePaise: number,
 ) {
-  return `bill-price:${billClientId}:${itemId}:${kind}:${level}`;
+  return `bill-price:${billClientId}:${itemId}:${kind}:${level}:${pricePaise}`;
 }
 
 /** Every sale price this bill would write, in card order, or the cards that need a look first. */
@@ -196,7 +199,10 @@ export function salePricePlan(
         continue;
       }
       seen.set(key, { index, pricePaise: w.pricePaise });
-      writes.push({ ...w, clientId: priceClientId(billClientId, w.itemId, w.kind, w.unitLevel) });
+      writes.push({
+        ...w,
+        clientId: priceClientId(billClientId, w.itemId, w.kind, w.unitLevel, w.pricePaise),
+      });
     }
   });
   return { writes, problems };

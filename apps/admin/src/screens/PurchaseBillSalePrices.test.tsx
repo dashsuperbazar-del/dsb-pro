@@ -231,7 +231,7 @@ test('prices are written only after the bill posts, one call each, with derived 
       kind: 'retail',
       unitLevel: 3,
       pricePaise: 1250,
-      clientId: `bill-price:${bill}:bis:retail:3`,
+      clientId: `bill-price:${bill}:bis:retail:3:1250`,
     },
     {
       itemId: 'bis',
@@ -239,7 +239,7 @@ test('prices are written only after the bill posts, one call each, with derived 
       kind: 'wholesale',
       unitLevel: 3,
       pricePaise: 1000,
-      clientId: `bill-price:${bill}:bis:wholesale:3`,
+      clientId: `bill-price:${bill}:bis:wholesale:3:1000`,
     },
   ]);
   expect(Object.keys(localStorage).filter((k) => k.startsWith('dsb-bill-sale-prices'))).toEqual([]);
@@ -413,4 +413,74 @@ test('another user’s stored sale prices are never shown or written', async () 
   await pickItem(1, 'Biscuit');
   expect(host.querySelector('.price-retry')).toBeNull();
   expect(localStorage.getItem(key('b3', 'someone-else'))).not.toBeNull();
+});
+
+const priceKeys = () =>
+  Object.keys(localStorage).filter((k) => k.startsWith('dsb-bill-sale-prices'));
+
+test('a bill refused on its retry after a reload leaves no stored price and no alert', async () => {
+  await mountEditor();
+  await fillCard(1, 'Biscuit');
+  await setField(label('Item 1 retail ₹'), '12.50');
+  api.postPurchaseOutcome.mockResolvedValueOnce({ kind: 'unknown', message: 'timeout' });
+  await post();
+  await vi.waitFor(() => expect(host.textContent).toContain('Not confirmed: timeout'));
+  expect(priceKeys()).toHaveLength(1);
+  act(() => render(null, host));
+  await mountEditor();
+  await vi.waitFor(() => expect(button('Retry same purchase')).toBeTruthy());
+  api.postPurchaseOutcome.mockResolvedValueOnce({ kind: 'rejected', message: 'no' });
+  await click(button('Retry same purchase'));
+  await vi.waitFor(() => expect(host.textContent).toContain('Not posted: no.'));
+  expect(priceKeys()).toEqual([]);
+  act(() => render(null, host));
+  await mountEditor();
+  await pickItem(1, 'Biscuit');
+  expect(host.querySelector('.price-retry')).toBeNull();
+  expect(api.setItemPrice).not.toHaveBeenCalled();
+});
+
+test('a bill confirmed on its retry after a reload writes the prices planned before the reload', async () => {
+  await mountEditor();
+  await fillCard(1, 'Biscuit');
+  await setField(label('Item 1 retail ₹'), '12.50');
+  api.postPurchaseOutcome.mockResolvedValueOnce({ kind: 'unknown', message: 'timeout' });
+  await post();
+  await vi.waitFor(() => expect(host.textContent).toContain('Not confirmed: timeout'));
+  const bill = api.postPurchaseOutcome.mock.calls[0][0].clientId as string;
+  act(() => render(null, host));
+  await mountEditor();
+  await vi.waitFor(() => expect(button('Retry same purchase')).toBeTruthy());
+  // The pending bill's plan is not offered as an alert while the bill is unconfirmed.
+  expect(host.querySelector('.price-retry')).toBeNull();
+  api.postPurchaseOutcome.mockResolvedValueOnce({ kind: 'confirmed', value: {} });
+  await click(button('Retry same purchase'));
+  await vi.waitFor(() => expect(api.setItemPrice).toHaveBeenCalledTimes(1));
+  expect(api.setItemPrice.mock.calls[0][0]).toMatchObject({
+    kind: 'retail',
+    pricePaise: 1250,
+    clientId: `bill-price:${bill}:bis:retail:3:1250`,
+  });
+  await vi.waitFor(() => expect(priceKeys()).toEqual([]));
+});
+
+test('discarding removes the price from every stored plan of that bill', async () => {
+  const w = {
+    clientId: 'bill-price:b9:bis:retail:3:1250',
+    itemId: 'bis',
+    itemName: 'Biscuit',
+    kind: 'retail',
+    unitLevel: 3,
+    unitName: 'pcs',
+    pricePaise: 1250,
+  };
+  const plan = JSON.stringify({ bill: 'b9', savedAt: Date.now() - 60_000, writes: [w] });
+  localStorage.setItem('dsb-bill-sale-prices:user:shop:b9:win-a', plan);
+  localStorage.setItem('dsb-bill-sale-prices:user:shop:b9:win-b', plan);
+  await mountEditor();
+  await vi.waitFor(() => expect(host.querySelectorAll('.price-retry')).toHaveLength(2));
+  for (const b of host.querySelectorAll<HTMLButtonElement>(label('Discard sale price for Biscuit')))
+    await click(b);
+  expect(host.querySelector('.price-retry')).toBeNull();
+  expect(priceKeys()).toEqual([]);
 });
