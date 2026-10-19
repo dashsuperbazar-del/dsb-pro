@@ -54,6 +54,7 @@ const GROUP_ORDER = [
   'profit',
   'supplierschedule',
   'partymerge',
+  'itemindex',
 ];
 
 /**
