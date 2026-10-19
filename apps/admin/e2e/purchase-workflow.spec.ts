@@ -194,6 +194,16 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
     page.getByRole('status').filter({ hasText: 'Draft repeated from DSB-1' }),
   ).toContainText('Draft repeated from DSB-1');
   await expect(purchase.getByLabel('Purchase cart')).toContainText('₹240.00');
+  // N08: leaving the unposted draft asks first; declining stays on it, accepting leaves (draft kept).
+  const prompts: string[] = [];
+  page.once('dialog', (d) => {
+    prompts.push(d.message());
+    void d.dismiss();
+  });
+  await page.getByRole('link', { name: 'Bill list', exact: true }).click();
+  await expect.poll(() => prompts).toEqual(['Discard unsaved entry?']);
+  await expect(purchase.getByLabel('Purchase cart')).toContainText('₹240.00');
+  page.once('dialog', (d) => void d.accept());
   await page.getByRole('link', { name: 'Bill list', exact: true }).click();
   await page.getByRole('button', { name: /Daily Supplier.*DSB-2/ }).click();
   await detail.getByRole('button', { name: 'View bill document' }).click();

@@ -26,6 +26,19 @@ export type PurchaseDraft = {
   documentIssue?: string;
 };
 export type SavedPurchaseDraft = { key: string; draft: PurchaseDraft };
+/** N08: the purchase editor holds typed input (a preselected supplier alone does not count). */
+export function hasTypedPurchaseInput(d: PurchaseDraft): boolean {
+  return Boolean(
+    d.document ||
+    d.cart.length ||
+    d.billNo ||
+    d.discount ||
+    d.extra ||
+    d.lineItem ||
+    d.qty ||
+    d.price,
+  );
+}
 // VF-017: a snapshot stores only what restore compares (id, name, units, conversions); restore swaps in
 // the current catalog row. Whole item records made drafts large and could fill the device quota.
 export const MAX_DRAFT_BYTES = 200_000;

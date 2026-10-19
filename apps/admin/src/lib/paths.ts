@@ -24,7 +24,6 @@ export const appRoute = {
   suppliers: appPath('/suppliers'),
   expenses: appPath('/expenses'),
   stockAdjust: appPath('/stock-adjust'),
-  compare: appPath('/compare'),
   openings: appPath('/openings'),
   search: appPath('/search'),
 };

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import type { Party } from '@dsb-pro/adapters';
 import { buildQuickBillDraft } from '../lib/quickBill';
 import { savePurchaseDraft, scanPurchaseDrafts } from '../lib/purchaseDraft';
+import { DISCARD_PROMPT, useDirtyGuard } from '../lib/dirtyGuard';
 
 // P06 quick bill: note a paper bill's supplier, number, date and total now; add its items later. It saves an
 // unposted draft only. Nothing reaches the supplier balance or stock until the itemized bill is posted.
@@ -31,6 +32,22 @@ export function QuickBillEntry({
     if (date === defaultDate) setDate(today);
     setDefaultDate(today);
   }, [today]);
+
+  // N08: a typed bill number or total that is not yet saved as a draft.
+  const dirty = Boolean(billNo.trim() || total.trim());
+  useDirtyGuard(dirty);
+  function onToggle(e: Event) {
+    const el = e.currentTarget as HTMLDetailsElement;
+    if (el.open || !dirty) return;
+    if (!window.confirm(DISCARD_PROMPT)) {
+      el.open = true;
+      return;
+    }
+    setBillNo('');
+    setTotal('');
+    setErrors([]);
+    setMessage('');
+  }
 
   function save() {
     setMessage('');
@@ -70,7 +87,7 @@ export function QuickBillEntry({
   }
 
   return (
-    <details class="card" aria-label="Quick bill">
+    <details class="card" aria-label="Quick bill" onToggle={onToggle}>
       <summary>Quick bill (total now, items later)</summary>
       <p class="muted">
         Saves the paper bill as a draft. The supplier balance and stock change only when you add the

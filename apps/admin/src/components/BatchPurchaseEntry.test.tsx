@@ -170,3 +170,38 @@ test('P10: a CSV fills the grid without saving; a bad file fills nothing', async
   expect(host.textContent).toContain('Save 2 drafts');
   expect(scanPurchaseDrafts(prefix).drafts).toHaveLength(0);
 });
+
+test('N08: closing with a typed entry asks first; declining keeps it, confirming clears it', async () => {
+  await mount();
+  const details = host.querySelector('details')!;
+  const ask = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  await act(async () => {
+    details.open = true;
+    details.dispatchEvent(new Event('toggle'));
+  });
+  await set('Batch quantity 1', '4');
+  const unload = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(unload);
+  expect(unload.defaultPrevented).toBe(true);
+  await act(async () => {
+    details.open = false;
+    details.dispatchEvent(new Event('toggle'));
+  });
+  expect(ask).toHaveBeenCalledWith('Discard unsaved entry?');
+  expect(details.open).toBe(true);
+  expect((host.querySelector('[aria-label="Batch quantity 1"]') as HTMLInputElement).value).toBe(
+    '4',
+  );
+  ask.mockReturnValue(true);
+  await act(async () => {
+    details.open = false;
+    details.dispatchEvent(new Event('toggle'));
+  });
+  expect((host.querySelector('[aria-label="Batch quantity 1"]') as HTMLInputElement).value).toBe(
+    '',
+  );
+  const after = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(after);
+  expect(after.defaultPrevented).toBe(false);
+  ask.mockRestore();
+});

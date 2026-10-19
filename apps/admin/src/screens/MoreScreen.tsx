@@ -58,8 +58,6 @@ export function MoreScreen({ role }: { role: Role | null }) {
         <details class="card">
           <summary>Advanced & legacy tools</summary>
           <a href={appRoute.inventory + '?view=advanced'}>Import old DSB backup</a>
-          <br />
-          <a href={appRoute.compare}>Compare with old DSB</a>
         </details>
       )}
     </main>

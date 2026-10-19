@@ -233,11 +233,7 @@ export function ReportsScreen() {
         </p>
       </section>
       <section class="card" hidden={view !== 'recovery'}>
-        <h2>Checks and opening balances</h2>
-        <p>
-          <a href={appRoute.compare}>Compare with old DSB</a> — balances, stock and day totals on
-          one page, each exportable as CSV.
-        </p>
+        <h2>Opening balances</h2>
         <p>
           <a href={appRoute.openings}>Opening balances</a> — owner only: what each customer and
           supplier stood at on your cutover date.
