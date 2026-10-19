@@ -47,6 +47,11 @@ function fakeDb(data = inventory()) {
       calls.push(sql);
       if (sql.includes('from storage.buckets')) return { rows: data.bucket ? [data.bucket] : [] };
       if (sql.includes('from storage.objects')) return { rows: data.objects };
+      // billextras (0064): image table state and image-row references are read separately.
+      if (sql.includes("to_regclass('public.purchase_bill_images')"))
+        return { rows: 'imageTable' in data ? data.imageTable : [{ present: true }] };
+      if (sql.includes('from public.purchase_bill_images'))
+        return { rows: data.imageReferences ?? [] };
       if (sql.includes('from public.purchase_bills')) return { rows: data.references };
       if (sql.includes('json_build_object'))
         return { rows: [{ summary: { purchase_count: 1, purchase_total: '200' } }] };
@@ -347,4 +352,60 @@ test('snapshot dump passes encoded credentials through environment and normalize
   assert.equal(env.PGPASSWORD, 'test:only@pw');
   assert.equal(env.PGDATABASE, 'backup db');
   assert.equal(env.PGSSLMODE, 'require');
+});
+
+// billextras (0064): a second bill image lives only in purchase_bill_images. It is a referenced
+// original (protected, never an "unused upload"), validated like bill_image_path.
+function imageInventory() {
+  const data = inventory();
+  const second = '10000000-0000-0000-0000-000000000005';
+  const imagePath = `${tenant}/${shop}/${client}/${second}.pdf`;
+  data.objects.push({ ...row, id: second, path: imagePath });
+  data.imageReferences = [
+    { id: 'image-0', tenantId: tenant, shopId: shop, clientId: client, path },
+    { id: 'image-1', tenantId: tenant, shopId: shop, clientId: client, path: imagePath },
+  ];
+  return { data, imagePath };
+}
+test('an image-row path is a referenced original, not an unused upload', async (t) => {
+  const { data, imagePath } = imageInventory();
+  const f = await fixture(t, { inventory: data });
+  const m = await capture(f.args);
+  assert.equal(m.unusedUploads.length, 0);
+  assert(m.references.some((r) => r.id === 'image-1' && r.path === imagePath));
+  assert.equal(m.objects.length, 2);
+});
+test('without its image row the same upload is reported as unused (retained)', async (t) => {
+  const { data, imagePath } = imageInventory();
+  data.imageReferences = [];
+  const f = await fixture(t, { inventory: data });
+  const m = await capture(f.args);
+  assert.deepEqual(
+    m.unusedUploads.map((u) => u.path),
+    [imagePath],
+  );
+});
+test('an image row bound to another request is refused like a bill reference', async (t) => {
+  const { data } = imageInventory();
+  data.imageReferences[1].clientId = photo;
+  const f = await fixture(t, { inventory: data });
+  await assert.rejects(capture(f.args), /missing or bound/);
+});
+test('an older schema without the image table reads bill references only', async (t) => {
+  const data = inventory();
+  data.imageTable = [{ present: false }];
+  data.imageReferences = [
+    { id: 'never-read', tenantId: tenant, shopId: shop, clientId: client, path },
+  ];
+  const f = await fixture(t, { inventory: data });
+  const m = await capture(f.args);
+  assert(!m.references.some((r) => r.id === 'never-read'));
+  assert(!f.db.calls.some((sql) => sql.includes('from public.purchase_bill_images')));
+});
+test('an unreadable image table state fails with a clear error, not a TypeError', async (t) => {
+  const data = inventory();
+  data.imageTable = [];
+  const f = await fixture(t, { inventory: data });
+  await assert.rejects(capture(f.args), /bill image table state could not be read/);
+  assert.equal(f.db.calls.at(-1), 'rollback');
 });
