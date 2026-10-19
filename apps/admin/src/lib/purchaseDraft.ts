@@ -41,7 +41,7 @@ export function hasTypedPurchaseInput(d: PurchaseDraft): boolean {
     d.lineItem ||
     d.qty ||
     d.price ||
-    d.cards?.some((c) => c.item || c.qty || c.price),
+    d.cards?.some((c) => c.item || c.search.trim() || c.qty || c.price),
   );
 }
 // VF-017: a snapshot stores only what restore compares (id, name, units, conversions); restore swaps in
@@ -114,7 +114,8 @@ function checked(value: unknown): PurchaseDraft {
           typeof c.search === 'string' &&
           typeof c.qty === 'string' &&
           typeof c.price === 'string' &&
-          (c.costMode === 'unit' || c.costMode === 'total'),
+          (c.costMode === 'unit' || c.costMode === 'total') &&
+          (c.unitHint === undefined || (Number.isSafeInteger(c.unitHint) && c.unitHint >= 0)),
       )
     )
   )

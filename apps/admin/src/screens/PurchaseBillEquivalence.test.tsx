@@ -263,3 +263,43 @@ test('layout follows old DSB: items, then extra and discount, then the live bill
   expect(host.querySelector('[data-testid="bill-total"]')!.textContent).toContain('Round off');
   expect(host.querySelectorAll('.bill-bar button')).toHaveLength(1);
 });
+
+test('Enter inside a card moves to the next field and never posts a partial bill', async () => {
+  await mountEditor();
+  await pickItem(1, 'Item A');
+  await setField(label('Item 1 quantity'), '2');
+  await setField(label('Item 1 rate ₹'), '10.50');
+  const rate = host.querySelector<HTMLInputElement>(label('Item 1 rate ₹'))!;
+  rate.focus();
+  const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+  await act(async () => {
+    rate.dispatchEvent(enter);
+  });
+  expect(enter.defaultPrevented).toBe(true);
+  expect(document.activeElement).not.toBe(rate);
+  expect(document.activeElement?.tagName).toBe('BUTTON');
+  // Even an implicit submission that slips through (no Post button as submitter) posts nothing.
+  await act(async () => {
+    rate.form!.requestSubmit();
+  });
+  await act(async () => {
+    rate.form!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  });
+  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+});
+
+test('a refused post focuses the first item that needs a look and says so in the post bar', async () => {
+  await mountEditor();
+  await pickItem(1, 'Item A');
+  await setField(label('Item 1 quantity'), '2');
+  await setField(label('Item 1 rate ₹'), '10.50');
+  await click(button('+ Add item'));
+  await pickItem(2, 'Item C');
+  await setField(label('Item 2 quantity'), '1');
+  await click(button('Post purchase'));
+  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(host.querySelector(label('Item 2 rate ₹')));
+  expect(host.querySelector('.bill-bar')!.textContent).toContain(
+    'Item 2: Enter the cost per unit.',
+  );
+});

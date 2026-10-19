@@ -4,6 +4,8 @@ import {
   emptyCard,
   evaluateCard,
   isBlankCard,
+  isUntouchedCard,
+  withItem,
   switchCostMode,
   unitChoices,
   unitName,
@@ -68,7 +70,23 @@ export function PurchaseBillCards(props: {
     props.onChange(cards.filter((c) => c.key !== card.key));
   }
   function choose(key: string, item: Item, unitLevel: 1 | 2 | 3 = 1) {
-    patch(key, (c) => ({ ...c, item, search: item.name, unitLevel }));
+    patch(key, (c) => withItem(c, item, unitLevel));
+  }
+  // Scan and voice results: fill the card they were started from while nothing is chosen or entered on it,
+  // otherwise open a new card, so a result never overwrites an item already on the bill. Returns the
+  // 1-based item number used, or null when that card was removed meanwhile (nothing is changed then).
+  function place(key: string, fill: (c: BillCard) => BillCard): number | null {
+    const { cards: now, onChange } = latest.current;
+    const index = now.findIndex((c) => c.key === key);
+    if (index < 0) return null;
+    if (isUntouchedCard(now[index]!)) {
+      onChange(now.map((c, i) => (i === index ? fill(c) : c)));
+      return index + 1;
+    }
+    const card = fill(emptyCard());
+    onChange([...now, card]);
+    setFocusKey(card.key);
+    return now.length + 1;
   }
 
   return (
@@ -126,13 +144,24 @@ export function PurchaseBillCards(props: {
                   aria-label={`Item ${n} name`}
                   placeholder="Type to search"
                   autocomplete="off"
+                  data-field="name"
                   value={card.search}
                   disabled={disabled}
                   onInput={(e) => {
                     const search = e.currentTarget.value;
+                    // Typing over a chosen item drops it, with the quantity and cost entered for it.
                     patch(card.key, (c) =>
                       c.item && search !== c.item.name
-                        ? { ...c, search, item: null, unitLevel: 1 }
+                        ? {
+                            ...c,
+                            search,
+                            item: null,
+                            unitLevel: 1,
+                            qty: '',
+                            price: '',
+                            costMode: 'unit',
+                            unitHint: undefined,
+                          }
                         : { ...c, search },
                     );
                   }}
@@ -148,8 +177,11 @@ export function PurchaseBillCards(props: {
                         props.onMessage(`Barcode ${code} is not linked to any item.`);
                         return;
                       }
-                      choose(card.key, hit.item, hit.unitLevel);
-                      props.onMessage(`Scanned ${hit.item.name}. Enter the quantity and cost.`);
+                      const at = place(card.key, (c) => withItem(c, hit.item, hit.unitLevel));
+                      if (at === null) return;
+                      props.onMessage(
+                        `Scanned ${hit.item.name} into item ${at}. Enter the quantity and cost.`,
+                      );
                     } catch (e) {
                       props.onMessage(`Barcode lookup failed: ${String(e)}`);
                     }
@@ -169,26 +201,31 @@ export function PurchaseBillCards(props: {
                   }
                   const hits = matchItems(latest.current.items, v.name);
                   if (hits.length !== 1) {
-                    patch(card.key, (c) => ({ ...c, item: null, search: v.name, unitLevel: 1 }));
+                    const at = place(card.key, (c) => ({
+                      ...c,
+                      item: null,
+                      search: v.name,
+                      unitLevel: 1,
+                    }));
+                    if (at === null) return;
                     props.onMessage(
                       hits.length
-                        ? `Heard “${text}”: ${hits.length} items match. Tap the right one in item ${n}.`
+                        ? `Heard “${text}”: ${hits.length} items match. Tap the right one in item ${at}.`
                         : `Heard “${text}”: no item matches “${v.name}”.`,
                     );
                     return;
                   }
                   const hit = hits[0]!;
-                  patch(card.key, (c) => ({
-                    ...c,
-                    item: hit,
-                    search: hit.name,
-                    unitLevel: unitLevelFor(hit, v.unitWord) ?? 1,
+                  const at = place(card.key, (c) => ({
+                    ...withItem(c, hit, unitLevelFor(hit, v.unitWord) ?? 1),
                     costMode: 'unit',
+                    unitHint: undefined,
                     qty: v.qty ?? '',
                     price: v.rate ?? '',
                   }));
+                  if (at === null) return;
                   props.onMessage(
-                    `Heard “${text}”. Check item ${n}: ${hit.name}, the unit, quantity and rate.`,
+                    `Heard “${text}”. Check item ${at}: ${hit.name}, the unit, quantity and rate.`,
                   );
                 }}
               />
@@ -222,7 +259,9 @@ export function PurchaseBillCards(props: {
                     key={u.level}
                     aria-pressed={card.unitLevel === u.level}
                     disabled={disabled}
-                    onClick={() => patch(card.key, (c) => ({ ...c, unitLevel: u.level }))}
+                    onClick={() =>
+                      patch(card.key, (c) => (c.item ? withItem(c, c.item, u.level) : c))
+                    }
                   >
                     {u.name}
                   </button>
@@ -234,6 +273,7 @@ export function PurchaseBillCards(props: {
                 Qty{item ? ` (${unitName(item, card.unitLevel)})` : ''}
                 <input
                   aria-label={`Item ${n} quantity`}
+                  data-field="qty"
                   type="number"
                   inputMode="decimal"
                   min="0.000001"
@@ -251,6 +291,7 @@ export function PurchaseBillCards(props: {
                 {card.costMode === 'total' ? 'Total cost ₹' : 'Rate per unit ₹'}
                 <input
                   aria-label={`Item ${n} ${priceLabel}`}
+                  data-field="price"
                   type="number"
                   inputMode="decimal"
                   min="0"

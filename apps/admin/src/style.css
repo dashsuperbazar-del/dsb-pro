@@ -1248,6 +1248,7 @@ body {
   bottom: calc(64px + env(safe-area-inset-bottom));
   z-index: 15;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
@@ -1255,6 +1256,11 @@ body {
   padding: 8px 0;
   background: var(--surface-2);
   border-top: 1px solid var(--border);
+}
+.bill-bar-problem {
+  flex-basis: 100%;
+  color: #b3261e;
+  font-size: 14px;
 }
 .bill-bar-total {
   font-weight: 700;

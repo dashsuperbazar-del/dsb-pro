@@ -212,4 +212,11 @@ test('bill entry cards (complete or half-typed) survive a save and restore again
   };
   expect(hasTypedPurchaseInput({ ...blank, cards: [{ ...cards[1]!, search: '' }] })).toBe(false);
   expect(hasTypedPurchaseInput({ ...blank, cards: [{ ...cards[1]!, qty: '1' }] })).toBe(true);
+  expect(hasTypedPurchaseInput({ ...blank, cards: [cards[1]!] })).toBe(true);
+  expect(hasTypedPurchaseInput({ ...blank, cards: [{ ...cards[1]!, search: ' ' }] })).toBe(false);
+  // A unit cost kept across a per unit / total switch is stored with the card.
+  savePurchaseDraft(prefix, 'hint', { ...d, cards: [{ ...cards[0]!, unitHint: 1001 }] });
+  expect(() =>
+    savePurchaseDraft(prefix, 'bad', { ...d, cards: [{ ...cards[0]!, unitHint: -1 }] }),
+  ).toThrow(/unreadable/);
 });

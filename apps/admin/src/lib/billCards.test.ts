@@ -130,3 +130,33 @@ test('old single-form drafts become cards: cart lines plus the half-typed form, 
   expect(saved[0]).not.toHaveProperty('key');
   expect(cardsFromDraft({ ...old, cards: saved }).map((c) => c.qty)).toEqual(['4', '1']);
 });
+
+test('an old draft editing a cart line with a blank form keeps that cart line', () => {
+  const cart = [
+    { item: A, unitLevel: 1 as const, qty: '2', unitPricePaise: 100 },
+    { item: C, unitLevel: 2 as const, qty: '1', unitPricePaise: 500 },
+  ];
+  const cards = cardsFromDraft({
+    cart,
+    lineItem: null,
+    search: '',
+    unitLevel: 1,
+    qty: '',
+    price: '',
+    editingLine: 1,
+  });
+  expect(billFromCards(cards).lines).toEqual(cart);
+});
+
+test('switching total and back keeps the unit cost typed, when it still makes the total exactly', () => {
+  // 0.5 x 10.01 = 5.005 -> 5.01 stored; deriving from 5.01 alone would give 10.02.
+  const unit = card({ item: A, qty: '0.5', price: '10.01' });
+  const total = switchCostMode(unit, 'total');
+  expect(total).toMatchObject({ costMode: 'total', price: '5.01' });
+  expect(evaluateCard(total)).toMatchObject({ kind: 'ok', line: { unitPricePaise: 1001 } });
+  expect(switchCostMode(total, 'unit')).toMatchObject({ costMode: 'unit', price: '10.01' });
+  // A changed total no longer matches the kept cost, so the cost is derived from the new total.
+  const edited = { ...total, price: '6' };
+  expect(evaluateCard(edited)).toMatchObject({ kind: 'ok', line: { unitPricePaise: 1200 } });
+  expect(switchCostMode(edited, 'unit')).toMatchObject({ price: '12.00' });
+});

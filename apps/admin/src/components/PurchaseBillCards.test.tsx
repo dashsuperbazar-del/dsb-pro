@@ -8,6 +8,15 @@ import { PurchaseBillCards } from './PurchaseBillCards';
 import { billFromCards, emptyCard, type BillCard } from '../lib/billCards';
 
 vi.mock('@dsb-pro/adapters', () => ({ listItemPurchasePrices: vi.fn().mockResolvedValue([]) }));
+// jsdom has no camera: a stand-in scanner reports whatever code the test sets.
+const scan = vi.hoisted(() => ({ code: '' }));
+vi.mock('./CameraScanner', () => ({
+  CameraScanner: (p: { onCode: (code: string) => void }) => (
+    <button type="button" class="fake-scan" onClick={() => p.onCode(scan.code)}>
+      scan
+    </button>
+  ),
+}));
 
 const items = [
   { id: 'a', name: 'Item A', unit1: 'piece' },
@@ -16,7 +25,11 @@ const items = [
 const host = document.createElement('div');
 let current: BillCard[] = [];
 
-function Harness(props: { start: BillCard[]; onMessage?: (m: string) => void }) {
+function Harness(props: {
+  start: BillCard[];
+  onMessage?: (m: string) => void;
+  findBarcode?: (code: string) => Promise<{ item: Item; unitLevel: 1 | 2 | 3 } | null>;
+}) {
   const [cards, setCards] = useState(props.start);
   current = cards;
   return (
@@ -28,6 +41,7 @@ function Harness(props: { start: BillCard[]; onMessage?: (m: string) => void }) 
       parties={[]}
       canSeePrices
       onMessage={props.onMessage ?? (() => {})}
+      findBarcode={props.findBarcode}
     />
   );
 }
@@ -178,6 +192,11 @@ test('Speak fills only its own card, and only when exactly one item matches', as
   });
   expect(current[0]).toEqual(done);
   expect(billFromCards(current).itemsTotalPaise).toBe(500 + 12000);
+  // Speaking on a filled card never overwrites it: the heard item goes on a new card.
+  await say('item a 2 3');
+  expect(current).toHaveLength(3);
+  expect(current[1]).toMatchObject({ item: { id: 'c' }, qty: '6' });
+  expect(current[2]).toMatchObject({ item: { id: 'a' }, qty: '2', price: '3' });
   vi.unstubAllGlobals();
 });
 
@@ -188,4 +207,81 @@ test('price history opens per card on request only', async () => {
   expect(peek.getAttribute('aria-expanded')).toBe('false');
   await click(peek);
   expect(peek.getAttribute('aria-expanded')).toBe('true');
+});
+
+test('picking another item or unit clears qty, rate and cost mode', async () => {
+  const filled: BillCard = {
+    ...emptyCard(),
+    item: items[1]!,
+    search: 'Item C',
+    unitLevel: 2,
+    qty: '2',
+    price: '1800',
+    costMode: 'total',
+  };
+  await mount([filled]);
+  await click(button('box', byLabel<HTMLElement>('Item 1 purchased in')));
+  expect(current[0]).toMatchObject({ unitLevel: 1, qty: '', price: '', costMode: 'unit' });
+  await type('Item 1 quantity', '2');
+  await type('Item 1 rate ₹', '9');
+  await type('Item 1 name', 'Item A');
+  expect(current[0]).toMatchObject({ item: null, qty: '', price: '', costMode: 'unit' });
+  await type('Item 1 quantity', '2');
+  await click(button('Item A', byLabel<HTMLElement>('Matches for item 1')));
+  expect(current[0]).toMatchObject({ item: { id: 'a' }, qty: '2' });
+});
+
+test('a scan fills an untouched card; on a filled card it opens a new card', async () => {
+  const messages: string[] = [];
+  const findBarcode = vi.fn(async (code: string) =>
+    code === 'C3' ? { item: items[1]!, unitLevel: 2 as const } : null,
+  );
+  const filled: BillCard = {
+    ...emptyCard(),
+    item: items[0]!,
+    search: 'Item A',
+    qty: '2',
+    price: '18',
+  };
+  await act(async () =>
+    render(
+      <Harness
+        start={[filled, { ...emptyCard(), search: 'ite' }]}
+        onMessage={(m) => messages.push(m)}
+        findBarcode={findBarcode}
+      />,
+      host,
+    ),
+  );
+  scan.code = 'C3';
+  await click(host.querySelectorAll<HTMLElement>('.fake-scan')[1]!);
+  expect(current).toHaveLength(2);
+  expect(current[1]).toMatchObject({ item: { id: 'c' }, unitLevel: 2, qty: '', price: '' });
+  await click(host.querySelectorAll<HTMLElement>('.fake-scan')[0]!);
+  expect(current).toHaveLength(3);
+  expect(current[0]).toEqual(filled);
+  expect(current[2]).toMatchObject({ item: { id: 'c' }, unitLevel: 2, qty: '', price: '' });
+  expect(messages.at(-1)).toContain('Scanned Item C into item 3');
+});
+
+test('a scan that finishes after its card was removed changes nothing', async () => {
+  const messages: string[] = [];
+  let answer!: (v: { item: Item; unitLevel: 1 | 2 | 3 }) => void;
+  const findBarcode = () => new Promise<{ item: Item; unitLevel: 1 | 2 | 3 }>((r) => (answer = r));
+  await act(async () =>
+    render(
+      <Harness
+        start={[emptyCard(), emptyCard()]}
+        onMessage={(m) => messages.push(m)}
+        findBarcode={findBarcode}
+      />,
+      host,
+    ),
+  );
+  await click(host.querySelectorAll<HTMLElement>('.fake-scan')[0]!);
+  await click(byLabel<HTMLElement>('Remove item 1'));
+  await act(async () => answer({ item: items[0]!, unitLevel: 1 }));
+  expect(current).toHaveLength(1);
+  expect(current[0]!.item).toBeNull();
+  expect(messages.join(' ')).not.toContain('Scanned');
 });

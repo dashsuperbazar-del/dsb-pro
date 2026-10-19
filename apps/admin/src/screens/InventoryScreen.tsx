@@ -499,6 +499,10 @@ export function InventoryScreen({
     return () => window.removeEventListener('storage', changed);
   }, [draftPrefix]);
   const purchaseBill = useMemo(() => billFromCards(purchaseCards), [purchaseCards]);
+  const postButton = useRef<HTMLButtonElement>(null);
+  // A refused post's reason, shown next to the Post button until the items change.
+  const [barProblem, setBarProblem] = useState('');
+  useEffect(() => setBarProblem(''), [purchaseCards]);
   const draftSnapshot: PurchaseDraft = {
     version: 1,
     clientId: purchaseClientId,
@@ -801,8 +805,35 @@ export function InventoryScreen({
     setDraftTouched(true);
     setMessage('Items copied from the last bill. Check each quantity and rate.');
   }
+  // Enter in a field moves to the next control instead of submitting: implicit form submission would post
+  // a half-entered bill. Posting happens only from the Post button.
+  function purchaseFormKeyDown(ev: KeyboardEvent) {
+    const target = ev.target as HTMLElement;
+    if (
+      ev.key !== 'Enter' ||
+      !(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)
+    )
+      return;
+    ev.preventDefault();
+    const form = target.form;
+    if (!form) return;
+    const controls = [...form.elements].filter(
+      (el): el is HTMLElement =>
+        (el instanceof HTMLInputElement ||
+          el instanceof HTMLSelectElement ||
+          el instanceof HTMLButtonElement) &&
+        !el.disabled &&
+        !(el instanceof HTMLInputElement && el.type === 'hidden') &&
+        !el.closest('[hidden], details:not([open])'),
+    );
+    const at = controls.indexOf(target);
+    const next = controls[at + 1];
+    if (next && next !== postButton.current) next.focus();
+  }
   async function addPurchase(ev: Event) {
     ev.preventDefault();
+    // Only the Post button posts (never Enter in a field, never a script-driven submit without it).
+    if (!postButton.current || (ev as SubmitEvent).submitter !== postButton.current) return;
     if (purchaseBusy || contextBusy || (!purchaseLocked && !purchaseContextReady) || accountChanged)
       return;
     setError('');
@@ -815,9 +846,18 @@ export function InventoryScreen({
     }
     if (!purchaseLocked && purchaseBill.problems.length) {
       const first = purchaseBill.problems[0]!;
-      setError(
-        `Item ${first.index + 1}: ${first.message}${purchaseBill.problems.length > 1 ? ` (${purchaseBill.problems.length} items need a look.)` : ''}`,
-      );
+      const problem = `Item ${first.index + 1}: ${first.message}${purchaseBill.problems.length > 1 ? ` (${purchaseBill.problems.length} items need a look.)` : ''}`;
+      setError(problem);
+      setBarProblem(problem);
+      // Take the user to the first card that needs a look, at the field to fix.
+      const bad = purchaseCards[first.index];
+      const field = !bad?.item ? 'name' : /quantity/i.test(first.message) ? 'qty' : 'price';
+      const badCard = (ev.currentTarget as HTMLFormElement).querySelectorAll('.bill-card')[
+        first.index
+      ];
+      const input = badCard?.querySelector<HTMLInputElement>(`[data-field="${field}"]`);
+      input?.scrollIntoView?.({ block: 'center' });
+      input?.focus();
       return;
     }
     if (!shopId || !businessDate) {
@@ -1524,7 +1564,7 @@ export function InventoryScreen({
               ))}
           </details>
         )}
-        <form onSubmit={addPurchase}>
+        <form onSubmit={addPurchase} onKeyDown={purchaseFormKeyDown}>
           {purchaseLocked && (
             <div class="alert" role="alert">
               <p>
@@ -1782,12 +1822,18 @@ export function InventoryScreen({
             </p>
           )}
           <div class="bill-bar">
+            {!purchaseLocked && barProblem && (
+              <span class="bill-bar-problem" role="alert">
+                {barProblem}
+              </span>
+            )}
             {!purchaseLocked && (
               <span class="bill-bar-total" aria-live="polite">
                 Total {payablePreview} ·
               </span>
             )}
             <button
+              ref={postButton}
               class="primary"
               disabled={
                 purchaseBusy ||

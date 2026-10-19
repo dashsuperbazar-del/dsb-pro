@@ -19,6 +19,9 @@ export type BillCardDraft = {
   /** Rupees as typed: the cost per unit, or the whole amount for this item when costMode is 'total'. */
   price: string;
   costMode: CostMode;
+  /** Paise per unit typed before switching to "Total"; reused while it still makes the total exactly,
+   * so a per unit / total round trip never changes the stored unit cost. */
+  unitHint?: number;
 };
 export type BillCard = BillCardDraft & { key: string };
 
@@ -44,6 +47,29 @@ export function emptyCard(): BillCard {
 
 export function isBlankCard(c: BillCardDraft): boolean {
   return !c.item && !c.search.trim() && !c.qty.trim() && !c.price.trim();
+}
+
+/** Nothing chosen or entered yet (a half-typed search may be replaced by a scan or voice result). */
+export function isUntouchedCard(c: BillCardDraft): boolean {
+  return !c.item && !c.qty.trim() && !c.price.trim();
+}
+
+/** Put an item (and unit) on a card. A different item or unit clears quantity and cost, because they were
+ * entered for the old one ("2 x Rs 1800" per carton must never become 2 pieces at Rs 1800). */
+export function withItem<T extends BillCardDraft>(c: T, item: Item, unitLevel: 1 | 2 | 3 = 1): T {
+  // Choosing the first item keeps a quantity typed before it; only a change of item or unit clears.
+  if (!c.item || (c.item.id === item.id && c.unitLevel === unitLevel))
+    return { ...c, item, search: item.name, unitLevel };
+  return {
+    ...c,
+    item,
+    search: item.name,
+    unitLevel,
+    qty: '',
+    price: '',
+    costMode: 'unit',
+    unitHint: undefined,
+  };
 }
 
 /** The unit names an item can be bought in, base first (old DSB "PURCHASED IN" buttons). */
@@ -77,6 +103,19 @@ export function evaluateCard(c: BillCardDraft): CardResult {
   if (c.costMode === 'total') {
     const derived = deriveUnitCostFromTotal(c.qty, c.price);
     if (!derived.ok) return { kind: 'problem', message: derived.message };
+    const totalPaise = derived.lineTotalPaise - derived.diffPaise;
+    const hint = c.unitHint;
+    if (
+      hint !== undefined &&
+      Number.isSafeInteger(hint) &&
+      hint >= 0 &&
+      quantityTimesPaise(qty, hint) === totalPaise
+    )
+      return {
+        kind: 'ok',
+        line: { item, unitLevel: c.unitLevel, qty, unitPricePaise: hint },
+        amountPaise: totalPaise,
+      };
     if (!derived.exact)
       return {
         kind: 'problem',
@@ -148,11 +187,15 @@ export function addLineAsCard(cards: BillCard[], line: PurchaseDraftLine): BillC
 export function switchCostMode(c: BillCard, mode: CostMode): BillCard {
   if (c.costMode === mode) return c;
   const r = evaluateCard(c);
-  let price = '';
-  if (r.kind === 'ok')
-    price =
-      mode === 'total' ? paiseToDecimal(r.amountPaise) : paiseToDecimal(r.line.unitPricePaise);
-  return { ...c, costMode: mode, price };
+  if (r.kind !== 'ok') return { ...c, costMode: mode, price: '', unitHint: undefined };
+  return mode === 'total'
+    ? {
+        ...c,
+        costMode: mode,
+        price: paiseToDecimal(r.amountPaise),
+        unitHint: r.line.unitPricePaise,
+      }
+    : { ...c, costMode: mode, price: paiseToDecimal(r.line.unitPricePaise), unitHint: undefined };
 }
 
 /** Old (single add-line form) drafts: committed cart lines, plus the half-typed form as one more card. */
@@ -178,8 +221,10 @@ export function cardsFromDraft(d: {
     price: d.price,
     costMode: d.costMode ?? 'unit',
   };
-  if (d.editingLine !== null && d.editingLine < cards.length) cards[d.editingLine] = pending;
-  else if (!isBlankCard(pending)) cards.push(pending);
+  if (d.editingLine !== null && d.editingLine < cards.length) {
+    // The old form was editing that cart line; a blank form means the line itself is still the entry.
+    if (!isBlankCard(pending)) cards[d.editingLine] = pending;
+  } else if (!isBlankCard(pending)) cards.push(pending);
   return cards.length ? cards : [emptyCard()];
 }
 
@@ -191,5 +236,6 @@ export function cardDrafts(cards: BillCard[]): BillCardDraft[] {
     qty: c.qty,
     price: c.price,
     costMode: c.costMode,
+    ...(c.unitHint !== undefined ? { unitHint: c.unitHint } : {}),
   }));
 }
