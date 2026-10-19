@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Item, Party } from '@dsb-pro/adapters';
 import {
   emptyCard,
@@ -15,12 +15,41 @@ import { boundedItemOptions } from '../lib/itemOptions';
 import { deriveUnitCostFromTotal } from '../lib/purchaseCost';
 import { matchItems, parseVoiceEntry, unitLevelFor } from '../lib/voiceEntry';
 import { paiseToDecimal, rupees } from '../lib/money';
+import { exactItemMatch, type NewItemFields } from '../lib/newItem';
+import { learnedUnits } from '../lib/unitLearning';
 import { CameraScanner } from './CameraScanner';
 import { VoiceEntryButton } from './VoiceEntryButton';
 import { CostDerivation } from './CostDerivation';
 import { PriceHistory } from './PriceHistory';
 
 const MATCH_LIMIT = 8;
+const UNIT_LIST_ID = 'bill-card-units';
+const OFFLINE_NOT_CREATED =
+  "You're offline. The item was not created. Try again when you're online.";
+
+// "+ Create" form of one card. clientId is kept for the life of the form, so a retry after a lost answer
+// is refused by the database (unique client_id) instead of creating the item twice.
+type NewItemForm = Required<Omit<NewItemFields, 'sku'>> & {
+  clientId: string;
+  error: string;
+  busy: boolean;
+};
+// Same constraint attributes as the Inventory "Add item" form (required name and base unit, conversions
+// are numbers of zero or more); the database checks the rest exactly as it does for that form.
+const NEW_ITEM_FIELDS: {
+  key: keyof Omit<NewItemFields, 'sku'>;
+  label: string;
+  required?: true;
+  number?: true;
+  units?: true;
+}[] = [
+  { key: 'name', label: 'New item name', required: true },
+  { key: 'unit1', label: 'Base unit', required: true, units: true },
+  { key: 'unit2', label: 'Second unit', units: true },
+  { key: 'conv1', label: 'Second units per base unit', number: true },
+  { key: 'unit3', label: 'Third unit', units: true },
+  { key: 'conv2', label: 'Third units per second unit', number: true },
+];
 
 // Old DSB bill entry: an ITEMS header (Repeat, + Add item), recent supplier items to tap, then one card per
 // item ("ITEM 1", "ITEM 2" …), all editable at once. Cards only hold what was typed; the screen derives the
@@ -38,6 +67,8 @@ export function PurchaseBillCards(props: {
   findBarcode?: (code: string) => Promise<{ item: Item; unitLevel: 1 | 2 | 3 } | null>;
   onRepeat?: () => void;
   recent?: { key: string; label: string; onAdd: () => void }[];
+  /** Creates an item with the Add item adapter and refreshes the item list; absent = no "+ Create". */
+  onCreateItem?: (fields: NewItemFields, clientId: string) => Promise<Item>;
 }) {
   const { cards, items, disabled } = props;
   const latest = useRef(props);
@@ -45,11 +76,139 @@ export function PurchaseBillCards(props: {
   const host = useRef<HTMLDivElement>(null);
   const [focusKey, setFocusKey] = useState('');
   const [pricesOpen, setPricesOpen] = useState<string[]>([]);
+  const [newForms, setNewForms] = useState<Record<string, NewItemForm>>({});
+  const creating = useRef(new Set<string>());
+  const unitSuggestions = useMemo(() => learnedUnits(items), [items]);
   useEffect(() => {
     if (!focusKey) return;
-    host.current?.querySelector<HTMLInputElement>(`[data-card="${focusKey}"] input`)?.focus();
+    const [key, field] = focusKey.split('|');
+    host.current
+      ?.querySelector<HTMLInputElement>(
+        `[data-card="${key}"] ${field ? `[data-field="${field}"]` : 'input'}`,
+      )
+      ?.focus();
     setFocusKey('');
   }, [focusKey, cards]);
+  // A create form belongs to a card that still has no item; it goes away once the card gets one (a tap,
+  // scan or voice result) or the card is removed, unless its create is still running.
+  useEffect(() => {
+    setNewForms((forms) => {
+      const keep = Object.entries(forms).filter(
+        ([key, f]) => f.busy || cards.some((c) => c.key === key && !c.item),
+      );
+      return keep.length === Object.keys(forms).length ? forms : Object.fromEntries(keep);
+    });
+  }, [cards]);
+
+  function updateForm(key: string, change: Partial<NewItemForm>) {
+    setNewForms((forms) =>
+      forms[key] ? { ...forms, [key]: { ...forms[key]!, ...change } } : forms,
+    );
+  }
+  function closeForm(key: string) {
+    setNewForms((forms) => {
+      const rest = { ...forms };
+      delete rest[key];
+      return rest;
+    });
+  }
+  function openForm(card: BillCard) {
+    setNewForms((forms) => ({
+      ...forms,
+      [card.key]: {
+        clientId: crypto.randomUUID(),
+        name: card.search.trim(),
+        unit1: '',
+        unit2: '',
+        conv1: '',
+        unit3: '',
+        conv2: '',
+        error: '',
+        busy: false,
+      },
+    }));
+    setFocusKey(`${card.key}|unit1`);
+  }
+  // The browser's own checks on the same attributes as the Add item form, plus a name and base unit that
+  // are not only spaces. Returns the first problem, and focuses its field.
+  function formProblem(key: string, form: NewItemForm): string {
+    for (const f of NEW_ITEM_FIELDS) {
+      const el = host.current?.querySelector<HTMLInputElement>(
+        `[data-new-item="${key}"] [data-field="${f.key}"]`,
+      );
+      const blank = f.required && !form[f.key].trim();
+      if (!blank && (!el || el.checkValidity())) continue;
+      el?.focus();
+      return blank
+        ? `Enter the ${f.label.toLowerCase()}.`
+        : `${f.label} must be a number, zero or more.`;
+    }
+    return '';
+  }
+  async function saveNew(key: string) {
+    const form = newForms[key];
+    const create = latest.current.onCreateItem;
+    if (!form || !create || creating.current.has(key)) return;
+    const problem = formProblem(key, form);
+    if (problem) return updateForm(key, { error: problem });
+    const existing = exactItemMatch(latest.current.items, form.name);
+    if (existing)
+      return updateForm(key, {
+        error: `“${existing.name}” already exists. Choose it from the matches.`,
+      });
+    if (typeof navigator !== 'undefined' && navigator.onLine === false)
+      return updateForm(key, { error: OFFLINE_NOT_CREATED });
+    const fields: NewItemFields = {
+      name: form.name,
+      unit1: form.unit1,
+      unit2: form.unit2,
+      conv1: form.conv1,
+      unit3: form.unit3,
+      conv2: form.conv2,
+    };
+    creating.current.add(key);
+    updateForm(key, { busy: true, error: '' });
+    try {
+      const item = await create(fields, form.clientId);
+      closeForm(key);
+      const now = latest.current.cards;
+      const index = now.findIndex((c) => c.key === key);
+      if (index >= 0 && !now[index]!.item) {
+        // Selected with nothing carried over: the quantity and cost are entered for this item.
+        patch(key, (c) => ({
+          ...c,
+          item,
+          search: item.name,
+          unitLevel: 1,
+          qty: '',
+          price: '',
+          costMode: 'unit',
+          unitHint: undefined,
+        }));
+        setFocusKey(`${key}|qty`);
+        latest.current.onMessage(
+          `Created ${item.name}. Enter the quantity and cost for item ${index + 1}.`,
+        );
+      } else
+        latest.current.onMessage(
+          `Created ${item.name}. It was not put on the bill because ${
+            index < 0 ? 'that item card was removed' : `item ${index + 1} already has an item`
+          }.`,
+        );
+    } catch (e) {
+      updateForm(key, {
+        busy: false,
+        error:
+          typeof navigator !== 'undefined' && navigator.onLine === false
+            ? OFFLINE_NOT_CREATED
+            : e instanceof Error
+              ? e.message
+              : String(e),
+      });
+    } finally {
+      creating.current.delete(key);
+    }
+  }
 
   // Always applies to the newest card list, so a slow scan or voice result cannot undo later typing.
   function patch(key: string, change: (c: BillCard) => BillCard) {
@@ -123,6 +282,8 @@ export function PurchaseBillCards(props: {
         const picker = searching ? boundedItemOptions(items, card.search, '', MATCH_LIMIT) : null;
         const typedTotal = card.costMode === 'total' && card.qty.trim() && card.price.trim();
         const priceLabel = card.costMode === 'total' ? 'total ₹' : 'rate ₹';
+        const newForm = newForms[card.key];
+        const canCreate = !!props.onCreateItem && !newForm && !exactItemMatch(items, card.search);
         return (
           <section class="bill-card" key={card.key} data-card={card.key} aria-label={`Item ${n}`}>
             <div class="bill-card-head">
@@ -248,6 +409,79 @@ export function PurchaseBillCards(props: {
                     {picker.matches - picker.options.length} more, keep typing.
                   </small>
                 )}
+                {canCreate && (
+                  <button
+                    type="button"
+                    class="bill-card-create"
+                    disabled={disabled}
+                    onClick={() => openForm(card)}
+                  >
+                    + Create “{card.search.trim()}”
+                  </button>
+                )}
+              </div>
+            )}
+            {newForm && !item && (
+              <div
+                class="bill-card-new"
+                role="group"
+                aria-label={`New item for item ${n}`}
+                data-new-item={card.key}
+              >
+                <small class="muted">New item, saved to your items list</small>
+                {NEW_ITEM_FIELDS.map((f) => (
+                  <label key={f.key} class={f.key === 'name' ? 'bill-card-new-name' : undefined}>
+                    {f.label}
+                    {f.required ? '' : ' (optional)'}
+                    <input
+                      aria-label={`Item ${n} ${f.label.toLowerCase()}`}
+                      data-field={f.key}
+                      autocomplete="off"
+                      required={f.required}
+                      list={f.units ? UNIT_LIST_ID : undefined}
+                      {...(f.number
+                        ? { type: 'number', inputMode: 'decimal', min: '0', step: 'any' }
+                        : {})}
+                      placeholder={
+                        f.key === 'unit1'
+                          ? 'e.g. ctn'
+                          : f.key === 'unit2'
+                            ? 'e.g. pkt'
+                            : f.number
+                              ? 'e.g. 12'
+                              : undefined
+                      }
+                      value={newForm[f.key]}
+                      disabled={disabled || newForm.busy}
+                      onInput={(e) => {
+                        const value = e.currentTarget.value;
+                        updateForm(card.key, { [f.key]: value });
+                      }}
+                    />
+                  </label>
+                ))}
+                {newForm.error && (
+                  <p role="alert" class="bill-card-new-error">
+                    {newForm.error}
+                  </p>
+                )}
+                <div class="bill-card-new-actions">
+                  <button
+                    type="button"
+                    class="primary"
+                    disabled={disabled || newForm.busy}
+                    onClick={() => void saveNew(card.key)}
+                  >
+                    {newForm.busy ? 'Saving…' : 'Save item'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={disabled || newForm.busy}
+                    onClick={() => closeForm(card.key)}
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             )}
             {item && (
@@ -373,6 +607,13 @@ export function PurchaseBillCards(props: {
           </section>
         );
       })}
+      {props.onCreateItem && (
+        <datalist id={UNIT_LIST_ID}>
+          {unitSuggestions.map((u) => (
+            <option key={u} value={u} />
+          ))}
+        </datalist>
+      )}
       {cards.length > 0 && (
         <button type="button" class="bill-add-bottom" disabled={disabled} onClick={addCard}>
           + Add another item

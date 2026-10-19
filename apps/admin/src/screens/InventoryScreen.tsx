@@ -2,6 +2,7 @@ import { CameraScanner } from '../components/CameraScanner';
 import { PriceHistory } from '../components/PriceHistory';
 import { DemandChart } from '../components/DemandChart';
 import { learnedUnits } from '../lib/unitLearning';
+import { newItemInput, type NewItemFields } from '../lib/newItem';
 import { PurchaseBillCards } from '../components/PurchaseBillCards';
 import {
   addLineAsCard,
@@ -697,15 +698,18 @@ export function InventoryScreen({
     const form = ev.currentTarget as HTMLFormElement;
     const f = new FormData(form);
     try {
+      const text = (key: string) => String(f.get(key) || '');
       const item = await createItem({
         tenantId,
-        name: String(f.get('name')),
-        sku: String(f.get('sku') || '') || undefined,
-        unit1: String(f.get('unit1')),
-        unit2: String(f.get('unit2') || '') || undefined,
-        unit3: String(f.get('unit3') || '') || undefined,
-        conv1: f.get('conv1') ? Number(f.get('conv1')) : undefined,
-        conv2: f.get('conv2') ? Number(f.get('conv2')) : undefined,
+        ...newItemInput({
+          name: String(f.get('name')),
+          sku: text('sku'),
+          unit1: String(f.get('unit1')),
+          unit2: text('unit2'),
+          unit3: text('unit3'),
+          conv1: text('conv1'),
+          conv2: text('conv2'),
+        }),
         clientId: crypto.randomUUID(),
       });
       form.reset();
@@ -714,6 +718,27 @@ export function InventoryScreen({
     } catch (e) {
       setError(String(e));
     }
+  }
+  // "+ Create" inside a bill card: the same adapter and field mapping as the Add item form above. The new
+  // item joins the list at once (every card can find it) and the list is then re-read from the server; a
+  // failed re-read never turns the successful create into an error (that would invite a second create).
+  async function createItemFromCard(fields: NewItemFields, clientId: string): Promise<Item> {
+    if (!tenantId) throw new Error('Shop data is still loading.');
+    let item: Item;
+    try {
+      item = await createItem({ tenantId, ...newItemInput(fields), clientId });
+    } catch (e) {
+      // The answer may be lost after the server saved it: re-read, so a retry finds the name instead.
+      void refresh(true).catch(() => {});
+      throw e;
+    }
+    setItems((now) =>
+      now.some((i) => i.id === item.id)
+        ? now
+        : [...now, item].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)),
+    );
+    void refresh(true).catch(() => {});
+    return item;
   }
   async function addBarcode(ev: Event) {
     ev.preventDefault();
@@ -1726,6 +1751,7 @@ export function InventoryScreen({
               canSeePrices={canSeePurchasePrices}
               onMessage={setMessage}
               findBarcode={findBarcodeForCard}
+              onCreateItem={tenantId ? createItemFromCard : undefined}
               onRepeat={purchaseOnly && recentDetail ? repeatLastBill : undefined}
               recent={
                 purchaseOnly && recentDetail

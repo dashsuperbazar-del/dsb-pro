@@ -26,6 +26,7 @@ const api = vi.hoisted(() => ({
     { id: 'b', name: 'Item B', unit1: 'piece', min_stock: 0 },
   ]),
   listParties: vi.fn().mockResolvedValue([]),
+  createItem: vi.fn(),
   listStock: vi.fn().mockResolvedValue([]),
   listCurrentPrices: vi.fn(),
   listPurchaseHistory: vi.fn().mockResolvedValue([]),
@@ -1102,6 +1103,71 @@ test('P06: a quick bill checks items against its paper total before posting and 
     .map((k) => JSON.parse(localStorage.getItem(k)!));
   expect(saved.length).toBeGreaterThan(0);
   expect(saved.every((d) => d.expectedTotalPaise === undefined)).toBe(true);
+});
+
+test('P03: an item created inside a bill card goes through the Add item adapter, joins the list and is selected', async () => {
+  const fresh = {
+    id: 'n',
+    name: 'New Rice',
+    sku: null,
+    unit1: 'bag',
+    unit2: 'pkt',
+    unit3: null,
+    conv1: 10,
+    conv2: null,
+    min_stock: 0,
+  };
+  // The first answer is lost after the server may have saved it; the retry must reuse its identity.
+  api.createItem
+    .mockRejectedValueOnce(new Error("Something didn't save. Please try again in a moment."))
+    .mockResolvedValueOnce(fresh);
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly />, host);
+  });
+  const nameBox = () => host.querySelector<HTMLInputElement>('[aria-label="Item 1 name"]')!;
+  await vi.waitFor(() => expect(nameBox().closest('fieldset')!.disabled).toBe(false));
+  await enterLabel(host, 'Item 1 name', 'New Rice');
+  const tap = (text: string) =>
+    act(async () => {
+      [...host.querySelectorAll('button')].find((b) => b.textContent === text)!.click();
+    });
+  await tap('+ Create “New Rice”');
+  await enterLabel(host, 'Item 1 base unit', 'bag');
+  await enterLabel(host, 'Item 1 second unit', 'pkt');
+  await enterLabel(host, 'Item 1 second units per base unit', '10');
+  await tap('Save item');
+  await vi.waitFor(() => expect(host.textContent).toContain("Something didn't save"));
+  const reads = api.listItems.mock.calls.length;
+  api.listItems.mockResolvedValue([
+    { id: 'a', name: 'Item A', unit1: 'piece', min_stock: 0 },
+    { id: 'b', name: 'Item B', unit1: 'piece', min_stock: 0 },
+    fresh,
+  ]);
+  await tap('Save item');
+  await vi.waitFor(() =>
+    expect(host.querySelector('[aria-label="Item 1 purchased in"]')).toBeTruthy(),
+  );
+  const expected = {
+    tenantId: 'tenant',
+    name: 'New Rice',
+    sku: undefined,
+    unit1: 'bag',
+    unit2: 'pkt',
+    unit3: undefined,
+    conv1: 10,
+    conv2: undefined,
+    clientId: expect.any(String),
+  };
+  expect(api.createItem).toHaveBeenNthCalledWith(1, expected);
+  expect(api.createItem).toHaveBeenNthCalledWith(2, expected);
+  expect(api.createItem.mock.calls[1]![0].clientId).toBe(api.createItem.mock.calls[0]![0].clientId);
+  await vi.waitFor(() => expect(api.listItems.mock.calls.length).toBeGreaterThan(reads));
+  expect(nameBox().value).toBe('New Rice');
+  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  api.listItems.mockResolvedValue([
+    { id: 'a', name: 'Item A', unit1: 'piece', min_stock: 0 },
+    { id: 'b', name: 'Item B', unit1: 'piece', min_stock: 0 },
+  ]);
 });
 
 test('SP2b: a revisit of the stock screen lists the last catalogue at once; a write since then skips it', async () => {
