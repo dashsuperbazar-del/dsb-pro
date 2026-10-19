@@ -50,6 +50,7 @@ export const ALLOWED_GROUPS = Object.freeze([
   'profit',
   'supplierschedule',
   'partymerge',
+  'itemindex',
 ]);
 
 const VERSION_RE = /^[0-9]{4}$/;
@@ -223,6 +224,7 @@ const EXPECTED_IN_FLIGHT_GROUP_AND_PATH = Object.freeze({
   '0060': ['profit', 'supabase/migrations/0060_profit_report.sql'],
   '0061': ['supplierschedule', 'supabase/migrations/0061_supplier_payment_schedule.sql'],
   '0062': ['partymerge', 'supabase/migrations/0062_party_merge.sql'],
+  '0063': ['itemindex', 'supabase/migrations/0063_item_history_indexes.sql'],
 });
 
 /**

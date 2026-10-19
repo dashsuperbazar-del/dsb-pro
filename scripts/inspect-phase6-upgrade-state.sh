@@ -740,11 +740,49 @@ if [[ "$partymerge" != '0' && "$supplierschedule" != '2' && ! ( "$partymerge" ==
  echo 'Party merge appears ahead of completed supplier payment schedule. Refusing migration.' >&2; exit 1
 fi
 
+# Item history indexes (0063): additive classifier field. Three anchors (one per index, exact definition),
+# all or nothing. An index with the right name but a different definition is drift and is refused.
+itemindex_probe=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -F' ' <<'SQL'
+do $$ begin
+ create temp table _itemindex_receipt (present boolean);
+ if to_regclass('public.app_migration_receipts') is not null then
+   insert into _itemindex_receipt select exists(select 1 from public.app_migration_receipts where version='0063');
+ else insert into _itemindex_receipt values(false); end if;
+end $$;
+select (select present from _itemindex_receipt),
+ (select count(*) from pg_indexes where schemaname='public' and (indexname,indexdef) in (
+   ('purchase_bill_items_item_history_idx','CREATE INDEX purchase_bill_items_item_history_idx ON public.purchase_bill_items USING btree (tenant_id, shop_id, item_id, created_at DESC)'),
+   ('sale_invoice_items_item_history_idx','CREATE INDEX sale_invoice_items_item_history_idx ON public.sale_invoice_items USING btree (tenant_id, shop_id, item_id, created_at DESC)'),
+   ('sale_return_items_item_history_idx','CREATE INDEX sale_return_items_item_history_idx ON public.sale_return_items USING btree (tenant_id, shop_id, item_id, created_at DESC)'))),
+ (select count(*) from pg_indexes where schemaname='public' and indexname in
+   ('purchase_bill_items_item_history_idx','sale_invoice_items_item_history_idx','sale_return_items_item_history_idx'));
+SQL
+)
+read -r itemindex_receipt itemindex_anchors itemindex_named <<<"$(tail -n 1 <<<"$itemindex_probe")"
+if [[ "$itemindex_named" != "$itemindex_anchors" ]]; then
+ echo "Item history index definition drift ($itemindex_named named, $itemindex_anchors exact). Refusing migration." >&2; exit 1
+fi
+case "$itemindex_receipt:$itemindex_anchors" in
+ f:0) itemindex=0; needs_itemindex=true ;;
+ f:3) itemindex=1; needs_itemindex=true ;;
+ t:3) itemindex=2; needs_itemindex=false ;;
+ *) echo "Item history index partial/drift state ($itemindex_receipt/$itemindex_anchors). Refusing migration." >&2; exit 1 ;;
+esac
+if [[ "$itemindex" == '2' ]]; then
+ itemindex_expected=$(sha256sum "$repo_root/supabase/migrations/0063_item_history_indexes.sql" | cut -d' ' -f1)
+ itemindex_recorded=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -c "select checksum_sha256 from public.app_migration_receipts where version='0063'")
+ [[ "$itemindex_expected" == "$itemindex_recorded" ]] || { echo '0063 receipt checksum mismatch. Refusing migration.' >&2; exit 1; }
+fi
+# A later packet is not allowed to appear ahead of its predecessor, except a full reset awaiting receipts.
+if [[ "$itemindex" != '0' && "$partymerge" != '2' && ! ( "$itemindex" == '1' && "$partymerge" == '1' ) ]]; then
+ echo 'Item history indexes appear ahead of completed party merge. Refusing migration.' >&2; exit 1
+fi
+
 emit_state() {
   local needs_foundation=$1 needs_hardening=$2 needs_phase65=$3 needs_batcha=$4 needs_batchb=$5 needs_p1=$6 needs_p2=$7 needs_c0=$8 needs_c1=$9 needs_c2=${10} needs_c3=${11} needs_c3b=${12} needs_r0=${13} needs_d1=${14} needs_r0b=${15} needs_o1=${16} needs_o2=${17} needs_d2b=${18} needs_d3a=${19}
   local needs_upgrade=true
   if [[ "$needs_foundation:$needs_hardening:$needs_phase65:$needs_batcha:$needs_batchb:$needs_p1:$needs_p2:$needs_c0:$needs_c1:$needs_c2:$needs_c3:$needs_c3b:$needs_r0:$needs_d1:$needs_r0b:$needs_o1:$needs_o2:$needs_d2b:$needs_d3a" == "false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false" ]]; then
-    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" && "$needs_supplierschedule" == "false" && "$needs_partymerge" == "false" ]]; then needs_upgrade=false; fi
+    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" && "$needs_supplierschedule" == "false" && "$needs_partymerge" == "false" && "$needs_itemindex" == "false" ]]; then needs_upgrade=false; fi
   fi
   printf 'observed_state=%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s\n' "$foundation" "$hardening" "$phase65" "$batcha" "$batchb" "$p1" "$p2" "$c0" "$c1" "$c2" "$c3" "$c3b" "$r0" "$d1" "$r0b" "$o1" "$o2" "$d2b" "$d3a"
   printf 'needs_upgrade=%s\n' "$needs_upgrade"
@@ -777,6 +815,8 @@ emit_state() {
   printf 'needs_supplierschedule=%s\n' "$needs_supplierschedule"
   printf 'partymerge_state=%s\n' "$partymerge"
   printf 'needs_partymerge=%s\n' "$needs_partymerge"
+  printf 'itemindex_state=%s\n' "$itemindex"
+  printf 'needs_itemindex=%s\n' "$needs_itemindex"
 }
 
 # Legacy (0030-0043) classification is unchanged from before Packet P1: the
