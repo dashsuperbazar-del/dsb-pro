@@ -15,6 +15,9 @@
   --space-3: 12px;
   --space-4: 16px;
   --radius: 10px;
+  --radius-lg: 12px;
+  --accent-soft: #eff6ff;
+  --shadow: 0 1px 3px rgb(15 23 42 / 8%);
 }
 * {
   box-sizing: border-box;
@@ -289,52 +292,196 @@ table input {
   border: 1px solid #ffffff40;
   border-radius: 9px;
 }
+/* Home (Overview) — old DSB dashboard look: separate stat cards with uppercase labels and coloured
+   figures, a filled primary action next to outline actions, avatar rows. Scoped to .dashboard so
+   other screens keep their styling; only the tokens --accent-soft, --shadow and --radius-lg are new. */
 .dashboard-heading {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   margin-bottom: 12px;
 }
 .dashboard-heading h1 {
-  margin: 0;
+  margin: 0 auto 0 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
 }
 .quiet-link {
   font-size: 12px;
   text-decoration: none;
   padding: 8px 0;
 }
-.section-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.7px;
-  color: var(--muted);
-  margin: 18px 0 10px;
+.dashboard-heading .quiet-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--surface);
+  border: 1.5px solid var(--accent);
+  border-radius: 8px;
 }
-.quick-entry {
+.section-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--muted);
+  margin: 20px 0 8px;
+}
+.dashboard > .card {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+/* Day book: the section is a frame; each figure is its own stat card. */
+.dashboard > .daybook-tile {
+  padding: 0;
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+.daybook-tile h2 {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--muted);
+  margin: 4px 0 8px;
+}
+.tiles {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+.tiles > .stat {
+  min-width: 0;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+.tiles dt {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+}
+.tiles dd {
+  margin: 4px 0 0;
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.tiles .tone-accent dd {
+  color: var(--accent);
+}
+.tiles .tone-success dd {
+  color: var(--success);
+}
+.tiles .daybook-net {
+  grid-column: 1/-1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.tiles .daybook-net dd {
+  margin: 0;
+}
+.daybook-link {
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  text-decoration: none;
+}
+.dashboard .daybook-link {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  min-height: 46px;
+  margin-top: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--surface);
+  border: 1.5px solid var(--accent);
+  border-radius: 8px;
+}
+.attention-tile h2 {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.attention-tile ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.attention-tile li {
+  padding: 9px 0 9px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  position: relative;
+}
+.attention-tile li:last-child {
+  border-bottom: 0;
+  padding-bottom: 2px;
+}
+.attention-tile li::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 16px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+/* Quick entry: big buttons; the first is the filled primary action, as old DSB's New Bill. */
+.quick-entry {
+  display: flex;
   gap: 8px;
 }
 .quick-entry a {
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 7px;
+  justify-content: center;
+  gap: 6px;
   text-align: center;
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
   text-decoration: none;
-  color: var(--text);
-  min-height: 78px;
+  color: var(--accent);
+  min-height: 76px;
   padding: 10px 4px;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 9px;
+  border: 1.5px solid var(--accent);
+  border-radius: 8px;
+}
+.quick-entry a:first-child {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.quick-entry a:active {
+  transform: scale(0.98);
 }
 .quick-entry .app-icon {
-  color: var(--accent);
-  width: 23px;
-  height: 23px;
+  color: inherit;
+  width: 24px;
+  height: 24px;
 }
 .workspace-list {
   border: 1px solid var(--border);
@@ -367,6 +514,27 @@ table input {
   width: 16px;
   color: var(--muted);
 }
+/* Home rows look like old DSB party rows: a tinted round badge, then a 14px semibold name. */
+.dashboard .workspace-list {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+.dashboard .workspace-list a {
+  padding: 10px 16px;
+  min-height: 60px;
+  font-size: 14px;
+}
+.dashboard .workspace-list strong {
+  font-weight: 600;
+}
+.dashboard .workspace-list .app-icon:first-child {
+  width: 40px;
+  height: 40px;
+  padding: 10px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
 .account-row {
   display: flex;
   align-items: center;
@@ -374,6 +542,13 @@ table input {
   gap: 12px;
   margin-top: 12px;
   font-size: 12px;
+}
+.dashboard .shop-tools {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+.dashboard .shop-tools summary {
+  font-size: 14px;
 }
 .management-links {
   display: flex;
@@ -389,54 +564,21 @@ table input {
   border-radius: 8px;
   text-decoration: none;
 }
-.daybook-tile {
-  position: relative;
+.dashboard .management-links {
+  padding-bottom: 10px;
 }
-.daybook-tile h2 {
+.dashboard .management-links a {
+  padding: 8px 14px;
   font-size: 13px;
-  color: var(--muted);
-  font-weight: 550;
-  margin-bottom: 10px;
+  font-weight: 600;
+  border: 1.5px solid var(--accent);
 }
-.tiles {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0;
-  margin: 0;
-}
-.tiles > div {
-  padding: 8px 0 10px;
-  border-bottom: 1px solid var(--border);
-}
-.tiles dt {
-  font-size: 12px;
-  color: var(--muted);
-}
-.tiles dd {
-  margin: 3px 0 0;
-  font-weight: 700;
-  font-size: 20px;
-  font-variant-numeric: tabular-nums;
-}
-.tiles .daybook-net {
-  grid-column: 1/-1;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 0 4px;
-  border: 0;
-}
-.tiles .daybook-net dd {
-  font-size: 16px;
-  margin: 0;
-}
-.daybook-link {
-  font-size: 12px;
-  display: inline-flex;
-  align-items: center;
-  min-height: 32px;
-  text-decoration: none;
+.dashboard .account-row button {
+  min-height: 44px;
+  padding: 8px 14px;
+  font-size: 13px;
+  color: var(--accent);
+  border: 1.5px solid var(--accent);
 }
 .health-container {
   max-width: 900px;
@@ -690,6 +832,8 @@ body {
     --accent-text: #101827;
     --danger: #ffaaa3;
     --success: #85ddb1;
+    --accent-soft: #23345a;
+    --shadow: none;
   }
 }
 :root[data-theme='light'] {
@@ -703,6 +847,8 @@ body {
   --accent-text: #fff;
   --danger: #b42318;
   --success: #157347;
+  --accent-soft: #eff6ff;
+  --shadow: 0 1px 3px rgb(15 23 42 / 8%);
 }
 :root[data-theme='dark'] {
   color-scheme: dark;
@@ -715,6 +861,8 @@ body {
   --accent-text: #101827;
   --danger: #ffaaa3;
   --success: #85ddb1;
+  --accent-soft: #23345a;
+  --shadow: none;
 }
 @media (min-width: 1000px) {
   body {
