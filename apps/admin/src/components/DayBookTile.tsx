@@ -11,6 +11,7 @@ const rupee = (p: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(p / 100);
 
 // Home tile: today's day book at a glance (server figures; nothing computed locally).
+// Each figure is an old-DSB style stat card; its tone is fixed per figure, never derived from the amount.
 export function DayBookTile() {
   const [date, setDate] = useState('');
   const [row, setRow] = useState<DayBookRow | null>(null);
@@ -27,7 +28,7 @@ export function DayBookTile() {
   }, []);
   if (error)
     return (
-      <section class="card daybook-tile" aria-label="Day book today">
+      <section class="card daybook-tile daybook-error" aria-label="Day book today">
         <p role="alert">
           Today’s totals are unavailable. <a href={appRoute.reports}>Open reports</a>
         </p>
@@ -39,23 +40,23 @@ export function DayBookTile() {
     <section class="card daybook-tile" aria-label="Day book today">
       <h2>Today {date && `· ${date}`}</h2>
       <dl class="tiles">
-        <div>
+        <div class="stat tone-accent">
           <dt>Net sales</dt>
           <dd>{v('sales_paise')}</dd>
         </div>
-        <div>
+        <div class="stat tone-success">
           <dt>Received</dt>
           <dd>{v('receipts_paise')}</dd>
         </div>
-        <div>
+        <div class="stat">
           <dt>Paid out</dt>
           <dd>{v('payments_paise')}</dd>
         </div>
-        <div>
+        <div class="stat">
           <dt>Expenses</dt>
           <dd>{v('expenses_paise')}</dd>
         </div>
-        <div class="daybook-net">
+        <div class="stat daybook-net">
           <dt>Net money flow</dt>
           <dd>{v('net_cashflow_paise')}</dd>
         </div>
