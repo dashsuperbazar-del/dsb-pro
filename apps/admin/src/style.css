@@ -1405,6 +1405,48 @@ body {
   min-height: 1.4em;
   font-variant-numeric: tabular-nums;
 }
+.bill-card-units .bill-card-conv {
+  text-transform: none;
+  font-size: 12px;
+  color: var(--text);
+}
+.bill-card-sale {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--success);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--success) 8%, var(--surface));
+}
+.bill-card-sale-title {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--success);
+}
+.bill-card-sale-title span {
+  font-weight: 400;
+  text-transform: none;
+}
+.bill-card-sale .bill-card-units {
+  margin: 0;
+}
+.bill-card-sale-problem {
+  margin: 0;
+  color: var(--danger);
+}
+.price-retry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.price-retry-actions {
+  display: flex;
+  gap: 8px;
+}
 .bill-add-bottom {
   width: 100%;
   border-style: dashed;

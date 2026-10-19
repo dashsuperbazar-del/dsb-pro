@@ -220,3 +220,40 @@ test('bill entry cards (complete or half-typed) survive a save and restore again
     savePurchaseDraft(prefix, 'bad', { ...d, cards: [{ ...cards[0]!, unitHint: -1 }] }),
   ).toThrow(/unreadable/);
 });
+
+test('typed sale prices are kept with the draft and count as unsaved entry', () => {
+  const prefix = purchaseDraftPrefix('u', 's');
+  const sale = { level: 2 as const, retail: '12.50', wsQty: '12' };
+  const card = {
+    item,
+    search: 'Oil',
+    unitLevel: 1 as const,
+    qty: '',
+    price: '',
+    costMode: 'unit' as const,
+    sale,
+  };
+  const d = { ...draft(), editingLine: null, cards: [card] };
+  savePurchaseDraft(prefix, 'w', d);
+  expect(listPurchaseDrafts(prefix)[0].draft.cards?.[0]?.sale).toEqual(sale);
+  expect(restorePurchaseDraft(d, [item], []).cards?.[0]?.sale).toEqual(sale);
+  expect(() =>
+    savePurchaseDraft(prefix, 'bad', { ...d, cards: [{ ...card, sale: { level: 4 } as never }] }),
+  ).toThrow(/unreadable/);
+  const blank = {
+    ...d,
+    billNo: '',
+    discount: '',
+    extra: '',
+    cart: [],
+    qty: '',
+    price: '',
+    lineItem: null,
+    document: null,
+  };
+  const bare = { ...card, item: null, search: '' };
+  expect(hasTypedPurchaseInput({ ...blank, cards: [{ ...bare, sale: { level: 1 } }] })).toBe(false);
+  expect(
+    hasTypedPurchaseInput({ ...blank, cards: [{ ...bare, sale: { level: 1, retail: '5' } }] }),
+  ).toBe(true);
+});
