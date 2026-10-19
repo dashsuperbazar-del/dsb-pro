@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildPurchaseV2Payload,
+  deriveSettlement,
   postPurchaseV2Outcome,
   voidPaidPurchaseOutcome,
 } from './purchaseExtras';
@@ -36,6 +37,13 @@ const request = (over: object = {}) => ({
     { label: ' Freight ', amountPaise: 20000 },
     { label: 'Loading', amountPaise: 5000 },
   ],
+  ...over,
+});
+const answer = (over: object = {}) => ({
+  billId: BILL,
+  paymentId: null,
+  totalPaise: '74648',
+  businessDate: '2026-10-01',
   ...over,
 });
 
@@ -83,6 +91,25 @@ describe('post_purchase_v2 payload', () => {
       images: [],
     });
   });
+  it('keeps blank GST (null) distinct from an explicit 0%', () => {
+    const line = { itemId: ITEM, unitLevel: 1 as const, qty: '1', unitPricePaise: 1000 };
+    const { bill } = buildPurchaseV2Payload(
+      request({
+        discountPaise: 0,
+        charges: [],
+        lines: [
+          { ...line, gstBp: null },
+          { ...line, gstBp: 0 },
+        ],
+      }),
+    );
+    expect(bill.lines.map((l) => l.gst_bp)).toEqual([null, 0]);
+    // A blank field passed through as '' or a fraction is refused, never coerced to 0.
+    expect(() =>
+      buildPurchaseV2Payload(request({ lines: [{ ...line, gstBp: '' as unknown as number }] })),
+    ).toThrow(/blank \(null\)/);
+    expect(() => buildPurchaseV2Payload(request({ lines: [{ ...line, gstBp: 2.5 }] }))).toThrow();
+  });
   it('refuses cheque, a paid bill without supplier, and unnamed charges before sending', async () => {
     expect(() => buildPurchaseV2Payload(request({ paymentType: 'cheque' }))).toThrow();
     expect(() => buildPurchaseV2Payload(request({ paymentType: 'cash', partyId: null }))).toThrow();
@@ -91,19 +118,14 @@ describe('post_purchase_v2 payload', () => {
     ).toThrow();
     await expect(
       postPurchaseV2Outcome(request({ paymentType: 'upi', partyId: null })),
-    ).resolves.toMatchObject({
-      kind: 'rejected',
-    });
+    ).resolves.toMatchObject({ kind: 'rejected' });
     expect(rpc).not.toHaveBeenCalled();
   });
 });
 
 describe('post_purchase_v2 outcome', () => {
   it('a cash bill is committed only with its payment id', async () => {
-    rpc.mockResolvedValue({
-      data: { billId: BILL, paymentId: PAY, totalPaise: '74648', businessDate: '2026-10-01' },
-      error: null,
-    });
+    rpc.mockResolvedValue({ data: answer({ paymentId: PAY }), error: null });
     await expect(postPurchaseV2Outcome(request({ paymentType: 'cash' }))).resolves.toEqual({
       kind: 'committed',
       value: { billId: BILL, paymentId: PAY, totalPaise: 74648, businessDate: '2026-10-01' },
@@ -114,20 +136,14 @@ describe('post_purchase_v2 outcome', () => {
     );
   });
   it('a paid answer without a payment, or a different total, is unknown', async () => {
-    rpc.mockResolvedValueOnce({
-      data: { billId: BILL, paymentId: null, totalPaise: '74648', businessDate: '2026-10-01' },
-      error: null,
-    });
+    rpc.mockResolvedValueOnce({ data: answer(), error: null });
     await expect(postPurchaseV2Outcome(request({ paymentType: 'upi' }))).resolves.toMatchObject({
       kind: 'unknown',
     });
-    rpc.mockResolvedValueOnce({
-      data: { billId: BILL, paymentId: null, totalPaise: '74647', businessDate: '2026-10-01' },
-      error: null,
-    });
+    rpc.mockResolvedValueOnce({ data: answer({ totalPaise: '74647' }), error: null });
     await expect(postPurchaseV2Outcome(request())).resolves.toMatchObject({ kind: 'unknown' });
   });
-  it('a total mismatch from the server is a rejection; a payload mismatch is unknown', async () => {
+  it('a total mismatch from the server is a rejection', async () => {
     rpc.mockResolvedValueOnce({
       data: null,
       error: { code: 'P0001', message: 'DSB_TOTAL_MISMATCH: x' },
@@ -136,28 +152,82 @@ describe('post_purchase_v2 outcome', () => {
       kind: 'rejected',
       code: 'DSB_TOTAL_MISMATCH',
     });
-    rpc.mockResolvedValueOnce({
-      data: null,
-      error: { code: 'P0001', message: 'DSB_PAYLOAD_MISMATCH: x' },
+  });
+  it('a payload mismatch is a final refusal (never an endless resend), naming the existing bill', async () => {
+    rpc
+      .mockResolvedValueOnce({
+        data: null,
+        error: { code: 'P0001', message: 'DSB_PAYLOAD_MISMATCH: client_id already used' },
+      })
+      .mockResolvedValueOnce({
+        data: { state: 'COMMITTED', result: answer(), currentStatus: null },
+        error: null,
+      });
+    const out = await postPurchaseV2Outcome(request());
+    expect(out).toMatchObject({ kind: 'rejected', code: 'DSB_PAYLOAD_MISMATCH' });
+    expect(out.kind === 'rejected' && out.message).toContain(BILL);
+    expect(rpc).toHaveBeenLastCalledWith('get_financial_request', {
+      p_shop_id: SHOP,
+      p_operation: 'purchase.post.v2',
+      p_client_id: REQ,
     });
+    // Used by a v1 bill (no v2 request stored): still final.
+    rpc
+      .mockResolvedValueOnce({
+        data: null,
+        error: { code: 'P0001', message: 'DSB_PAYLOAD_MISMATCH: x' },
+      })
+      .mockResolvedValueOnce({ data: { state: 'NOT_FOUND' }, error: null });
+    await expect(postPurchaseV2Outcome(request())).resolves.toMatchObject({ kind: 'rejected' });
+    // Lookup unreachable: unknown (cannot prove anything yet).
+    rpc
+      .mockResolvedValueOnce({
+        data: null,
+        error: { code: 'P0001', message: 'DSB_PAYLOAD_MISMATCH: x' },
+      })
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'));
     await expect(postPurchaseV2Outcome(request())).resolves.toMatchObject({ kind: 'unknown' });
   });
-  it('a refused retry of a saved paid bill stays unknown (payment not confirmable from the bill row)', async () => {
-    rpc.mockResolvedValue({ data: null, error: { code: 'P0001', message: 'DSB_FUTURE_DATE: x' } });
-    from.mockReturnValue({
-      select: () => ({
-        eq: () => ({ maybeSingle: () => Promise.resolve({ data: { id: BILL }, error: null }) }),
-      }),
-    });
+  it('a refused retry is decided by the stored answer, including the payment id', async () => {
+    rpc
+      .mockResolvedValueOnce({ data: null, error: { code: 'P0001', message: 'not permitted' } })
+      .mockResolvedValueOnce({
+        data: { state: 'COMMITTED', result: answer({ paymentId: PAY }), currentStatus: 'POSTED' },
+        error: null,
+      });
     await expect(
       postPurchaseV2Outcome(request({ paymentType: 'cash' }), true),
-    ).resolves.toMatchObject({
-      kind: 'unknown',
-    });
+    ).resolves.toMatchObject({ kind: 'committed', value: { billId: BILL, paymentId: PAY } });
+    rpc
+      .mockResolvedValueOnce({
+        data: null,
+        error: { code: 'P0001', message: 'DSB_FUTURE_DATE: x' },
+      })
+      .mockResolvedValueOnce({ data: { state: 'NOT_FOUND' }, error: null });
     await expect(postPurchaseV2Outcome(request(), true)).resolves.toMatchObject({
-      kind: 'committed',
-      value: { billId: BILL, paymentId: null },
+      kind: 'rejected',
+      code: 'DSB_FUTURE_DATE',
     });
+  });
+});
+
+describe('settlement is derived from the ledger, not the payment type', () => {
+  it.each([
+    [
+      'POSTED',
+      { outstanding_paise: '0', allocated_paise: '12000', returned_paise: '0' },
+      'settled',
+    ],
+    ['POSTED', { outstanding_paise: '12000', allocated_paise: '0', returned_paise: '0' }, 'unpaid'],
+    [
+      'POSTED',
+      { outstanding_paise: '2000', allocated_paise: '10000', returned_paise: '0' },
+      'partial',
+    ],
+    ['VOID', null, 'void'],
+    ['POSTED', null, 'unknown'],
+  ] as const)('%s %j -> %s', (status, row, expected) => {
+    expect(deriveSettlement(status, row).status).toBe(expected);
   });
 });
 
@@ -179,8 +249,6 @@ describe('void_paid_purchase outcome', () => {
     });
     await expect(
       voidPaidPurchaseOutcome({ purchaseId: BILL, reason: 'twice', clientId: REQ }),
-    ).resolves.toMatchObject({
-      kind: 'unknown',
-    });
+    ).resolves.toMatchObject({ kind: 'unknown' });
   });
 });

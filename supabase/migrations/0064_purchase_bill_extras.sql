@@ -104,9 +104,11 @@ create trigger audit_purchase_bill_images after insert on purchase_bill_images
 alter table purchase_bill_charges enable row level security;
 alter table purchase_bill_images enable row level security;
 create policy purchase_bill_charges_read on purchase_bill_charges for select using(
- tenant_id=current_tenant_id() and (has_perm('POST_PURCHASES') or has_perm('VIEW_REPORTS')));
+ tenant_id=current_tenant_id() and c1_shop_visible(shop_id)
+ and (has_perm('POST_PURCHASES') or has_perm('VIEW_REPORTS')));
 create policy purchase_bill_images_read on purchase_bill_images for select using(
- tenant_id=current_tenant_id() and (has_perm('POST_PURCHASES') or has_perm('VIEW_REPORTS')));
+ tenant_id=current_tenant_id() and c1_shop_visible(shop_id)
+ and (has_perm('POST_PURCHASES') or has_perm('VIEW_REPORTS')));
 revoke all on purchase_bill_charges,purchase_bill_images from public,anon,authenticated;
 grant select on purchase_bill_charges,purchase_bill_images to authenticated;
 do $$
@@ -122,10 +124,14 @@ alter table financial_requests add constraint financial_requests_operation_check
   'record_customer_payment_v2','allocate_customer_payment_v2','customer.record.legacy-v1',
   'purchase.post.v2','purchase.void_paid.v1'));
 
--- One exact rounding per line (half away from zero = half up for these non-negative values).
+-- One exact rounding per line, half up, in pure integer arithmetic (no numeric division before rounding:
+-- numeric division keeps ~16 significant digits and would misround large quantities). With qty in
+-- millionths: N = qty_micros*price*(10000-d)*(10000+g), D = 10^14, total = floor((2N+D)/(2D)).
+-- packages/core/src/purchaseBill.ts mirrors this exactly with BigInt.
 create function bx_purchase_line_total(p_qty numeric,p_price bigint,p_discount_bp integer,p_gst_bp integer)
 returns bigint language sql immutable set search_path=public as $$
- select round(p_qty*p_price*(10000-p_discount_bp)*(10000+coalesce(p_gst_bp,0))/100000000.0)::bigint
+ select div(2*round(p_qty*1000000)*p_price*(10000-p_discount_bp)*(10000+coalesce(p_gst_bp,0))+100000000000000,
+   200000000000000)::bigint
 $$;
 
 create function post_purchase_v2(p_shop_id uuid,p_client_id text,p_bill jsonb)
@@ -347,6 +353,36 @@ begin
  insert into financial_requests(tenant_id,shop_id,operation,request,result,client_id)
  values(v_tenant,v_shop,'purchase.void_paid.v1',v_request,v_result,v_req::text);
  return v_result;
+end $$;
+
+-- Outcome reconciliation: a client with an unknown outcome reads the stored answer of its own request.
+create or replace function get_financial_request(p_shop_id uuid,p_operation text,p_client_id text)
+returns jsonb language plpgsql security definer set search_path=public as $$
+declare v_tenant uuid; v_row financial_requests%rowtype; v_payment uuid; v_status text;
+begin
+ v_tenant:=phase3_assert_shop(p_shop_id);
+ if p_operation in ('supplier.record.v1','supplier.allocate.v1','supplier.void.v1','supplier.release.v1',
+                    'purchase.post.v2','purchase.void_paid.v1') then
+   if not has_perm('POST_PURCHASES') then raise exception 'not permitted'; end if;
+ elsif p_operation in ('record_customer_payment_v2','allocate_customer_payment_v2','customer.record.legacy-v1') then
+   if not has_perm('POST_SALES') then raise exception 'not permitted'; end if;
+ else
+   raise exception 'unknown financial operation';
+ end if;
+ if p_client_id is null or char_length(p_client_id) not between 1 and 128 then raise exception 'client_id required'; end if;
+ perform dsb_lock_request(v_tenant,p_operation,p_client_id);
+ select * into v_row from financial_requests
+  where tenant_id=v_tenant and operation=p_operation and client_id=p_client_id;
+ if not found or v_row.shop_id<>p_shop_id then return jsonb_build_object('state','NOT_FOUND'); end if;
+ if p_operation='supplier.release.v1'
+    and coalesce(v_row.result->>'allocationId','') ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+   select status into v_status from payment_allocations
+    where tenant_id=v_tenant and id=(v_row.result->>'allocationId')::uuid;
+ elsif coalesce(v_row.result->>'paymentId','') ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+   v_payment:=(v_row.result->>'paymentId')::uuid;
+   select status into v_status from payments where tenant_id=v_tenant and id=v_payment;
+ end if;
+ return jsonb_build_object('state','COMMITTED','result',v_row.result,'currentStatus',v_status);
 end $$;
 
 -- The business export carries the named charges and bill images (shop-scoped, like the bill lines).

@@ -12,7 +12,8 @@ function oldDsbLineTotal(qty: number, rate: number, disc: number, gst: number): 
   return after + gstAmt;
 }
 
-// qty, rate (rupees), disc %, gst %, expected paise. BILL-1003 is a real old-DSB row (20 x 8.71 @ 5% = 182.91).
+// qty, rate (rupees), disc %, gst %, expected paise. Row 2 matches old DSB's demo seed
+// bill BILL-1003 (20 x 8.71 @ 5% = 182.91); it is sample data, not a real shop bill.
 const GOLDEN: [string, string, string, string, number][] = [
   ['5', '1150', '0', '0', 575000],
   ['20', '8.71', '0', '5', 18291],
@@ -73,6 +74,19 @@ describe('purchase line totals (old DSB calcItemRow, exact paise)', () => {
     ).toThrow();
     expect(() => purchaseLineTotalPaise({ qty: '1', unitPricePaise: 1.5 })).toThrow();
     expect(() => purchaseLineTotalPaise({ qty: '0', unitPricePaise: 1 })).toThrow();
+  });
+});
+
+describe('large quantities (pure integer half-up, same as the SQL bx_purchase_line_total)', () => {
+  // Exact values from rational arithmetic; numeric division in SQL misrounded the first one (50002000).
+  it.each([
+    ['5555777.77778', 9, 1, 1, 50001999],
+    ['999999.999999', 999999, 333, 1800, 1140704859293],
+    ['123456.123456', 98765, 1234, 2800, 13681292876],
+  ] as const)('qty %s x %i paise, d %i, g %i', (qty, price, d, g, expected) => {
+    expect(purchaseLineTotalPaise({ qty, unitPricePaise: price, discountBp: d, gstBp: g })).toBe(
+      expected,
+    );
   });
 });
 

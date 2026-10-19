@@ -3,9 +3,10 @@
 -- named extra charges, several bill images, and an atomic void of a paid bill.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(67);
+select plan(86);
 insert into auth.users(id) values
  ('e3000000-0000-0000-0000-000000000001'),  -- owner
+ ('e3000000-0000-0000-0000-000000000002'),  -- manager
  ('e3000000-0000-0000-0000-000000000003');  -- cashier
 create function pg_temp.act(p_user text) returns void language sql as
  $$ select set_config('request.jwt.claims',json_build_object('sub',p_user,'role','authenticated')::text,true) $$;
@@ -29,7 +30,13 @@ insert into parties(tenant_id,name,client_id) values(current_tenant_id(),'Shanka
 select set_config('e3.sup',(select id::text from parties where client_id='e3-sup'),false);
 reset role;
 insert into tenant_users(tenant_id,user_id,role,shop_ids,status,client_id) values
- (pg_temp.id('tenant'),'e3000000-0000-0000-0000-000000000003','cashier',array[pg_temp.id('shop')],'active','e3-cash');
+ (pg_temp.id('tenant'),'e3000000-0000-0000-0000-000000000003','cashier',array[pg_temp.id('shop')],'active','e3-cash'),
+ (pg_temp.id('tenant'),'e3000000-0000-0000-0000-000000000002','manager',array[pg_temp.id('shop')],'active','e3-mgr');
+insert into parties(tenant_id,name,client_id) values
+ (pg_temp.id('tenant'),'Archived Supplier','e3-arch'),(pg_temp.id('tenant'),'Dup Supplier','e3-dupe'),(pg_temp.id('tenant'),'Kept Supplier','e3-keep');
+select set_config('e3.arch',(select id::text from parties where client_id='e3-arch'),false);
+select set_config('e3.dupe',(select id::text from parties where client_id='e3-dupe'),false);
+select set_config('e3.keep',(select id::text from parties where client_id='e3-keep'),false);
 
 -- Server rounding equals the client golden cases (packages/core/src/purchaseBill.test.ts).
 select is(array[bx_purchase_line_total(5,115000,0,null),bx_purchase_line_total(20,871,0,500),bx_purchase_line_total(3,9999,1000,1800),
@@ -37,6 +44,9 @@ select is(array[bx_purchase_line_total(5,115000,0,null),bx_purchase_line_total(2
   bx_purchase_line_total(7,12345,0,2800),bx_purchase_line_total(0.25,158000,120,0),bx_purchase_line_total(1,3,5000,null),
   bx_purchase_line_total(1,10,0,500),bx_purchase_line_total(0.145,100,0,null)],
   array[575000,18291,31857,10920,9828,0,110611,39026,2,11,15]::bigint[],'server line totals match the old-DSB golden cases');
+select is(array[bx_purchase_line_total(5555777.77778,9,1,1),bx_purchase_line_total(999999.999999,999999,333,1800),
+  bx_purchase_line_total(123456.123456,98765,1234,2800)],array[50001999,1140704859293,13681292876]::bigint[],
+  'large quantities round exactly (integer half-up, no numeric division)');
 
 -- Table hygiene
 select ok((select relrowsecurity from pg_class where relname='purchase_bill_charges')
@@ -121,6 +131,39 @@ select throws_like($$select pg_temp.post('e3000000-0000-0000-0000-0000000000cb',
   'charges',jsonb_build_array(jsonb_build_object('label','Freight','amount_paise',0))))$$,'%DSB_INVALID_CHARGES%','a charge needs a positive amount');
 select is((select count(*) from purchase_bills where tenant_id=pg_temp.id('tenant')),2::bigint,'refused requests wrote nothing');
 
+-- GST: blank (null) = price as entered at the item's rate; explicit 0 = "0% added" (rate 0).
+select set_config('e3.g',pg_temp.post('e3000000-0000-0000-0000-0000000000b2',jsonb_build_object('party_id',pg_temp.id('sup'),
+  'total_paise',2000,'lines',jsonb_build_array(pg_temp.line('1',1000,0,null,1000),pg_temp.line('1',1000,0,0,1000))))->>'billId',false);
+select is((select string_agg(coalesce(gst_bp::text,'null')||'/'||tax_rate_bp_snapshot,',' order by line_no) from purchase_bill_items
+  where purchase_bill_id=pg_temp.id('g')),'null/1200,0/0','blank GST keeps the item rate; explicit 0 is a 0% line');
+
+-- v1 <-> v2 client id reuse.
+select post_purchase(pg_temp.id('shop'),pg_temp.id('sup'),'V1U',null,0,0,'e3000000-0000-0000-0000-0000000000b3',
+  jsonb_build_array(jsonb_build_object('item_id',pg_temp.id('item'),'qty','1','unit_price_paise',100)));
+select throws_like($$select pg_temp.post('e3000000-0000-0000-0000-0000000000b3',jsonb_build_object('party_id',pg_temp.id('sup'),
+  'bill_no','V1U','total_paise',100,'lines',jsonb_build_array(pg_temp.line('1',100,0,null,100))))$$,'%DSB_PAYLOAD_MISMATCH%',
+  'v2 refuses an id already used by a v1 bill');
+select is(post_purchase(pg_temp.id('shop'),pg_temp.id('sup'),'S-1','2026-10-01',500,25000,'e3000000-0000-0000-0000-0000000000b1',
+  jsonb_build_array(jsonb_build_object('item_id',pg_temp.id('item'),'qty','20','unit_price_paise',871),
+    jsonb_build_object('item_id',pg_temp.id('item'),'qty','3','unit_price_paise',9999))),pg_temp.id('b1'),
+  'accepted risk: a v1 retry with the same lines acknowledges the v2 bill (no new bill)');
+select throws_like($$select post_purchase(pg_temp.id('shop'),pg_temp.id('sup'),'S-1','2026-10-01',500,25000,'e3000000-0000-0000-0000-0000000000b1',
+  jsonb_build_array(jsonb_build_object('item_id',pg_temp.id('item'),'qty','20','unit_price_paise',870),
+    jsonb_build_object('item_id',pg_temp.id('item'),'qty','3','unit_price_paise',9999)))$$,'%DSB_PAYLOAD_MISMATCH%',
+  'v1 reusing a v2 id with other lines is refused');
+select is((select count(*) from purchase_bills where tenant_id=pg_temp.id('tenant')),4::bigint,'reuse created no extra bill');
+
+-- A paid bill for an archived or merged-away supplier is refused (nothing written).
+select archive_party(pg_temp.id('arch'));
+select merge_parties(pg_temp.id('dupe'),pg_temp.id('keep'),'e3-merge');
+select throws_like($$select pg_temp.post('e3000000-0000-0000-0000-0000000000b4',jsonb_build_object('party_id',pg_temp.id('arch'),
+  'payment_type','cash','total_paise',100,'lines',jsonb_build_array(pg_temp.line('1',100,0,null,100))))$$,'%party not in tenant%',
+  'a paid bill for an archived supplier is refused');
+select throws_like($$select pg_temp.post('e3000000-0000-0000-0000-0000000000b5',jsonb_build_object('party_id',pg_temp.id('dupe'),
+  'payment_type','cash','total_paise',100,'lines',jsonb_build_array(pg_temp.line('1',100,0,null,100))))$$,'%party not in tenant%',
+  'a paid bill for a merged-away supplier is refused');
+select is((select count(*) from payments where tenant_id=pg_temp.id('tenant')),0::bigint,'refused paid bills wrote no payment');
+
 -- Cash bill: bill + full payment (mode cash) allocated to it, atomically; balance unchanged.
 select set_config('e3.bal1',pg_temp.bal('sup')::text,false);
 select set_config('e3.cjson',jsonb_build_object('party_id',pg_temp.id('sup'),'bill_no','C-1','business_date','2026-10-02',
@@ -144,8 +187,9 @@ set role authenticated;
 select pg_temp.act('e3000000-0000-0000-0000-000000000001');
 
 -- UPI bill and a zero-total paid bill.
-select set_config('e3.ures',pg_temp.post('e3000000-0000-0000-0000-0000000000d2',jsonb_build_object('party_id',pg_temp.id('sup'),
-  'payment_type','upi','total_paise',5000,'lines',jsonb_build_array(pg_temp.line('1',5000,0,null,5000))))::text,false);
+select set_config('e3.ujson',jsonb_build_object('party_id',pg_temp.id('sup'),
+  'payment_type','upi','total_paise',5000,'lines',jsonb_build_array(pg_temp.line('1',5000,0,null,5000)))::text,false);
+select set_config('e3.ures',pg_temp.post('e3000000-0000-0000-0000-0000000000d2',current_setting('e3.ujson')::jsonb)::text,false);
 select is((select mode from payments where id=(current_setting('e3.ures')::jsonb->>'paymentId')::uuid),'upi','UPI bill pays by UPI');
 select is(pg_temp.post('e3000000-0000-0000-0000-0000000000d3',jsonb_build_object('party_id',pg_temp.id('sup'),
   'payment_type','cash','total_paise',0,'lines',jsonb_build_array(pg_temp.line('1',5000,10000,null,0))))->'paymentId','null'::jsonb,
@@ -201,6 +245,55 @@ select throws_like(format($$select void_paid_purchase(%L::uuid,'other reason','e
   '%DSB_PAYLOAD_MISMATCH%','void id reused for another reason is refused');
 select is((select count(*) from payments where id=pg_temp.id('cpay')),1::bigint,'the voided payment row is kept (history)');
 
+-- The auto payment voided separately (owner, supplier screen): replay still returns the stored ids and creates
+-- nothing; the bill then shows honestly unpaid; void_paid_purchase still voids the bill.
+select set_config('e3.upay',current_setting('e3.ures')::jsonb->>'paymentId',false);
+select set_config('e3.ubill',current_setting('e3.ures')::jsonb->>'billId',false);
+select void_supplier_payment(pg_temp.id('upay'),'paid by mistake','e3000000-0000-0000-0000-0000000000a5');
+select is(pg_temp.post('e3000000-0000-0000-0000-0000000000d2',current_setting('e3.ujson')::jsonb)::text,current_setting('e3.ures'),
+  'replay after the payment was voided returns the same ids');
+select is((select count(*) from payments where tenant_id=pg_temp.id('tenant') and mode='upi'),1::bigint,
+  'no new payment after the separate void');
+select is((select outstanding_paise from purchase_bill_outstanding where purchase_bill_id=pg_temp.id('ubill')),5000::bigint,
+  'the bill shows unpaid once its payment is voided');
+select is(void_paid_purchase(pg_temp.id('ubill'),'cancelled','e3000000-0000-0000-0000-0000000000a6')->>'paymentVoided','false',
+  'void of a paid bill whose payment is already void voids only the bill');
+
+-- Payment reassigned elsewhere: the void refuses rather than voiding another bill's money.
+select set_config('e3.rres',pg_temp.post('e3000000-0000-0000-0000-0000000000d4',jsonb_build_object('party_id',pg_temp.id('sup'),
+  'payment_type','cash','total_paise',3000,'lines',jsonb_build_array(pg_temp.line('1',3000,0,null,3000))))::text,false);
+select set_config('e3.t',pg_temp.post('e3000000-0000-0000-0000-0000000000d5',jsonb_build_object('party_id',pg_temp.id('sup'),
+  'total_paise',3000,'lines',jsonb_build_array(pg_temp.line('1',3000,0,null,3000))))->>'billId',false);
+select release_supplier_allocation((select id from payment_allocations where payment_id=(current_setting('e3.rres')::jsonb->>'paymentId')::uuid),
+  'moved','e3000000-0000-0000-0000-0000000000a7');
+select allocate_supplier_payment((current_setting('e3.rres')::jsonb->>'paymentId')::uuid,
+  jsonb_build_array(jsonb_build_object('purchase_bill_id',pg_temp.id('t'),'amount_paise',3000)),'e3000000-0000-0000-0000-0000000000a8');
+select throws_like(format($$select void_paid_purchase(%L::uuid,'x','e3000000-0000-0000-0000-0000000000a9')$$,
+  current_setting('e3.rres')::jsonb->>'billId'),'%DSB_PAYMENT_REASSIGNED%','a payment reassigned to another bill blocks the paid void');
+
+-- A paid bill with a posted return cannot be voided; nothing changes.
+select set_config('e3.qres',pg_temp.post('e3000000-0000-0000-0000-0000000000d6',jsonb_build_object('party_id',pg_temp.id('sup'),
+  'business_date','2026-10-03','payment_type','cash','total_paise',2000,'lines',jsonb_build_array(pg_temp.line('2',1000,0,null,2000))))::text,false);
+select post_return('PURCHASE',(current_setting('e3.qres')::jsonb->>'billId')::uuid,'2026-10-04','e3-ret',jsonb_build_array(jsonb_build_object(
+  'purchase_bill_item_id',(select id from purchase_bill_items where purchase_bill_id=(current_setting('e3.qres')::jsonb->>'billId')::uuid),
+  'qty',1,'disposition','SUPPLIER_RETURN')),null);
+select throws_like(format($$select void_paid_purchase(%L::uuid,'x','e3000000-0000-0000-0000-0000000000aa')$$,
+  current_setting('e3.qres')::jsonb->>'billId'),'%void posted returns%','a paid bill with a return cannot be voided');
+select is((select status from payments where id=(current_setting('e3.qres')::jsonb->>'paymentId')::uuid),'POSTED',
+  'the refused void left the payment posted');
+
+-- Manager may post purchases but not void a paid bill (voiding a supplier payment is owner-only).
+select pg_temp.act('e3000000-0000-0000-0000-000000000002');
+select throws_like(format($$select void_paid_purchase(%L::uuid,'x','e3000000-0000-0000-0000-0000000000ab')$$,
+  current_setting('e3.qres')::jsonb->>'billId'),'%not permitted%','manager cannot void a paid bill');
+select pg_temp.act('e3000000-0000-0000-0000-000000000001');
+
+-- Outcome reconciliation reads the stored answer.
+select is(get_financial_request(pg_temp.id('shop'),'purchase.post.v2','e3000000-0000-0000-0000-0000000000d1')->'result',
+  current_setting('e3.cres')::jsonb,'get_financial_request returns a v2 purchase answer');
+select is(get_financial_request(pg_temp.id('shop'),'purchase.post.v2','e3000000-0000-0000-0000-0000000000ff')->>'state','NOT_FOUND',
+  'an unknown v2 request is NOT_FOUND');
+
 -- Database-level guards behind the RPC.
 reset role;
 select throws_like(format($$insert into purchase_bill_charges(tenant_id,shop_id,purchase_bill_id,line_no,label,amount_paise,client_id)
@@ -226,7 +319,7 @@ select is((select row(taxable_purchases_paise,gross_purchases_paise)::text from 
 select ok((phase6_export_tenant(pg_temp.id('shop')) ? 'purchaseCharges') and jsonb_array_length(phase6_export_tenant(pg_temp.id('shop'))->'purchaseCharges')=2,
   'export carries named charges');
 select is(jsonb_array_length(phase6_export_tenant(pg_temp.id('shop'))->'purchaseImages'),2,'export carries bill images');
-select is((select count(*) from purchase_bills where tenant_id=pg_temp.id('tenant') and status='POSTED'),5::bigint,'posted bill count is exact');
+select is((select count(*) from purchase_bills where tenant_id=pg_temp.id('tenant') and status='POSTED'),9::bigint,'posted bill count is exact (11 bills, 2 voided)');
 select is(check_invariants()->>'ok','true','financial invariants hold after paid, credit, voided and multi-image bills');
 
 select * from finish();

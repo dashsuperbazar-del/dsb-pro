@@ -790,7 +790,9 @@ end $$;
 select (select present from _billextras_receipt),
  (select count(*) from (values
    (coalesce((select relrowsecurity from pg_class where oid=to_regclass('public.purchase_bill_charges')),false)
-    and coalesce((select relrowsecurity from pg_class where oid=to_regclass('public.purchase_bill_images')),false)),
+    and coalesce((select relrowsecurity from pg_class where oid=to_regclass('public.purchase_bill_images')),false)
+    and (select count(*) from pg_policies where schemaname='public' and tablename in ('purchase_bill_charges','purchase_bill_images')
+      and position('c1_shop_visible(shop_id)' in qual)>0)=2),
    (exists(select 1 from pg_constraint where conrelid=to_regclass('public.purchase_bills') and contype='c'
       and pg_get_constraintdef(oid)='CHECK ((payment_type = ANY (ARRAY[''credit''::text, ''cash''::text, ''upi''::text])))')
     and exists(select 1 from pg_constraint where conrelid=to_regclass('public.purchase_bill_items')
@@ -801,7 +803,10 @@ select (select present from _billextras_receipt),
       and position('dsb.purchase.v2.payment:' in prosrc)>0 and position('DSB_TOTAL_MISMATCH' in prosrc)>0)
     and exists(select 1 from pg_proc where oid=to_regprocedure('public.void_paid_purchase(uuid,text,text)')
       and position('void_supplier_payment' in prosrc)>0)
-    and to_regprocedure('public.bx_purchase_line_total(numeric,bigint,integer,integer)') is not null
+    and exists(select 1 from pg_proc where oid=to_regprocedure('public.bx_purchase_line_total(numeric,bigint,integer,integer)')
+      and position('div(' in prosrc)>0)
+    and exists(select 1 from pg_proc where oid=to_regprocedure('public.get_financial_request(uuid,text,text)')
+      and position('purchase.post.v2' in prosrc)>0)
     and exists(select 1 from pg_constraint where conname='financial_requests_operation_check'
       and position('purchase.post.v2' in pg_get_constraintdef(oid))>0)),
    (case when to_regclass('public.purchase_bill_charges') is null or to_regclass('public.purchase_bill_images') is null

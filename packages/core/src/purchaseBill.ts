@@ -1,4 +1,4 @@
-import { divideHalfUp, parseQuantityMicros, type DecimalInput } from './fixedPoint';
+import { parseQuantityMicros, type DecimalInput } from './fixedPoint';
 
 // billextras (mig 0064): exact purchase-line and bill totals, identical to the server's post_purchase_v2.
 // Old DSB calcItemRow: total = qty x rate, minus discount %, plus GST % on the discounted amount. Here the
@@ -22,7 +22,11 @@ export type PurchaseLineAmounts = {
   unitPricePaise: number;
   /** Per-line discount, basis points (old DSB "Disc %"). */
   discountBp?: number;
-  /** GST added on top of the discounted amount, basis points (old DSB "GST %"); null/undefined = none added. */
+  /**
+   * GST ADDED on top of the discounted amount, basis points (old DSB "GST %"). null = field left blank:
+   * price as entered (GST-inclusive at the item's master rate), nothing added. 0 = "0% added" (the line is
+   * recorded at rate 0). Both add nothing to the total; the server stores the difference.
+   */
   gstBp?: number | null;
 };
 
@@ -38,7 +42,9 @@ export function purchaseLineTotalPaise(line: PurchaseLineAmounts): number {
     BigInt(line.unitPricePaise) *
     (BP - BigInt(discount)) *
     (BP + BigInt(gst));
-  const total = divideHalfUp(numerator, QTY_SCALE * BP * BP);
+  // Exactly the SQL: floor((2N + D) / (2D)), D = 10^14 (integer half-up, no division before rounding).
+  const denominator = QTY_SCALE * BP * BP;
+  const total = (2n * numerator + denominator) / (2n * denominator);
   if (total > MAX_SAFE) throw new Error('line total exceeds the safe integer range');
   return Number(total);
 }
