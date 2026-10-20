@@ -1,3 +1,4 @@
+import { formatQuantity } from '@dsb-pro/core';
 import { CameraScanner } from '../components/CameraScanner';
 import { PriceHistory } from '../components/PriceHistory';
 import { DemandChart } from '../components/DemandChart';
@@ -1936,7 +1937,7 @@ export function InventoryScreen({
                   <small>{item.sku || 'No SKU'}</small>
                 </span>
                 <span class="record-value">
-                  {stock.find((row) => row.item_id === item.id)?.qty_base ?? '—'}
+                  {formatQuantity(stock.find((row) => row.item_id === item.id)?.qty_base) || '—'}
                   <small>{item.unit3 || item.unit2 || item.unit1}</small>
                 </span>
               </button>
@@ -2139,7 +2140,7 @@ export function InventoryScreen({
                   ? prices.map((p) => `${p.kind} ₹${(p.price_paise / 100).toFixed(2)}`).join(' · ')
                   : 'none'}
             <br />
-            Reorder at: {selectedItem.min_stock}{' '}
+            Reorder at: {formatQuantity(selectedItem.min_stock)}{' '}
             {selectedItem.unit3 || selectedItem.unit2 || selectedItem.unit1}
             <br />
             <input type="file" accept="image/*" onChange={changeImage} />

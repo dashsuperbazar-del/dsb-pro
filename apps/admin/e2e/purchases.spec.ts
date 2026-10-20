@@ -645,3 +645,62 @@ test('fast bill: the supplier is remembered, its usual items are added in one go
   await expect(posted).toBeVisible();
   await expect(purchase.getByLabel('Item 1 name', { exact: true })).toHaveValue('');
 });
+
+test('voiding a credit bill needs a reason, reverses its stock and supplier balance, and the list shows Unpaid/Void', async ({
+  page,
+}) => {
+  test.setTimeout(90000);
+  await createOwnerShop(page);
+  await page.goto('/inventory');
+  await createItem(page, 'Void Rice');
+  const purchase = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Post purchase', exact: true }) })
+    .last();
+  const supplier = page
+    .getByRole('button', { name: 'Create & select supplier' })
+    .locator('xpath=..');
+  for (const [no, qty] of [
+    ['VOID-1', '5'],
+    ['KEEP-1', '3'],
+  ] as const) {
+    await page.goto('/purchases?new=1');
+    await expect(purchase.locator('input[name="date"]')).not.toHaveValue('');
+    if (no === 'VOID-1') {
+      await page.getByText('Add a supplier', { exact: true }).click();
+      await supplier.getByPlaceholder('New supplier name').fill('Void Supplier');
+      await supplier.getByRole('button', { name: 'Create & select supplier' }).click();
+    }
+    await expect(purchase.locator('select[name="partyId"]')).toHaveValue(/.+/);
+    await purchase.locator('input[name="billNo"]').fill(no);
+    await fillBillItem(purchase, 1, 'Void Rice', qty, '10');
+    await purchase.getByRole('button', { name: 'Post purchase', exact: true }).click();
+    await expect(
+      page.getByRole('status').filter({ hasText: 'Purchase posted (1 item)' }).first(),
+    ).toBeVisible();
+  }
+
+  await page.getByRole('link', { name: 'Bill list', exact: true }).click();
+  await page.getByRole('button', { name: /Void Supplier.*VOID-1/ }).click();
+  const detail = page.getByLabel('Purchase detail');
+  const voidButton = detail.getByRole('button', { name: 'Void bill', exact: true });
+  await expect(voidButton).toBeDisabled();
+  await detail.getByLabel('Reason for voiding').fill('entered twice');
+  page.once('dialog', (d) => {
+    expect(d.message()).toMatch(/stock comes off.*supplier balance/i);
+    void d.accept();
+  });
+  await voidButton.click();
+  await expect(detail).toContainText('Bill voided. Stock and supplier balance reversed.');
+  await expect(detail.getByTestId('void-reason')).toHaveText('Void reason: entered twice');
+  await expect(page.getByTestId('list-settlement')).toHaveText(['Unpaid', 'Void']);
+
+  await page.goto('/purchases');
+  await page.getByRole('button', { name: /Void Supplier.*KEEP-1/ }).click();
+  await detail.getByRole('link', { name: 'Supplier ledger', exact: true }).click();
+  await expect(page.locator('.supplier-ledger')).toContainText('Closing: ₹30.00');
+  await page.goto('/inventory');
+  await stockTask(page, 'Items');
+  await page.getByLabel('Item details').selectOption({ label: 'Void Rice' });
+  await expect(page.getByLabel('item peek')).toContainText('Stock 3 piece');
+});

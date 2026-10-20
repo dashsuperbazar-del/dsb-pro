@@ -1,3 +1,4 @@
+import { formatQuantity } from '@dsb-pro/core';
 import { useEffect, useState } from 'preact/hooks';
 import { compareLegacyDsbDayToPro, splitGst, type LegacyDsbDayComparison } from '@dsb-pro/core';
 import {
@@ -464,7 +465,7 @@ export function SalesHistoryScreen() {
                         : ''}
                     </small>
                   </td>
-                  <td>{l.qty}</td>
+                  <td>{formatQuantity(l.qty)}</td>
                   <td>{money(l.unit_price_paise)}</td>
                   <td>{money(l.line_total_paise - (l.tax_paise ?? 0))}</td>
                 </tr>

@@ -1,3 +1,4 @@
+import { formatQuantity } from '@dsb-pro/core';
 import { useEffect, useState } from 'preact/hooks';
 import {
   checkInvariants,
@@ -332,7 +333,7 @@ export function ReportsScreen() {
               {stock.map((r) => (
                 <tr>
                   <td>{r.item_name}</td>
-                  <td>{r.qty_base}</td>
+                  <td>{formatQuantity(r.qty_base)}</td>
                   <td>{rupee(r.cost_paise)}</td>
                   <td>{rupee(r.value_paise)}</td>
                 </tr>
@@ -396,13 +397,13 @@ export function ReportsScreen() {
                   <tr>
                     <td>{r.item_name}</td>
                     <td>
-                      {r.on_hand} {r.unit_name}
+                      {formatQuantity(r.on_hand)} {r.unit_name}
                     </td>
                     <td>
-                      {r.min_stock} {r.unit_name}
+                      {formatQuantity(r.min_stock)} {r.unit_name}
                     </td>
                     <td>
-                      {r.shortfall} {r.unit_name}
+                      {formatQuantity(r.shortfall)} {r.unit_name}
                     </td>
                   </tr>
                 ))}
@@ -429,9 +430,9 @@ export function ReportsScreen() {
               {itemSales.map((r) => (
                 <tr>
                   <td>{r.item_name}</td>
-                  <td>{r.qty_sold}</td>
-                  <td>{r.qty_returned}</td>
-                  <td>{r.net_qty}</td>
+                  <td>{formatQuantity(r.qty_sold)}</td>
+                  <td>{formatQuantity(r.qty_returned)}</td>
+                  <td>{formatQuantity(r.net_qty)}</td>
                   <td>{rupee(r.gross_sales_paise)}</td>
                   <td>{rupee(r.net_sales_paise)}</td>
                 </tr>

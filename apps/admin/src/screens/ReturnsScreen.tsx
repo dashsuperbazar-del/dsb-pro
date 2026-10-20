@@ -1,3 +1,4 @@
+import { formatQuantity } from '@dsb-pro/core';
 import { useEffect, useState } from 'preact/hooks';
 import {
   getShopBusinessDate,
@@ -325,9 +326,9 @@ export function ReturnsScreen() {
                       <tr key={line.id}>
                         <td>{line.item_name_snapshot}</td>
                         <td>
-                          {line.qty} {line.unit_name_snapshot}
+                          {formatQuantity(line.qty)} {line.unit_name_snapshot}
                         </td>
-                        <td>{line.returned_qty}</td>
+                        <td>{formatQuantity(line.returned_qty)}</td>
                         <td>
                           <input
                             aria-label={`Return quantity for ${line.item_name_snapshot}`}

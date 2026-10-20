@@ -15,6 +15,12 @@ const api = vi.hoisted(() => ({
   getPurchaseDetail: vi.fn(),
   getPurchaseExtras: vi.fn().mockRejectedValue(new Error('not mocked')),
   voidPaidPurchaseOutcome: vi.fn(),
+  voidPurchaseOutcome: vi.fn(),
+  VOID_REASON_MAX: 200,
+  purchaseVoidRequestId: (id: string, tag: { reason?: string; correctedBy?: string }) =>
+    tag.reason !== undefined ? `purchase.void.v1:${id}:reason:${tag.reason.trim()}` : 'unused',
+  listPurchaseSettlements: vi.fn().mockResolvedValue(new Map()),
+  getPurchaseVoidInfo: vi.fn().mockResolvedValue(null),
 }));
 vi.mock('@dsb-pro/adapters', () => api);
 vi.mock('./InventoryScreen', () => ({
@@ -27,6 +33,7 @@ beforeEach(() => {
   vi.spyOn(window, 'confirm').mockReturnValue(true);
 });
 afterEach(() => {
+  localStorage.removeItem('dsb-pending-purchase-void:user:shop:cash1');
   vi.restoreAllMocks();
   shopContext.invalidate();
   act(() => render(null, host));
@@ -147,7 +154,7 @@ test('bill detail shows the round-off only when it is not zero', async () => {
   await act(async () => {
     [...host.querySelectorAll('button')].find((b) => b.textContent?.includes('OLD-0'))!.click();
   });
-  await vi.waitFor(() => expect(host.textContent).toContain('Lines ₹182.91'));
+  await vi.waitFor(() => expect(host.textContent).toContain('Items ₹182.91'));
   expect(host.textContent).not.toContain('Round off');
 });
 
@@ -184,13 +191,13 @@ const extras = (status: string, paymentType = 'cash') => ({
   images: [],
   settlement: { status, outstandingPaise: null, allocatedPaise: null, returnedPaise: null },
 });
-async function openCash(role: string, x: unknown) {
+async function openCash(role: string, x: unknown, d: unknown = cashDetail) {
   const { clearSnapshots } = await import('../lib/routeSnapshot');
   clearSnapshots();
   shopContext.invalidate();
   api.getCurrentMembership.mockResolvedValue({ tenantId: 'tenant', role });
   api.listPurchaseHistory.mockResolvedValue([bill('cash1', 'CASH-1')]);
-  api.getPurchaseDetail.mockResolvedValue(cashDetail);
+  api.getPurchaseDetail.mockResolvedValue(d);
   if (x instanceof Error) api.getPurchaseExtras.mockRejectedValue(x);
   else api.getPurchaseExtras.mockResolvedValue(x);
   await act(async () => {
@@ -274,8 +281,164 @@ test('void of a cash bill: owner voids bill and payment with one request id; oth
   expect(window.confirm).toHaveBeenCalledTimes(1);
 });
 
-test('a credit bill offers no paid-bill void', async () => {
-  await openCash('owner', extras('unpaid', 'credit'));
+const voidBtn = () =>
+  [...host.querySelectorAll<HTMLButtonElement>('[aria-label="Void bill"] button')][0]!;
+async function typeReason(text: string) {
+  await act(async () => {
+    const reason = host.querySelector<HTMLInputElement>('[aria-label="Void bill"] input')!;
+    reason.value = text;
+    reason.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+const creditDetail = (allocated = '0', returned = '0') => ({
+  ...cashDetail,
+  balance: { outstanding_paise: '10000', allocated_paise: allocated, returned_paise: returned },
+});
+
+test('a credit bill: plain "Void bill" (never the paid-bill void), reason required, confirm says stock and balance reverse, same id on retry', async () => {
+  await openCash('manager', extras('unpaid', 'credit'), creditDetail());
+  await vi.waitFor(() => expect(voidBtn().textContent).toBe('Void bill'));
+  expect(host.textContent).not.toContain('Void bill and its payment');
+  expect(voidBtn().disabled).toBe(true);
+  await typeReason('entered twice');
+  expect(host.textContent).toContain('Staff who can see this bill can read the reason');
+  api.voidPurchaseOutcome.mockResolvedValueOnce({ kind: 'unknown', message: 'answer lost' });
+  await act(async () => voidBtn().click());
+  expect(vi.mocked(window.confirm).mock.calls[0]![0]).toMatch(/stock comes off.*supplier balance/i);
+  await vi.waitFor(() => expect(voidBtn().textContent).toBe('Retry void (same request)'));
+  // Leaving the bill (even the screen) while the outcome is unknown keeps the same request.
+  await act(async () => render(null, host));
+  await openCash('manager', extras('unpaid', 'credit'), creditDetail());
+  await vi.waitFor(() => expect(voidBtn().textContent).toBe('Retry void (same request)'));
+  expect(host.querySelector<HTMLInputElement>('[aria-label="Void bill"] input')!.value).toBe(
+    'entered twice',
+  );
+  api.voidPurchaseOutcome.mockResolvedValueOnce({ kind: 'committed', value: 'cash1' });
+  await act(async () => voidBtn().click());
+  await vi.waitFor(() => expect(host.textContent).toContain('Bill voided.'));
+  expect(localStorage.getItem('dsb-pending-purchase-void:user:shop:cash1')).toBeNull();
+  const [a, b] = api.voidPurchaseOutcome.mock.calls.map((c) => c[0]);
+  expect(a.clientId).toMatch(/^purchase\.void\.v1:.+:reason:entered twice$/);
+  expect(b).toEqual(a);
+  expect(window.confirm).toHaveBeenCalledTimes(1);
+  expect(api.voidPaidPurchaseOutcome).not.toHaveBeenCalled();
+});
+
+test('credit void refused by the server says what to do; a known payment/return blocks the void', async () => {
+  await openCash('owner', extras('unpaid', 'credit'), creditDetail());
+  await vi.waitFor(() => expect(voidBtn().textContent).toBe('Void bill'));
+  await typeReason('wrong supplier');
+  api.voidPurchaseOutcome.mockResolvedValueOnce({
+    kind: 'rejected',
+    code: 'P0001',
+    message: 'purchase has active allocations; void or release allocations first',
+  });
+  await act(async () => voidBtn().click());
+  await vi.waitFor(() => expect(host.textContent).toContain('Release or void that payment first'));
+  expect(voidBtn().textContent).toBe('Void bill');
+  // Known from the ledger before sending: no void button.
+  await act(async () => render(null, host));
+  await openCash('owner', extras('partial', 'credit'), creditDetail('0', '500'));
+  await vi.waitFor(() =>
+    expect(host.querySelector('[data-testid="void-blocked"]')?.textContent).toContain(
+      'supplier returns',
+    ),
+  );
+});
+
+test('role gating: an accountant cannot void a credit bill; a manager can', async () => {
+  await openCash('accountant', extras('unpaid', 'credit'), creditDetail());
   await vi.waitFor(() => expect(host.textContent).toContain('Credit bill'));
-  expect(host.querySelector('[aria-label="Void bill"]')).toBeNull();
+  expect(host.querySelector('[aria-label="Void bill"] button')).toBeNull();
+  expect(host.querySelector('[data-testid="void-not-allowed"]')?.textContent).toContain(
+    'Only the owner or a manager',
+  );
+  await act(async () => render(null, host));
+  await openCash('manager', extras('unpaid', 'credit'), creditDetail());
+  await vi.waitFor(() => expect(voidBtn().textContent).toBe('Void bill'));
+  expect(host.textContent).not.toContain('Edit bill');
+});
+
+test('list shows Paid/Partial/Unpaid/Void from the ledger and filters by it', async () => {
+  const { clearSnapshots } = await import('../lib/routeSnapshot');
+  clearSnapshots();
+  shopContext.invalidate();
+  api.getCurrentMembership.mockResolvedValue({ tenantId: 'tenant', role: 'owner' });
+  api.listPurchaseHistory.mockResolvedValue([bill('p1', 'PAID-1'), bill('u1', 'UNPAID-1')]);
+  const st = (status: string) => ({ status });
+  api.listPurchaseSettlements.mockResolvedValue(
+    new Map([
+      ['p1', st('settled')],
+      ['u1', st('unpaid')],
+    ]),
+  );
+  await act(async () => {
+    render(<PurchasesScreen url="/purchases" />, host);
+  });
+  await vi.waitFor(() =>
+    expect(
+      [...host.querySelectorAll('[data-testid="list-settlement"]')].map((e) => e.textContent),
+    ).toEqual(['Paid', 'Unpaid']),
+  );
+  const select = [...host.querySelectorAll('select')].find((s) =>
+    [...s.options].some((o) => o.value === 'unpaid'),
+  )!;
+  await act(async () => {
+    select.value = 'unpaid';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  expect(host.querySelector('.record-list')!.textContent).toContain('UNPAID-1');
+  expect(host.querySelector('.record-list')!.textContent).not.toMatch(/\bPAID-1/);
+  expect(host.querySelectorAll('.record-list > button').length).toBe(1);
+});
+
+test('a reopened cached bill is marked refreshing, and a failed refresh flags it out of date with Retry', async () => {
+  await openCash('owner', extras('settled'));
+  await vi.waitFor(() => expect(host.textContent).toContain('Void bill and its payment'));
+  const closeBtn = [...host.querySelectorAll('button')].find(
+    (b) => b.textContent === 'Close detail',
+  )!;
+  await act(async () => closeBtn.click());
+  let fail!: (e: Error) => void;
+  api.getPurchaseDetail.mockReturnValueOnce(new Promise((_, r) => (fail = r)));
+  await act(async () => {
+    [...host.querySelectorAll('button')].find((b) => b.textContent?.includes('CASH-1'))!.click();
+  });
+  // The cached bill shows at once, labelled, and cannot be voided until the fresh read arrives.
+  expect(host.textContent).toContain('Oil');
+  expect(host.textContent).toContain('Refreshing…');
+  const voidBtn = () =>
+    [...host.querySelectorAll('button')].find((b) =>
+      b.textContent?.includes('Void bill and its payment'),
+    );
+  expect(voidBtn()?.disabled ?? true).toBe(true);
+  await act(async () => fail(new Error('network down')));
+  await vi.waitFor(() => expect(host.textContent).toContain('may be out of date'));
+  expect(host.textContent).toContain('network down');
+  expect(voidBtn()?.disabled ?? true).toBe(true);
+  api.getPurchaseDetail.mockResolvedValue(cashDetail);
+  await act(async () => {
+    [...host.querySelectorAll('button')].find((b) => b.textContent === 'Retry')!.click();
+  });
+  await vi.waitFor(() => expect(host.textContent).not.toContain('may be out of date'));
+  expect(host.textContent).not.toContain('Refreshing…');
+});
+
+test('a remount (sign-out, other user or shop) never shows a bill cached by the previous screen', async () => {
+  await openCash('owner', extras('settled'));
+  await vi.waitFor(() => expect(host.textContent).toContain('Oil'));
+  act(() => render(null, host));
+  let hold!: (v: unknown) => void;
+  api.getPurchaseDetail.mockReturnValueOnce(new Promise((r) => (hold = r)));
+  // The list itself is held so no list refresh can clear the cache first.
+  api.listPurchaseHistory.mockReturnValueOnce(new Promise(() => {}));
+  await act(async () => {
+    render(<PurchasesScreen url="/purchases" />, host);
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('CASH-1'));
+  await act(async () => {
+    [...host.querySelectorAll('button')].find((b) => b.textContent?.includes('CASH-1'))!.click();
+  });
+  expect(host.textContent).not.toContain('Oil');
+  await act(async () => hold(cashDetail));
 });

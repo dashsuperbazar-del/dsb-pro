@@ -8,6 +8,7 @@ export {
   quantityTimesPaise,
 } from './fixedPoint';
 export type { DecimalInput } from './fixedPoint';
+export { formatQuantity } from './formatQuantity';
 export { hasPerm } from './roles';
 export type { Role, PermissionCode } from './roles';
 export { toSlug, makeTenantSlug } from './slug';
