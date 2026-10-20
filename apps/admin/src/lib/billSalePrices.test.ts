@@ -12,6 +12,7 @@ import {
   loadPricePlan,
   planKey,
   PLAN_MAX_AGE_MS,
+  priceChangedQuestion,
   priceClientId,
   removePricePlan,
   salePricePlan,
@@ -115,6 +116,32 @@ describe('prefill', () => {
   });
 });
 
+describe('Retry of a price found later', () => {
+  const w = {
+    clientId: 'x',
+    itemId: 'i1',
+    itemName: 'Biscuit',
+    kind: 'retail' as const,
+    unitLevel: 3 as const,
+    unitName: 'pcs',
+    pricePaise: 1250,
+  };
+  test('asks only when the price now is not what the bill saw (or the new price)', () => {
+    expect(priceChangedQuestion({ ...w, oldPaise: 1000 }, 1000)).toBeNull();
+    expect(priceChangedQuestion({ ...w, oldPaise: 1000 }, 1250)).toBeNull();
+    expect(priceChangedQuestion({ ...w, oldPaise: null }, null)).toBeNull();
+    expect(priceChangedQuestion({ ...w, oldPaise: 1000 }, 1100)).toBe(
+      'Biscuit retail per pcs was changed after this bill. Now ₹11.00. Replace with ₹12.50?',
+    );
+    expect(priceChangedQuestion({ ...w, oldPaise: 1000 }, null)).toContain(
+      'Now no price. Replace with ₹12.50?',
+    );
+    // A plan of the previous version (no old price): ask unless the price is already the new one.
+    expect(priceChangedQuestion(w, 1000)).toContain('Now ₹10.00. Replace with ₹12.50?');
+    expect(priceChangedQuestion(w, 1250)).toBeNull();
+  });
+});
+
 describe('what a card writes', () => {
   const load = ok([price({ unit_level: 3, price_paise: 1000 })]);
   test('untouched, blank or unchanged fields write nothing', () => {
@@ -148,6 +175,7 @@ describe('what a card writes', () => {
           unitLevel: 3,
           unitName: 'pcs',
           pricePaise: 1250,
+          oldPaise: 1000,
         },
       ],
     });
@@ -162,6 +190,7 @@ describe('what a card writes', () => {
         unitLevel: 3,
         unitName: 'pcs',
         pricePaise: 900,
+        oldPaise: null,
       },
     ]);
   });

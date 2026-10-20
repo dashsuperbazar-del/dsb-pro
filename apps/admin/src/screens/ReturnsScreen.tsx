@@ -9,6 +9,7 @@ import {
   type ReturnableLine,
 } from '@dsb-pro/adapters';
 import { appRoute } from '../lib/paths';
+import { roundOffLabel } from '../lib/money';
 import {
   getOfflineRuntimeIdentity,
   getOfflineBusinessDate,
@@ -433,7 +434,16 @@ export function ReturnsScreen() {
                     <td>{row.doc_no}</td>
                     <td>{row.return_type}</td>
                     <td>{row.business_date}</td>
-                    <td>{money(row.total_paise)}</td>
+                    <td>
+                      {money(row.total_paise)}
+                      {/* Already inside the total: the return that completes a rounded bill reverses it. */}
+                      {roundOffLabel(row.round_off_paise) && (
+                        <>
+                          <br />
+                          <small class="muted">{roundOffLabel(row.round_off_paise)}</small>
+                        </>
+                      )}
+                    </td>
                     <td>
                       {row.return_type === 'SALE'
                         ? `${money(row.cash_refund_paise ?? 0)} cash · ${money(row.balance_credit_paise ?? 0)} balance`

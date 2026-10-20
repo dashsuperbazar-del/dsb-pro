@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { getShopSettings, getSupplierLedger } from '@dsb-pro/adapters';
-import { rupees } from '../lib/money';
+import { getPurchaseReturnRoundOffs, getShopSettings, getSupplierLedger } from '@dsb-pro/adapters';
+import { roundOffLabel, rupees } from '../lib/money';
 import {
   prepareSupplierStatement,
   statementCsv,
@@ -26,6 +26,12 @@ export function SupplierStatement({
   const [from, setFrom] = useState('');
   const [to, setTo] = useState(businessDate);
   const [prepared, setPrepared] = useState<Statement | null>(null);
+  // Round off of each purchase return in the prepared statement (display only; the server amount already
+  // includes it). Keyed to that statement, so a newer one never shows an older one's notes.
+  const [roundOffs, setRoundOffs] = useState<{
+    of: Statement;
+    byId: Record<string, string>;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -62,15 +68,21 @@ export function SupplierStatement({
         getShopSettings(shopId),
       ]);
       if (request !== generation.current || current.current !== key) return;
-      setPrepared(
-        prepareSupplierStatement(
-          ledger,
-          { shopId, partyId, from: from || null, to },
-          profile,
-          supplierName,
-          new Date().toISOString(),
-        ),
+      const next = prepareSupplierStatement(
+        ledger,
+        { shopId, partyId, from: from || null, to },
+        profile,
+        supplierName,
+        new Date().toISOString(),
       );
+      setPrepared(next);
+      const returnIds = next.entries.filter((e) => e.kind === 'PURCHASE_RETURN').map((e) => e.id);
+      if (returnIds.length)
+        void getPurchaseReturnRoundOffs(shopId, returnIds)
+          .then((byId) => setRoundOffs({ of: next, byId }))
+          .catch(() => {
+            /* only a note: the statement amounts are exact without it */
+          });
     } catch (e) {
       if (request === generation.current && current.current === key) setError(String(e));
     } finally {
@@ -84,6 +96,7 @@ export function SupplierStatement({
     };
   }, [shopId, partyId, supplierName]);
 
+  const notesFor = (s: Statement) => (roundOffs?.of === s ? roundOffs.byId : {});
   function changeDate(which: 'from' | 'to', value: string) {
     ++generation.current;
     setPrepared(null);
@@ -211,7 +224,7 @@ export function SupplierStatement({
             {rupees(statement.closingBalancePaise)}
           </p>
           {statement.entries.length === 0 && <p>No posted entries in this period.</p>}
-          <StatementTable statement={statement} />
+          <StatementTable statement={statement} roundOffs={notesFor(statement)} />
           {manualText && (
             <label>
               Statement text
@@ -241,7 +254,7 @@ export function SupplierStatement({
           </p>
           <p>{STATEMENT_NOTE}</p>
           <p>Opening: {rupees(statement.openingBalancePaise)}</p>
-          <StatementTable statement={statement} />
+          <StatementTable statement={statement} roundOffs={notesFor(statement)} />
           {statement.entries.length === 0 && <p>No posted entries in this period.</p>}
           <p>
             <strong>Closing: {rupees(statement.closingBalancePaise)}</strong>
@@ -257,7 +270,13 @@ export function SupplierStatement({
   );
 }
 
-function StatementTable({ statement }: { statement: Statement }) {
+function StatementTable({
+  statement,
+  roundOffs,
+}: {
+  statement: Statement;
+  roundOffs: Record<string, string>;
+}) {
   return (
     <table>
       <thead>
@@ -274,7 +293,12 @@ function StatementTable({ statement }: { statement: Statement }) {
           <tr key={`${e.kind}:${e.id}`}>
             <td data-label="Date">{e.date}</td>
             <td data-label="Entry">{statementKind(e.kind)}</td>
-            <td data-label="Document">{e.document}</td>
+            <td data-label="Document">
+              {e.document}
+              {e.kind === 'PURCHASE_RETURN' && roundOffLabel(roundOffs[e.id]) && (
+                <small class="muted"> · {roundOffLabel(roundOffs[e.id])} (included)</small>
+              )}
+            </td>
             <td data-label="Change">{rupees(e.amountPaise)}</td>
             <td data-label="Balance">{rupees(e.runningBalancePaise)}</td>
           </tr>

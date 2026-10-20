@@ -458,3 +458,77 @@ test('a cash bill with item discount/GST and a named charge posts with its round
     .first();
   await expect(billRow.locator('td[data-label="Change"]')).toHaveText('₹114.00');
 });
+
+test('returning a whole rounded bill shows the return round off in Returns and the supplier ledger', async ({
+  page,
+}) => {
+  test.setTimeout(90000);
+  await createOwnerShop(page);
+  await page.goto('/inventory');
+  await createItem(page, 'Round Rice');
+  await page.goto('/purchases?new=1');
+  const purchase = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Post purchase', exact: true }) })
+    .last();
+  await expect(purchase.locator('input[name="date"]')).not.toHaveValue('');
+  const supplier = page
+    .getByRole('button', { name: 'Create & select supplier' })
+    .locator('xpath=..');
+  await page.getByText('Add a supplier', { exact: true }).click();
+  await supplier.getByPlaceholder('New supplier name').fill('Round Supplier');
+  await supplier.getByRole('button', { name: 'Create & select supplier' }).click();
+  await expect(purchase.locator('select[name="partyId"]')).toHaveValue(/.+/);
+  await purchase.locator('input[name="billNo"]').fill('RO-1');
+  // ₹100.49 of items, rounded down to a ₹100.00 bill (round off −₹0.49).
+  await fillBillItem(purchase, 1, 'Round Rice', '1', '100.49');
+  await expect(purchase.getByTestId('round-off')).toHaveText('Round off−₹0.49');
+  await purchase.getByRole('button', { name: 'Post purchase', exact: true }).click();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Purchase posted (1 item)' }).first(),
+  ).toBeVisible();
+
+  // Straight to the supplier return, before any later sync cycle: the device's stock copy may not have
+  // the purchase yet (the sync pull skips rows changed in the last second), so the return must refresh it
+  // itself instead of refusing "Insufficient cached stock".
+  const posted = page.getByRole('status').filter({ hasText: 'Purchase return posted' }).first();
+  await page.goto('/returns');
+  await expect(page.getByRole('heading', { name: 'Returns', exact: true })).toBeVisible();
+  await page.getByLabel('Return type').selectOption('PURCHASE');
+  const source = page.getByLabel('Source document');
+  await expect(source.locator('option', { hasText: 'RO-1' })).toHaveCount(1);
+  await source.selectOption({
+    label: (await source.locator('option', { hasText: 'RO-1' }).textContent())!,
+  });
+  await page.getByLabel('Return quantity for Round Rice').fill('1');
+  await page.getByRole('button', { name: 'Post return' }).click();
+  await expect(posted.or(page.getByRole('alert'))).toBeVisible({ timeout: 20000 });
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(posted).toBeVisible();
+  // The return that completes the bill takes back exactly ₹100.00: ₹100.49 of items, round off −₹0.49.
+  const recent = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Recent returns' }) })
+    .locator('tbody tr')
+    .filter({ hasText: 'PURCHASE' })
+    .first();
+  await expect(recent).toContainText('₹100.00');
+  await expect(recent).toContainText('Round off −₹0.49');
+
+  await page.goto('/purchases');
+  await page.getByRole('button', { name: /Round Supplier.*RO-1/ }).click();
+  await page
+    .getByLabel('Purchase detail')
+    .getByRole('link', { name: 'Supplier ledger', exact: true })
+    .click();
+  const ledger = page.locator('.supplier-ledger');
+  await expect(ledger).toContainText('Closing: ₹0.00');
+  const returnRow = ledger
+    .locator('tr')
+    .filter({ has: page.locator('td[data-label="Entry"]', { hasText: 'Purchase return' }) })
+    .first();
+  await expect(returnRow.locator('td[data-label="Change"]')).toHaveText('−₹100.00');
+  await expect(returnRow.locator('td[data-label="Document"]')).toContainText(
+    'Round off −₹0.49 (included)',
+  );
+});

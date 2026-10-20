@@ -6,6 +6,7 @@ import {
   updateShopSettings,
   type PrinterWidth,
 } from '@dsb-pro/adapters';
+import { BuildVersion } from '../components/BuildVersion';
 import { appRoute } from '../lib/paths';
 
 const MONTHS = [
@@ -107,6 +108,7 @@ export function SettingsScreen() {
         </p>
         <h1>Settings</h1>
         {error ? <p role="alert">{error}</p> : <p>Loading…</p>}
+        <BuildVersion />
       </main>
     );
   return (
@@ -223,6 +225,10 @@ export function SettingsScreen() {
         Cashier offline-finalization policy moved to <a href={appRoute.sync}>Sync & offline</a>,
         where it already lived.
       </p>
+      <section>
+        <h2>About</h2>
+        <BuildVersion />
+      </section>
     </main>
   );
 }

@@ -511,7 +511,9 @@ test.each(['repeat', 'tap'] as const)(
     // The shopkeeper picks another supplier before the extras answer arrives.
     await setField('select[name="partyId"]', 'p2', 'change');
     await act(async () => release(extrasOf()));
-    await vi.waitFor(() => expect(host.textContent).toContain('Supplier changed — not copied'));
+    await vi.waitFor(() =>
+      expect(host.textContent).toContain('Shop or supplier changed — not copied.'),
+    );
     expect(host.querySelectorAll('section[aria-label^="Item "]')).toHaveLength(1);
     expect(host.querySelector<HTMLInputElement>(label('Item 1 name'))!.value).toBe('');
     expect(host.querySelector<HTMLInputElement>(label('Item 1 GST %'))!.value).toBe('');
@@ -546,4 +548,55 @@ test('a new bill is refused while an older app version stored an unconfirmed v1 
     v1,
   );
   expect(postButton().textContent).toBe('Post purchase');
+});
+
+test('typing into the blank card while the last bill is being read: repeat asks before replacing it', async () => {
+  let release!: (v: unknown) => void;
+  api.getPurchaseExtras.mockImplementation(() => new Promise((resolve) => (release = resolve)));
+  await withLastBill();
+  const ask = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  await click(button('↺ Repeat last bill'));
+  await vi.waitFor(() => expect(api.getPurchaseExtras).toHaveBeenCalled());
+  // The card was blank when Repeat was pressed; the shopkeeper types into it before the answer arrives.
+  await setField(label('Item 1 quantity'), '7');
+  await act(async () => release(extrasOf()));
+  await vi.waitFor(() => expect(ask).toHaveBeenCalledTimes(1));
+  expect(ask.mock.calls[0]![0]).toContain('Replace the items on this bill');
+  // Declined: the typed work stays.
+  expect(host.querySelector<HTMLInputElement>(label('Item 1 quantity'))!.value).toBe('7');
+  expect(host.querySelector<HTMLInputElement>(label('Item 1 GST %'))!.value).toBe('');
+});
+
+test('typing into the blank card while the last bill is being read: tap-to-add adds a card, never replaces it', async () => {
+  let release!: (v: unknown) => void;
+  api.getPurchaseExtras.mockImplementation(() => new Promise((resolve) => (release = resolve)));
+  await withLastBill();
+  await click(button('Item A · ₹8.71/piece'));
+  await vi.waitFor(() => expect(api.getPurchaseExtras).toHaveBeenCalled());
+  await setField(label('Item 1 quantity'), '7');
+  await act(async () => release(extrasOf()));
+  await vi.waitFor(() =>
+    expect(host.querySelectorAll('section[aria-label^="Item "]')).toHaveLength(2),
+  );
+  expect(host.querySelector<HTMLInputElement>(label('Item 1 quantity'))!.value).toBe('7');
+  expect(host.querySelector<HTMLInputElement>(label('Item 2 GST %'))!.value).toBe('5');
+});
+
+test('a bill posted while the last bill is being read: nothing is copied into the next bill', async () => {
+  let release!: (v: unknown) => void;
+  api.getPurchaseExtras.mockImplementation(() => new Promise((resolve) => (release = resolve)));
+  await withLastBill();
+  await item(1, '1', '10');
+  await click(button('↺ Repeat last bill'));
+  await vi.waitFor(() => expect(api.getPurchaseExtras).toHaveBeenCalled());
+  api.postPurchaseV2Outcome.mockResolvedValue(committed(1000, 0));
+  await click(postButton());
+  await vi.waitFor(() => expect(host.textContent).toContain('Purchase posted (1 item)'));
+  await act(async () => release(extrasOf()));
+  await vi.waitFor(() =>
+    expect(host.textContent).toContain(
+      'The bill changed while the last bill was being read — not copied.',
+    ),
+  );
+  expect(host.querySelector<HTMLInputElement>(label('Item 1 GST %'))?.value ?? '').toBe('');
 });

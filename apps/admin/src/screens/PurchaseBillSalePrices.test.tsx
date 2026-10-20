@@ -501,3 +501,102 @@ test('discarding removes the price from every stored plan of that bill', async (
   expect(host.querySelector('.price-retry')).toBeNull();
   expect(priceKeys()).toEqual([]);
 });
+
+// A stored ("check"/"late") price whose item price was changed by someone else after the bill was entered.
+const storedWithOld = (bill: string, oldPaise: number | null | undefined) => {
+  const plan = JSON.parse(stored(bill, Date.now() - 60_000));
+  if (oldPaise !== undefined) plan.writes[0].oldPaise = oldPaise;
+  return JSON.stringify(plan);
+};
+const retryButton = () =>
+  host.querySelector<HTMLButtonElement>(label('Retry sale price for Biscuit'))!;
+test.each([
+  ['the planned old price', 900],
+  ['no planned old price (stored by the previous version)', undefined],
+] as const)(
+  'Retry asks before replacing a price changed since the bill (%s)',
+  async (_name, oldPaise) => {
+    localStorage.setItem(key('b9'), storedWithOld('b9', oldPaise));
+    // The current retail per pcs is ₹10.00 (beforeEach), not the ₹9.00 the bill saw.
+    const ask = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await mountEditor();
+    await vi.waitFor(() => expect(retryButton()).not.toBeNull());
+    await click(retryButton());
+    await vi.waitFor(() => expect(ask).toHaveBeenCalledTimes(1));
+    expect(ask.mock.calls[0]![0]).toContain('Now ₹10.00. Replace with ₹12.50?');
+    expect(api.setItemPrice).not.toHaveBeenCalled();
+    expect(host.querySelector('.price-retry')).not.toBeNull();
+    ask.mockReturnValue(true);
+    await click(retryButton());
+    await vi.waitFor(() => expect(host.textContent).toContain('Sale price updated for Biscuit.'));
+    expect(api.setItemPrice).toHaveBeenCalledTimes(1);
+  },
+);
+test('Retry writes without asking when the price is still what the bill saw', async () => {
+  localStorage.setItem(key('b10'), storedWithOld('b10', 1000));
+  const ask = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  await mountEditor();
+  await vi.waitFor(() => expect(retryButton()).not.toBeNull());
+  await click(retryButton());
+  await vi.waitFor(() => expect(host.textContent).toContain('Sale price updated for Biscuit.'));
+  expect(ask).not.toHaveBeenCalled();
+});
+test('the sale price plan records the price the bill saw', async () => {
+  await mountEditor();
+  await fillCard(1, 'Biscuit');
+  await setField(label('Item 1 retail ₹'), '12.50');
+  let saved = '';
+  api.postPurchaseV2Outcome.mockImplementation(async () => {
+    saved = localStorage.getItem(priceKeys()[0]!)!;
+    return { kind: 'committed', value: COMMITTED_CREDIT };
+  });
+  await post();
+  await vi.waitFor(() => expect(api.setItemPrice).toHaveBeenCalled());
+  expect(JSON.parse(saved).writes[0].oldPaise).toBe(1000);
+});
+
+// Biscuit retail per pcs is ₹10.00 when the bill is entered; someone changes it to ₹11.00 later.
+const changedTo1100 = () =>
+  api.listCurrentPrices.mockImplementation(async (id: string) =>
+    id === 'bis' ? [price('retail', 3, 1100), price('wholesale', 3, 900)] : [],
+  );
+test('Retry of a failed write asks too when the price was changed since the bill', async () => {
+  await mountEditor();
+  await fillCard(1, 'Biscuit');
+  await setField(label('Item 1 retail ₹'), '12.50');
+  api.postPurchaseV2Outcome.mockResolvedValue({ kind: 'committed', value: COMMITTED_CREDIT });
+  api.setItemPrice.mockRejectedValueOnce(new Error('network down'));
+  await post();
+  await vi.waitFor(() => expect(host.textContent).toContain('Sale price not updated for Biscuit'));
+  changedTo1100();
+  const ask = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  await click(retryButton());
+  await vi.waitFor(() => expect(ask).toHaveBeenCalledTimes(1));
+  expect(ask.mock.calls[0]![0]).toContain('Now ₹11.00. Replace with ₹12.50?');
+  expect(api.setItemPrice).toHaveBeenCalledTimes(1); // only the failed first write
+  expect(host.querySelector('.price-retry')).not.toBeNull();
+});
+test('a bill confirmed after a reload does not write a price changed since; it asks to check instead', async () => {
+  await mountEditor();
+  await fillCard(1, 'Biscuit');
+  await setField(label('Item 1 retail ₹'), '12.50');
+  api.postPurchaseV2Outcome.mockResolvedValueOnce({ kind: 'unknown', message: 'timeout' });
+  await post();
+  await vi.waitFor(() => expect(host.textContent).toContain('Not confirmed: timeout'));
+  act(() => render(null, host));
+  changedTo1100();
+  await mountEditor();
+  await vi.waitFor(() => expect(button('Retry same purchase')).toBeTruthy());
+  api.postPurchaseV2Outcome.mockResolvedValueOnce({ kind: 'committed', value: COMMITTED_CREDIT });
+  await click(button('Retry same purchase'));
+  await vi.waitFor(() =>
+    expect(host.textContent).toContain('Check that the bill was posted, then Retry or Discard.'),
+  );
+  expect(api.setItemPrice).not.toHaveBeenCalled();
+  expect(priceKeys()).toHaveLength(1);
+  const ask = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  await click(retryButton());
+  await vi.waitFor(() => expect(host.textContent).toContain('Sale price updated for Biscuit.'));
+  expect(ask.mock.calls[0]![0]).toContain('Now ₹11.00. Replace with ₹12.50?');
+  expect(api.setItemPrice).toHaveBeenCalledTimes(1);
+});
