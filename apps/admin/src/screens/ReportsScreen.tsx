@@ -61,7 +61,10 @@ export function ReportsScreen() {
   const [gst, setGst] = useState<GstRow[]>([]);
   const [lowStock, setLowStock] = useState<LowStockRow[]>([]);
   const [itemSales, setItemSales] = useState<ItemSalesRow[]>([]);
-  const [purchaseRegister, setPurchaseRegister] = useState<PurchaseRegisterRow[]>([]);
+  // billextras (0064): the register also returns round_off_paise (0 before the upgrade is applied).
+  const [purchaseRegister, setPurchaseRegister] = useState<
+    (PurchaseRegisterRow & { round_off_paise?: number })[]
+  >([]);
   const [customerAging, setCustomerAging] = useState<AgingReportV2 | null>(null);
   const [supplierAging, setSupplierAging] = useState<AgingReportV2 | null>(null);
   const [parties, setParties] = useState<Party[]>([]);
@@ -457,6 +460,7 @@ export function ReportsScreen() {
                 <th>Subtotal</th>
                 <th>Discount</th>
                 <th>Extra</th>
+                <th>Round off</th>
                 <th>Total</th>
                 <th>Status</th>
               </tr>
@@ -470,6 +474,7 @@ export function ReportsScreen() {
                   <td>{rupee(r.subtotal_paise)}</td>
                   <td>{rupee(r.discount_paise)}</td>
                   <td>{rupee(r.extra_charges_paise)}</td>
+                  <td>{rupee(r.round_off_paise ?? 0)}</td>
                   <td>{rupee(r.total_paise)}</td>
                   <td>{r.status}</td>
                 </tr>

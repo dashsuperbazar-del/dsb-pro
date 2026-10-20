@@ -120,11 +120,30 @@ export async function readInventory(db) {
     )
   ).rows.map((row) => ({ ...row, size: Number(row.size) }));
   // Do not filter status/deleted_at: original bills still own their original documents.
-  const references = (
+  const billReferences = (
     await db.query(`select id::text,tenant_id::text as "tenantId",shop_id::text as "shopId",
     client_id as "clientId",bill_image_path as path from public.purchase_bills
     where bill_image_path is not null order by id`)
   ).rows;
+  // billextras (0064): every image of a multi-image bill is a reference too (the first is also
+  // bill_image_path, under its own image-row id). Older schemas have no image table.
+  const imageTable = (
+    await db.query(`select to_regclass('public.purchase_bill_images') is not null as present`)
+  ).rows?.[0]?.present;
+  if (typeof imageTable !== 'boolean')
+    throw new Error(
+      'Document inventory is incomplete: the bill image table state could not be read.',
+    );
+  const imageReferences = imageTable
+    ? (
+        await db.query(`select i.id::text,i.tenant_id::text as "tenantId",i.shop_id::text as "shopId",
+    b.client_id as "clientId",i.storage_path as path from public.purchase_bill_images i
+    join public.purchase_bills b on b.id=i.purchase_bill_id order by i.id`)
+      ).rows
+    : [];
+  if (!Array.isArray(billReferences) || !Array.isArray(imageReferences))
+    throw new Error('Document inventory is incomplete: bill references could not be read.');
+  const references = [...billReferences, ...imageReferences];
   return { bucket, objects, references };
 }
 export async function financialSummary(db) {

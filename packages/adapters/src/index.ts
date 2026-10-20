@@ -249,3 +249,19 @@ export { listItemPurchasePrices } from './priceHistory';
 export type { ItemPurchasePrice } from './priceHistory';
 export { listItemSaleMovements } from './demand';
 export type { ItemSaleMovements, SaleMovement } from './demand';
+export type {
+  PurchaseExtras,
+  PurchaseRequestLookup,
+  PurchaseSettlement,
+  PurchaseV2Line,
+  PurchaseV2Request,
+  PurchaseV2Result,
+} from './purchaseExtras';
+export {
+  buildPurchaseV2Payload,
+  deriveSettlement,
+  getPurchaseExtras,
+  lookupPurchaseRequest,
+  postPurchaseV2Outcome,
+  voidPaidPurchaseOutcome,
+} from './purchaseExtras';

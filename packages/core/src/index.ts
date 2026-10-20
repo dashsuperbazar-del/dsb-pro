@@ -59,10 +59,23 @@ export type {
 } from './legacyDsbImport';
 
 export { summarizeLegacyDsbDayBackup, compareLegacyDsbDayToPro } from './legacyDsbReconciliation';
-export type { LegacyDsbDayPaymentModes, LegacyDsbDaySummary, DsbProComparableDay, LegacyDsbDayComparisonRow, LegacyDsbDayComparison } from './legacyDsbReconciliation';
+export type {
+  LegacyDsbDayPaymentModes,
+  LegacyDsbDaySummary,
+  DsbProComparableDay,
+  LegacyDsbDayComparisonRow,
+  LegacyDsbDayComparison,
+} from './legacyDsbReconciliation';
 
 export { searchCatalogItems } from './catalogSearch';
 export type { CatalogSearchItem } from './catalogSearch';
 
-export { buildBusinessExportArchive, buildBusinessExportFiles, buildInvoicePdf } from './businessExport';
+export {
+  buildBusinessExportArchive,
+  buildBusinessExportFiles,
+  buildInvoicePdf,
+} from './businessExport';
 export type { ExportFile } from './businessExport';
+
+export { PURCHASE_PAYMENT_TYPES, purchaseBillTotals, purchaseLineTotalPaise } from './purchaseBill';
+export type { PurchaseCharge, PurchaseLineAmounts, PurchasePaymentType } from './purchaseBill';
