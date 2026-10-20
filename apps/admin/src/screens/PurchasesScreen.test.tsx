@@ -279,3 +279,54 @@ test('a credit bill offers no paid-bill void', async () => {
   await vi.waitFor(() => expect(host.textContent).toContain('Credit bill'));
   expect(host.querySelector('[aria-label="Void bill"]')).toBeNull();
 });
+
+test('a reopened cached bill is marked refreshing, and a failed refresh flags it out of date with Retry', async () => {
+  await openCash('owner', extras('settled'));
+  await vi.waitFor(() => expect(host.textContent).toContain('Void bill and its payment'));
+  const closeBtn = [...host.querySelectorAll('button')].find(
+    (b) => b.textContent === 'Close detail',
+  )!;
+  await act(async () => closeBtn.click());
+  let fail!: (e: Error) => void;
+  api.getPurchaseDetail.mockReturnValueOnce(new Promise((_, r) => (fail = r)));
+  await act(async () => {
+    [...host.querySelectorAll('button')].find((b) => b.textContent?.includes('CASH-1'))!.click();
+  });
+  // The cached bill shows at once, labelled, and cannot be voided until the fresh read arrives.
+  expect(host.textContent).toContain('Oil');
+  expect(host.textContent).toContain('Refreshing…');
+  const voidBtn = () =>
+    [...host.querySelectorAll('button')].find((b) =>
+      b.textContent?.includes('Void bill and its payment'),
+    );
+  expect(voidBtn()?.disabled ?? true).toBe(true);
+  await act(async () => fail(new Error('network down')));
+  await vi.waitFor(() => expect(host.textContent).toContain('may be out of date'));
+  expect(host.textContent).toContain('network down');
+  expect(voidBtn()?.disabled ?? true).toBe(true);
+  api.getPurchaseDetail.mockResolvedValue(cashDetail);
+  await act(async () => {
+    [...host.querySelectorAll('button')].find((b) => b.textContent === 'Retry')!.click();
+  });
+  await vi.waitFor(() => expect(host.textContent).not.toContain('may be out of date'));
+  expect(host.textContent).not.toContain('Refreshing…');
+});
+
+test('a remount (sign-out, other user or shop) never shows a bill cached by the previous screen', async () => {
+  await openCash('owner', extras('settled'));
+  await vi.waitFor(() => expect(host.textContent).toContain('Oil'));
+  act(() => render(null, host));
+  let hold!: (v: unknown) => void;
+  api.getPurchaseDetail.mockReturnValueOnce(new Promise((r) => (hold = r)));
+  // The list itself is held so no list refresh can clear the cache first.
+  api.listPurchaseHistory.mockReturnValueOnce(new Promise(() => {}));
+  await act(async () => {
+    render(<PurchasesScreen url="/purchases" />, host);
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('CASH-1'));
+  await act(async () => {
+    [...host.querySelectorAll('button')].find((b) => b.textContent?.includes('CASH-1'))!.click();
+  });
+  expect(host.textContent).not.toContain('Oil');
+  await act(async () => hold(cashDetail));
+});

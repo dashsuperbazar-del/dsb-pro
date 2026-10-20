@@ -1,3 +1,4 @@
+import { formatQuantity } from '@dsb-pro/core';
 import { useEffect, useState } from 'preact/hooks';
 import { compareLegacyDsbDayToPro, type LegacyDsbDayComparison } from '@dsb-pro/core';
 import {
@@ -461,7 +462,7 @@ export function SalesHistoryScreen() {
                       {l.discount_paise ? ` · discount ${money(l.discount_paise)}` : ''}
                     </small>
                   </td>
-                  <td>{l.qty}</td>
+                  <td>{formatQuantity(l.qty)}</td>
                   <td>{money(l.unit_price_paise)}</td>
                   <td>{money(l.line_total_paise)}</td>
                 </tr>
