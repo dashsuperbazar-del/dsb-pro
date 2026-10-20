@@ -36,52 +36,62 @@ export function voidBlocker(
 // An unconfirmed void keeps its request (id + reason) on this device, so leaving the bill, reloading or
 // coming back later retries the SAME request. Removed only on a definitive answer.
 type PendingVoid = { billId: string; clientId: string; reason: string };
-const pendingKey = (billId: string) => `dsb-pending-purchase-void:${billId}`;
-export function loadPendingVoid(billId: string): PendingVoid | null {
+// Keyed by user + shop + bill (`scope` = "<user>:<shop>"): another account on this device never sees it.
+const pendingKey = (scope: string, billId: string) =>
+  `dsb-pending-purchase-void:${scope}:${billId}`;
+export function loadPendingVoid(scope: string, billId: string): PendingVoid | null {
   try {
-    const raw = localStorage.getItem(pendingKey(billId));
+    const raw = localStorage.getItem(pendingKey(scope, billId));
     const v = raw ? (JSON.parse(raw) as PendingVoid) : null;
     return v && v.billId === billId && typeof v.clientId === 'string' ? v : null;
   } catch {
     return null;
   }
 }
-function clearPendingVoid(billId: string) {
+/** Clears the kept request; called when the bill is seen VOID (returns null so it can sit in JSX). */
+export function clearPendingVoid(scope: string, billId: string): null {
   try {
-    localStorage.removeItem(pendingKey(billId));
+    localStorage.removeItem(pendingKey(scope, billId));
   } catch {
     // a stale entry only means the next void reuses an id the server already answered: harmless
   }
+  return null;
 }
 
 export function CreditVoidPanel({
+  scope,
+  disabled = false,
   billId,
   label,
   blocked,
   onVoided,
 }: {
+  /** "<user>:<shop>" */
+  scope: string;
+  /** The bill detail is refreshing or could not be refreshed: no void on a possibly stale bill. */
+  disabled?: boolean;
   billId: string;
   label: string;
   /** Known reason the server will refuse (payment assigned, returns), shown instead of the button. */
   blocked: string;
   onVoided: (note: string) => void;
 }) {
-  const [pending, setPending] = useState<PendingVoid | null>(() => loadPendingVoid(billId));
+  const [pending, setPending] = useState<PendingVoid | null>(() => loadPendingVoid(scope, billId));
   const [reason, setReason] = useState(pending?.reason ?? '');
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(
     pending ? 'An earlier void of this bill was not confirmed. Retry sends the same request.' : '',
   );
   useEffect(() => {
-    const p = loadPendingVoid(billId);
+    const p = loadPendingVoid(scope, billId);
     setPending(p);
     setReason(p?.reason ?? '');
     setNote(
       p ? 'An earlier void of this bill was not confirmed. Retry sends the same request.' : '',
     );
-  }, [billId]);
+  }, [scope, billId]);
   async function run() {
-    if (busy) return;
+    if (busy || disabled) return;
     let req = pending;
     if (!req) {
       let clientId: string;
@@ -99,7 +109,7 @@ export function CreditVoidPanel({
         return;
       req = { billId, clientId, reason: reason.trim() };
       try {
-        localStorage.setItem(pendingKey(billId), JSON.stringify(req));
+        localStorage.setItem(pendingKey(scope, billId), JSON.stringify(req));
       } catch (e) {
         setNote(`Not sent: the void could not be kept on this device (${String(e)}).`);
         return;
@@ -116,7 +126,7 @@ export function CreditVoidPanel({
         );
         return;
       }
-      clearPendingVoid(billId);
+      clearPendingVoid(scope, billId);
       setPending(null);
       if (outcome.kind === 'rejected') {
         setNote(`Not voided: ${plainVoidRefusal(outcome.message)}`);
@@ -142,7 +152,7 @@ export function CreditVoidPanel({
               value={reason}
               maxLength={VOID_REASON_MAX}
               readOnly={Boolean(pending)}
-              disabled={busy}
+              disabled={busy || disabled}
               placeholder="e.g. entered twice"
               onInput={(e) => setReason(e.currentTarget.value)}
             />
@@ -153,7 +163,7 @@ export function CreditVoidPanel({
           <button
             type="button"
             class="danger"
-            disabled={busy || !reason.trim()}
+            disabled={busy || disabled || !reason.trim()}
             onClick={() => void run()}
           >
             {busy ? 'Voiding…' : pending ? 'Retry void (same request)' : 'Void bill'}

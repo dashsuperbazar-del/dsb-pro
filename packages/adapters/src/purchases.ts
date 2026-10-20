@@ -66,17 +66,18 @@ export async function getPurchaseDetail(
   lines: PurchaseHistoryLine[];
   balance: PurchaseBalance | null;
 }> {
-  await authorize(shopId);
   const client = getSupabaseClient();
-  const result = await client
-    .from('purchase_bills')
-    .select(header)
-    .eq('shop_id', shopId)
-    .eq('id', id)
-    .is('deleted_at', null)
-    .single();
-  if (result.error) throw new Error(errorMessage(classifyError(result.error), result.error));
-  const [lines, balance] = await Promise.all([
+  // One round trip: the membership check and all three reads run together (RLS still guards every
+  // read; the results are discarded when the check fails).
+  const [, result, lines, balance] = await Promise.all([
+    authorize(shopId),
+    client
+      .from('purchase_bills')
+      .select(header)
+      .eq('shop_id', shopId)
+      .eq('id', id)
+      .is('deleted_at', null)
+      .single(),
     client
       .from('purchase_bill_items')
       .select(
@@ -94,6 +95,7 @@ export async function getPurchaseDetail(
       .eq('purchase_bill_id', id)
       .maybeSingle(),
   ]);
+  if (result.error) throw new Error(errorMessage(classifyError(result.error), result.error));
   if (lines.error) throw new Error(errorMessage(classifyError(lines.error), lines.error));
   if (balance.error) throw new Error(errorMessage(classifyError(balance.error), balance.error));
   return {
