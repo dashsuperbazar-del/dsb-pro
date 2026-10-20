@@ -10,12 +10,13 @@
 --    discount is refused on a GST-extra invoice (item discounts only), so the tax shown is the tax charged.
 --  * Customer credit limit: customers.sale_credit_limit_paise (null = no limit; the legacy credit_limit_paise
 --    column, which old app versions still write as 0 on every edit, is ignored). Set by owner/manager only.
---    A credit sale whose outstanding + unpaid part exceeds the limit is refused (DSB_CREDIT_LIMIT_EXCEEDED)
---    unless an owner/manager sends the override; the override, the limit and the outstanding seen are stored
---    on the invoice.
+--    A credit sale whose outstanding + unpaid part exceeds the limit is refused (DSB_CREDIT_LIMIT_EXCEEDED) on
+--    EVERY sale path (post_sale, phase5/r0/sp sync) unless an owner/manager sends the override through
+--    sp_sync_post_sale; the override (the syncing user), the limit and the outstanding seen are stored.
+--  * set_item_tax_rate: owner/manager sets an item's GST % (audited by the items audit trigger).
 --  * All of this is opt-in per request through sp_sync_post_sale (it sets dsb.sale_v2 for its transaction,
 --    like r0_sync_post_sale sets dsb.round_bill). phase5_sync_post_sale / r0_sync_post_sale requests from older
---    app versions post exactly as before: no manual price, no GST-extra, no credit check, same request payload,
+--    app versions post as before (no manual price, no GST-extra; only the new credit limit applies), same payload,
 --    same response. The client sends its expected total; a first post that differs is refused
 --    (DSB_TOTAL_MISMATCH) and nothing is written. A replay of a posted sale returns that sale.
 
@@ -178,8 +179,9 @@ begin
  if v_payment_total>v_total then raise exception 'payments exceed sale total'; end if;
  if p_customer_id is null and v_payment_total<>v_total then raise exception 'walk-in sale must be fully paid'; end if;
 
- -- Credit limit (v2 only). One lock per customer serializes concurrent credit sales of the same customer.
- if v_v2 and p_customer_id is not null then
+ -- Credit limit: EVERY sale path (old app versions included) is refused over a customer's limit; only the
+ -- new entry point can carry an owner/manager override. One lock per customer serializes its credit sales.
+ if p_customer_id is not null then
    select sale_credit_limit_paise into v_limit from customers where id=p_customer_id and tenant_id=v_tenant;
    v_credit:=v_total-v_payment_total;
    if v_limit is not null and v_credit>0 then
@@ -187,7 +189,7 @@ begin
      select coalesce(sum(balance_paise),0)::bigint into v_outstanding from customer_balances
        where tenant_id=v_tenant and customer_id=p_customer_id;
      if v_outstanding+v_credit>v_limit then
-       if coalesce(current_setting('dsb.sale_credit_override',true),'')<>'on' then
+       if not v_v2 or coalesce(current_setting('dsb.sale_credit_override',true),'')<>'on' then
          raise exception 'DSB_CREDIT_LIMIT_EXCEEDED: credit limit exceeded (outstanding %, this sale % on credit, limit %)',
            v_outstanding,v_credit,v_limit;
        end if;
@@ -474,3 +476,18 @@ begin
 end $$;
 revoke all on function get_gst_summary(uuid,date,date) from public,anon;
 grant execute on function get_gst_summary(uuid,date,date) to authenticated;
+
+-- Item GST % (basis points 0..10000), owner/manager only. Server-side write; the items audit trigger records it.
+create function set_item_tax_rate(p_item_id uuid,p_tax_rate_bp integer) returns integer
+language plpgsql security definer set search_path=public as $$
+declare v_tenant uuid:=current_tenant_id(); v_rate integer;
+begin
+ if coalesce("current_role"(),'') not in ('owner','manager') then raise exception 'not permitted'; end if;
+ if p_tax_rate_bp is null or p_tax_rate_bp<0 or p_tax_rate_bp>10000 then raise exception 'invalid tax rate'; end if;
+ update items set tax_rate_bp=p_tax_rate_bp where id=p_item_id and tenant_id=v_tenant and deleted_at is null
+   returning tax_rate_bp into v_rate;
+ if v_rate is null then raise exception 'item not in tenant'; end if;
+ return v_rate;
+end $$;
+revoke all on function set_item_tax_rate(uuid,integer) from public,anon;
+grant execute on function set_item_tax_rate(uuid,integer) to authenticated;

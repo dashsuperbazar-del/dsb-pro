@@ -127,6 +127,18 @@ export async function setItemMinStock(itemId: string, minStock: number): Promise
     .single();
   return must(data, error) as Item;
 }
+/** salepricing (0065): item GST % in basis points (0..10000), owner/manager only, server-side and audited. */
+export async function setItemTaxRate(itemId: string, taxRateBp: number): Promise<number> {
+  if (!Number.isSafeInteger(taxRateBp) || taxRateBp < 0 || taxRateBp > 10000)
+    throw new Error('Enter a GST rate from 0 to 100%.');
+  const { data, error } = await getSupabaseClient().rpc('set_item_tax_rate', {
+    p_item_id: itemId,
+    p_tax_rate_bp: taxRateBp,
+  });
+  if (error) throw new Error(friendly(error));
+  if (typeof data !== 'number') throw new Error('GST rate update did not return the rate.');
+  return data;
+}
 export async function addItemBarcode(input: {
   tenantId: string;
   itemId: string;

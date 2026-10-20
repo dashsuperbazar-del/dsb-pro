@@ -2,7 +2,7 @@
 -- customer credit limits with an owner/manager override, and the unchanged old sync paths.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(62);
+select plan(73);
 insert into auth.users(id) values
  ('e5000000-0000-0000-0000-000000000001'),  -- owner
  ('e5000000-0000-0000-0000-000000000002'),  -- manager
@@ -170,7 +170,35 @@ select lives_ok($$select pg_temp.sp('2','c-2','cust',jsonb_build_array(pg_temp.l
 select is(((pg_temp.inv('c-2')).credit_override_by,(pg_temp.inv('c-2')).credit_limit_snapshot_paise,(pg_temp.inv('c-2')).credit_outstanding_snapshot_paise),
   ('e5000000-0000-0000-0000-000000000002'::uuid,5000::bigint,3100::bigint),'override, limit and outstanding are recorded');
 select is((pg_temp.inv('c-1')).credit_override_by,null,'no override recorded when within the limit');
-select lives_ok($$select pg_temp.old('r0_sync_post_sale','3','c-old','cust',jsonb_build_array(pg_temp.ln('a','3',null,0,1049)),null)$$,'old app path posts as before (no limit check)');
+-- Every old sale path enforces the limit too, and none of them can override it.
+select throws_like($$select pg_temp.old('r0_sync_post_sale','3','c-old','cust',jsonb_build_array(pg_temp.ln('a','3',null,0,1049)),null)$$,
+  '%DSB_CREDIT_LIMIT_EXCEEDED%','r0_sync_post_sale refused over the limit');
+select throws_like($$select pg_temp.old('phase5_sync_post_sale','3','c-old5','cust',jsonb_build_array(pg_temp.ln('a','3',null,0,1049)),null)$$,
+  '%DSB_CREDIT_LIMIT_EXCEEDED%','phase5_sync_post_sale refused over the limit');
+select pg_temp.act('1');
+select throws_like($$select post_sale(pg_temp.id('shop'),pg_temp.id('cust'),'2026-09-20',0,0,'c-direct',jsonb_build_array(pg_temp.ln('a','1',null,0,1049)),'[]'::jsonb,null)$$,
+  '%DSB_CREDIT_LIMIT_EXCEEDED%','direct post_sale refused over the limit (even for the owner)');
+select throws_like($$select set_config('dsb.sale_credit_override','on',false), pg_temp.old('r0_sync_post_sale','1','c-sneak','cust',jsonb_build_array(pg_temp.ln('a','3',null,0,1049)),null)$$,
+  '%DSB_CREDIT_LIMIT_EXCEEDED%','an override cannot be smuggled into an old path');
+select set_config('dsb.sale_credit_override','off',false);
+select lives_ok($$select pg_temp.old('r0_sync_post_sale','3','c-oldpaid','cust',jsonb_build_array(pg_temp.ln('a','3',null,0,1049)),3100)$$,'old path: fully paid sale to a limited customer posts');
+select lives_ok($$select pg_temp.old('phase5_sync_post_sale','3','c-oldfree','free',jsonb_build_array(pg_temp.ln('a','3',null,0,1049)),null)$$,'old path: customer without a limit unchanged');
+select pg_temp.act('1');
+update customers set sale_credit_limit_paise=1000000 where id=pg_temp.id('free');
+select lives_ok($$select pg_temp.old('r0_sync_post_sale','3','c-oldunder','free',jsonb_build_array(pg_temp.ln('a','3',null,0,1049)),null)$$,'old path: under the limit unchanged');
+update customers set sale_credit_limit_paise=null where id=pg_temp.id('free');
+select is((select count(*) from sale_invoices where client_id in ('c-old','c-old5','c-direct','c-sneak')),0::bigint,'refused old-path sales write nothing');
+
+-- Item GST % (owner/manager only, audited)
+select pg_temp.act('3');
+select throws_like($$select set_item_tax_rate(pg_temp.id('b'),1200)$$,'%not permitted%','cashier cannot set an item GST rate');
+select pg_temp.act('2');
+select is(set_item_tax_rate(pg_temp.id('b'),1200),1200,'manager sets an item GST rate');
+select throws_like($$select set_item_tax_rate(pg_temp.id('b'),10001)$$,'%invalid tax rate%','rate above 100% refused');
+reset role;
+select ok(exists(select 1 from audit_log where table_name='items' and row_id=pg_temp.id('b') and action='UPDATE' and (after->>'tax_rate_bp')='1200'),'GST rate change is audited');
+update items set tax_rate_bp=500 where id=pg_temp.id('b');
+set role authenticated;
 select lives_ok($$select pg_temp.sp('3','c-free','free',jsonb_build_array(pg_temp.ln('a','3',null,0,1049)),null,'gst_included',false,3100)$$,'no limit = no check');
 
 -- Immutability and invariants

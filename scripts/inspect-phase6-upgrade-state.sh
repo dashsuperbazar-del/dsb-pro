@@ -878,7 +878,9 @@ select (select present from _salepricing_receipt),
     and exists(select 1 from pg_constraint where conrelid=to_regclass('public.sale_invoice_items') and conname='sale_invoice_items_manual_by_check')),
    (exists(select 1 from pg_proc where oid=to_regprocedure('public.phase4_post_sale_unlocked(uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text)')
       and position('DSB_PRICE_OVERRIDE_NOT_PERMITTED' in prosrc)>0 and position('DSB_CREDIT_LIMIT_EXCEEDED' in prosrc)>0
-      and position('DSB_GST_EXTRA_BILL_DISCOUNT' in prosrc)>0 and position('sp_gst_extra_tax(' in prosrc)>0)
+      and position('DSB_GST_EXTRA_BILL_DISCOUNT' in prosrc)>0 and position('sp_gst_extra_tax(' in prosrc)>0
+      and position('if not v_v2 or coalesce(current_setting(''dsb.sale_credit_override''' in prosrc)>0
+      and position('if v_v2 and p_customer_id is not null' in prosrc)=0)
     and exists(select 1 from pg_proc where oid=to_regprocedure('public.phase5_sync_post_sale(text,integer,uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text)')
       and position('''sale_v2'',jsonb_build_object' in prosrc)>0)
     and exists(select 1 from pg_proc where oid=to_regprocedure('public.sp_gst_extra_tax(bigint,integer)') and position('div(' in prosrc)>0)
@@ -887,7 +889,11 @@ select (select present from _salepricing_receipt),
      else exists(select 1 from pg_proc where oid=to_regprocedure('public.sp_sync_post_sale(text,integer,uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text,text,boolean,bigint)')
        and position('DSB_TOTAL_MISMATCH' in prosrc)>0)
       and has_function_privilege('authenticated','public.sp_sync_post_sale(text,integer,uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text,text,boolean,bigint)','execute')
-      and not has_function_privilege('anon','public.sp_sync_post_sale(text,integer,uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text,text,boolean,bigint)','execute') end),
+      and not has_function_privilege('anon','public.sp_sync_post_sale(text,integer,uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text,text,boolean,bigint)','execute')
+      and coalesce(has_function_privilege('authenticated',to_regprocedure('public.set_item_tax_rate(uuid,integer)'),'execute'),false)
+      and not coalesce(has_function_privilege('anon',to_regprocedure('public.set_item_tax_rate(uuid,integer)'),'execute'),true)
+      and exists(select 1 from pg_proc where oid=to_regprocedure('public.set_item_tax_rate(uuid,integer)')
+        and position('''owner'',''manager''' in prosrc)>0) end),
    ((select count(*) from pg_trigger where not tgisinternal and tgname in ('sp_sale_fields_immutable','sp_customer_credit_limit_guard','sale_items_immutable'))=3),
    (case when to_regprocedure('public.sp_list_price(uuid,uuid,uuid,text,integer)') is null then false
      else not has_function_privilege('authenticated','public.sp_list_price(uuid,uuid,uuid,text,integer)','execute')

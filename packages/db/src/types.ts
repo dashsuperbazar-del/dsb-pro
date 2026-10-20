@@ -4080,6 +4080,10 @@ export type Database = {
         }
         Returns: string
       }
+      set_item_tax_rate: {
+        Args: { p_item_id: string; p_tax_rate_bp: number }
+        Returns: number
+      }
       set_supplier_payment_schedule: {
         Args: {
           p_active: boolean

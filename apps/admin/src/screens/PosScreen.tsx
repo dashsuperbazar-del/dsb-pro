@@ -1185,6 +1185,16 @@ export function PosScreen() {
               ) ·{' '}
             </span>
           )}
+          {invoiceType === 'gst_extra' && cart.some((l) => !(l.item.tax_rate_bp ?? 0)) && (
+            <p role="alert" class="alert" data-testid="gst-zero-warning">
+              GST 0%:{' '}
+              {[
+                ...new Set(cart.filter((l) => !(l.item.tax_rate_bp ?? 0)).map((l) => l.item.name)),
+              ].join(', ')}{' '}
+              {cart.filter((l) => !(l.item.tax_rate_bp ?? 0)).length === 1 ? 'has' : 'have'} no GST
+              rate, so no GST is added. Set the item GST % in Stock → Items if this is wrong.
+            </p>
+          )}
           {previewRoundOff !== 0 && (
             <span>
               Round off {previewRoundOff > 0 ? '+' : '−'}

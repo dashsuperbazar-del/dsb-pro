@@ -111,7 +111,17 @@ test('owner prices an unpriced item and saves it, overrides a list price, and po
   await createOwnerShop(page);
   const name = unique('Loose Tea');
   await stockedItem(page, name);
-  await sql(`update items set tax_rate_bp=1800 where name=$1`, [name]);
+  // Item GST % through the Inventory item form (set_item_tax_rate, owner/manager).
+  await stockTask(page, 'Items');
+  await page.getByLabel('Item details').selectOption({ label: name });
+  await page.getByLabel('Item GST %').fill('18');
+  await page.getByRole('button', { name: 'Save GST rate' }).click();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'GST rate saved: 18%' }).first(),
+  ).toBeVisible();
+  expect(await sql(`select tax_rate_bp from items where name=$1`, [name])).toEqual([
+    { tax_rate_bp: 1800 },
+  ]);
 
   await page.goto('/pos');
   await addToCart(page, name);
@@ -222,6 +232,13 @@ test('a credit sale over the customer limit warns, is blocked, and posts with th
     .getByLabel('Price for this sale ₹')
     .fill('150');
   await page.getByRole('button', { name: 'Use this price' }).click();
+  // A GST-extra bill with a 0% item warns that no GST is added.
+  await page.getByLabel('Invoice type').selectOption('gst_extra');
+  await expect(page.getByTestId('gst-zero-warning')).toContainText(
+    `GST 0%: ${name} has no GST rate`,
+  );
+  await page.getByLabel('Invoice type').selectOption('gst_included');
+  await expect(page.getByTestId('gst-zero-warning')).toHaveCount(0);
   await reviewPayment(page);
   await page
     .locator('#pos-payment')

@@ -71,6 +71,7 @@ export {
   uploadItemImage,
   purgeItemImage,
   setItemMinStock,
+  setItemTaxRate,
 } from './masterData';
 export type { ItemPrice } from './pricing';
 export { listCurrentPrices, setItemPrice } from './pricing';
