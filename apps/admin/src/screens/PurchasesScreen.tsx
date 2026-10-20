@@ -5,7 +5,9 @@ import {
   getPurchaseDetail,
   getPurchaseExtras,
   voidPaidPurchaseOutcome,
+  listPurchaseSettlements,
   type Party,
+  type PurchaseSettlement,
   type PurchaseExtras,
   type PurchaseRecord,
 } from '@dsb-pro/adapters';
@@ -13,10 +15,16 @@ import { BillDocumentPreview } from '../components/BillDocumentPreview';
 import { InventoryScreen } from './InventoryScreen';
 import { shopContext } from '../lib/shopContext';
 import { appRoute } from '../lib/paths';
+import { correctionBlocker } from '../lib/billCorrection';
 import { roundOffLabel, rupees } from '../lib/money';
 import { PAYMENT_LABEL, percentText } from '../lib/billExtras';
 import { settlementLabel, voidPaidAccess } from '../lib/purchaseSettlement';
-import { filterBills, type BillStatusFilter } from '../lib/purchaseListFilter';
+import { filterBills, listBadge, type BillStatusFilter } from '../lib/purchaseListFilter';
+import {
+  BillCorrectionLinks,
+  CorrectionAlerts,
+  CreditVoidPanel,
+} from '../components/BillCorrection';
 import {
   dropSnapshot,
   peekSnapshot,
@@ -38,6 +46,21 @@ export function PurchasesScreen({ url }: { url?: string }) {
   const [supplier, setSupplier] = useState('');
   const [sort, setSort] = useState('date');
   const [statusFilter, setStatusFilter] = useState<BillStatusFilter>('all');
+  // Ledger settlement per listed bill (Paid/Partial/Unpaid/Void badge); missing = not known, no badge.
+  const [settlements, setSettlements] = useState<Map<string, PurchaseSettlement>>(new Map());
+  function loadSettlements(shopId: string, bills: PurchaseRecord[], reset: boolean) {
+    void Promise.resolve()
+      .then(() => listPurchaseSettlements(shopId, bills))
+      .then(
+        (m) =>
+          setSettlements((old) => {
+            const next = reset ? new Map<string, PurchaseSettlement>() : new Map(old);
+            for (const [k, v] of m) next.set(k, v);
+            return next;
+          }),
+        () => {},
+      );
+  }
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [detail, setDetail] = useState<Awaited<ReturnType<typeof getPurchaseDetail>> | null>(null);
@@ -51,6 +74,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
   const [voidReason, setVoidReason] = useState('');
   const [voidBusy, setVoidBusy] = useState(false);
   const [voidNote, setVoidNote] = useState('');
+  const [creditVoidNote, setCreditVoidNote] = useState('');
   const voidRequest = useRef<{ billId: string; clientId: string; reason: string } | null>(null);
   const [voidUnconfirmed, setVoidUnconfirmed] = useState(false);
   const [error, setError] = useState('');
@@ -79,6 +103,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
       if (token !== listGeneration.current) return;
       setRows(bills);
       setParties(suppliers);
+      loadSettlements(shopId, bills, true);
       setMore(bills.length === 50);
       setSnapshotAt(null);
       putSnapshot<PurchaseListSnapshot>('purchases', userRef.current, shopId, {
@@ -148,6 +173,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
       return;
     }
     const token = ++generation.current;
+    setCreditVoidNote('');
     setDetail(null);
     setExtras(null);
     setExtrasError('');
@@ -230,9 +256,15 @@ export function PurchasesScreen({ url }: { url?: string }) {
       setVoidBusy(false);
     }
   }
+  const editBlocker = (d: NonNullable<typeof detail>, paymentType: PurchaseExtras['paymentType']) =>
+    correctionBlocker(d, paymentType);
   const name = (id: string | null) =>
     parties.find((p) => p.id === id)?.name ?? (id ? 'Supplier unavailable' : 'No supplier');
-  const visible = filterBills(rows, { status: statusFilter, from: fromDate, to: toDate })
+  const visible = filterBills(
+    rows,
+    { status: statusFilter, from: fromDate, to: toDate },
+    settlements,
+  )
     .filter(
       (b) =>
         (!supplier || b.party_id === supplier) &&
@@ -264,6 +296,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
         <a href={appRoute.suppliers}>Suppliers & payments</a>
       </nav>
       {error && <p role="alert">{error}</p>}
+      {shop && <CorrectionAlerts shopId={shop} onDone={() => void refresh()} />}
       {loading && <p role="status">Loading purchases…</p>}
       {!entering && <SnapshotNote at={snapshotAt} failed={snapshotFailed} />}
       {allowed && canPost && (
@@ -273,6 +306,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
             purchaseContextActive={entering}
             purchaseSupplierId={query.get('supplier') ?? ''}
             purchaseRepeatId={query.get('repeat') ?? ''}
+            purchaseCorrect={query.get('correct') === '1'}
             onPurchasePosted={() => void refresh()}
           />
         </div>
@@ -313,6 +347,9 @@ export function PurchasesScreen({ url }: { url?: string }) {
                 <option value="all">All bills</option>
                 <option value="posted">Posted</option>
                 <option value="void">Voided</option>
+                <option value="paid">Paid</option>
+                <option value="partial">Partial</option>
+                <option value="unpaid">Unpaid</option>
               </select>
             </label>
             <label>
@@ -341,6 +378,14 @@ export function PurchasesScreen({ url }: { url?: string }) {
                     {b.bill_no || b.id.slice(0, 8)} · {b.business_date} ·{' '}
                     {b.status === 'VOID' ? 'Voided' : 'Posted'}
                   </small>
+                  {listBadge(settlements.get(b.id)) && (
+                    <span
+                      class={`badge settle-${settlements.get(b.id)!.status}`}
+                      data-testid="list-settlement"
+                    >
+                      {listBadge(settlements.get(b.id))}
+                    </span>
+                  )}
                 </span>
                 <span class="record-value">{rupees(b.total_paise)}</span>
               </button>
@@ -357,6 +402,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
                   .then((next) => {
                     if (token !== listGeneration.current) return;
                     setRows((old) => [...old, ...next]);
+                    loadSettlements(shop, next, false);
                     setMore(next.length === 50);
                   })
                   .catch((e) => {
@@ -411,6 +457,13 @@ export function PurchasesScreen({ url }: { url?: string }) {
                 {extrasError}
               </p>
             )}
+            {creditVoidNote && <p role="status">{creditVoidNote}</p>}
+            <BillCorrectionLinks
+              shopId={shop}
+              billId={detail.bill.id}
+              status={detail.bill.status}
+              onOpen={(id) => void open(id)}
+            />
             {extras?.notes && <p data-testid="bill-notes">Notes: {extras.notes}</p>}
             {detail.balance && (
               <p>
@@ -453,7 +506,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
               </p>
             )}
             <p>
-              Lines {rupees(detail.bill.subtotal_paise)} · Discount{' '}
+              Items {rupees(detail.bill.subtotal_paise)} · Discount{' '}
               {rupees(detail.bill.discount_paise)} · Extra {rupees(detail.bill.extra_charges_paise)}
               {roundOffLabel(detail.bill.round_off_paise) &&
                 ` · ${roundOffLabel(detail.bill.round_off_paise)}`}
@@ -499,7 +552,42 @@ export function PurchasesScreen({ url }: { url?: string }) {
                 {voidNote && <p role="status">{voidNote}</p>}
               </section>
             )}
+            {extras && detail.bill.status === 'POSTED' && extras.paymentType === 'credit' && (
+              <>
+                {canPost ? (
+                  <CreditVoidPanel
+                    billId={detail.bill.id}
+                    label={detail.bill.bill_no || 'this bill'}
+                    blocked={editBlocker(detail, 'credit')}
+                    onVoided={(note) => {
+                      void refresh();
+                      void open(detail.bill.id).then(() => setCreditVoidNote(note));
+                    }}
+                  />
+                ) : (
+                  <p class="muted" data-testid="void-not-allowed">
+                    Only the owner or a manager can void a bill. Ask them.
+                  </p>
+                )}
+              </>
+            )}
             <nav class="context-actions" aria-label="Bill actions">
+              {extras &&
+                detail.bill.status === 'POSTED' &&
+                (extras.paymentType === 'credit' ? canPost : voidPaidAccess(role)) &&
+                !editBlocker(detail, extras.paymentType) && (
+                  <a
+                    class="button-link"
+                    data-testid="edit-bill"
+                    href={
+                      appRoute.purchases +
+                      '?new=1&correct=1&repeat=' +
+                      encodeURIComponent(detail.bill.id)
+                    }
+                  >
+                    Edit bill
+                  </a>
+                )}
               {canPost && detail.bill.status === 'POSTED' && (
                 <a
                   class="button-link primary"
