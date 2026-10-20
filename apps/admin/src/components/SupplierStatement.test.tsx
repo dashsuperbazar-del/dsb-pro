@@ -4,7 +4,11 @@ import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { SupplierStatement } from './SupplierStatement';
 
-const api = vi.hoisted(() => ({ getSupplierLedger: vi.fn(), getShopSettings: vi.fn() }));
+const api = vi.hoisted(() => ({
+  getSupplierLedger: vi.fn(),
+  getShopSettings: vi.fn(),
+  getPurchaseReturnRoundOffs: vi.fn(),
+}));
 vi.mock('@dsb-pro/adapters', () => api);
 const host = document.createElement('div');
 const props = { shopId: 'shop', partyId: 'A', supplierName: 'Acme', businessDate: '2026-10-14' };
@@ -49,6 +53,7 @@ beforeEach(() => {
   api.getShopSettings
     .mockReset()
     .mockResolvedValue({ id: 'shop', name: 'Corner Store', address: null, gstin: null });
+  api.getPurchaseReturnRoundOffs.mockReset().mockResolvedValue({});
   Object.defineProperty(navigator, 'share', { configurable: true, value: undefined });
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
 });
@@ -147,4 +152,46 @@ test('prints the exact prepared statement through the existing A4 receipt layout
   });
   await act(async () => button('Print A4 / PDF').click());
   expect(host.textContent).toContain('Printing is unavailable in this browser');
+});
+
+test("a purchase return's round off is shown next to it, so the change adds up", async () => {
+  const withReturn = data();
+  withReturn.entries.push(
+    {
+      id: 'ret-1',
+      date: '2026-10-14',
+      kind: 'PURCHASE_RETURN',
+      document: 'PR-1',
+      amountPaise: '-5000',
+      runningBalancePaise: '5000',
+    },
+    {
+      id: 'ret-2',
+      date: '2026-10-14',
+      kind: 'PURCHASE_RETURN',
+      document: 'PR-2',
+      amountPaise: '-1000',
+      runningBalancePaise: '4000',
+    },
+  );
+  withReturn.closingBalancePaise = '4000';
+  api.getSupplierLedger.mockResolvedValueOnce(withReturn);
+  api.getPurchaseReturnRoundOffs.mockResolvedValueOnce({ 'ret-1': '-49', 'ret-2': '0' });
+  await mount();
+  await ready();
+  expect(api.getPurchaseReturnRoundOffs).toHaveBeenCalledWith('shop', ['ret-1', 'ret-2']);
+  const row = (doc: string) =>
+    [...host.querySelectorAll('[aria-label="Prepared supplier statement"] tr')].find((tr) =>
+      tr.textContent!.includes(doc),
+    )!.textContent!;
+  await vi.waitFor(() => expect(row('PR-1')).toContain('Round off −₹0.49'));
+  expect(row('PR-2')).not.toContain('Round off');
+  expect(row('<img')).not.toContain('Round off');
+});
+test('if the round offs cannot be read the statement still shows, without them', async () => {
+  api.getPurchaseReturnRoundOffs.mockRejectedValue(new Error('offline'));
+  await mount();
+  await ready();
+  expect(host.textContent).toContain('₹100.00');
+  expect(host.textContent).not.toContain('Round off');
 });

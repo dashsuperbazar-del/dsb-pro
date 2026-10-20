@@ -2,19 +2,32 @@
 const version = new URL(self.location.href).searchParams.get('v') || 'dev';
 const CACHE = 'dsb-pro-shell-' + version;
 const scopeRoot = new URL('./', self.registration.scope).toString();
-const shellRoutes = ['', 'signup', 'join', 'team', 'devices', 'inventory', 'pos', 'customers', 'sales-history', 'sync'];
+const shellRoutes = [
+  '',
+  'signup',
+  'join',
+  'team',
+  'devices',
+  'inventory',
+  'pos',
+  'customers',
+  'sales-history',
+  'sync',
+];
 
 async function precacheShell() {
   const cache = await caches.open(CACHE);
   const response = await fetch(new Request(scopeRoot, { cache: 'reload' }));
   if (!response.ok) throw new Error('Unable to fetch app shell');
   const html = await response.clone().text();
-  await Promise.all(shellRoutes.map(route => cache.put(new URL(route, scopeRoot).toString(), response.clone())));
+  await Promise.all(
+    shellRoutes.map((route) => cache.put(new URL(route, scopeRoot).toString(), response.clone())),
+  );
 
   const refs = [...html.matchAll(/(?:src|href)="([^"]+)"/g)]
-    .map(match => new URL(match[1], scopeRoot))
-    .filter(url => url.origin === self.location.origin)
-    .map(url => url.toString());
+    .map((match) => new URL(match[1], scopeRoot))
+    .filter((url) => url.origin === self.location.origin)
+    .map((url) => url.toString());
 
   if (refs.length) await cache.addAll([...new Set(refs)]);
 }
@@ -37,55 +50,64 @@ async function cachedNavigation(request) {
   });
 }
 
-self.addEventListener('install', event => {
+self.addEventListener('install', (event) => {
   event.waitUntil(precacheShell().then(() => self.skipWaiting()));
 });
 
-self.addEventListener('activate', event => {
+self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys()
-      .then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key))))
-      .then(() => self.clients.claim())
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))),
+      )
+      .then(() => self.clients.claim()),
   );
 });
 
-self.addEventListener('fetch', event => {
+self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  // The build marker must always be the deployed one, never a cached copy.
+  if (url.pathname.endsWith('/version.json')) return;
 
   if (request.mode === 'navigate') {
-    event.respondWith((async () => {
-      try {
-        const response = await fetch(request);
-        if (!response.ok) return cachedNavigation(request);
+    event.respondWith(
+      (async () => {
+        try {
+          const response = await fetch(request);
+          if (!response.ok) return cachedNavigation(request);
 
-        // Cache both the exact SPA route and the root shell. This removes any
-        // dependency on the browser's offline navigation error shape.
-        const cache = await caches.open(CACHE);
-        await Promise.all([
-          cache.put(request, response.clone()),
-          cache.put(scopeRoot, response.clone()),
-        ]);
-        return response;
-      } catch {
-        return cachedNavigation(request);
-      }
-    })());
+          // Cache both the exact SPA route and the root shell. This removes any
+          // dependency on the browser's offline navigation error shape.
+          const cache = await caches.open(CACHE);
+          await Promise.all([
+            cache.put(request, response.clone()),
+            cache.put(scopeRoot, response.clone()),
+          ]);
+          return response;
+        } catch {
+          return cachedNavigation(request);
+        }
+      })(),
+    );
     return;
   }
 
-  event.respondWith((async () => {
-    const cache = await caches.open(CACHE);
-    const hit = await cache.match(request, { ignoreSearch: true });
-    if (hit) return hit;
-    try {
-      const response = await fetch(request);
-      if (response.ok) await cache.put(request, response.clone());
-      return response;
-    } catch {
-      return Response.error();
-    }
-  })());
+  event.respondWith(
+    (async () => {
+      const cache = await caches.open(CACHE);
+      const hit = await cache.match(request, { ignoreSearch: true });
+      if (hit) return hit;
+      try {
+        const response = await fetch(request);
+        if (response.ok) await cache.put(request, response.clone());
+        return response;
+      } catch {
+        return Response.error();
+      }
+    })(),
+  );
 });

@@ -18,6 +18,8 @@ export type PriceWrite = {
   unitLevel: 1 | 2 | 3;
   unitName: string;
   pricePaise: number;
+  /** The price this replaces, as the bill saw it (null = none). Absent in plans of older versions. */
+  oldPaise?: number | null;
 };
 export type PlannedPriceWrite = PriceWrite & { clientId: string };
 
@@ -126,8 +128,8 @@ export function cardSaleResult(
       };
     if (p === 0)
       return { writes: [], problem: 'Enter a retail price more than ₹0, or leave it blank.' };
-    if (p !== current(load, shopId, 'retail', level))
-      writes.push({ ...base, kind: 'retail', pricePaise: p });
+    const old = current(load, shopId, 'retail', level);
+    if (p !== old) writes.push({ ...base, kind: 'retail', pricePaise: p, oldPaise: old });
   }
   const qtyText = f.wsQty.trim();
   const priceText = f.wsPrice.trim();
@@ -154,8 +156,8 @@ export function cardSaleResult(
         problem: `${rupees(p)} for ${qty} ${unit} is not a whole number of paise per ${unit}. Enter the wholesale price for 1 ${unit} instead (wholesale qty 1).`,
       };
     const per = p / qty;
-    if (per !== current(load, shopId, 'wholesale', level))
-      writes.push({ ...base, kind: 'wholesale', pricePaise: per });
+    const old = current(load, shopId, 'wholesale', level);
+    if (per !== old) writes.push({ ...base, kind: 'wholesale', pricePaise: per, oldPaise: old });
     return { writes, ...(qty > 1 ? { wsPerUnitPaise: per } : {}) };
   }
   return { writes };
@@ -234,7 +236,8 @@ function validWrite(w: unknown): w is PlannedPriceWrite {
     [1, 2, 3].includes(x.unitLevel) &&
     typeof x.unitName === 'string' &&
     Number.isSafeInteger(x.pricePaise) &&
-    x.pricePaise > 0
+    x.pricePaise > 0 &&
+    (x.oldPaise === undefined || x.oldPaise === null || Number.isSafeInteger(x.oldPaise))
   );
 }
 function parse(key: string, raw: string | null): StoredPlan | null {
@@ -301,6 +304,16 @@ export function listPricePlans(user: string, shop: string): StoredPlan[] {
     /* storage unreadable: nothing to offer */
   }
   return out.sort((a, b) => a.savedAt - b.savedAt);
+}
+
+/** Before a late Retry: the question to ask when the price now is not the one the bill saw (someone
+ * changed it since), else null. A plan without `oldPaise` (older version) asks whenever the price now
+ * differs from the one to write. */
+export function priceChangedQuestion(w: PlannedPriceWrite, nowPaise: number | null): string | null {
+  if (nowPaise === w.pricePaise) return null;
+  if (w.oldPaise !== undefined && nowPaise === w.oldPaise) return null;
+  const now = nowPaise === null ? 'no price' : rupees(nowPaise);
+  return `${w.itemName} ${w.kind} per ${w.unitName} was changed after this bill. Now ${now}. Replace with ${rupees(w.pricePaise)}?`;
 }
 
 /** set_item_price refusals that the same request can never pass (item removed, role, bad price). */

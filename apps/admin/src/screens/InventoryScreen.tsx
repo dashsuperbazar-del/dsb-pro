@@ -101,6 +101,7 @@ import {
   ageText,
   currentPricePaise,
   isPermanentPriceError,
+  priceChangedQuestion,
   listPricePlans,
   loadPricePlan,
   planKey,
@@ -271,8 +272,8 @@ export function InventoryScreen({
     ReturnType<typeof getPurchaseDetail>
   > | null>(null);
   // Latest rendered values, read after an await (repeat/tap-to-add) to drop a stale answer.
-  const copyContextRef = useRef({ shopId, purchaseSupplier, recentDetail });
-  copyContextRef.current = { shopId, purchaseSupplier, recentDetail };
+  const copyContextRef = useRef({ shopId, purchaseSupplier, recentDetail, purchaseCards });
+  copyContextRef.current = { shopId, purchaseSupplier, recentDetail, purchaseCards };
   const contextApplied = useRef('');
   const contextNeedsReset = useRef(false);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
@@ -801,6 +802,18 @@ export function InventoryScreen({
     setPriceRetryBusy(entry.write.clientId);
     try {
       const w = entry.write;
+      // A plan found later ("check"/"late"): someone may have changed the price since. Read it now and
+      // ask before replacing a price the bill never saw.
+      if (entry.state !== 'failed') {
+        const nowPaise = currentPricePaise(
+          await listCurrentPrices(w.itemId),
+          entry.shop,
+          w.kind,
+          w.unitLevel,
+        );
+        const question = priceChangedQuestion(w, nowPaise);
+        if (question && !confirm(question)) return;
+      }
       await setItemPrice({
         itemId: w.itemId,
         shopId: entry.shop,
@@ -1206,7 +1219,7 @@ export function InventoryScreen({
     const staleReason = () => {
       const now = copyContextRef.current;
       if (now.shopId !== startShop || now.purchaseSupplier !== startSupplier)
-        return 'Supplier changed — not copied.';
+        return 'Shop or supplier changed — not copied.';
       if (
         now.recentDetail?.bill.id !== detail.bill.id ||
         purchaseClientRef.current !== startClient ||
@@ -1247,8 +1260,9 @@ export function InventoryScreen({
       setError(e instanceof Error ? e.message : String(e));
       return;
     }
+    // Decide from the cards as they are NOW (after the await): anything typed meanwhile is asked about.
     if (
-      purchaseCards.some((c) => !isBlankCard(c)) &&
+      copyContextRef.current.purchaseCards.some((c) => !isBlankCard(c)) &&
       !confirm(
         `Replace the items on this bill with the ${cards.length} item${cards.length === 1 ? '' : 's'} of the last bill from this supplier?`,
       )
@@ -1745,7 +1759,7 @@ export function InventoryScreen({
               <small class="muted">
                 Entered {ageText(r.savedAt, Date.now())} · Now{' '}
                 {load?.state === 'ok' ? (now === null ? 'no price' : rupees(now)) : '…'}
-                {r.state === 'failed' && r.message ? ` · ${r.message}` : ''}
+                {RETRYABLE.has(r.state) && r.message ? ` · ${r.message}` : ''}
               </small>
             </span>
             <span class="price-retry-actions">

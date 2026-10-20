@@ -22,9 +22,9 @@ design without rebuilding it — which is what Pro is.
 
 ## 2. Recommendation for the shop today
 
-> Recorded decision (2026-10-02, owner): old DSB is retired; no legacy import and no shadow run; DSB Pro goes
-> live with real data once daily-usable. That decision stands. The F0 and parallel-week rows below are
-> options for the owner to re-open, not planned work.
+> Recorded decision (2026-10-02, confirmed 2026-10-18, owner): old DSB is retired; no legacy import (F0
+> dropped) and no parallel/shadow week; DSB Pro goes live with real data once daily-usable, starting from
+> opening balances entered in Pro. Both are dropped from the plan and the cutover gate below.
 
 - Keep old DSB as the ONLY system that records the shop's money and stock until DSB Pro passes the
   cutover gate in §5. Do not record the same day in both apps (double entry, no reconciliation path).
@@ -49,17 +49,17 @@ design without rebuilding it — which is what Pro is.
 
 ## 4. Build order (one packet per PR; each closes with tests, review, CI)
 
-| #   | Packet                                                                                                 | Parity rows        | Gate                                         |
-| --- | ------------------------------------------------------------------------------------------------------ | ------------------ | -------------------------------------------- |
-| SP2 | Instant route render: SWR snapshot cache for Home, Inventory, Purchases, Suppliers, Customers, Reports | N02                | SP0 revisit p50 ≤ 300 ms (mobile-synthetic)  |
-| SP3 | Retained tab shell (5 tabs kept mounted, dirty guards)                                                 | N01, N08, C05      | no data loss on tab switch (e2e)             |
-| SP4 | Per-screen read RPCs (migration) + IndexedDB persistence for cold start                                | N02                | cold cached reload ≤ 1.5 s                   |
-| F1  | Party merge, edit/delete from detail (archive), unit learning                                          | I11, I13, I14      | pgTAP + e2e                                  |
-| F2  | Bulk supplier payments; recent sort/status filters; day book cash/bank                                 | S05, N06, R03      | ledger reconciliation tests                  |
-| F3  | Excel entry sheet import/export; bill image peek; multiple photos                                      | P10, P12, P13      | import never posts; drafts only              |
-| F4  | Price/demand charts; voice entry; image share of bills/statements                                      | I08, C06, S08, C10 | device check                                 |
-| F0  | Import the shop's old DSB data (needs the owner's export file)                                         | —                  | counts and balances reconcile to DSB exactly |
-| CUT | Parallel week, then cutover                                                                            | —                  | §5                                           |
+| #   | Packet                                                                                                 | Parity rows        | Gate                                        |
+| --- | ------------------------------------------------------------------------------------------------------ | ------------------ | ------------------------------------------- |
+| SP2 | Instant route render: SWR snapshot cache for Home, Inventory, Purchases, Suppliers, Customers, Reports | N02                | SP0 revisit p50 ≤ 300 ms (mobile-synthetic) |
+| SP3 | Retained tab shell (5 tabs kept mounted, dirty guards)                                                 | N01, N08, C05      | no data loss on tab switch (e2e)            |
+| SP4 | Per-screen read RPCs (migration) + IndexedDB persistence for cold start                                | N02                | cold cached reload ≤ 1.5 s                  |
+| F1  | Party merge, edit/delete from detail (archive), unit learning                                          | I11, I13, I14      | pgTAP + e2e                                 |
+| F2  | Bulk supplier payments; recent sort/status filters; day book cash/bank                                 | S05, N06, R03      | ledger reconciliation tests                 |
+| F3  | Excel entry sheet import/export; bill image peek; multiple photos                                      | P10, P12, P13      | import never posts; drafts only             |
+| F4  | Price/demand charts; voice entry; image share of bills/statements                                      | I08, C06, S08, C10 | device check                                |
+| F0  | Dropped (owner, 2 and 18 Oct): no old DSB import; Pro starts from opening balances                     | —                  | —                                           |
+| CUT | Cutover (no parallel week: dropped by the owner, 2 and 18 Oct)                                         | —                  | §5                                          |
 
 Already shipped this week: C12 statement, N04 search, N07 attention tile, P04 line-total cost, P09 batch
 drafts, S06 payment schedule, I09 camera scan (pending merge, device-unverified), P06 quick bill (pending).
@@ -67,7 +67,9 @@ drafts, S06 payment schedule, I09 camera scan (pending merge, device-unverified)
 ## 5. Cutover gate (all dated evidence from the shop)
 
 1. Speed on the shop phone: tab switch feels instant; POS add-item ≤ 150 ms; cold start ≤ 3 s.
-2. F0 import: item, party, customer counts and every balance equal old DSB's on the same date.
-3. One parallel week: Pro totals reconcile with DSB daily (sales, purchases, payments, stock).
+2. Starting data: items, suppliers, customers and every opening balance entered in Pro and checked by the
+   owner against the shop's own records on the cutover date (no old DSB import: F0 dropped 18 Oct).
+3. First clean real-data week in Pro: Compare page and invariants clean every day (no parallel week with
+   old DSB: dropped by the owner 2 and 18 Oct).
 4. Offline/restart/reconnect test, restore drill, receipt print width, WhatsApp share, per-role checks.
    Until all four pass, H-gates stay NOT GO and old DSB stays the system of record.
