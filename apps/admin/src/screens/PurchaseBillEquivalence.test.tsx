@@ -309,13 +309,14 @@ test('fast bill layout: items, the live bill total, then closed bill details (ch
   const order = [
     host.querySelector(label('Item 2'))!,
     host.querySelector('[data-testid="bill-total"]')!,
-    host.querySelector('details.bill-details')!,
+    host.querySelector('.bill-details')!,
     host.querySelector('input[name="discount"]')!,
     host.querySelector('[aria-label="Extra charges"]')!,
     host.querySelector('.bill-bar')!,
   ];
   // Bill details start closed; nothing in them is set, and the summary says what they hold.
-  expect(host.querySelector<HTMLDetailsElement>('details.bill-details')!.open).toBe(false);
+  expect(host.querySelector('.bill-details-toggle')!.getAttribute('aria-expanded')).toBe('false');
+  expect(host.querySelector('#bill-details-body')!.hasAttribute('hidden')).toBe(true);
   for (let i = 1; i < order.length; i++)
     expect(
       order[i - 1]!.compareDocumentPosition(order[i]!) & Node.DOCUMENT_POSITION_FOLLOWING,

@@ -11,6 +11,9 @@ export type UsualItem = {
   name: string;
   unitLevel: 1 | 2 | 3;
   unitName: string;
+  /** The item's conversions when that bill was posted. */
+  conv1: number | null;
+  conv2: number | null;
   unitPricePaise: number;
   discountBp: number;
   gstBp: number | null;
@@ -18,6 +21,23 @@ export type UsualItem = {
   /** Number of bills (from those read) on which this item was bought from the supplier. */
   bills: number;
 };
+
+const numOrNull = (v: unknown) => (v === null || v === undefined || v === '' ? null : Number(v));
+
+/**
+ * The item is still bought in the unit of its last line from this supplier: the same level exists,
+ * with the same name, and the item's conversions are the ones that line was posted with. A unit
+ * redefined since (renamed, or a different count per unit) makes the old rate and unit stale.
+ */
+export function sameUnitAsLast(item: Item, u: UsualItem): boolean {
+  const unit = unitChoices(item).find((c) => c.level === u.unitLevel);
+  return (
+    !!unit &&
+    unit.name === u.unitName &&
+    numOrNull(item.conv1) === u.conv1 &&
+    numOrNull(item.conv2) === u.conv2
+  );
+}
 
 /** lines: newest bill first (listSupplierPurchaseLines order). */
 export function usualItems(lines: SupplierPurchaseLine[]): UsualItem[] {
@@ -38,6 +58,8 @@ export function usualItems(lines: SupplierPurchaseLine[]): UsualItem[] {
         name: l.item_name_snapshot,
         unitLevel: l.unit_level,
         unitName: l.unit_name_snapshot,
+        conv1: numOrNull(l.conv1_snapshot),
+        conv2: numOrNull(l.conv2_snapshot),
         unitPricePaise: price,
         discountBp: Number(l.discount_bp) || 0,
         gstBp: l.gst_bp === null || l.gst_bp === undefined ? null : Number(l.gst_bp),
@@ -61,14 +83,16 @@ export function itemsOnBill(cards: BillCard[]): Set<string> {
 }
 
 /**
- * Cards for the chosen usual items: the current item record, the last unit when the item still has
- * it (otherwise its first unit, shown on the card), the last rate and discount/GST, quantity empty.
- * Items already on the bill, or no longer in the item list, are skipped and reported.
+ * Cards for the chosen usual items: the current item record, the last unit when it is unchanged
+ * (otherwise the first unit, shown on the card, and no rate), the last rate (only when `withRate`:
+ * the user may see purchase prices) and discount/GST, quantity empty. Items already on the bill, or
+ * no longer in the item list, are skipped and reported.
  */
 export function cardsFromUsual(
   chosen: UsualItem[],
   items: Item[],
   onBill: Set<string>,
+  withRate = true,
 ): { cards: BillCard[]; skipped: string[] } {
   const cards: BillCard[] = [];
   const skipped: string[] = [];
@@ -78,7 +102,7 @@ export function cardsFromUsual(
       if (!item) skipped.push(u.name);
       continue;
     }
-    const sameUnit = unitChoices(item).some((c) => c.level === u.unitLevel);
+    const sameUnit = sameUnitAsLast(item, u);
     const card = cardFromLine({
       item,
       unitLevel: sameUnit ? u.unitLevel : 1,
@@ -87,12 +111,18 @@ export function cardsFromUsual(
       discountBp: u.discountBp,
       gstBp: u.gstBp,
     });
-    // A rate typed for another unit is not a rate for this one: dropped when the unit is gone.
+    // A rate for another (or a redefined) unit is not a rate for this one: dropped.
+    const rate = sameUnit && withRate;
     cards.push({
       ...card,
-      price: sameUnit ? card.price : '',
-      ...(sameUnit ? { suggested: { date: u.lastDate, price: card.price } } : {}),
+      price: rate ? card.price : '',
+      ...(rate ? { suggested: { date: u.lastDate, price: card.price } } : {}),
     });
   }
   return { cards, skipped };
+}
+
+/** Device storage of the last supplier this user posted a bill to in this shop (a convenience). */
+export function lastSupplierStorageKey(userId: string, shopId: string): string {
+  return `dsb-last-supplier:${userId}:${shopId}`;
 }

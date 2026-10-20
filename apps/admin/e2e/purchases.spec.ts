@@ -415,7 +415,7 @@ test('a cash bill with item discount/GST and a named charge posts with its round
   await purchase.getByLabel('Extra charge 1 name', { exact: true }).fill('Transport');
   await purchase.getByLabel('Extra charge 1 amount ₹', { exact: true }).fill('10');
   await purchase.locator('textarea[name="notes"]').fill('Paid at the counter');
-  await purchase.locator('details.bill-details > summary').click();
+  await purchase.locator('.bill-details-toggle').click();
   await expect(purchase.getByTestId('bill-details-badge')).toHaveText('1 charge ₹10.00 · notes');
   await purchase
     .locator('.bill-bar')

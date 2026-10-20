@@ -57,10 +57,9 @@ export async function fillBillItem(
 }
 // Fast bill entry: the closed parts of the purchase form.
 export async function openBillDetails(purchase: Locator) {
-  const details = purchase.locator('details.bill-details');
-  if ((await details.getAttribute('open')) === null)
-    await details.locator(':scope > summary').click();
-  await expect(details).toHaveAttribute('open', '');
+  const toggle = purchase.locator('.bill-details-toggle');
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
 }
 export async function openItemMore(purchase: Locator, n: number) {
   const more = purchase.getByRole('button', { name: `More for item ${n}`, exact: true });

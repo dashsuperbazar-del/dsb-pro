@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { Item, SupplierPurchaseLine } from '@dsb-pro/adapters';
-import { cardsFromUsual, itemsOnBill, usualItems } from './usualItems';
+import { cardsFromUsual, itemsOnBill, sameUnitAsLast, usualItems } from './usualItems';
 import { billFromCards, emptyCard } from './billCards';
 
 const l = (
@@ -21,6 +21,8 @@ const l = (
   unit_price_paise: price,
   discount_bp: 0,
   gst_bp: null,
+  conv1_snapshot: null,
+  conv2_snapshot: null,
   ...more,
 });
 
@@ -48,7 +50,7 @@ test('cards: empty quantity (cannot post), last rate as a suggestion; a missing 
     { id: 'z', name: 'Z', unit1: 'pc' },
   ] as unknown as Item[];
   const rows = usualItems([
-    l('b1', '2026-10-01', 'y', '310', { unit_level: 2, gst_bp: 500 }),
+    l('b1', '2026-10-01', 'y', '310', { unit_level: 2, unit_name_snapshot: 'pack', gst_bp: 500 }),
     l('b1', '2026-10-01', 'z', '210', { unit_level: 2 }),
     l('b1', '2026-10-01', 'gone', '5'),
   ]);
@@ -66,4 +68,37 @@ test('cards: empty quantity (cannot post), last rate as a suggestion; a missing 
   expect(bill.problems).toHaveLength(2);
   // Already on the bill: not added again.
   expect(cardsFromUsual(rows, items, itemsOnBill(cards)).cards).toEqual([]);
+});
+
+test('a unit renamed or redefined since the last bill drops the remembered unit and rate', () => {
+  const lines = [
+    l('b1', '2026-10-01', 'y', '1200', {
+      unit_level: 2,
+      unit_name_snapshot: 'pack',
+      conv1_snapshot: 12,
+      discount_bp: 300,
+    }),
+  ];
+  const [row] = usualItems(lines);
+  const same = { id: 'y', name: 'Y', unit1: 'box', unit2: 'pack', conv1: 12 } as unknown as Item;
+  const renamed = { ...same, unit2: 'pkt' } as Item;
+  const recounted = { ...same, conv1: 10 } as Item;
+  expect(sameUnitAsLast(same, row!)).toBe(true);
+  expect(sameUnitAsLast(renamed, row!)).toBe(false);
+  expect(sameUnitAsLast(recounted, row!)).toBe(false);
+  const ok = cardsFromUsual([row!], [same], new Set()).cards[0]!;
+  expect([ok.unitLevel, ok.price, ok.discount]).toEqual([2, '12.00', '3']);
+  for (const item of [renamed, recounted]) {
+    const card = cardsFromUsual([row!], [item], new Set()).cards[0]!;
+    // First unit, no rate, no suggestion; the item's discount still applies.
+    expect([card.unitLevel, card.price, card.suggested, card.discount]).toEqual([
+      1,
+      '',
+      undefined,
+      '3',
+    ]);
+  }
+  // A user who may not see purchase prices gets no rate either.
+  const hidden = cardsFromUsual([row!], [same], new Set(), false).cards[0]!;
+  expect([hidden.unitLevel, hidden.price, hidden.suggested]).toEqual([2, '', undefined]);
 });

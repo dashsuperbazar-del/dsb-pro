@@ -21,6 +21,8 @@ export function UsualItems(props: {
   onRetry: () => void;
   onRepeat?: () => void;
   disabled?: boolean;
+  /** false: the user may not see purchase prices, so no rate, discount or GST is shown. */
+  showRates?: boolean;
 }) {
   const { load, onBill, disabled } = props;
   const [picked, setPicked] = useState<string[]>([]);
@@ -100,8 +102,11 @@ export function UsualItems(props: {
                       />
                       <span class="usual-name">{r.name}</span>
                       <small class="muted">
-                        {r.unitName} · {rupees(r.unitPricePaise)}
-                        {extra ? ` · ${extra}` : ''} · {r.lastDate}
+                        {r.unitName}
+                        {props.showRates !== false
+                          ? ` · ${rupees(r.unitPricePaise)}${extra ? ` · ${extra}` : ''}`
+                          : ''}{' '}
+                        · {r.lastDate}
                         {added ? ' · added' : ''}
                       </small>
                     </label>

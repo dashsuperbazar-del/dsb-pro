@@ -92,8 +92,9 @@ export function PurchaseBillCards(props: {
   showAdd?: boolean;
   /** "cardKey|field": focus that field of a card the screen just added (field: name, qty …). */
   focusCard?: string;
-  /** The unit this item was last bought in from the bill's supplier, used when it is chosen. */
-  lastUnit?: (itemId: string) => 1 | 2 | 3 | undefined;
+  /** The unit this item was last bought in from the bill's supplier (only while that unit is
+   * unchanged), used when it is chosen. */
+  lastUnit?: (item: Item) => 1 | 2 | 3 | undefined;
   /** Creates an item with the Add item adapter and refreshes the item list; absent = no "+ Create". */
   onCreateItem?: (fields: NewItemFields, clientId: string) => Promise<Item>;
   /** Current sale prices per item id. Absent = the user's role cannot set prices: no sale price box. */
@@ -280,7 +281,7 @@ export function PurchaseBillCards(props: {
   // A chosen item starts in the unit it was last bought in from this supplier (shown as a pressed chip);
   // then the quantity is typed.
   function choose(key: string, item: Item) {
-    const last = latest.current.lastUnit?.(item.id);
+    const last = latest.current.lastUnit?.(item);
     const unitLevel = last && unitChoices(item).some((u) => u.level === last) ? last : 1;
     patch(key, (c) => withItem(c, item, unitLevel));
     setFocusKey(`${key}|qty`);
@@ -309,10 +310,17 @@ export function PurchaseBillCards(props: {
     if (card.item) return setFocusKey(`${card.key}|qty`);
     const search = card.search.trim();
     if (!search) return;
-    const exact = exactItemMatch(list, search);
+    // Only an unambiguous name is picked: exactly one item with that name, or (no item with that
+    // name) exactly one match. Two items sharing a name are chosen by tapping the right one.
+    const key = search.toLowerCase();
+    const exact = list.filter((i) => i.name.trim().toLowerCase() === key);
     const picker = boundedItemOptions(list, card.search, '', MATCH_LIMIT);
-    const only = picker.matches === 1 ? picker.options[0] : undefined;
-    const hit = exact ?? only;
+    const hit =
+      exact.length === 1
+        ? exact[0]
+        : !exact.length && picker.matches === 1
+          ? picker.options[0]
+          : undefined;
     if (hit) {
       choose(card.key, hit);
       return;

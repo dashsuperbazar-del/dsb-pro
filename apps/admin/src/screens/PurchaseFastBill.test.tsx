@@ -45,6 +45,8 @@ const offline = vi.hoisted(() => ({
 }));
 vi.mock('../lib/offlineSync', () => offline);
 const host = document.createElement('div');
+// The last supplier is remembered per user and shop on this device.
+const LAST = `dsb-last-supplier:user:${SHOP}`;
 const one = (id: string, name: string) => ({ id, name, unit1: 'piece', min_stock: 0 });
 const ITEMS = [
   one('a', 'Sugar 1kg'),
@@ -158,20 +160,23 @@ const line = (
   item_name_snapshot: ITEMS.find((i) => i.id === item)!.name,
   unit_level: more.unit ?? 1,
   unit_name_snapshot: more.unitName ?? 'piece',
+  conv1_snapshot: (ITEMS.find((i) => i.id === item) as { conv1?: number }).conv1 ?? null,
+  conv2_snapshot: null,
   unit_price_paise: String(pricePaise),
   discount_bp: more.disc ?? 0,
   gst_bp: more.gst ?? null,
 });
 
 test('a typical 5-item credit bill: remembered supplier, keyboard entry, one tap to post; optional parts closed', async () => {
-  localStorage.setItem(`dsb-last-supplier:${SHOP}`, 'p1');
+  localStorage.setItem(LAST, 'p1');
   await mountEditor();
   // The last supplier is already chosen; its usual items list is offered (empty here).
   await vi.waitFor(() =>
     expect(host.querySelector<HTMLSelectElement>('select[name="partyId"]')!.value).toBe('p1'),
   );
   // Optional parts are closed by default: per-row extras hidden, bill details closed.
-  expect(host.querySelector<HTMLDetailsElement>('details.bill-details')!.open).toBe(false);
+  expect(host.querySelector('.bill-details-toggle')!.getAttribute('aria-expanded')).toBe('false');
+  expect(host.querySelector('#bill-details-body')!.hasAttribute('hidden')).toBe(true);
   expect(text('bill-details-badge')).toBe('discount, charges, notes, photos');
   taps = 0;
   keys = 0;
@@ -255,7 +260,8 @@ test('a value in a closed part is kept, shown as a badge, and posted; a problem 
   // Bill details: closed, but its summary lists what is set inside.
   await setField('input[name="discount"]', '9');
   await setField('textarea[name="notes"]', 'Rate on phone');
-  expect(host.querySelector<HTMLDetailsElement>('details.bill-details')!.open).toBe(false);
+  expect(host.querySelector('.bill-details-toggle')!.getAttribute('aria-expanded')).toBe('false');
+  expect(host.querySelector('#bill-details-body')!.hasAttribute('hidden')).toBe(true);
   expect(text('bill-details-badge')).toBe('discount ₹9 · notes');
   api.postPurchaseV2Outcome.mockResolvedValue(committed(102000));
   await tap(postButton());
@@ -395,8 +401,185 @@ test('the supplier of the last posted bill starts the next bill; Cash keeps its 
   });
   await tap(postButton());
   await vi.waitFor(() => expect(host.textContent).toContain('Purchase posted (1 item)'));
-  expect(localStorage.getItem(`dsb-last-supplier:${SHOP}`)).toBe('p2');
+  expect(localStorage.getItem(LAST)).toBe('p2');
   await vi.waitFor(() =>
     expect(host.querySelector<HTMLSelectElement>('select[name="partyId"]')!.value).toBe('p2'),
   );
+});
+
+const enterIn = (labelText: string) =>
+  act(async () => {
+    field(labelText).focus();
+    field(labelText).dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+    );
+  });
+
+test('Enter picks an item only when its name is unambiguous: two items with one name go to the list', async () => {
+  api.listItems.mockResolvedValue([...ITEMS, { ...one('a2', 'Sugar 1kg') }]);
+  await mountEditor();
+  await setField(label('Item 1 name'), 'Sugar 1kg');
+  await enterIn('Item 1 name');
+  // Not chosen: both "Sugar 1kg" items are offered, the first one has the focus to tap.
+  expect(field('Item 1 name').value).toBe('Sugar 1kg');
+  const matches = field<HTMLElement>('Matches for item 1');
+  expect([...matches.querySelectorAll('button')].map((b) => b.textContent)).toEqual([
+    'Sugar 1kg',
+    'Sugar 1kg',
+  ]);
+  expect(document.activeElement).toBe(matches.querySelector('button'));
+  expect(field('Item 1 quantity').value).toBe('');
+  // One exact name (even with other partial matches) is picked.
+  await setField(label('Item 1 name'), 'Tea 250g');
+  await enterIn('Item 1 name');
+  expect(host.querySelector(label('Matches for item 1'))).toBeNull();
+  expect(document.activeElement).toBe(field('Item 1 quantity'));
+});
+
+test('usual items: a unit renamed or recounted since the last bill gets neither the old unit nor the old rate', async () => {
+  // The rice bag's pack was 10 per bag on the last bill; it is 12 now.
+  api.listItems.mockResolvedValue(ITEMS.map((i) => (i.id === 'c' ? { ...i, conv1: 12 } : i)));
+  api.listSupplierPurchaseLines.mockResolvedValue([
+    {
+      ...line('b1', '2026-10-01', 'c', 3200, { unit: 2, unitName: 'pack', disc: 100 }),
+      conv1_snapshot: 10,
+    },
+  ]);
+  await mountEditor();
+  await setField('select[name="partyId"]', 'p1', 'change');
+  await vi.waitFor(() => expect(host.querySelectorAll('.usual-row')).toHaveLength(1));
+  await tap(field('Rice bag'));
+  await tap(button('Add 1 item'));
+  expect(
+    button('bag', field<HTMLElement>('Item 1 purchased in')).getAttribute('aria-pressed'),
+  ).toBe('true');
+  expect(field('Item 1 rate ₹').value).toBe('');
+  expect(host.querySelector('[data-testid="item-1-suggested"]')).toBeNull();
+  expect(field('Item 1 discount %').value).toBe('1');
+  // Choosing it by hand does not default to the old pack either.
+  await tap(button('+ Add item'));
+  await setField(label('Item 2 name'), 'Rice bag');
+  await enterIn('Item 2 name');
+  expect(
+    button('bag', field<HTMLElement>('Item 2 purchased in')).getAttribute('aria-pressed'),
+  ).toBe('true');
+});
+
+test('the remembered supplier never lands on a resumed draft or a repeat, nor comes back once cleared', async () => {
+  localStorage.setItem(LAST, 'p1');
+  await mountEditor();
+  await vi.waitFor(() =>
+    expect(host.querySelector<HTMLSelectElement>('select[name="partyId"]')!.value).toBe('p1'),
+  );
+  // Cleared by hand: stays cleared while the bill is entered.
+  await setField('select[name="partyId"]', '', 'change');
+  await setField('input[name="billNo"]', 'NOSUP-1');
+  await setField(label('Item 1 name'), 'Oil 1L');
+  await enterIn('Item 1 name');
+  await vi.waitFor(() => expect(host.textContent).toContain('Draft saved on this device'));
+  expect(host.querySelector<HTMLSelectElement>('select[name="partyId"]')!.value).toBe('');
+  // Reopened: a fresh bill gets the supplier, but resuming the draft (no supplier) keeps none.
+  await act(async () => render(null, host));
+  await mountEditor();
+  await vi.waitFor(() =>
+    expect(
+      [...host.querySelectorAll('button')].find((b) => b.textContent === 'Resume draft')?.disabled,
+    ).toBe(false),
+  );
+  await tap(button('Resume draft'));
+  expect(host.querySelector<HTMLInputElement>('input[name="billNo"]')!.value).toBe('NOSUP-1');
+  await act(async () => new Promise((r) => setTimeout(r, 20)));
+  expect(host.querySelector<HTMLSelectElement>('select[name="partyId"]')!.value).toBe('');
+  // A repeat of a bill of another supplier keeps that supplier.
+  await act(async () => render(null, host));
+  localStorage.clear();
+  localStorage.setItem(LAST, 'p1');
+  api.getPurchaseDetail.mockResolvedValue({
+    bill: {
+      id: 'old',
+      status: 'POSTED',
+      party_id: 'p2',
+      bill_no: 'R',
+      business_date: '2026-10-10',
+      discount_paise: '0',
+      extra_charges_paise: '0',
+    },
+    lines: [
+      {
+        line_no: 1,
+        item_id: 'd',
+        item_name_snapshot: 'Oil 1L',
+        unit_level: 1,
+        unit_name_snapshot: 'piece',
+        conv1_snapshot: null,
+        conv2_snapshot: null,
+        qty: '2',
+        unit_price_paise: '5000',
+      },
+    ],
+    balance: null,
+  });
+  api.getPurchaseExtras.mockResolvedValue({
+    paymentType: 'credit',
+    notes: null,
+    lines: [],
+    charges: [],
+    images: [],
+    settlement: { status: 'unpaid' },
+  });
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly purchaseRepeatId="old" />, host);
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('Draft repeated from R'));
+  await act(async () => new Promise((r) => setTimeout(r, 20)));
+  expect(host.querySelector<HTMLSelectElement>('select[name="partyId"]')!.value).toBe('p2');
+});
+
+test('bill details: a problem opens them again after they were closed by hand', async () => {
+  await mountEditor();
+  const toggle = host.querySelector<HTMLButtonElement>('.bill-details-toggle')!;
+  const body = () => host.querySelector('#bill-details-body')!;
+  await tap(toggle);
+  expect(body().hasAttribute('hidden')).toBe(false);
+  await tap(button('+ Add charge'));
+  await setField(label('Extra charge 1 name'), 'Transport');
+  await setField(label('Extra charge 1 amount ₹'), '10');
+  await tap(toggle);
+  expect(body().hasAttribute('hidden')).toBe(true);
+  expect(text('bill-details-badge')).toBe('1 charge ₹10.00');
+  // The amount becomes unreadable (e.g. a restored value): the section opens and says why.
+  await setField(label('Extra charge 1 amount ₹'), 'abc');
+  expect(body().hasAttribute('hidden')).toBe(false);
+  expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  expect(body().textContent).toContain('Extra charge 1:');
+  // Fixed: it stays open (it never folds while typing); closing by hand works again.
+  await setField(label('Extra charge 1 amount ₹'), '12');
+  expect(body().hasAttribute('hidden')).toBe(false);
+  await tap(toggle);
+  expect(body().hasAttribute('hidden')).toBe(true);
+});
+
+test('usual items: the message counts exactly the rows added; payment type is not next to + Add item', async () => {
+  api.listSupplierPurchaseLines.mockResolvedValue([
+    line('b1', '2026-10-01', 'a', 4000),
+    line('b1', '2026-10-01', 'b', 11500),
+  ]);
+  await mountEditor();
+  await setField('select[name="partyId"]', 'p1', 'change');
+  await vi.waitFor(() => expect(host.querySelectorAll('.usual-row')).toHaveLength(2));
+  // Sugar is typed by hand first; then both are ticked from the reopened list.
+  await setField(label('Item 1 name'), 'Sugar 1kg');
+  await enterIn('Item 1 name');
+  await tap(host.querySelector<HTMLButtonElement>('.usual-toggle')!);
+  expect(field('Sugar 1kg (on the bill)').disabled).toBe(true);
+  await tap(field('Tea 250g'));
+  await tap(button('Add 1 item'));
+  expect(rows()).toHaveLength(2);
+  expect(host.textContent).toContain('Added 1 item.');
+  expect(document.activeElement).toBe(field('Item 2 quantity'));
+  // The payment buttons sit in their own group; "+ Add item" is outside it, next to the total.
+  const pay = host.querySelector('.bill-bar [aria-label="Payment type"]')!;
+  const add = button('+ Add item', host.querySelector('.bill-bar')!);
+  expect(pay.contains(add)).toBe(false);
+  expect(add.closest('fieldset')).toBeNull();
 });

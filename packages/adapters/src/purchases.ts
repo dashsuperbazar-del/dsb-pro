@@ -103,6 +103,8 @@ export async function getPurchaseDetail(
   };
 }
 
+const LINE_PAGE = 500;
+const MAX_LINE_PAGES = 40;
 /** One line of a supplier's posted bill, with the bill's date (for the "usual items" list). */
 export type SupplierPurchaseLine = {
   purchase_bill_id: string;
@@ -113,6 +115,9 @@ export type SupplierPurchaseLine = {
   item_name_snapshot: string;
   unit_level: 1 | 2 | 3;
   unit_name_snapshot: string;
+  /** The item's conversions when the bill was posted (a unit redefined since makes the rate stale). */
+  conv1_snapshot: number | null;
+  conv2_snapshot: number | null;
   unit_price_paise: string;
   discount_bp: number;
   gst_bp: number | null;
@@ -146,19 +151,32 @@ export async function listSupplierPurchaseLines(
   if (!Array.isArray(bills.data)) throw new Error('Supplier bills could not be read.');
   if (!bills.data.length) return [];
   const order = new Map(bills.data.map((b, i) => [b.id as string, { ...b, i }]));
-  const lines = await client
-    .from('purchase_bill_items')
-    .select(
-      'purchase_bill_id,line_no,item_id,item_name_snapshot,unit_level,unit_name_snapshot,unit_price_paise::text,discount_bp,gst_bp',
-    )
-    .eq('shop_id', shopId)
-    .in('purchase_bill_id', [...order.keys()])
-    .is('deleted_at', null);
-  if (lines.error) throw new Error(errorMessage(classifyError(lines.error), lines.error));
-  if (!Array.isArray(lines.data)) throw new Error('Supplier bill lines could not be read.');
+  // Paged with a stable order (bill, line, id) below the server's row cap: a long history is read
+  // completely, never cut off silently; past MAX_LINE_PAGES it fails instead.
+  const rows: unknown[] = [];
+  for (let page = 0; ; page++) {
+    if (page >= MAX_LINE_PAGES) throw new Error('Too many supplier bill lines to read.');
+    const from = page * LINE_PAGE;
+    const lines = await client
+      .from('purchase_bill_items')
+      .select(
+        'purchase_bill_id,line_no,item_id,item_name_snapshot,unit_level,unit_name_snapshot,conv1_snapshot,conv2_snapshot,unit_price_paise::text,discount_bp,gst_bp',
+      )
+      .eq('shop_id', shopId)
+      .in('purchase_bill_id', [...order.keys()])
+      .is('deleted_at', null)
+      .order('purchase_bill_id')
+      .order('line_no')
+      .order('id')
+      .range(from, from + LINE_PAGE - 1);
+    if (lines.error) throw new Error(errorMessage(classifyError(lines.error), lines.error));
+    if (!Array.isArray(lines.data)) throw new Error('Supplier bill lines could not be read.');
+    rows.push(...lines.data);
+    if (lines.data.length < LINE_PAGE) break;
+  }
   type Row = Omit<SupplierPurchaseLine, 'business_date' | 'created_at'>;
   const out: { i: number; line: SupplierPurchaseLine }[] = [];
-  for (const l of lines.data as unknown as Row[]) {
+  for (const l of rows as Row[]) {
     const bill = order.get(l.purchase_bill_id);
     if (!bill) continue;
     out.push({
