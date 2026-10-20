@@ -1,8 +1,9 @@
+import { formatQuantity } from '@dsb-pro/core';
 import type { ProfitReport } from '@dsb-pro/adapters';
 import { rupees } from '../lib/money';
 
 // "21.000000" -> "21", "3.500000" -> "3.5": quantities are exact decimals, shown without trailing zeros.
-const qty = (v: string) => (v.includes('.') ? v.replace(/0+$/, '').replace(/\.$/, '') : v);
+const qty = formatQuantity;
 // Basis points -> "44.76%" (null = nothing could be costed). Integer maths only; never a float of money.
 function percent(bp: number | null): string {
   if (bp === null) return '—';

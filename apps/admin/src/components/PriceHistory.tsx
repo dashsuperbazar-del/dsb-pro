@@ -1,3 +1,4 @@
+import { formatQuantity } from '@dsb-pro/core';
 import { useEffect, useState } from 'preact/hooks';
 import { listItemPurchasePrices, type ItemPurchasePrice, type Party } from '@dsb-pro/adapters';
 import { chartPoints, pricePoints, priceSummary } from '../lib/priceHistory';
@@ -78,7 +79,7 @@ export function PriceHistory(props: {
           .slice(0, 5)
           .map((p) => (
             <li key={`${p.row.billId}:${p.row.lineNo}`}>
-              {p.date} · {name(p.row.partyId)} · {p.row.qty} {p.row.unitName} at{' '}
+              {p.date} · {name(p.row.partyId)} · {formatQuantity(p.row.qty)} {p.row.unitName} at{' '}
               {rupees(p.row.unitPricePaise)} = {rupees(p.perBasePaise)} per {props.baseUnit}
             </li>
           ))}

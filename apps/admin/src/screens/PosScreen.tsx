@@ -1,3 +1,4 @@
+import { formatQuantity } from '@dsb-pro/core';
 import { CameraScanner } from '../components/CameraScanner';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
@@ -1172,7 +1173,7 @@ export function PosScreen() {
                     {l.itemName}
                     <small>{l.unitName}</small>
                   </td>
-                  <td>{l.qty}</td>
+                  <td>{formatQuantity(l.qty)}</td>
                   <td data-label="Price">{money(l.unitPricePaise)}</td>
                   <td>{money(l.lineTotalPaise)}</td>
                 </tr>

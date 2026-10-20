@@ -1,3 +1,4 @@
+import { formatQuantity } from '@dsb-pro/core';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   listParties,
@@ -25,8 +26,28 @@ import {
   snapshotUserId,
 } from '../lib/routeSnapshot';
 import { SnapshotNote } from '../components/SnapshotNote';
+import { createDetailCache } from '../lib/detailCache';
 
 type PurchaseListSnapshot = { rows: PurchaseRecord[]; parties: Party[] };
+type Detail = Awaited<ReturnType<typeof getPurchaseDetail>>;
+type ExtrasResult = { ok: true; v: PurchaseExtras } | { ok: false; e: unknown };
+type OpenBill = { detail: Detail; extras: ExtrasResult };
+const billKey = (shopId: string, id: string) => `${shopId}:${id}`;
+// Display-only cache of recently opened bills: reopen and hover-prefetch are instant, every open still
+// revalidates from the server, and any void/post/list refresh invalidates it.
+const billCache = createDetailCache<OpenBill>(async (key) => {
+  const [shopId, id] = key.split(':') as [string, string];
+  const [detail, extras] = await Promise.all([
+    getPurchaseDetail(shopId, id),
+    Promise.resolve()
+      .then(() => getPurchaseExtras(shopId, id))
+      .then(
+        (v): ExtrasResult => ({ ok: true, v }),
+        (e: unknown): ExtrasResult => ({ ok: false, e }),
+      ),
+  ]);
+  return { detail, extras };
+}, 20);
 
 export function PurchasesScreen({ url }: { url?: string }) {
   const query = new URL(url ?? window.location.href, window.location.origin).searchParams;
@@ -40,7 +61,16 @@ export function PurchasesScreen({ url }: { url?: string }) {
   const [statusFilter, setStatusFilter] = useState<BillStatusFilter>('all');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
-  const [detail, setDetail] = useState<Awaited<ReturnType<typeof getPurchaseDetail>> | null>(null);
+  const [detail, setDetail] = useState<Detail | null>(null);
+  // The bill opened from the list: its header shows at once while lines load.
+  const [openRow, setOpenRow] = useState<PurchaseRecord | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
+  // The purchase entry form is mounted only once it is first used (it keeps its draft afterwards).
+  const [entryMounted, setEntryMounted] = useState(entering);
+  useEffect(() => {
+    if (entering) setEntryMounted(true);
+  }, [entering]);
   // billextras: payment type, notes, charges, photos and the ledger-derived settlement of the open bill.
   // null while loading or when it could not be read (then no paid/unpaid badge is shown).
   const [extras, setExtras] = useState<PurchaseExtras | null>(null);
@@ -77,6 +107,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
     try {
       const [bills, suppliers] = await Promise.all([listPurchaseHistory(shopId), listParties()]);
       if (token !== listGeneration.current) return;
+      billCache.clear();
       setRows(bills);
       setParties(suppliers);
       setMore(bills.length === 50);
@@ -142,41 +173,54 @@ export function PurchasesScreen({ url }: { url?: string }) {
       listGeneration.current++;
     };
   }, []);
-  async function open(id: string) {
+  function applyOpen(o: OpenBill) {
+    setDetail(o.detail);
+    if (o.extras.ok) {
+      setExtras(o.extras.v);
+      setExtrasError('');
+    } else {
+      setExtras(null);
+      setExtrasError(`Payment details could not be loaded: ${String(o.extras.e)}`);
+    }
+  }
+  function prefetch(id: string) {
+    if (!shop || billCache.peek(billKey(shop, id))) return;
+    billCache.fetch(billKey(shop, id)).catch(() => undefined);
+  }
+  async function open(id: string, fresh = false) {
     if (!shop) {
       setError('Still loading this shop. Try again in a moment.');
       return;
     }
     const token = ++generation.current;
-    setDetail(null);
-    setExtras(null);
-    setExtrasError('');
-    setError('');
-    setLoading(true);
+    const key = billKey(shop, id);
+    const cached = fresh ? undefined : billCache.peek(key);
+    setOpenRow(rows.find((r) => r.id === id) ?? null);
+    setDetailError('');
+    if (cached) applyOpen(cached);
+    else {
+      setDetail(null);
+      setExtras(null);
+      setExtrasError('');
+    }
     if (voidRequest.current?.billId !== id) {
       voidRequest.current = null;
       setVoidUnconfirmed(false);
       setVoidReason('');
       setVoidNote('');
     }
+    setDetailLoading(true);
     try {
-      const [d, x] = await Promise.all([
-        getPurchaseDetail(shop, id),
-        Promise.resolve()
-          .then(() => getPurchaseExtras(shop, id))
-          .then(
-            (v) => ({ ok: true as const, v }),
-            (e: unknown) => ({ ok: false as const, e }),
-          ),
-      ]);
+      // Always revalidate: a cached bill is shown only until the server answers.
+      // A hover prefetch already in flight is reused; an explicit refresh never is.
+      if (cached || fresh) billCache.invalidate(key);
+      const o = await billCache.fetch(key);
       if (token !== generation.current) return;
-      setDetail(d);
-      if (x.ok) setExtras(x.v);
-      else setExtrasError(`Payment details could not be loaded: ${String(x.e)}`);
+      applyOpen(o);
     } catch (e) {
-      if (token === generation.current) setError(String(e));
+      if (token === generation.current) setDetailError(String(e));
     } finally {
-      if (token === generation.current) setLoading(false);
+      if (token === generation.current) setDetailLoading(false);
     }
   }
   async function voidPaid(billId: string) {
@@ -220,11 +264,12 @@ export function PurchasesScreen({ url }: { url?: string }) {
           ? 'Bill and its payment voided.'
           : 'Bill voided (its payment had already been voided).',
       );
+      billCache.invalidate(billKey(shop, billId));
       await refresh();
       const note = outcome.value.paymentVoided
         ? 'Bill and its payment voided.'
         : 'Bill voided (its payment had already been voided).';
-      await open(billId);
+      await open(billId, true);
       setVoidNote(note);
     } finally {
       setVoidBusy(false);
@@ -264,16 +309,24 @@ export function PurchasesScreen({ url }: { url?: string }) {
         <a href={appRoute.suppliers}>Suppliers & payments</a>
       </nav>
       {error && <p role="alert">{error}</p>}
-      {loading && <p role="status">Loading purchases…</p>}
+      {loading && !rows.length && <p role="status">Loading purchases…</p>}
+      {loading && !!rows.length && (
+        <p class="muted" role="status">
+          Updating the bill list…
+        </p>
+      )}
       {!entering && <SnapshotNote at={snapshotAt} failed={snapshotFailed} />}
-      {allowed && canPost && (
+      {allowed && canPost && (entering || entryMounted) && (
         <div hidden={!entering}>
           <InventoryScreen
             purchaseOnly
             purchaseContextActive={entering}
             purchaseSupplierId={query.get('supplier') ?? ''}
             purchaseRepeatId={query.get('repeat') ?? ''}
-            onPurchasePosted={() => void refresh()}
+            onPurchasePosted={() => {
+              billCache.clear();
+              void refresh();
+            }}
           />
         </div>
       )}
@@ -334,7 +387,15 @@ export function PurchasesScreen({ url }: { url?: string }) {
           </p>
           <div class="record-list">
             {visible.map((b) => (
-              <button type="button" key={b.id} onClick={() => void open(b.id)}>
+              <button
+                type="button"
+                key={b.id}
+                aria-current={openRow?.id === b.id ? 'true' : undefined}
+                onClick={() => void open(b.id)}
+                onPointerEnter={() => prefetch(b.id)}
+                onTouchStart={() => prefetch(b.id)}
+                onFocus={() => prefetch(b.id)}
+              >
                 <span>
                   <strong>{name(b.party_id)}</strong>
                   <small>
@@ -371,8 +432,41 @@ export function PurchasesScreen({ url }: { url?: string }) {
             </button>
           )}
         </section>
-        {detail && (
+        {!detail && openRow && (
           <section class="card" aria-label="Purchase detail">
+            <div class="row">
+              <h2>{openRow.bill_no || 'Purchase bill'}</h2>
+              <button
+                type="button"
+                onClick={() => {
+                  generation.current++;
+                  setOpenRow(null);
+                  setDetailLoading(false);
+                }}
+              >
+                Close detail
+              </button>
+            </div>
+            <p>
+              {name(openRow.party_id)} · {openRow.business_date}
+            </p>
+            <p>
+              <strong>{rupees(openRow.total_paise)}</strong>
+            </p>
+            {detailError ? (
+              <p role="alert">
+                {detailError}{' '}
+                <button type="button" onClick={() => void open(openRow.id, true)}>
+                  Retry
+                </button>
+              </p>
+            ) : (
+              detailLoading && <p role="status">Loading bill lines…</p>
+            )}
+          </section>
+        )}
+        {detail && (
+          <section class="card" aria-label="Purchase detail" aria-busy={detailLoading}>
             <div class="row">
               <h2>{detail.bill.bill_no || 'Purchase bill'}</h2>
               <button
@@ -380,6 +474,8 @@ export function PurchasesScreen({ url }: { url?: string }) {
                 onClick={() => {
                   generation.current++;
                   setDetail(null);
+                  setOpenRow(null);
+                  setDetailLoading(false);
                 }}
               >
                 Close detail
@@ -436,7 +532,8 @@ export function PurchasesScreen({ url }: { url?: string }) {
                     <span>
                       <strong>{l.item_name_snapshot}</strong>
                       <small>
-                        {l.qty} {l.unit_name_snapshot} × {rupees(l.unit_price_paise)}
+                        {formatQuantity(l.qty)} {l.unit_name_snapshot} ×{' '}
+                        {rupees(l.unit_price_paise)}
                         {x?.discountBp ? ` − ${percentText(x.discountBp)}% discount` : ''}
                         {x && x.gstBp !== null ? ` + ${percentText(x.gstBp)}% GST` : ''}
                       </small>

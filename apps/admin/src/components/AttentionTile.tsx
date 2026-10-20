@@ -1,3 +1,4 @@
+import { formatQuantity } from '@dsb-pro/core';
 import { useEffect, useState } from 'preact/hooks';
 import {
   getDefaultShopId,
@@ -123,7 +124,7 @@ export function AttentionTile() {
               <strong>{lowSummary.count}</strong> item{lowSummary.count === 1 ? '' : 's'} below
               minimum stock:{' '}
               {lowSummary.worst
-                .map((r) => `${r.item_name} (${r.on_hand} ${r.unit_name})`)
+                .map((r) => `${r.item_name} (${formatQuantity(r.on_hand)} ${r.unit_name})`)
                 .join(', ')}
               . <a href={appRoute.reports}>Review low stock</a>
             </span>
