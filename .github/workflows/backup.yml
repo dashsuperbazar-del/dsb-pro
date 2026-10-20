@@ -59,10 +59,11 @@ jobs:
         env:
           DOCUMENT_SOURCE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           DOCUMENT_DUMP_DB_URL: ${{ secrets.BACKUP_RO_DATABASE_URL }}
-          DOCUMENT_SOURCE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          DOCUMENT_SOURCE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://zmtvvdgsbdwhowrzkcwr.supabase.co' }}
           DOCUMENT_SOURCE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           set -euo pipefail
+          test -n "$DOCUMENT_SOURCE_KEY" || { echo '::error::Repository secret SUPABASE_SERVICE_ROLE_KEY is not set; private bill documents cannot be backed up.'; exit 1; }
           node scripts/bill-document-backup-cli.mjs backup document-backup public.pgcustom
           node scripts/bill-document-backup-cli.mjs verify document-backup public.pgcustom
           test "$(stat -c%s public.pgcustom)" -ge 1000
