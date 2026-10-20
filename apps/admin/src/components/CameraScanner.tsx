@@ -6,15 +6,19 @@ import {
   createStabilizer,
   retailFormats,
 } from '../lib/cameraScan';
+import { Icon } from './Icon';
 
 // A "Scan with camera" button that opens a live preview, reports one confirmed code, then closes and
 // releases the camera. Rendered nothing at all where the browser cannot scan.
 export function CameraScanner({
   onCode,
   disabled,
+  compact,
 }: {
   onCode: (code: string) => void;
   disabled?: boolean;
+  /** An icon button (bill item rows); the accessible name stays "Scan with camera". */
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState('');
@@ -105,12 +109,15 @@ export function CameraScanner({
         type="button"
         disabled={disabled && !open}
         aria-pressed={open}
+        class={compact ? 'icon-button' : undefined}
+        aria-label={compact && !open ? 'Scan with camera' : undefined}
+        title={compact && !open ? 'Scan with camera' : undefined}
         onClick={() => {
           setError('');
           setOpen((o) => !o);
         }}
       >
-        {open ? 'Stop camera' : 'Scan with camera'}
+        {open ? 'Stop camera' : compact ? <Icon name="scan" /> : 'Scan with camera'}
       </button>
       {open && (
         <span class="muted" role="status">

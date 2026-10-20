@@ -1,4 +1,10 @@
-import { stockTask, addItemForm, fillBillItem } from './design-helpers';
+import {
+  stockTask,
+  addItemForm,
+  fillBillItem,
+  openBillDetails,
+  openItemMore,
+} from './design-helpers';
 import { test, expect } from '@playwright/test';
 
 const PASSWORD = 'TestOnly-2026!pw';
@@ -185,6 +191,9 @@ test('a bill card shows the unit conversion and sets a retail price that POS the
   await form.getByLabel('Item 1 small units per big').fill('12');
   await form.getByRole('button', { name: 'Save item' }).click();
   await expect(form).toHaveCount(0);
+  // Conversion and sale prices sit behind the row's "More" toggle.
+  await expect(purchase.getByTestId('item-1-more')).toBeHidden();
+  await openItemMore(purchase, 1);
   await expect(purchase.getByTestId('item-1-conversion')).toHaveText('1 ctn = 12 pcs');
   await purchase.getByLabel('Item 1 quantity', { exact: true }).fill('2');
   await purchase.getByLabel('Item 1 rate ₹', { exact: true }).fill('96');
@@ -217,6 +226,7 @@ test('a bill card shows the unit conversion and sets a retail price that POS the
     .getByRole('group', { name: 'Matches for item 1', exact: true })
     .getByRole('button', { name: 'Card Biscuit', exact: true })
     .click();
+  await openItemMore(purchase, 1);
   await expect(sale.getByLabel('Item 1 retail ₹')).toHaveValue('10.00');
   await expect(sale.getByLabel('Item 1 wholesale price ₹')).toHaveValue('');
   await expect(sale).toContainText('Current wholesale ₹9.00 per pcs');
@@ -383,6 +393,10 @@ test('a cash bill with item discount/GST and a named charge posts with its round
   await purchase.locator('input[name="billNo"]').fill('CASH-1');
   // 3 x 33.53 = 100.59, 2% off = 98.5782, +5% GST = 103.50711 -> ₹103.51 (core = server line total).
   await fillBillItem(purchase, 1, 'Cash Oil', '3', '33.53');
+  // Discount and GST are behind the row's "More"; Bill details (charges, notes) start closed.
+  await expect(purchase.getByLabel('Item 1 discount %', { exact: true })).toBeHidden();
+  await expect(purchase.locator('textarea[name="notes"]')).toBeHidden();
+  await openItemMore(purchase, 1);
   await purchase.getByLabel('Item 1 discount %', { exact: true }).fill('2');
   await expect(purchase.getByTestId('item-1-gst-hint')).toHaveText(
     'GST blank: the rate already includes GST. Nothing is added.',
@@ -392,11 +406,19 @@ test('a cash bill with item discount/GST and a named charge posts with its round
     '5% GST added on top of the rate.',
   );
   await expect(purchase.getByTestId('item-1-amount')).toContainText('Item total ₹103.51');
+  // Closed again, the row keeps the values and names them.
+  await purchase.getByRole('button', { name: 'More for item 1', exact: true }).click();
+  await expect(purchase.getByLabel('Item 1 discount %', { exact: true })).toBeHidden();
+  await expect(purchase.getByTestId('item-1-badge')).toHaveText('−2% +5% GST');
+  await openBillDetails(purchase);
   await purchase.getByRole('button', { name: '+ Add charge', exact: true }).click();
   await purchase.getByLabel('Extra charge 1 name', { exact: true }).fill('Transport');
   await purchase.getByLabel('Extra charge 1 amount ₹', { exact: true }).fill('10');
   await purchase.locator('textarea[name="notes"]').fill('Paid at the counter');
+  await purchase.locator('details.bill-details > summary').click();
+  await expect(purchase.getByTestId('bill-details-badge')).toHaveText('1 charge ₹10.00 · notes');
   await purchase
+    .locator('.bill-bar')
     .getByRole('group', { name: 'Payment type', exact: true })
     .getByRole('button', { name: 'Cash', exact: true })
     .click();
@@ -531,4 +553,95 @@ test('returning a whole rounded bill shows the return round off in Returns and t
   await expect(returnRow.locator('td[data-label="Document"]')).toContainText(
     'Round off −₹0.49 (included)',
   );
+});
+
+test('fast bill: the supplier is remembered, its usual items are added in one go with empty quantities, Enter moves row to row', async ({
+  page,
+}) => {
+  test.setTimeout(90000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await createOwnerShop(page);
+  await page.goto('/inventory');
+  for (const name of ['Usual Sugar', 'Usual Tea', 'Usual Salt']) await createItem(page, name);
+  await page.goto('/purchases?new=1');
+  const purchase = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Post purchase', exact: true }) })
+    .last();
+  await expect(purchase.locator('input[name="date"]')).not.toHaveValue('');
+  await expect(purchase.locator('fieldset').first()).toBeEnabled();
+  await page.getByText('Add a supplier', { exact: true }).click();
+  const supplier = page
+    .getByRole('button', { name: 'Create & select supplier' })
+    .locator('xpath=..');
+  await supplier.getByPlaceholder('New supplier name').fill('Usual Traders');
+  await supplier.getByRole('button', { name: 'Create & select supplier' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Created supplier' })).toBeVisible();
+  // Keyboard only: name, Enter (the only match), qty, Enter, rate, Enter (the next row) …
+  const post = purchase.getByRole('button', { name: 'Post purchase', exact: true });
+  async function typeBill(rows: [string, string, string][]) {
+    await purchase.getByLabel('Item 1 name', { exact: true }).click();
+    for (const [i, [name, qty, rate]] of rows.entries()) {
+      await expect(purchase.getByLabel(`Item ${i + 1} name`, { exact: true })).toBeFocused();
+      await page.keyboard.type(name);
+      await page.keyboard.press('Enter');
+      await expect(purchase.getByLabel(`Item ${i + 1} quantity`, { exact: true })).toBeFocused();
+      await page.keyboard.type(qty);
+      await page.keyboard.press('Enter');
+      await page.keyboard.type(rate);
+      if (i < rows.length - 1) await page.keyboard.press('Enter');
+    }
+  }
+  const posted = page.getByRole('status').filter({ hasText: 'Purchase posted (2 items)' });
+  await typeBill([
+    ['Usual Sugar', '10', '42'],
+    ['Usual Tea', '5', '120'],
+  ]);
+  await expect(purchase.getByRole('region', { name: /^Item \d+$/ })).toHaveCount(2);
+  await post.click();
+  await expect(posted).toBeVisible();
+  await expect(purchase.getByLabel('Item 1 name', { exact: true })).toHaveValue('');
+  // The next bill starts with the same supplier.
+  await expect(purchase.locator('select[name="partyId"] option:checked')).toHaveText(
+    'Usual Traders',
+  );
+  await typeBill([
+    ['Usual Sugar', '4', '43'],
+    ['Usual Salt', '20', '18'],
+  ]);
+  await post.click();
+  await expect(posted).toBeVisible();
+  await expect(purchase.getByLabel('Item 1 name', { exact: true })).toHaveValue('');
+
+  // A new bill: the usual items (read through PostgREST) list each item once, most bought first.
+  await page.goto('/purchases?new=1');
+  await expect(purchase.locator('select[name="partyId"] option:checked')).toHaveText(
+    'Usual Traders',
+  );
+  const usual = purchase.getByRole('group', { name: 'Usual items', exact: true });
+  await expect(usual.locator('.usual-name')).toHaveText(['Usual Sugar', 'Usual Salt', 'Usual Tea']);
+  await expect(usual.locator('.usual-row').first()).toContainText('piece · ₹43.00');
+  await usual.getByLabel('Usual Sugar', { exact: true }).click();
+  await usual.getByLabel('Usual Tea', { exact: true }).click();
+  await usual.getByRole('button', { name: 'Add 2 items', exact: true }).click();
+  await expect(purchase.getByRole('region', { name: /^Item \d+$/ })).toHaveCount(2);
+  const qty1 = purchase.getByLabel('Item 1 quantity', { exact: true });
+  await expect(qty1).toBeFocused();
+  await expect(qty1).toHaveValue('');
+  await expect(purchase.getByLabel('Item 1 rate ₹', { exact: true })).toHaveValue('43.00');
+  await expect(purchase.getByTestId('item-1-suggested')).toContainText('Last rate');
+  await page.keyboard.type('6');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter');
+  await expect(purchase.getByLabel('Item 2 quantity', { exact: true })).toBeFocused();
+  await page.keyboard.type('2');
+  await expect(purchase.getByTestId('bill-total')).toContainText('Bill total₹498.00');
+  // Bill details stay closed with nothing set in them.
+  await expect(purchase.getByTestId('bill-details-badge')).toHaveText(
+    'discount, charges, notes, photos',
+  );
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await post.click();
+  await expect(posted).toBeVisible();
+  await expect(purchase.getByLabel('Item 1 name', { exact: true })).toHaveValue('');
 });

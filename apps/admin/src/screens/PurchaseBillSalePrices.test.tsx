@@ -25,6 +25,7 @@ const api = vi.hoisted(() => ({
   setItemPrice: vi.fn(),
   listPurchaseHistory: vi.fn().mockResolvedValue([]),
   getPurchaseDetail: vi.fn(),
+  listSupplierPurchaseLines: vi.fn().mockResolvedValue([]),
   postPurchaseOutcome: vi.fn(),
   postPurchaseV2Outcome: vi.fn(),
   getPurchaseExtras: vi.fn().mockResolvedValue({

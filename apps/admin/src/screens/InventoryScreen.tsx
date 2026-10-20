@@ -13,8 +13,9 @@ import {
   type NewItemFields,
 } from '../lib/newItem';
 import { PurchaseBillCards } from '../components/PurchaseBillCards';
+import { UsualItems, type UsualLoad } from '../components/UsualItems';
+import { cardsFromUsual, itemsOnBill, usualItems, type UsualItem } from '../lib/usualItems';
 import {
-  addCardAtEnd,
   billFromCards,
   cardDrafts,
   cardFromLine,
@@ -40,6 +41,7 @@ import {
   onAuthStateChange,
   getPurchaseDetail,
   listPurchaseHistory,
+  listSupplierPurchaseLines,
   type PurchaseRecord,
   getShopBusinessDate,
   importLegacyDsbMaster,
@@ -511,6 +513,126 @@ export function InventoryScreen({
       active = false;
     };
   }, [shopId, purchaseSupplier, recentBills, purchaseOnly]);
+  // Usual items from the chosen supplier (distinct items of its posted bills, most bought first). The
+  // list is keyed by shop and supplier: an answer for another supplier is dropped, and adding checks the
+  // key against the current supplier again, so a supplier switch mid-read adds nothing.
+  const purchaseCardsRef = useRef(purchaseCards);
+  purchaseCardsRef.current = purchaseCards;
+  const usualKey = shopId && purchaseSupplier ? `${shopId}:${purchaseSupplier}` : '';
+  const [usual, setUsual] = useState<{ key: string; load: UsualLoad } | null>(null);
+  const [usualOpen, setUsualOpen] = useState(false);
+  const [usualReload, setUsualReload] = useState(0);
+  useEffect(() => {
+    if (!purchaseOnly || !usualKey) {
+      setUsual(null);
+      return;
+    }
+    const key = usualKey;
+    const [shop, party] = [shopId, purchaseSupplier];
+    let active = true;
+    setUsual((u) =>
+      u?.key === key && u.load.state === 'ok' ? u : { key, load: { state: 'loading' } },
+    );
+    // Through a promise, so an unavailable read becomes a "could not be read" note, never a crash.
+    void Promise.resolve()
+      .then(() => listSupplierPurchaseLines(shop, party))
+      .then((lines) => {
+        if (active) setUsual({ key, load: { state: 'ok', rows: usualItems(lines) } });
+      })
+      .catch((e) => {
+        if (active)
+          setUsual({
+            key,
+            load: { state: 'failed', message: e instanceof Error ? e.message : String(e) },
+          });
+      });
+    return () => {
+      active = false;
+    };
+  }, [usualKey, purchaseOnly, recentBills, usualReload]);
+  // A new supplier on an empty bill opens its usual items: picking from them is the fast way in.
+  useEffect(() => {
+    setUsualOpen(!!usualKey && purchaseCardsRef.current.every((c) => isBlankCard(c)));
+  }, [usualKey]);
+  // Once the bill has an item the list folds away (its toggle reopens it), leaving room for the rows.
+  const billStarted = purchaseCards.some((c) => !isBlankCard(c));
+  useEffect(() => {
+    if (billStarted) setUsualOpen(false);
+  }, [billStarted]);
+  const usualRows = usual?.key === usualKey && usual.load.state === 'ok' ? usual.load.rows : null;
+  const lastUnit = (itemId: string) => usualRows?.find((r) => r.itemId === itemId)?.unitLevel;
+  const [focusCard, setFocusCard] = useState('');
+  function addUsualItems(key: string, rows: UsualItem[]) {
+    const now = copyContextRef.current;
+    if (!now.shopId || `${now.shopId}:${now.purchaseSupplier}` !== key) {
+      setMessage('Supplier changed — nothing added.');
+      return;
+    }
+    const current = purchaseCardsRef.current;
+    const { cards, skipped } = cardsFromUsual(rows, itemsRef.current, itemsOnBill(current));
+    if (cards.length) {
+      setPurchaseCards((c) => {
+        const base = c.length && isBlankCard(c[c.length - 1]!) ? c.slice(0, -1) : c;
+        // Another change may have put one of these items on the bill meanwhile: never twice.
+        const onBill = itemsOnBill(base);
+        return [...base, ...cards.filter((card) => !onBill.has(card.item!.id))];
+      });
+      setDraftTouched(true);
+      setFocusCard(`${cards[0]!.key}|qty`);
+      setUsualOpen(false);
+    }
+    setMessage(
+      (cards.length
+        ? `Added ${cards.length} item${cards.length === 1 ? '' : 's'}. Type each quantity; the rate is the last one paid — check it.`
+        : 'Nothing added.') +
+        (skipped.length ? ` Not in the item list any more: ${skipped.join(', ')}.` : ''),
+    );
+  }
+  // "+ Add item" in the bill bar: a new empty row at the end, its item name focused.
+  function addItemRow() {
+    const card = emptyCard();
+    setPurchaseCards((c) => [...c, card]);
+    setDraftTouched(true);
+    setFocusCard(`${card.key}|name`);
+  }
+  // The supplier of the last bill posted on this device starts a new, untouched bill (shown at the top,
+  // changeable). Applied once per bill: clearing it by hand is respected.
+  const lastSupplierKey = shopId ? `dsb-last-supplier:${shopId}` : '';
+  const rememberedFor = useRef('');
+  useEffect(() => {
+    if (
+      !purchaseOnly ||
+      !lastSupplierKey ||
+      !purchaseContextReady ||
+      contextBusy ||
+      purchaseLocked ||
+      purchaseSupplierId ||
+      purchaseRepeatId ||
+      rememberedFor.current === purchaseClientId
+    )
+      return;
+    if (purchaseSupplier || draftTouched || !purchaseCards.every((c) => isBlankCard(c))) {
+      rememberedFor.current = purchaseClientId;
+      return;
+    }
+    let last = '';
+    try {
+      last = localStorage.getItem(lastSupplierKey) ?? '';
+    } catch {
+      last = '';
+    }
+    if (!last || !parties.length) return;
+    rememberedFor.current = purchaseClientId;
+    if (parties.some((p) => p.id === last)) setPurchaseSupplier(last);
+  }, [
+    purchaseOnly,
+    lastSupplierKey,
+    purchaseContextReady,
+    contextBusy,
+    purchaseLocked,
+    purchaseClientId,
+    parties,
+  ]);
   useEffect(() => {
     const intent = purchaseSupplierId + ':' + purchaseRepeatId;
     if (
@@ -1035,6 +1157,22 @@ export function InventoryScreen({
     ? (lockedV2?.paymentType ?? 'credit')
     : purchasePaymentType;
   const notesTooLong = purchaseNotes.trim().length > NOTES_MAX;
+  const editLocked = purchaseLocked || contextBusy || documentBusy || !purchaseContextReady;
+  // Bill details (discount, charges, notes, photos) start closed; the summary names every value in it,
+  // and a problem there opens it.
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const detailsForced = !!chargesResult.problems.length || notesTooLong || !totals.ok;
+  const detailsShown = detailsOpen || detailsForced;
+  const detailsBadges = [
+    purchaseDiscount.trim() ? `discount ₹${purchaseDiscount.trim()}` : '',
+    purchaseCharges.length
+      ? `${purchaseCharges.length} charge${purchaseCharges.length === 1 ? '' : 's'}${chargesResult.totalPaise ? ` ${rupees(chargesResult.totalPaise)}` : ''}`
+      : '',
+    purchaseNotes.trim() ? 'notes' : '',
+    billDocuments.length
+      ? `${billDocuments.length} photo${billDocuments.length === 1 ? '' : 's'}`
+      : '',
+  ].filter(Boolean);
 
   async function chooseLegacyBackup(ev: Event) {
     setError('');
@@ -1581,6 +1719,13 @@ export function InventoryScreen({
           : '';
       // Only a purchase built from this cart (it carries the cart's id) clears the cart when it posts;
       // a restored entry from another window leaves the user's cart intact (Codex P2).
+      // The next new bill on this device starts with this supplier (shown, changeable).
+      if (request.partyId)
+        try {
+          localStorage.setItem(`dsb-last-supplier:${request.shopId}`, request.partyId);
+        } catch {
+          // A convenience only: a new bill then starts without a supplier.
+        }
       if (request.clientId === purchaseClientId) {
         setPurchaseClientId(crypto.randomUUID());
         for (const d of billDocuments) void removeLocalDocument(draftPrefix, d.id).catch(() => {});
@@ -2260,12 +2405,9 @@ export function InventoryScreen({
                 ))}
             </div>
           )}
-          <fieldset
-            disabled={purchaseLocked || contextBusy || documentBusy || !purchaseContextReady}
-            class="plain"
-          >
-            <label>
-              Supplier
+          <fieldset disabled={editLocked} class="plain bill-head">
+            <label class="bill-supplier">
+              <small>Supplier</small>
               <select
                 name="partyId"
                 value={purchaseSupplier}
@@ -2278,8 +2420,8 @@ export function InventoryScreen({
                   </option>
                 ))}
               </select>
-            </label>{' '}
-            {purchaseOnly && (
+            </label>
+            {purchaseOnly && !purchaseSupplier && (
               <div class="shortcut-chips" aria-label="Recent suppliers">
                 {rankedPurchaseParties(parties, recentBills, businessDate)
                   .slice(0, 6)
@@ -2297,142 +2439,44 @@ export function InventoryScreen({
                   ))}
               </div>
             )}
-            <label>
-              Bill no.{' '}
-              <input
-                name="billNo"
-                placeholder="Bill no."
-                value={purchaseBillNo}
-                onInput={(e) => setPurchaseBillNo(e.currentTarget.value)}
-              />
-            </label>{' '}
-            <label>
-              Business date
-              <input
-                name="date"
-                type="date"
-                value={businessDate}
-                onInput={(e) => setBusinessDate((e.currentTarget as HTMLInputElement).value)}
-                required
-              />
-            </label>{' '}
-            <div class="shortcut-chips" role="group" aria-label="Payment type">
-              <small class="muted">Payment type</small>
-              {(['credit', 'cash', 'upi'] as const).map((t) => (
-                <button
-                  type="button"
-                  key={t}
-                  aria-pressed={purchasePaymentType === t}
-                  onClick={() => {
-                    setPurchasePaymentType(t);
-                    setDraftTouched(true);
-                  }}
-                >
-                  {PAYMENT_LABEL[t]}
-                </button>
-              ))}
+            <div class="bill-head-row">
+              <label>
+                <small>Bill no.</small>
+                <input
+                  name="billNo"
+                  placeholder="Bill no."
+                  enterKeyHint="next"
+                  value={purchaseBillNo}
+                  onInput={(e) => setPurchaseBillNo(e.currentTarget.value)}
+                />
+              </label>
+              <label>
+                <small>Business date</small>
+                <input
+                  name="date"
+                  type="date"
+                  value={businessDate}
+                  onInput={(e) => setBusinessDate((e.currentTarget as HTMLInputElement).value)}
+                  required
+                />
+              </label>
             </div>
           </fieldset>
-          {draftPrefix && (
-            <BillAttachmentEditor
-              key={purchaseClientId}
-              scope={draftPrefix}
-              tenantId={tenantId}
-              shopId={shopId}
-              clientId={purchaseClientId}
-              documents={billDocuments}
-              disabled={purchaseLocked || contextBusy || !purchaseContextReady || accountChanged}
-              onProblem={(message) => {
-                if (purchaseClientRef.current === purchaseClientId) setDocumentSaveError(message);
-              }}
-              onBusy={(busy) => {
-                if (purchaseClientRef.current === purchaseClientId) setDocumentBusy(busy);
-              }}
-              beforePicker={() => {
-                if (
-                  lockedPurchase.current ||
-                  contextBusy ||
-                  documentBusy ||
-                  !purchaseContextReady ||
-                  accountChanged
-                )
-                  return false;
-                try {
-                  const notice =
-                    'Document selection needs review. Select the file again, or explicitly continue with the current attachment.';
-                  savePurchaseDraft(draftPrefix, draftWriter.current, {
-                    ...draftSnapshot,
-                    documentIssue: notice,
-                    savedAt: Date.now(),
-                  });
-                  setDocumentSaveError(notice);
-                  return true;
-                } catch (e) {
-                  setDocumentSaveError(
-                    `Draft could not be kept before opening the picker: ${String(e)}`,
-                  );
-                  return false;
-                }
-              }}
-              onChange={(docs) => {
-                if (purchaseClientRef.current !== purchaseClientId || lockedPurchase.current)
-                  return;
-                try {
-                  savePurchaseDraft(draftPrefix, draftWriter.current, {
-                    ...draftSnapshot,
-                    document: docs[0] ?? null,
-                    documents: docs,
-                    documentIssue: '',
-                    savedAt: Date.now(),
-                  });
-                  setBillDocuments(docs);
-                  setDraftTouched(true);
-                  setDocumentSaveError('');
-                } catch (e) {
-                  setDocumentSaveError(String(e));
-                  throw e;
-                }
-              }}
+          {purchaseOnly && purchaseSupplier && usual && usual.key === usualKey && (
+            <UsualItems
+              key={usual.key}
+              supplierName={parties.find((p) => p.id === purchaseSupplier)?.name ?? 'this supplier'}
+              load={usual.load}
+              onBill={itemsOnBill(purchaseCards)}
+              open={usualOpen}
+              onToggle={() => setUsualOpen((o) => !o)}
+              onAdd={(rows) => addUsualItems(usual.key, rows)}
+              onRetry={() => setUsualReload((n) => n + 1)}
+              onRepeat={recentDetail ? repeatLastBill : undefined}
+              disabled={editLocked}
             />
           )}
-          {documentSaveError && (
-            <div role="alert">
-              <p>{documentSaveError}</p>
-              <button
-                type="button"
-                disabled={purchaseLocked || documentBusy}
-                onClick={() => setDocumentSaveError('')}
-              >
-                {billDocuments.length ? 'Keep current attachment' : 'Continue without attachment'}
-              </button>
-            </div>
-          )}
-          <fieldset
-            disabled={purchaseLocked || contextBusy || documentBusy || !purchaseContextReady}
-            class="plain"
-          >
-            <label class="bill-notes">
-              Notes
-              <textarea
-                name="notes"
-                rows={2}
-                maxLength={NOTES_MAX}
-                placeholder="Optional notes…"
-                value={purchaseNotes}
-                onInput={(e) => {
-                  setPurchaseNotes(e.currentTarget.value);
-                  setDraftTouched(true);
-                }}
-              />
-              <small class={notesTooLong ? 'alert' : 'muted'} data-testid="notes-count">
-                {purchaseNotes.trim().length}/{NOTES_MAX}
-              </small>
-            </label>
-          </fieldset>
-          <fieldset
-            disabled={purchaseLocked || contextBusy || documentBusy || !purchaseContextReady}
-            class="plain"
-          >
+          <fieldset disabled={editLocked} class="plain">
             <PurchaseBillCards
               cards={purchaseCards}
               items={items}
@@ -2440,7 +2484,7 @@ export function InventoryScreen({
                 setPurchaseCards(next);
                 setDraftTouched(true);
               }}
-              disabled={purchaseLocked || contextBusy || documentBusy || !purchaseContextReady}
+              disabled={editLocked}
               shopId={shopId}
               parties={parties}
               canSeePrices={canSeePurchasePrices}
@@ -2448,116 +2492,11 @@ export function InventoryScreen({
               onMessage={setMessage}
               findBarcode={findBarcodeForCard}
               onCreateItem={tenantId ? createItemFromCard : undefined}
-              onRepeat={purchaseOnly && recentDetail ? repeatLastBill : undefined}
-              recent={
-                purchaseOnly && recentDetail
-                  ? recentDetail.lines.slice(0, 8).map((l, n) => ({
-                      key: `${l.item_id}:${l.unit_level}:${n}`,
-                      label: `${l.item_name_snapshot} · ${rupees(l.unit_price_paise)}/${l.unit_name_snapshot}`,
-                      onAdd: async () => {
-                        try {
-                          const got = await cardsFromBill(recentDetail, [l]);
-                          if (!Array.isArray(got)) {
-                            setMessage(got.stale);
-                            return;
-                          }
-                          const [card] = got;
-                          setPurchaseCards((c) => addCardAtEnd(c, card!));
-                          setDraftTouched(true);
-                          setMessage(
-                            'Added from the last supplier bill. Check the quantity and rate.',
-                          );
-                        } catch (e) {
-                          setError(String(e));
-                        }
-                      },
-                    }))
-                  : undefined
-              }
+              showAdd={false}
+              focusCard={focusCard}
+              lastUnit={lastUnit}
             />
-            <div class="bill-charges" role="group" aria-label="Extra charges">
-              <strong class="bill-section-title">Extra charges (bill level)</strong>
-              {purchaseCharges.map((c, i) => (
-                <div class="bill-charge-row" key={c.key} data-charge={i}>
-                  <input
-                    aria-label={`Extra charge ${i + 1} name`}
-                    autocomplete="off"
-                    maxLength={60}
-                    placeholder="Transport, packing…"
-                    value={c.label}
-                    onInput={(e) => {
-                      const label = e.currentTarget.value;
-                      setPurchaseCharges((rows) =>
-                        rows.map((r) => (r.key === c.key ? { ...r, label } : r)),
-                      );
-                      setDraftTouched(true);
-                    }}
-                  />
-                  <input
-                    aria-label={`Extra charge ${i + 1} amount ₹`}
-                    type="text"
-                    inputMode="decimal"
-                    autocomplete="off"
-                    placeholder="₹"
-                    value={c.amount}
-                    onInput={(e) => {
-                      const amount = e.currentTarget.value;
-                      setPurchaseCharges((rows) =>
-                        rows.map((r) => (r.key === c.key ? { ...r, amount } : r)),
-                      );
-                      setDraftTouched(true);
-                    }}
-                  />
-                  <button
-                    type="button"
-                    aria-label={`Remove extra charge ${i + 1}`}
-                    onClick={() => {
-                      setPurchaseCharges((rows) => rows.filter((r) => r.key !== c.key));
-                      setDraftTouched(true);
-                    }}
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-              {chargesResult.problems.map((p) => (
-                <small class="alert" key={p.index}>
-                  Extra charge {p.index + 1}: {p.message}
-                </small>
-              ))}
-              <div class="row">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPurchaseCharges((rows) => [...rows, emptyCharge()]);
-                    setDraftTouched(true);
-                  }}
-                >
-                  + Add charge
-                </button>
-                {chargesResult.totalPaise > 0 && (
-                  <span data-testid="charges-sum">
-                    Extra charges {rupees(chargesResult.totalPaise)}
-                  </span>
-                )}
-              </div>
-            </div>
-            <div class="bill-adjustments">
-              <label>
-                Bill discount ₹
-                <input
-                  name="discount"
-                  type="number"
-                  inputMode="decimal"
-                  min="0"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={purchaseDiscount}
-                  onInput={(e) => setPurchaseDiscount(e.currentTarget.value)}
-                />
-              </label>
-            </div>
-            <div class="bill-total card" aria-label="Bill total" data-testid="bill-total">
+            <div class="bill-total" aria-label="Bill total" data-testid="bill-total">
               <p>
                 <span>Items ({purchaseBill.lines.length})</span>
                 <span>{rupees(purchaseBill.itemsTotalPaise)}</span>
@@ -2576,14 +2515,18 @@ export function InventoryScreen({
                       <span>+{rupees(totals.extraChargesPaise)}</span>
                     </p>
                   )}
-                  <p class="muted">
-                    <span>Total before round off</span>
-                    <span>{rupees(totals.totalBeforeRoundOffPaise)}</span>
-                  </p>
-                  <p class="muted" data-testid="round-off">
-                    <span>Round off</span>
-                    <span>{roundOffText(totals.roundOffPaise).slice('Round off '.length)}</span>
-                  </p>
+                  {totals.roundOffPaise !== 0 && (
+                    <>
+                      <p class="muted">
+                        <span>Total before round off</span>
+                        <span>{rupees(totals.totalBeforeRoundOffPaise)}</span>
+                      </p>
+                      <p class="muted" data-testid="round-off">
+                        <span>Round off</span>
+                        <span>{roundOffText(totals.roundOffPaise).slice('Round off '.length)}</span>
+                      </p>
+                    </>
+                  )}
                 </>
               ) : (
                 <p class="alert">{totals.message}</p>
@@ -2592,11 +2535,195 @@ export function InventoryScreen({
                 <span>Bill total</span>
                 <strong>{payablePreview}</strong>
               </p>
-              <small class="muted">
-                Rounded to the nearest rupee, as the old app did. Items keep their exact value.
-              </small>
             </div>
           </fieldset>
+          <details
+            class="bill-details"
+            open={detailsShown}
+            onToggle={(e) => setDetailsOpen((e.currentTarget as HTMLDetailsElement).open)}
+          >
+            <summary>
+              Bill details{' '}
+              <span class="bill-details-badge" data-testid="bill-details-badge">
+                {detailsBadges.length
+                  ? detailsBadges.join(' · ')
+                  : 'discount, charges, notes, photos'}
+              </span>
+            </summary>
+            <fieldset disabled={editLocked} class="plain">
+              <label class="bill-discount">
+                <small>Bill discount ₹</small>
+                <input
+                  name="discount"
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={purchaseDiscount}
+                  onInput={(e) => setPurchaseDiscount(e.currentTarget.value)}
+                />
+              </label>
+              <div class="bill-charges" role="group" aria-label="Extra charges">
+                <small>Extra charges</small>
+                {purchaseCharges.map((c, i) => (
+                  <div class="bill-charge-row" key={c.key} data-charge={i}>
+                    <input
+                      aria-label={`Extra charge ${i + 1} name`}
+                      autocomplete="off"
+                      maxLength={60}
+                      placeholder="Transport, packing…"
+                      value={c.label}
+                      onInput={(e) => {
+                        const label = e.currentTarget.value;
+                        setPurchaseCharges((rows) =>
+                          rows.map((r) => (r.key === c.key ? { ...r, label } : r)),
+                        );
+                        setDraftTouched(true);
+                      }}
+                    />
+                    <input
+                      aria-label={`Extra charge ${i + 1} amount ₹`}
+                      type="text"
+                      inputMode="decimal"
+                      autocomplete="off"
+                      placeholder="₹"
+                      value={c.amount}
+                      onInput={(e) => {
+                        const amount = e.currentTarget.value;
+                        setPurchaseCharges((rows) =>
+                          rows.map((r) => (r.key === c.key ? { ...r, amount } : r)),
+                        );
+                        setDraftTouched(true);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      aria-label={`Remove extra charge ${i + 1}`}
+                      onClick={() => {
+                        setPurchaseCharges((rows) => rows.filter((r) => r.key !== c.key));
+                        setDraftTouched(true);
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                {chargesResult.problems.map((p) => (
+                  <small class="alert" key={p.index}>
+                    Extra charge {p.index + 1}: {p.message}
+                  </small>
+                ))}
+                <div class="row">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPurchaseCharges((rows) => [...rows, emptyCharge()]);
+                      setDraftTouched(true);
+                    }}
+                  >
+                    + Add charge
+                  </button>
+                  {chargesResult.totalPaise > 0 && (
+                    <span data-testid="charges-sum">
+                      Extra charges {rupees(chargesResult.totalPaise)}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <label class="bill-notes">
+                <small>Notes</small>
+                <textarea
+                  name="notes"
+                  rows={2}
+                  maxLength={NOTES_MAX}
+                  placeholder="Optional notes…"
+                  value={purchaseNotes}
+                  onInput={(e) => {
+                    setPurchaseNotes(e.currentTarget.value);
+                    setDraftTouched(true);
+                  }}
+                />
+                <small class={notesTooLong ? 'alert' : 'muted'} data-testid="notes-count">
+                  {purchaseNotes.trim().length}/{NOTES_MAX}
+                </small>
+              </label>
+            </fieldset>
+            {draftPrefix && (
+              <BillAttachmentEditor
+                key={purchaseClientId}
+                scope={draftPrefix}
+                tenantId={tenantId}
+                shopId={shopId}
+                clientId={purchaseClientId}
+                documents={billDocuments}
+                disabled={purchaseLocked || contextBusy || !purchaseContextReady || accountChanged}
+                onProblem={(message) => {
+                  if (purchaseClientRef.current === purchaseClientId) setDocumentSaveError(message);
+                }}
+                onBusy={(busy) => {
+                  if (purchaseClientRef.current === purchaseClientId) setDocumentBusy(busy);
+                }}
+                beforePicker={() => {
+                  if (
+                    lockedPurchase.current ||
+                    contextBusy ||
+                    documentBusy ||
+                    !purchaseContextReady ||
+                    accountChanged
+                  )
+                    return false;
+                  try {
+                    const notice =
+                      'Document selection needs review. Select the file again, or explicitly continue with the current attachment.';
+                    savePurchaseDraft(draftPrefix, draftWriter.current, {
+                      ...draftSnapshot,
+                      documentIssue: notice,
+                      savedAt: Date.now(),
+                    });
+                    setDocumentSaveError(notice);
+                    return true;
+                  } catch (e) {
+                    setDocumentSaveError(
+                      `Draft could not be kept before opening the picker: ${String(e)}`,
+                    );
+                    return false;
+                  }
+                }}
+                onChange={(docs) => {
+                  if (purchaseClientRef.current !== purchaseClientId || lockedPurchase.current)
+                    return;
+                  try {
+                    savePurchaseDraft(draftPrefix, draftWriter.current, {
+                      ...draftSnapshot,
+                      document: docs[0] ?? null,
+                      documents: docs,
+                      documentIssue: '',
+                      savedAt: Date.now(),
+                    });
+                    setBillDocuments(docs);
+                    setDraftTouched(true);
+                    setDocumentSaveError('');
+                  } catch (e) {
+                    setDocumentSaveError(String(e));
+                    throw e;
+                  }
+                }}
+              />
+            )}
+          </details>
+          {documentSaveError && (
+            <div role="alert">
+              <p>{documentSaveError}</p>
+              <button
+                type="button"
+                disabled={purchaseLocked || documentBusy}
+                onClick={() => setDocumentSaveError('')}
+              >
+                {billDocuments.length ? 'Keep current attachment' : 'Continue without attachment'}
+              </button>
+            </div>
+          )}
           {paperCheck && purchaseExpectedTotal && (
             <p
               class={paperCheck.matches ? 'muted' : 'alert'}
@@ -2643,6 +2770,26 @@ export function InventoryScreen({
             </p>
           )}
           <div class="bill-bar">
+            <fieldset disabled={editLocked} class="plain bill-bar-edit">
+              <div class="bill-pay" role="group" aria-label="Payment type">
+                {(['credit', 'cash', 'upi'] as const).map((t) => (
+                  <button
+                    type="button"
+                    key={t}
+                    aria-pressed={purchasePaymentType === t}
+                    onClick={() => {
+                      setPurchasePaymentType(t);
+                      setDraftTouched(true);
+                    }}
+                  >
+                    {PAYMENT_LABEL[t]}
+                  </button>
+                ))}
+              </div>
+              <button type="button" class="bill-bar-add" onClick={addItemRow}>
+                + Add item
+              </button>
+            </fieldset>
             {!purchaseLocked && barProblem && (
               <span class="bill-bar-problem" role="alert">
                 {barProblem}
@@ -2650,7 +2797,13 @@ export function InventoryScreen({
             )}
             {!purchaseLocked && (
               <span class="bill-bar-total" aria-live="polite">
-                Total {payablePreview} ·
+                Total {payablePreview}
+                {totals.ok && totals.roundOffPaise !== 0 && (
+                  <small class="muted">
+                    {' '}
+                    incl. round off {roundOffText(totals.roundOffPaise).slice('Round off '.length)}
+                  </small>
+                )}
               </span>
             )}
             <button

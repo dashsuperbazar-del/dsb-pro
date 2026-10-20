@@ -95,14 +95,14 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-test('items are cards: + Add item appends an empty card and focuses its item name', async () => {
+test('items are rows: + Add item appends an empty row and focuses its item name', async () => {
   await mount();
-  expect(host.textContent).toContain('ITEM 1');
+  expect(host.querySelectorAll('section[aria-label^="Item "]')).toHaveLength(1);
   expect(host.textContent).not.toMatch(/\bline\b/i);
   await click(button('+ Add item'));
-  expect(host.textContent).toContain('ITEM 2');
+  expect(host.querySelectorAll('section[aria-label^="Item "]')).toHaveLength(2);
   expect(document.activeElement).toBe(byLabel('Item 2 name'));
-  await click(button('+ Add another item'));
+  await click(button('+ Add item'));
   expect(current).toHaveLength(3);
 });
 
@@ -122,7 +122,7 @@ test('typing shows matching items to tap; unit buttons carry the real unit names
   await click(button('pack', units));
   expect(button('pack', units).getAttribute('aria-pressed')).toBe('true');
   expect(current[0]).toMatchObject({ unitLevel: 2, item: { id: 'c' } });
-  expect(host.textContent).toContain('Qty (pack)');
+  expect(host.textContent).toContain('Qty · pack');
   // Changing the name drops the chosen item, so a card can never post an item it no longer shows.
   await type('Item 1 name', 'Item');
   expect(current[0]).toMatchObject({ item: null, unitLevel: 1 });
@@ -168,8 +168,7 @@ test('× removes that card only; a filled card asks first', async () => {
   expect(current).toHaveLength(2);
   await click(byLabel<HTMLElement>('Remove item 1'));
   expect(current.map((c) => c.qty)).toEqual(['2']);
-  expect(host.textContent).toContain('ITEM 1');
-  expect(host.textContent).not.toContain('ITEM 2');
+  expect(host.querySelectorAll('section[aria-label^="Item "]')).toHaveLength(1);
 });
 
 test('Speak fills only its own card, and only when exactly one item matches', async () => {

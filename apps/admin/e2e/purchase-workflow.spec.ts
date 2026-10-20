@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { test, expect, type Request, type Response } from '@playwright/test';
-import { addItemForm, fillBillItem } from './design-helpers';
+import { addItemForm, fillBillItem, openBillDetails } from './design-helpers';
 test('DSB purchase detail, repeat and contextual payment use the same financial records', async ({
   page,
 }, testInfo) => {
@@ -73,6 +73,7 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
   await purchase.locator('input[name="billNo"]').fill('DSB-1');
   await expect(purchase.locator('select[name="partyId"]')).toHaveValue(/.+/);
   await fillBillItem(purchase, 1, 'Daily oil', '2', '120');
+  await openBillDetails(purchase);
   await purchase.locator('input[name="discount"]').fill('5');
   await purchase.getByRole('button', { name: '+ Add charge', exact: true }).click();
   await purchase.getByLabel('Extra charge 1 name', { exact: true }).fill('Transport');
@@ -127,6 +128,11 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
   await expect(purchase.getByLabel('Item 1 quantity', { exact: true })).toHaveValue('2');
   await expect(purchase.getByLabel('Item 1 rate ₹', { exact: true })).toHaveValue('120');
   await expect(purchase.getByTestId('bill-total')).toContainText('₹240.00');
+  // After the reload Bill details are closed again; its summary names the photo.
+  await expect(purchase.getByTestId('bill-details-badge')).toContainText(
+    'discount ₹5 · 1 charge ₹5.00 · 1 photo',
+  );
+  await openBillDetails(purchase);
   await purchase.getByRole('button', { name: 'View bill document', exact: true }).click();
   const photo = page.getByRole('dialog', { name: 'Bill document viewer' });
   await expect(photo.getByRole('img', { name: 'Attached supplier bill' })).toBeVisible();
@@ -177,6 +183,7 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
     'JVBERi0xLjMKJZOMi54gUmVwb3J0TGFiIEdlbmVyYXRlZCBQREYgZG9jdW1lbnQgKG9wZW5zb3VyY2UpCjEgMCBvYmoKPDwKL0YxIDIgMCBSCj4+CmVuZG9iagoyIDAgb2JqCjw8Ci9CYXNlRm9udCAvSGVsdmV0aWNhIC9FbmNvZGluZyAvV2luQW5zaUVuY29kaW5nIC9OYW1lIC9GMSAvU3VidHlwZSAvVHlwZTEgL1R5cGUgL0ZvbnQKPj4KZW5kb2JqCjMgMCBvYmoKPDwKL0NvbnRlbnRzIDcgMCBSIC9NZWRpYUJveCBbIDAgMCAzMDAgMzAwIF0gL1BhcmVudCA2IDAgUiAvUmVzb3VyY2VzIDw8Ci9Gb250IDEgMCBSIC9Qcm9jU2V0IFsgL1BERiAvVGV4dCAvSW1hZ2VCIC9JbWFnZUMgL0ltYWdlSSBdCj4+IC9Sb3RhdGUgMCAvVHJhbnMgPDwKCj4+IAogIC9UeXBlIC9QYWdlCj4+CmVuZG9iago0IDAgb2JqCjw8Ci9QYWdlTW9kZSAvVXNlTm9uZSAvUGFnZXMgNiAwIFIgL1R5cGUgL0NhdGFsb2cKPj4KZW5kb2JqCjUgMCBvYmoKPDwKL0F1dGhvciAoYW5vbnltb3VzKSAvQ3JlYXRpb25EYXRlIChEOjIwMDAwMTAxMDAwMDAwKzAwJzAwJykgL0NyZWF0b3IgKGFub255bW91cykgL0tleXdvcmRzICgpIC9Nb2REYXRlIChEOjIwMDAwMTAxMDAwMDAwKzAwJzAwJykgL1Byb2R1Y2VyIChSZXBvcnRMYWIgUERGIExpYnJhcnkgLSBcKG9wZW5zb3VyY2VcKSkgCiAgL1N1YmplY3QgKHVuc3BlY2lmaWVkKSAvVGl0bGUgKHVudGl0bGVkKSAvVHJhcHBlZCAvRmFsc2UKPj4KZW5kb2JqCjYgMCBvYmoKPDwKL0NvdW50IDEgL0tpZHMgWyAzIDAgUiBdIC9UeXBlIC9QYWdlcwo+PgplbmRvYmoKNyAwIG9iago8PAovRmlsdGVyIFsgL0FTQ0lJODVEZWNvZGUgL0ZsYXRlRGVjb2RlIF0gL0xlbmd0aCAxNzQKPj4Kc3RyZWFtCkdhcm85WW1TPzUmNEhEQ2BLWSwyXCZTWmoxNCVycitYJV4yYjxsZ1ImY3NEPkorIiIlLzxqOzc9UGROajdPKiEzSEN1Qj03dEZlMyVXUTdoN1gvUEFRT2RoUDRUa0NbZUNRS1BTbWRdVjtPMCc0JDpUYmokK0FkV0xGO29hKkUoP0wwZjdccigyXEFWOC8mIiNCP2FkYltkUXAjO2M2RCpsYjcoRDAySkFyaXJ+PmVuZHN0cmVhbQplbmRvYmoKeHJlZgowIDgKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDYxIDAwMDAwIG4gCjAwMDAwMDAwOTIgMDAwMDAgbiAKMDAwMDAwMDE5OSAwMDAwMCBuIAowMDAwMDAwMzkyIDAwMDAwIG4gCjAwMDAwMDA0NjAgMDAwMDAgbiAKMDAwMDAwMDcyMSAwMDAwMCBuIAowMDAwMDAwNzgwIDAwMDAwIG4gCnRyYWlsZXIKPDwKL0lEIApbPDFjMTc4MTk4ZmJkZmE1MWIyNTk5NWQ4OWQ0MTAyMDQzPjwxYzE3ODE5OGZiZGZhNTFiMjU5OTVkODlkNDEwMjA0Mz5dCiUgUmVwb3J0TGFiIGdlbmVyYXRlZCBQREYgZG9jdW1lbnQgLS0gZGlnZXN0IChvcGVuc291cmNlKQoKL0luZm8gNSAwIFIKL1Jvb3QgNCAwIFIKL1NpemUgOAo+PgpzdGFydHhyZWYKMTA0NAolJUVPRgo=',
     'base64',
   );
+  await openBillDetails(purchase);
   await purchase
     .getByLabel('Choose bill PDF', { exact: true })
     .setInputFiles({ name: 'supplier-bill.pdf', mimeType: 'application/pdf', buffer: pdfBody });

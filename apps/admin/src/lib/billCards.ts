@@ -36,6 +36,9 @@ export type BillCardDraft = {
   /** GST % as typed (old DSB "GST %"). Blank = the rate already includes GST (sent as null); a number,
    * 0 included, is ADDED on top of the discounted amount. */
   gst?: string;
+  /** The rate was filled from the supplier's last bill (usual items): shown as a suggestion while the
+   * rate is still that figure. Display only; never posted. */
+  suggested?: { date: string; price: string };
 };
 /** Typed sale price box fields; a field left undefined shows the item's current price. */
 export type CardSale = { level: 1 | 2 | 3; retail?: string; wsQty?: string; wsPrice?: string };
@@ -108,6 +111,8 @@ export function withItem<T extends BillCardDraft>(c: T, item: Item, unitLevel: 1
     price: '',
     costMode: 'unit',
     unitHint: undefined,
+    // A rate suggested for the old item or unit no longer applies.
+    suggested: undefined,
   };
 }
 
@@ -319,5 +324,20 @@ export function cardDrafts(cards: BillCard[]): BillCardDraft[] {
     ...(c.sale ? { sale: c.sale } : {}),
     ...(c.discount ? { discount: c.discount } : {}),
     ...(c.gst ? { gst: c.gst } : {}),
+    ...(c.suggested ? { suggested: c.suggested } : {}),
   }));
+}
+
+/** What the collapsed "More" part of a card holds that is not the default ("−2%", "+5% GST", "prices"),
+ * so a value there is never hidden silently. Empty when everything there is at its default. */
+export function moreBadges(c: BillCardDraft): string[] {
+  const out: string[] = [];
+  const d = c.discount?.trim();
+  const g = c.gst?.trim();
+  if (d) out.push(`−${d}%`);
+  if (g) out.push(`+${g}% GST`);
+  const s = c.sale;
+  if (s && (['retail', 'wsQty', 'wsPrice'] as const).some((k) => s[k] !== undefined))
+    out.push('prices');
+  return out;
 }

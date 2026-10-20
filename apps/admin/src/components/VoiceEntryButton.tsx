@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { speechRecognitionCtor } from '../lib/voiceEntry';
+import { Icon } from './Icon';
 
 // One-shot speech-to-text button. Hidden where the browser has no speech recognition.
 export function VoiceEntryButton({
   onText,
   disabled,
   name,
+  compact,
 }: {
+  /** An icon button (bill item rows); the accessible name is `name` (or "Speak"). */
+  compact?: boolean;
   onText: (text: string) => void;
   disabled?: boolean;
   /** Accessible name when several Speak buttons share a screen, e.g. "Speak item 2". */
@@ -52,10 +56,12 @@ export function VoiceEntryButton({
         type="button"
         disabled={disabled}
         aria-pressed={listening}
-        aria-label={listening || !name ? undefined : name}
+        aria-label={listening ? undefined : (name ?? (compact ? 'Speak' : undefined))}
+        title={compact && !listening ? (name ?? 'Speak') : undefined}
+        class={compact ? 'icon-button' : undefined}
         onClick={toggle}
       >
-        {listening ? 'Stop listening' : 'Speak'}
+        {listening ? 'Stop listening' : compact ? <Icon name="mic" /> : 'Speak'}
       </button>
       {listening && (
         <span class="muted" role="status">

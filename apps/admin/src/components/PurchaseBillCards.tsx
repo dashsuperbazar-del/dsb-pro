@@ -5,6 +5,7 @@ import {
   evaluateCard,
   isBlankCard,
   isUntouchedCard,
+  moreBadges,
   withItem,
   switchCostMode,
   unitChoices,
@@ -71,9 +72,11 @@ const NEW_ITEM_FIELDS: {
   { key: 'conv2', aria: 'pieces per small', number: true },
 ];
 
-// Old DSB bill entry: an ITEMS header (Repeat, + Add item), recent supplier items to tap, then one card per
-// item ("ITEM 1", "ITEM 2" …), all editable at once. Cards only hold what was typed; the screen derives the
-// posted lines from them (lib/billCards), so this component never decides money.
+// Fast bill entry: one compact row per item (name with scan/speak icons | qty | rate | item total), all
+// editable at once. Unit chips show only for items with more than one unit; discount, GST, sale prices,
+// past prices and the conversion sit behind one "More" toggle per row, with a badge naming any value
+// there, and open by themselves when one of them has a problem. Cards only hold what was typed; the
+// screen derives the posted lines from them (lib/billCards), so this component never decides money.
 export function PurchaseBillCards(props: {
   cards: BillCard[];
   items: Item[];
@@ -85,8 +88,12 @@ export function PurchaseBillCards(props: {
   onMessage: (message: string) => void;
   /** Barcode lookup for the card's camera scan; null when no item has that barcode. */
   findBarcode?: (code: string) => Promise<{ item: Item; unitLevel: 1 | 2 | 3 } | null>;
-  onRepeat?: () => void;
-  recent?: { key: string; label: string; onAdd: () => void }[];
+  /** false: the screen shows its own "+ Add item" (sticky bill bar), so the list does not. */
+  showAdd?: boolean;
+  /** "cardKey|field": focus that field of a card the screen just added (field: name, qty …). */
+  focusCard?: string;
+  /** The unit this item was last bought in from the bill's supplier, used when it is chosen. */
+  lastUnit?: (itemId: string) => 1 | 2 | 3 | undefined;
   /** Creates an item with the Add item adapter and refreshes the item list; absent = no "+ Create". */
   onCreateItem?: (fields: NewItemFields, clientId: string) => Promise<Item>;
   /** Current sale prices per item id. Absent = the user's role cannot set prices: no sale price box. */
@@ -98,6 +105,10 @@ export function PurchaseBillCards(props: {
   const host = useRef<HTMLDivElement>(null);
   const [focusKey, setFocusKey] = useState('');
   const [pricesOpen, setPricesOpen] = useState<string[]>([]);
+  const [moreOpen, setMoreOpen] = useState<string[]>([]);
+  useEffect(() => {
+    if (props.focusCard) setFocusKey(props.focusCard);
+  }, [props.focusCard]);
   const [newForms, setNewForms] = useState<Record<string, NewItemForm>>({});
   const creating = useRef(new Set<string>());
   // Names (trimmed, lower case) whose create is running in any card: a second card cannot race it.
@@ -266,8 +277,13 @@ export function PurchaseBillCards(props: {
       return;
     props.onChange(cards.filter((c) => c.key !== card.key));
   }
-  function choose(key: string, item: Item, unitLevel: 1 | 2 | 3 = 1) {
+  // A chosen item starts in the unit it was last bought in from this supplier (shown as a pressed chip);
+  // then the quantity is typed.
+  function choose(key: string, item: Item) {
+    const last = latest.current.lastUnit?.(item.id);
+    const unitLevel = last && unitChoices(item).some((u) => u.level === last) ? last : 1;
     patch(key, (c) => withItem(c, item, unitLevel));
+    setFocusKey(`${key}|qty`);
   }
   // Scan and voice results: fill the card they were started from while nothing is chosen or entered on it,
   // otherwise open a new card, so a result never overwrites an item already on the bill. Returns the
@@ -286,31 +302,47 @@ export function PurchaseBillCards(props: {
     return now.length + 1;
   }
 
+  // Enter in the item name picks the item when the typed name settles it (an exact name, or the only
+  // match), then goes to the quantity; otherwise it goes to the first match to tap. Never posts.
+  function nameEnter(card: BillCard) {
+    const { items: list } = latest.current;
+    if (card.item) return setFocusKey(`${card.key}|qty`);
+    const search = card.search.trim();
+    if (!search) return;
+    const exact = exactItemMatch(list, search);
+    const picker = boundedItemOptions(list, card.search, '', MATCH_LIMIT);
+    const only = picker.matches === 1 ? picker.options[0] : undefined;
+    const hit = exact ?? only;
+    if (hit) {
+      choose(card.key, hit);
+      return;
+    }
+    host.current
+      ?.querySelector<HTMLButtonElement>(`[data-card="${card.key}"] .bill-card-matches button`)
+      ?.focus();
+  }
+  // Enter in the rate goes to the next item's name; after the last item a new row is added (only when
+  // this one is started), so a bill is typed name, qty, rate, Enter… and posted only by the Post button.
+  function rateEnter(card: BillCard) {
+    const { cards: now, onChange } = latest.current;
+    const index = now.findIndex((c) => c.key === card.key);
+    const next = now[index + 1];
+    // A next row that already has its item (added from the usual items) waits for its quantity.
+    if (next) return setFocusKey(`${next.key}|${next.item ? 'qty' : 'name'}`);
+    if (isBlankCard(card)) return;
+    const added = emptyCard();
+    onChange([...now, added]);
+    setFocusKey(`${added.key}|name`);
+  }
+  const enterKey = (ev: KeyboardEvent, then: () => void) => {
+    if (ev.key !== 'Enter' || ev.isComposing) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    then();
+  };
+
   return (
     <div class="bill-items" ref={host}>
-      <div class="bill-items-head">
-        <h3>Items</h3>
-        <div class="bill-items-actions">
-          {props.onRepeat && (
-            <button type="button" disabled={disabled} onClick={props.onRepeat}>
-              ↺ Repeat last bill
-            </button>
-          )}
-          <button type="button" disabled={disabled} onClick={addCard}>
-            + Add item
-          </button>
-        </div>
-      </div>
-      {!!props.recent?.length && (
-        <div class="shortcut-chips" aria-label="Recent supplier items">
-          <small class="muted">Recent items from this supplier, tap to add</small>
-          {props.recent.map((r) => (
-            <button type="button" key={r.key} disabled={disabled} onClick={r.onAdd}>
-              {r.label}
-            </button>
-          ))}
-        </div>
-      )}
       {cards.length === 0 && <p class="muted">No items yet. Press “+ Add item”.</p>}
       {cards.map((card, i) => {
         const n = i + 1;
@@ -322,54 +354,69 @@ export function PurchaseBillCards(props: {
         const priceLabel = card.costMode === 'total' ? 'total ₹' : 'rate ₹';
         const newForm = newForms[card.key];
         const canCreate = !!props.onCreateItem && !newForm && !exactItemMatch(items, card.search);
+        const units = item ? unitChoices(item) : [];
+        const badges = moreBadges(card);
+        const sale = item && props.saleLoads ? props.saleLoads[item.id] : undefined;
+        const saleProblem =
+          !!item && !!props.saleLoads && !!cardSaleResult(card, sale, props.shopId).problem;
+        // A problem in the collapsed part (discount, GST, a sale price) opens it: nothing is hidden.
+        const forced =
+          saleProblem ||
+          (result.kind === 'problem' && /discount|GST/.test(result.message)) ||
+          (card.costMode === 'total' && !!card.gst?.trim());
+        const open = forced || moreOpen.includes(card.key);
+        const conv = item ? conversionLines(item) : [];
+        const hasMore = !!item || badges.length > 0;
+        const suggested =
+          card.suggested && card.price === card.suggested.price && card.costMode === 'unit'
+            ? card.suggested
+            : null;
         return (
-          <section class="bill-card" key={card.key} data-card={card.key} aria-label={`Item ${n}`}>
-            <div class="bill-card-head">
-              <strong>ITEM {n}</strong>
-              <button
-                type="button"
-                class="bill-card-remove"
-                aria-label={`Remove item ${n}`}
-                disabled={disabled}
-                onClick={() => remove(card, n)}
-              >
-                ×
-              </button>
-            </div>
+          <section
+            class="bill-card bill-row"
+            key={card.key}
+            data-card={card.key}
+            aria-label={`Item ${n}`}
+          >
             <div class="bill-card-find">
-              <label>
-                Item name
-                <input
-                  aria-label={`Item ${n} name`}
-                  placeholder="Type to search"
-                  autocomplete="off"
-                  data-field="name"
-                  value={card.search}
-                  disabled={disabled || !!newForm?.busy}
-                  onInput={(e) => {
-                    const search = e.currentTarget.value;
-                    // Typing over a chosen item drops it, with the quantity and cost entered for it.
-                    patch(card.key, (c) =>
-                      c.item && search !== c.item.name
-                        ? {
-                            ...c,
-                            search,
-                            item: null,
-                            unitLevel: 1,
-                            qty: '',
-                            price: '',
-                            costMode: 'unit',
-                            unitHint: undefined,
-                            sale: undefined,
-                            discount: undefined,
-                            gst: undefined,
-                          }
-                        : { ...c, search },
-                    );
-                  }}
-                />
-              </label>
+              <span class="bill-row-no" aria-hidden="true">
+                {n}
+              </span>
+              <input
+                class="bill-row-name"
+                aria-label={`Item ${n} name`}
+                placeholder="Search item"
+                autocomplete="off"
+                enterKeyHint="next"
+                data-field="name"
+                value={card.search}
+                disabled={disabled || !!newForm?.busy}
+                onKeyDown={(e) => enterKey(e, () => nameEnter(card))}
+                onInput={(e) => {
+                  const search = e.currentTarget.value;
+                  // Typing over a chosen item drops it, with the quantity and cost entered for it.
+                  patch(card.key, (c) =>
+                    c.item && search !== c.item.name
+                      ? {
+                          ...c,
+                          search,
+                          item: null,
+                          unitLevel: 1,
+                          qty: '',
+                          price: '',
+                          costMode: 'unit',
+                          unitHint: undefined,
+                          sale: undefined,
+                          discount: undefined,
+                          gst: undefined,
+                          suggested: undefined,
+                        }
+                      : { ...c, search },
+                  );
+                }}
+              />
               <CameraScanner
+                compact
                 disabled={disabled || !props.findBarcode}
                 onCode={(code) => {
                   void (async () => {
@@ -391,6 +438,7 @@ export function PurchaseBillCards(props: {
                 }}
               />
               <VoiceEntryButton
+                compact
                 name={`Speak item ${n}`}
                 disabled={disabled}
                 onText={(text) => {
@@ -431,6 +479,16 @@ export function PurchaseBillCards(props: {
                   );
                 }}
               />
+              <button
+                type="button"
+                class="bill-card-remove"
+                aria-label={`Remove item ${n}`}
+                title={`Remove item ${n}`}
+                disabled={disabled}
+                onClick={() => remove(card, n)}
+              >
+                ×
+              </button>
             </div>
             {picker && (
               <div class="bill-card-matches" role="group" aria-label={`Matches for item ${n}`}>
@@ -517,10 +575,9 @@ export function PurchaseBillCards(props: {
                 </div>
               </div>
             )}
-            {item && (
+            {item && units.length > 1 && (
               <div class="bill-card-units" role="group" aria-label={`Item ${n} purchased in`}>
-                <small class="muted">Purchased in</small>
-                {unitChoices(item).map((u) => (
+                {units.map((u) => (
                   <button
                     type="button"
                     key={u.level}
@@ -533,21 +590,17 @@ export function PurchaseBillCards(props: {
                     {u.name}
                   </button>
                 ))}
-                {conversionLines(item).length > 0 && (
-                  <small class="bill-card-conv" data-testid={`item-${n}-conversion`}>
-                    {conversionLines(item).join(' · ')}
-                  </small>
-                )}
               </div>
             )}
-            <div class="bill-card-figures">
+            <div class="bill-row-figs">
               <label>
-                Qty{item ? ` (${unitName(item, card.unitLevel)})` : ''}
+                <small>Qty{item ? ` · ${unitName(item, card.unitLevel)}` : ''}</small>
                 <input
                   aria-label={`Item ${n} quantity`}
                   data-field="qty"
                   type="number"
                   inputMode="decimal"
+                  enterKeyHint="next"
                   min="0.000001"
                   step="any"
                   placeholder="Qty"
@@ -560,41 +613,96 @@ export function PurchaseBillCards(props: {
                 />
               </label>
               <label>
-                {card.costMode === 'total' ? 'Total before discount/GST ₹' : 'Rate per unit ₹'}
+                <small>
+                  {card.costMode === 'total' ? 'Total before discount/GST ₹' : 'Rate ₹'}
+                </small>
                 <input
                   aria-label={`Item ${n} ${priceLabel}`}
                   data-field="price"
                   type="number"
                   inputMode="decimal"
+                  enterKeyHint="next"
                   min="0"
                   step="0.01"
                   placeholder={card.costMode === 'total' ? 'Total ₹' : 'Rate ₹'}
                   value={card.price}
                   disabled={disabled}
+                  onKeyDown={(e) => enterKey(e, () => rateEnter(card))}
                   onInput={(e) => {
                     const price = e.currentTarget.value;
                     patch(card.key, (c) => ({ ...c, price }));
                   }}
                 />
               </label>
+              <p class="bill-card-amount" aria-live="polite" data-testid={`item-${n}-amount`}>
+                {result.kind === 'ok' ? (
+                  result.amountPaise === result.grossPaise &&
+                  !result.line.discountBp &&
+                  !result.line.gstBp ? (
+                    <strong>
+                      <small>Amount</small> {rupees(result.amountPaise)}
+                    </strong>
+                  ) : (
+                    <>
+                      <span class="muted">
+                        {rupees(result.grossPaise)}
+                        {result.line.discountBp ? ` − ${card.discount?.trim()}% discount` : ''}
+                        {result.line.gstBp ? ` + ${card.gst?.trim()}% GST` : ''}
+                      </span>{' '}
+                      <strong>
+                        <small>Item total</small> {rupees(result.amountPaise)}
+                      </strong>
+                    </>
+                  )
+                ) : result.kind === 'problem' && !typedTotal ? (
+                  <span class="muted">{result.message}</span>
+                ) : null}
+              </p>
             </div>
-            <div class="bill-card-mode" role="group" aria-label={`Item ${n} cost entered as`}>
-              <button
-                type="button"
-                aria-pressed={card.costMode === 'unit'}
-                disabled={disabled}
-                onClick={() => patch(card.key, (c) => switchCostMode(c, 'unit'))}
-              >
-                Per unit
-              </button>
-              <button
-                type="button"
-                aria-pressed={card.costMode === 'total'}
-                disabled={disabled}
-                onClick={() => patch(card.key, (c) => switchCostMode(c, 'total'))}
-              >
-                Total
-              </button>
+            <div class="bill-row-tools">
+              <div class="bill-card-mode" role="group" aria-label={`Item ${n} cost entered as`}>
+                <button
+                  type="button"
+                  aria-pressed={card.costMode === 'unit'}
+                  disabled={disabled}
+                  onClick={() => patch(card.key, (c) => switchCostMode(c, 'unit'))}
+                >
+                  Per unit
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={card.costMode === 'total'}
+                  disabled={disabled}
+                  onClick={() => patch(card.key, (c) => switchCostMode(c, 'total'))}
+                >
+                  Total
+                </button>
+              </div>
+              {suggested && (
+                <small class="bill-row-suggested" data-testid={`item-${n}-suggested`}>
+                  Last rate ({suggested.date}) · check
+                </small>
+              )}
+              {hasMore && (
+                <button
+                  type="button"
+                  class="bill-row-more"
+                  aria-expanded={open}
+                  aria-label={`More for item ${n}`}
+                  onClick={() =>
+                    setMoreOpen((o) =>
+                      o.includes(card.key) ? o.filter((k) => k !== card.key) : [...o, card.key],
+                    )
+                  }
+                >
+                  More{' '}
+                  {badges.length > 0 && (
+                    <span class="bill-row-badge" data-testid={`item-${n}-badge`}>
+                      {badges.join(' ')}
+                    </span>
+                  )}
+                </button>
+              )}
             </div>
             {typedTotal && (
               <CostDerivation
@@ -608,113 +716,98 @@ export function PurchaseBillCards(props: {
                 }
               />
             )}
-            <div class="bill-card-figures">
-              <label>
-                Discount %
-                <input
-                  aria-label={`Item ${n} discount %`}
-                  data-field="discount"
-                  type="text"
-                  inputMode="decimal"
-                  autocomplete="off"
-                  placeholder="0"
-                  value={card.discount ?? ''}
-                  disabled={disabled}
-                  onInput={(e) => {
-                    const discount = e.currentTarget.value;
-                    patch(card.key, (c) => ({ ...c, discount }));
-                  }}
-                />
-              </label>
-              <label>
-                GST %
-                <input
-                  aria-label={`Item ${n} GST %`}
-                  data-field="gst"
-                  type="text"
-                  inputMode="decimal"
-                  autocomplete="off"
-                  placeholder="Included"
-                  value={card.gst ?? ''}
-                  disabled={disabled}
-                  onInput={(e) => {
-                    const gst = e.currentTarget.value;
-                    patch(card.key, (c) => ({ ...c, gst }));
-                  }}
-                />
-              </label>
-            </div>
-            <small class="muted bill-card-gst-hint" data-testid={`item-${n}-gst-hint`}>
-              {gstHint(card.gst ?? '')}
-            </small>
-            {card.costMode === 'total' && !!card.gst?.trim() && (
-              <small
-                class="bill-card-total-warning"
-                role="note"
-                data-testid={`item-${n}-total-gst`}
-              >
-                Total mode: the total typed is before discount and GST. If the paper bill's total
-                already includes GST, leave GST blank, or the GST is added twice.
-              </small>
-            )}
-            <p class="bill-card-amount" aria-live="polite" data-testid={`item-${n}-amount`}>
-              {result.kind === 'ok' ? (
-                result.amountPaise === result.grossPaise &&
-                !result.line.discountBp &&
-                !result.line.gstBp ? (
-                  <strong>Amount {rupees(result.amountPaise)}</strong>
-                ) : (
-                  <>
-                    <span class="muted">
-                      {rupees(result.grossPaise)}
-                      {result.line.discountBp ? ` − ${card.discount?.trim()}% discount` : ''}
-                      {result.line.gstBp ? ` + ${card.gst?.trim()}% GST` : ''}
-                    </span>{' '}
-                    <strong>Item total {rupees(result.amountPaise)}</strong>
-                  </>
-                )
-              ) : result.kind === 'problem' && !typedTotal ? (
-                <span class="muted">{result.message}</span>
-              ) : null}
-            </p>
-            {item && props.saleLoads && (
-              <SalePriceBox
-                n={n}
-                card={card}
-                item={item}
-                load={props.saleLoads[item.id]}
-                shopId={props.shopId}
-                disabled={disabled}
-                onSale={(sale) => patch(card.key, (c) => ({ ...c, sale }))}
-              />
-            )}
-            {item && props.canSeePrices && (
-              <div>
-                <button
-                  type="button"
-                  class="link"
-                  aria-expanded={pricesOpen.includes(card.key)}
-                  onClick={() =>
-                    setPricesOpen((open) =>
-                      open.includes(card.key)
-                        ? open.filter((k) => k !== card.key)
-                        : [...open, card.key],
-                    )
-                  }
-                >
-                  Past prices for {item.name}
-                </button>
-                {pricesOpen.includes(card.key) && (
-                  <PriceHistory
-                    key={item.id}
-                    shopId={props.shopId}
-                    itemId={item.id}
-                    baseUnit={item.unit3 || item.unit2 || item.unit1}
-                    parties={props.parties}
+            <div class="bill-row-extra" hidden={!open} data-testid={`item-${n}-more`}>
+              {conv.length > 0 && (
+                <small class="bill-card-conv" data-testid={`item-${n}-conversion`}>
+                  {conv.join(' · ')}
+                </small>
+              )}
+              <div class="bill-card-figures">
+                <label>
+                  <small>Discount %</small>
+                  <input
+                    aria-label={`Item ${n} discount %`}
+                    data-field="discount"
+                    type="text"
+                    inputMode="decimal"
+                    autocomplete="off"
+                    placeholder="0"
+                    value={card.discount ?? ''}
+                    disabled={disabled}
+                    onInput={(e) => {
+                      const discount = e.currentTarget.value;
+                      patch(card.key, (c) => ({ ...c, discount }));
+                    }}
                   />
-                )}
+                </label>
+                <label>
+                  <small>GST %</small>
+                  <input
+                    aria-label={`Item ${n} GST %`}
+                    data-field="gst"
+                    type="text"
+                    inputMode="decimal"
+                    autocomplete="off"
+                    placeholder="Included"
+                    value={card.gst ?? ''}
+                    disabled={disabled}
+                    onInput={(e) => {
+                      const gst = e.currentTarget.value;
+                      patch(card.key, (c) => ({ ...c, gst }));
+                    }}
+                  />
+                </label>
               </div>
-            )}
+              <small class="muted bill-card-gst-hint" data-testid={`item-${n}-gst-hint`}>
+                {gstHint(card.gst ?? '')}
+              </small>
+              {card.costMode === 'total' && !!card.gst?.trim() && (
+                <small
+                  class="bill-card-total-warning"
+                  role="note"
+                  data-testid={`item-${n}-total-gst`}
+                >
+                  Total mode: the total typed is before discount and GST. If the paper bill's total
+                  already includes GST, leave GST blank, or the GST is added twice.
+                </small>
+              )}
+              {item && props.saleLoads && (
+                <SalePriceBox
+                  n={n}
+                  card={card}
+                  item={item}
+                  load={sale}
+                  shopId={props.shopId}
+                  disabled={disabled}
+                  onSale={(next) => patch(card.key, (c) => ({ ...c, sale: next }))}
+                />
+              )}
+              {item && props.canSeePrices && (
+                <div>
+                  <button
+                    type="button"
+                    class="link"
+                    aria-expanded={pricesOpen.includes(card.key)}
+                    onClick={() =>
+                      setPricesOpen((o) =>
+                        o.includes(card.key) ? o.filter((k) => k !== card.key) : [...o, card.key],
+                      )
+                    }
+                  >
+                    Past prices for {item.name}
+                  </button>
+                  {pricesOpen.includes(card.key) && (
+                    <PriceHistory
+                      key={item.id}
+                      shopId={props.shopId}
+                      itemId={item.id}
+                      baseUnit={item.unit3 || item.unit2 || item.unit1}
+                      parties={props.parties}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
           </section>
         );
       })}
@@ -725,9 +818,9 @@ export function PurchaseBillCards(props: {
           ))}
         </datalist>
       )}
-      {cards.length > 0 && (
+      {props.showAdd !== false && (
         <button type="button" class="bill-add-bottom" disabled={disabled} onClick={addCard}>
-          + Add another item
+          + Add item
         </button>
       )}
     </div>

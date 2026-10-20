@@ -10,7 +10,9 @@ export type IconName =
   | 'report'
   | 'sync'
   | 'settings'
-  | 'arrow';
+  | 'arrow'
+  | 'scan'
+  | 'mic';
 const paths: Record<IconName, string> = {
   home: 'M3 10l9-7 9 7M5 9v12h14V9M9 21v-7h6v7',
   bill: 'M5 3h14v18l-3-2-4 2-4-2-3 2V3M8 8h8M8 12h5',
@@ -24,6 +26,8 @@ const paths: Record<IconName, string> = {
   sync: 'M20 7a9 9 0 0 0-15-2L2 8M2 3v5h5M4 17a9 9 0 0 0 15 2l3-3M22 21v-5h-5',
   settings: 'M4 6h16M4 12h16M4 18h16M8 3v6M16 9v6M10 15v6',
   arrow: 'M9 5l7 7-7 7',
+  scan: 'M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M8 9v6M11 9v6M14 9v6M17 9v6',
+  mic: 'M9 5a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0V5M5 11a7 7 0 0 0 14 0M12 18v3',
 };
 export function Icon({ name }: { name: IconName }) {
   return (
