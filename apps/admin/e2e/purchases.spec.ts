@@ -239,7 +239,7 @@ test('a bill card shows the unit conversion and sets a retail price that POS the
   await page.getByLabel('Item').selectOption({ index: 1 });
   await page.locator('select[name="unitLevel"]').selectOption('2');
   await page.getByLabel('Quantity').fill('3');
-  await page.getByRole('button', { name: 'Add line' }).click();
+  await page.getByRole('button', { name: 'Add item', exact: true }).click();
   const row = page.locator('#pos-cart tr').filter({ hasText: 'Card Biscuit' });
   await expect(row).toContainText('₹10.00');
   await expect(row).toContainText('₹30.00');

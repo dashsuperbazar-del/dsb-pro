@@ -305,7 +305,17 @@ async function processOutbox(rt: Runtime) {
         clientId: payload.clientId,
         intentFingerprint: payload.intentFingerprint ?? '',
         roundTotal: payload.roundTotal === true,
-        lines: payload.lines as Array<SaleLineInput & { expectedUnitPricePaise?: number }>,
+        saleV2:
+          payload.saleV2 === true
+            ? {
+                invoiceType: payload.invoiceType ?? 'gst_included',
+                creditOverride: payload.creditOverride === true,
+                expectedTotalPaise: payload.expectedTotalPaise ?? -1,
+              }
+            : undefined,
+        lines: payload.lines as Array<
+          SaleLineInput & { expectedUnitPricePaise?: number; manualUnitPricePaise?: number }
+        >,
         payments: payload.payments as SalePaymentInput[],
         notes: payload.notes,
       });
@@ -426,9 +436,15 @@ export async function finalizeSaleResilient(input: {
   discountPaise: number;
   extraChargesPaise: number;
   clientId: string;
-  lines: SaleLineInput[];
+  lines: Array<SaleLineInput & { manualUnitPricePaise?: number }>;
   payments: SalePaymentInput[];
   notes?: string;
+  /** salepricing (0065): typed prices / invoice type / credit limit go through sp_sync_post_sale. */
+  saleV2?: {
+    invoiceType: 'gst_included' | 'gst_extra';
+    creditOverride: boolean;
+    expectedTotalPaise: number;
+  };
 }): Promise<ResilientSaleResult> {
   const rt = requireRuntime();
   const policy = (await getCachedPolicy(rt.db)) ?? {
@@ -450,12 +466,21 @@ export async function finalizeSaleResilient(input: {
     }
   }
   const onlineInitiated = typeof navigator !== 'undefined' && navigator.onLine && !state.lastError;
+  const { saleV2, ...rest } = input;
   const payload = {
-    ...input,
+    ...rest,
     // R0 (user decision B1): every new sale rounds its bill total to the nearest rupee.
     roundTotal: true,
     lines: input.lines.map((l) => ({ ...l, discountPaise: l.discountPaise ?? 0 })),
     payments: input.payments,
+    ...(saleV2
+      ? {
+          saleV2: true,
+          invoiceType: saleV2.invoiceType,
+          creditOverride: saleV2.creditOverride,
+          expectedTotalPaise: saleV2.expectedTotalPaise,
+        }
+      : {}),
   };
   let record: OfflineSaleRecord;
   try {
@@ -689,6 +714,12 @@ export async function findOfflineBarcode(barcode: string): Promise<SyncedBarcode
   const db = requireRuntime().db;
   const row = await db.barcodes.where('barcode').equals(barcode.trim()).first();
   return row && row.deleted_at === null ? row : null;
+}
+/** salepricing: the device's view of one sale (QUEUED / SYNCED / REJECTED), or undefined when unknown. */
+export async function getOfflineSaleStatus(
+  clientId: string,
+): Promise<OfflineSaleRecord['status'] | undefined> {
+  return (await requireRuntime().db.offlineSales.get(clientId))?.status;
 }
 export async function listOfflineSales(): Promise<OfflineSaleRecord[]> {
   return (await requireRuntime().db.offlineSales.orderBy('createdAt').reverse().toArray()).slice(

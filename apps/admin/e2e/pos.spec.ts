@@ -71,7 +71,7 @@ test('real browser money path posts stock then finalizes a paid sale', async ({
   await expect(page.getByLabel('Item').locator('option')).toHaveCount(2);
   await page.getByLabel('Item').selectOption({ index: 1 });
   await page.getByLabel('Quantity').fill('1');
-  await page.getByRole('button', { name: 'Add line' }).click();
+  await page.getByRole('button', { name: 'Add item', exact: true }).click();
   await expect(page.getByRole('cell', { name: /POS E2E Item/ })).toBeVisible();
   await reviewPayment(page);
   await page.getByLabel('Amount ₹').first().fill('10');
@@ -403,7 +403,7 @@ test('bill total rounds to the nearest rupee while the item keeps exact paise (R
   await page.getByLabel('Find product').fill('Round Item');
   await page.getByLabel('Item').selectOption({ index: 1 });
   await page.getByLabel('Quantity').fill('1');
-  await page.getByRole('button', { name: 'Add line' }).click();
+  await page.getByRole('button', { name: 'Add item', exact: true }).click();
   await expect(page.getByText('Round off −₹0.49')).toBeVisible();
   await expect(page.getByText('Preview ₹10.00')).toBeVisible();
   await reviewPayment(page);

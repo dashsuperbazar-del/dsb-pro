@@ -56,6 +56,7 @@ const GROUP_ORDER = [
   'partymerge',
   'itemindex',
   'billextras',
+  'salepricing',
 ];
 
 /**

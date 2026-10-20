@@ -1,6 +1,6 @@
 import { formatQuantity } from '@dsb-pro/core';
 import { useEffect, useState } from 'preact/hooks';
-import { compareLegacyDsbDayToPro, type LegacyDsbDayComparison } from '@dsb-pro/core';
+import { compareLegacyDsbDayToPro, splitGst, type LegacyDsbDayComparison } from '@dsb-pro/core';
 import {
   getDefaultShopId,
   getSaleReceipt,
@@ -460,25 +460,44 @@ export function SalesHistoryScreen() {
                     <small>
                       {l.unit_name_snapshot}
                       {l.discount_paise ? ` · discount ${money(l.discount_paise)}` : ''}
+                      {receipt.invoice.invoice_type === 'gst_extra'
+                        ? ` · GST ${(l.tax_rate_bp_snapshot ?? 0) / 100}% ${money(l.tax_paise ?? 0)}`
+                        : ''}
                     </small>
                   </td>
                   <td>{formatQuantity(l.qty)}</td>
                   <td>{money(l.unit_price_paise)}</td>
-                  <td>{money(l.line_total_paise)}</td>
+                  <td>{money(l.line_total_paise - (l.tax_paise ?? 0))}</td>
                 </tr>
               ))}
             </tbody>
           </table>
           <dl class="receipt-totals">
             <div>
-              <dt>Subtotal</dt>
-              <dd>{money(receipt.invoice.subtotal_paise)}</dd>
+              <dt>
+                {receipt.invoice.invoice_type === 'gst_extra'
+                  ? 'Subtotal (before GST)'
+                  : 'Subtotal'}
+              </dt>
+              <dd>{money(receipt.invoice.subtotal_paise - (receipt.invoice.tax_paise ?? 0))}</dd>
             </div>
             {receipt.invoice.discount_paise > 0 && (
               <div>
                 <dt>Discount</dt>
                 <dd>−{money(receipt.invoice.discount_paise)}</dd>
               </div>
+            )}
+            {receipt.invoice.invoice_type === 'gst_extra' && (
+              <>
+                <div>
+                  <dt>CGST</dt>
+                  <dd>{money(splitGst(receipt.invoice.tax_paise ?? 0).cgstPaise)}</dd>
+                </div>
+                <div>
+                  <dt>SGST</dt>
+                  <dd>{money(splitGst(receipt.invoice.tax_paise ?? 0).sgstPaise)}</dd>
+                </div>
+              </>
             )}
             {receipt.invoice.extra_charges_paise > 0 && (
               <div>

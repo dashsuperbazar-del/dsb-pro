@@ -60,20 +60,26 @@ export async function updateParty(input: { id: string } & PartyDetailsInput): Pr
 }
 
 export async function updateCustomer(
-  input: { id: string; creditLimitPaise?: number; notes?: string } & PartyDetailsInput,
+  /** creditLimitPaise: null = no limit; undefined = leave unchanged (salepricing 0065 column). */
+  input: { id: string; creditLimitPaise?: number | null; notes?: string } & PartyDetailsInput,
 ): Promise<Customer> {
   const fields = normalizePartyDetails(input);
-  const limit = input.creditLimitPaise ?? 0;
-  if (!Number.isSafeInteger(limit) || limit < 0)
+  const limit = input.creditLimitPaise;
+  if (limit !== undefined && limit !== null && (!Number.isSafeInteger(limit) || limit < 0))
     throw new Error('Enter a credit limit of zero or more rupees.');
   const notes = (input.notes ?? '').trim();
   if (notes.length > 500) throw new Error('The note is too long (500 characters at most).');
   const { data, error } = await getSupabaseClient()
     .from('customers')
-    .update({ ...fields, credit_limit_paise: limit, notes: notes || null })
+    // The legacy credit_limit_paise column is never written again (older app versions write 0 into it).
+    .update({
+      ...fields,
+      ...(limit !== undefined ? { sale_credit_limit_paise: limit } : {}),
+      notes: notes || null,
+    })
     .eq('id', input.id)
     .is('deleted_at', null)
-    .select('id,name,phone,address,gstin,credit_limit_paise,notes')
+    .select('id,name,phone,address,gstin,credit_limit_paise,sale_credit_limit_paise,notes')
     .maybeSingle();
   if (error) {
     if ((error as { code?: string }).code === '23505')

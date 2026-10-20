@@ -60,6 +60,14 @@ import {
 
 const money = (paise: number) => `₹${(paise / 100).toFixed(2)}`;
 const toPaise = (rupees: string) => parseRupeesToPaise(rupees || '0');
+/** Blank = no credit limit (null); otherwise whole rupees with up to 2 decimals. */
+function newCustomerLimit(value: FormDataEntryValue | null): number | null {
+  const typed = String(value ?? '').trim();
+  if (!typed) return null;
+  if (!/^\d+(\.\d{1,2})?$/.test(typed))
+    throw new Error('Enter the credit limit in rupees, for example 1500 or 1500.50.');
+  return parseRupeesToPaise(typed);
+}
 
 type AllocationDraft = { saleId: string; docNo: string; checked: boolean; amount: string };
 
@@ -205,6 +213,7 @@ export function CustomersScreen() {
         name: String(f.get('name')),
         phone: String(f.get('phone') || '') || undefined,
         address: String(f.get('address') || '') || undefined,
+        creditLimitPaise: newCustomerLimit(f.get('creditLimit')),
         clientId: crypto.randomUUID(),
       });
       await refreshBase();
@@ -385,6 +394,11 @@ export function CustomersScreen() {
               Address
               <input name="address" />
             </label>
+            {canEditMaster && (
+              <label>
+                Credit limit ₹ (blank = no limit) <input name="creditLimit" inputMode="decimal" />
+              </label>
+            )}
             <button disabled={!tenantId}>Create customer</button>
           </form>
         </details>
@@ -451,7 +465,7 @@ export function CustomersScreen() {
               phone: customer.phone,
               gstin: customer.gstin,
               address: customer.address,
-              creditLimitPaise: customer.credit_limit_paise,
+              creditLimitPaise: customer.sale_credit_limit_paise ?? null,
               notes: customer.notes,
             }}
             onSave={async (v) => {

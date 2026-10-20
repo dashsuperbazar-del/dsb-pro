@@ -68,7 +68,7 @@ test('cart lines edit in place, and a held cart survives being parked and comes 
   await expect(page.getByLabel('Item').locator('option')).toHaveCount(2);
   await page.getByLabel('Item').selectOption({ index: 1 });
   await page.getByTestId('pos-add-quantity').fill('2');
-  await page.getByRole('button', { name: 'Add line' }).click();
+  await page.getByRole('button', { name: 'Add item', exact: true }).click();
   await expect(page.getByRole('cell', { name: /Cart Edit Item A/ })).toBeVisible();
   await expect(cartSection).toContainText('₹20.00');
 
@@ -100,7 +100,7 @@ test('cart lines edit in place, and a held cart survives being parked and comes 
   await page.getByTestId('pos-add-quantity').fill('1');
   const holdLabel = page.getByTestId('pos-hold-label');
   await holdLabel.evaluate((node) => node.setAttribute('data-race-sentinel', 'same-node'));
-  await page.getByRole('button', { name: 'Add line' }).click();
+  await page.getByRole('button', { name: 'Add item', exact: true }).click();
   await holdLabel.fill('Temp Cart');
   // The add-line price lookup resolves asynchronously. Its later cart render
   // must preserve the same input node and its freshly typed label.
@@ -121,7 +121,7 @@ test('cart lines edit in place, and a held cart survives being parked and comes 
   await page.getByLabel('Find product').fill('Cart Edit Item B');
   await page.getByLabel('Item').selectOption({ index: 1 });
   await page.getByTestId('pos-add-quantity').fill('1');
-  await page.getByRole('button', { name: 'Add line' }).click();
+  await page.getByRole('button', { name: 'Add item', exact: true }).click();
   await reviewPayment(page);
   await page.getByLabel('Amount ₹').first().fill('20');
   await reviewPayment(page);
@@ -168,7 +168,7 @@ test('an online sale finalized during an in-flight sync cycle is posted, not lef
   await expect(page.getByLabel('Item').locator('option')).toHaveCount(2);
   await page.getByLabel('Item').selectOption({ index: 1 });
   await page.getByTestId('pos-add-quantity').fill('1');
-  await page.getByRole('button', { name: 'Add line' }).click();
+  await page.getByRole('button', { name: 'Add item', exact: true }).click();
   await expect(page.getByRole('cell', { name: /Race Item/ })).toBeVisible();
   await reviewPayment(page);
   await page.getByLabel('Amount ₹').first().fill('10');

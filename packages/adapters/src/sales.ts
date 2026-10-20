@@ -8,6 +8,8 @@ export type Customer = {
   address: string | null;
   gstin: string | null;
   credit_limit_paise: number;
+  /** salepricing (0065): enforced credit limit, null = none. Absent in the offline cache. */
+  sale_credit_limit_paise?: number | null;
   notes: string | null;
 };
 export type SaleLineInput = {
@@ -35,6 +37,9 @@ export type SaleInvoice = {
   total_paise: number;
   notes: string | null;
   created_at: string;
+  /** salepricing (0065) */
+  invoice_type?: 'gst_included' | 'gst_extra';
+  tax_paise?: number;
 };
 export type CustomerBalance = { customer_id: string; balance_paise: number };
 export type PaymentAllocationInput = { saleInvoiceId: string; amountPaise: number };
@@ -55,6 +60,10 @@ export type SaleReceiptLine = {
   unit_price_paise: number;
   discount_paise: number;
   line_total_paise: number;
+  /** salepricing (0065): GST added on top (included in line_total_paise), rate and price source. */
+  tax_paise?: number;
+  tax_rate_bp_snapshot?: number;
+  price_source?: 'list' | 'manual';
 };
 export type SaleReceiptPayment = {
   id: string;
@@ -80,7 +89,7 @@ function must<T>(value: T | null, error: unknown): T {
 export async function listCustomers(): Promise<Customer[]> {
   const { data, error } = await getSupabaseClient()
     .from('customers')
-    .select('id,name,phone,address,gstin,credit_limit_paise,notes')
+    .select('id,name,phone,address,gstin,credit_limit_paise,sale_credit_limit_paise,notes')
     .order('name');
   if (error) throw new Error(friendly(error));
   return (data ?? []) as Customer[];
@@ -92,7 +101,8 @@ export async function createCustomer(input: {
   phone?: string;
   address?: string;
   gstin?: string;
-  creditLimitPaise?: number;
+  /** Owner/manager only (server trigger); null/undefined = no limit. */
+  creditLimitPaise?: number | null;
   notes?: string;
   clientId: string;
 }): Promise<Customer> {
@@ -104,11 +114,13 @@ export async function createCustomer(input: {
       phone: input.phone?.trim() || null,
       address: input.address?.trim() || null,
       gstin: input.gstin?.trim() || null,
-      credit_limit_paise: input.creditLimitPaise ?? 0,
+      ...(input.creditLimitPaise !== undefined && input.creditLimitPaise !== null
+        ? { sale_credit_limit_paise: input.creditLimitPaise }
+        : {}),
       notes: input.notes?.trim() || null,
       client_id: input.clientId,
     })
-    .select('id,name,phone,address,gstin,credit_limit_paise,notes')
+    .select('id,name,phone,address,gstin,credit_limit_paise,sale_credit_limit_paise,notes')
     .single();
   return must(data, error) as Customer;
 }
@@ -286,14 +298,14 @@ export async function getSaleReceipt(saleId: string): Promise<SaleReceipt> {
     client
       .from('sale_invoices')
       .select(
-        'id,customer_id,doc_no,business_date,status,subtotal_paise,discount_paise,extra_charges_paise,round_off_paise,total_paise,notes,created_at',
+        'id,customer_id,doc_no,business_date,status,subtotal_paise,discount_paise,extra_charges_paise,round_off_paise,total_paise,notes,created_at,invoice_type,tax_paise',
       )
       .eq('id', saleId)
       .single(),
     client
       .from('sale_invoice_items')
       .select(
-        'item_name_snapshot,unit_name_snapshot,qty,unit_price_paise,discount_paise,line_total_paise',
+        'item_name_snapshot,unit_name_snapshot,qty,unit_price_paise,discount_paise,line_total_paise,tax_paise,tax_rate_bp_snapshot,price_source',
       )
       .eq('sale_invoice_id', saleId)
       .order('line_no'),

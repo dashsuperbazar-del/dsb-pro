@@ -72,7 +72,7 @@ test('professional phone workspace preserves drafts across task views and has re
   await nav.getByRole('link', { name: 'Sales', exact: true }).click();
   await page.getByLabel('Item', { exact: true }).selectOption({ label: 'Daily rice' });
   await page.getByLabel('Quantity', { exact: true }).fill('2');
-  await page.getByRole('button', { name: 'Add line' }).click();
+  await page.getByRole('button', { name: 'Add item', exact: true }).click();
   await expect(page.locator('.pos-cart')).toContainText('₹40.00');
   await capture('03-billing-phone');
   await reviewPayment(page);

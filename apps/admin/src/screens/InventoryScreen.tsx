@@ -63,6 +63,7 @@ import {
   replaceItemImage,
   setItemPrice,
   setItemMinStock,
+  setItemTaxRate,
   type Item,
   type ItemPrice,
   type Party,
@@ -84,7 +85,9 @@ import {
   emptyCharge,
   evaluateCharges,
   isV2Pending,
+  parsePercentBp,
   pendingImages,
+  percentText,
   postButtonText,
   roundOffText,
   type ChargeRow,
@@ -1285,10 +1288,18 @@ export function InventoryScreen({
       setError(problem);
       return;
     }
+    let taxRateBp: number;
+    try {
+      taxRateBp = parsePercentBp(text('gstPercent')) ?? 0;
+    } catch {
+      setError('Enter the GST % from 0 to 100 (at most 2 decimals), or leave it blank for 0%.');
+      return;
+    }
     try {
       const item = await createItem({
         tenantId,
         ...newItemInput(fields),
+        taxRateBp,
         clientId: crypto.randomUUID(),
       });
       form.reset();
@@ -1847,6 +1858,19 @@ export function InventoryScreen({
       setError(String(e));
     }
   }
+  async function changeTaxRate(ev: Event) {
+    ev.preventDefault();
+    if (!selectedItem) return;
+    const f = new FormData(ev.currentTarget as HTMLFormElement);
+    try {
+      const bp = parsePercentBp(String(f.get('gstPercent') || '')) ?? 0;
+      const rate = await setItemTaxRate(selectedItem.id, bp);
+      setItems((v) => v.map((i) => (i.id === selectedItem.id ? { ...i, tax_rate_bp: rate } : i)));
+      setMessage(`GST rate saved: ${percentText(rate)}%.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
   async function changeMinStock(ev: Event) {
     ev.preventDefault();
     if (!selectedItem) return;
@@ -2103,6 +2127,10 @@ export function InventoryScreen({
                 placeholder={ITEM_FIELD_LABELS.conv2}
               />
             </label>{' '}
+            <label>
+              GST %{' '}
+              <input name="gstPercent" inputMode="decimal" placeholder="0" aria-label="GST %" />
+            </label>{' '}
             <button disabled={!tenantId}>Create item</button>
           </form>
         </details>
@@ -2164,6 +2192,19 @@ export function InventoryScreen({
               />
             )}
           </div>
+        )}
+        {selectedItem && (
+          <form key={`gst:${selectedItem.id}`} onSubmit={changeTaxRate}>
+            <label>
+              Item GST %{' '}
+              <input
+                name="gstPercent"
+                inputMode="decimal"
+                defaultValue={percentText(selectedItem.tax_rate_bp ?? 0)}
+              />
+            </label>{' '}
+            <button disabled={!tenantId}>Save GST rate</button>
+          </form>
         )}
         {selectedItem && (
           <form onSubmit={changeMinStock}>

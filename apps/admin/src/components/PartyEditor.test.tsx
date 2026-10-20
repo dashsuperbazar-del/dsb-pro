@@ -72,6 +72,24 @@ test('a customer also edits the credit limit in rupees, sent as integer paise', 
   expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ creditLimitPaise: 250050 }));
 });
 
+test('a blank credit limit means no limit (null), and an unset limit opens blank', async () => {
+  const onSave = vi.fn().mockResolvedValue(undefined);
+  await act(async () =>
+    render(
+      <PartyEditor
+        kind="customer"
+        initial={{ ...initial, creditLimitPaise: null }}
+        onSave={onSave}
+      />,
+      host,
+    ),
+  );
+  await openIt();
+  expect(input('Credit limit').value).toBe('');
+  await submit();
+  expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ creditLimitPaise: null }));
+});
+
 test('a bad credit limit is refused before anything is sent', async () => {
   const onSave = vi.fn();
   await act(async () =>

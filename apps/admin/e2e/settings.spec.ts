@@ -81,7 +81,7 @@ test('owner can edit shop profile and it survives a reload, and the invoice pref
   // Only 5 are in stock. Sell 6 to prove the override set above actually
   // reaches post_sale(), not just that the checkbox itself saves.
   await page.getByLabel('Quantity').fill('6');
-  await page.getByRole('button', { name: 'Add line' }).click();
+  await page.getByRole('button', { name: 'Add item', exact: true }).click();
   await reviewPayment(page);
   await page.getByLabel('Amount ₹').first().fill('60');
   await reviewPayment(page);

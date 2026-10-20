@@ -7,8 +7,8 @@ export type PartyEditorValues = {
   phone: string;
   gstin: string;
   address: string;
-  /** Customers only: integer paise. */
-  creditLimitPaise?: number;
+  /** Customers only: integer paise; null = no credit limit. */
+  creditLimitPaise?: number | null;
   /** Customers only. */
   notes?: string;
 };
@@ -27,7 +27,7 @@ export function PartyEditor({
     phone: string | null;
     gstin: string | null;
     address: string | null;
-    creditLimitPaise?: number;
+    creditLimitPaise?: number | null;
     notes?: string | null;
   };
   onSave: (values: PartyEditorValues) => Promise<void>;
@@ -38,7 +38,11 @@ export function PartyEditor({
   const [phone, setPhone] = useState(initial.phone ?? '');
   const [gstin, setGstin] = useState(initial.gstin ?? '');
   const [address, setAddress] = useState(initial.address ?? '');
-  const [creditLimit, setCreditLimit] = useState(paiseToDecimal(initial.creditLimitPaise ?? 0));
+  const [creditLimit, setCreditLimit] = useState(
+    initial.creditLimitPaise === null || initial.creditLimitPaise === undefined
+      ? ''
+      : paiseToDecimal(initial.creditLimitPaise),
+  );
   const [notes, setNotes] = useState(initial.notes ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -76,8 +80,10 @@ export function PartyEditor({
     if (kind === 'customer') {
       try {
         // Exactly what is shown is what is stored: more than two decimals would be silently rounded.
-        if (!/^\d+(\.\d{1,2})?$/.test((creditLimit || '0').trim())) throw new Error('format');
-        values.creditLimitPaise = parseRupeesToPaise(creditLimit || '0');
+        const typed = creditLimit.trim();
+        if (typed && !/^\d+(\.\d{1,2})?$/.test(typed)) throw new Error('format');
+        // Blank = no credit limit. 0 = no credit allowed.
+        values.creditLimitPaise = typed ? parseRupeesToPaise(typed) : null;
       } catch {
         setError('Enter the credit limit in rupees, for example 1500 or 1500.50.');
         return;
@@ -123,7 +129,7 @@ export function PartyEditor({
           {kind === 'customer' && (
             <>
               <label>
-                Credit limit ₹
+                Credit limit ₹ (blank = no limit)
                 <input
                   value={creditLimit}
                   inputMode="decimal"

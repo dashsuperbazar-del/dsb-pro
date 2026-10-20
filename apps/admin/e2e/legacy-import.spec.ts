@@ -101,7 +101,7 @@ test('owner can import a legacy DSB backup into an empty shop and sell imported 
   await page.goto('/pos');
   await page.getByLabel('Item').selectOption({ label: 'Imported Biscuit' });
   await page.getByLabel('Quantity').fill('1');
-  await page.getByRole('button', { name: 'Add line' }).click();
+  await page.getByRole('button', { name: 'Add item', exact: true }).click();
   await expect(page.getByRole('cell', { name: /Imported Biscuit/ })).toBeVisible();
   await reviewPayment(page);
   await page.getByLabel('Amount ₹').first().fill('10');

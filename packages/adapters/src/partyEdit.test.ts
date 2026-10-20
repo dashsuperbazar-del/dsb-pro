@@ -107,10 +107,15 @@ describe('updateCustomer', () => {
         phone: null,
         address: null,
         gstin: null,
-        credit_limit_paise: 150000,
+        sale_credit_limit_paise: 150000,
         notes: 'vip',
       },
     ]);
+    await updateCustomer({ id: 'c1', name: 'Asha', creditLimitPaise: null });
+    expect(calls.update[0]).toMatchObject({ sale_credit_limit_paise: null });
+    expect(calls.update[0]).not.toHaveProperty('credit_limit_paise');
+    await updateCustomer({ id: 'c1', name: 'Asha' });
+    expect(calls.update[0]).not.toHaveProperty('sale_credit_limit_paise');
     await expect(
       updateCustomer({ id: 'c1', name: 'Asha', creditLimitPaise: 10.5 }),
     ).rejects.toThrow(/credit limit/i);
