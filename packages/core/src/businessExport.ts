@@ -1,3 +1,4 @@
+import { formatQuantity } from './formatQuantity';
 type ExportRow = Record<string, unknown>;
 
 export type ExportFile = { name: string; bytes: Uint8Array };
@@ -230,4 +231,3 @@ export function buildBusinessExportArchive(data: Record<string, unknown>): Uint8
   }
   return output;
 }
-import { formatQuantity } from './formatQuantity';

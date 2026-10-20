@@ -94,6 +94,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
   const [snapshotFailed, setSnapshotFailed] = useState(false);
   const userRef = useRef('');
   function forgetSaved(active: boolean) {
+    billCache.clear();
     dropSnapshot('purchases', userRef.current);
     if (!active) return;
     setRows([]);
@@ -128,6 +129,8 @@ export function PurchasesScreen({ url }: { url?: string }) {
   }
   useEffect(() => {
     let active = true;
+    // A cached bill never outlives the screen: sign-out, another user or shop starts empty.
+    billCache.clear();
     void (async () => {
       try {
         // Show the last list at once (display only), then refresh it below.
@@ -183,6 +186,17 @@ export function PurchasesScreen({ url }: { url?: string }) {
       setExtrasError(`Payment details could not be loaded: ${String(o.extras.e)}`);
     }
   }
+  // Touch: prefetch only after a ~250 ms hold/pause on a row, never on every scroll touch.
+  const holdTimer = useRef<number | undefined>(undefined);
+  function cancelHold() {
+    window.clearTimeout(holdTimer.current);
+    holdTimer.current = undefined;
+  }
+  function holdPrefetch(id: string) {
+    cancelHold();
+    holdTimer.current = window.setTimeout(() => prefetch(id), 250);
+  }
+  useEffect(() => cancelHold, []);
   function prefetch(id: string) {
     if (!shop || billCache.peek(billKey(shop, id))) return;
     billCache.fetch(billKey(shop, id)).catch(() => undefined);
@@ -393,7 +407,10 @@ export function PurchasesScreen({ url }: { url?: string }) {
                 aria-current={openRow?.id === b.id ? 'true' : undefined}
                 onClick={() => void open(b.id)}
                 onPointerEnter={() => prefetch(b.id)}
-                onTouchStart={() => prefetch(b.id)}
+                onTouchStart={() => holdPrefetch(b.id)}
+                onTouchMove={cancelHold}
+                onTouchEnd={cancelHold}
+                onTouchCancel={cancelHold}
                 onFocus={() => prefetch(b.id)}
               >
                 <span>
@@ -467,6 +484,19 @@ export function PurchasesScreen({ url }: { url?: string }) {
         )}
         {detail && (
           <section class="card" aria-label="Purchase detail" aria-busy={detailLoading}>
+            {detailLoading && (
+              <p class="muted" role="status">
+                Refreshing…
+              </p>
+            )}
+            {detailError && (
+              <p role="alert" data-testid="detail-stale">
+                This bill may be out of date — it could not be refreshed: {detailError}{' '}
+                <button type="button" onClick={() => void open(detail.bill.id, true)}>
+                  Retry
+                </button>
+              </p>
+            )}
             <div class="row">
               <h2>{detail.bill.bill_no || 'Purchase bill'}</h2>
               <button
@@ -564,7 +594,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
                       <input
                         value={voidReason}
                         readOnly={voidUnconfirmed}
-                        disabled={voidBusy}
+                        disabled={voidBusy || detailLoading || !!detailError}
                         placeholder="e.g. entered twice"
                         onInput={(e) => setVoidReason(e.currentTarget.value)}
                       />
@@ -572,7 +602,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
                     <button
                       type="button"
                       class="danger"
-                      disabled={voidBusy || !voidReason.trim()}
+                      disabled={voidBusy || detailLoading || !!detailError || !voidReason.trim()}
                       onClick={() => void voidPaid(detail.bill.id)}
                     >
                       {voidBusy

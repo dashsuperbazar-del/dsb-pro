@@ -403,7 +403,7 @@ export function ReportsScreen() {
                       {formatQuantity(r.min_stock)} {r.unit_name}
                     </td>
                     <td>
-                      {r.shortfall} {r.unit_name}
+                      {formatQuantity(r.shortfall)} {r.unit_name}
                     </td>
                   </tr>
                 ))}
