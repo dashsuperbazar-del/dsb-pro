@@ -74,7 +74,9 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
   await expect(purchase.locator('select[name="partyId"]')).toHaveValue(/.+/);
   await fillBillItem(purchase, 1, 'Daily oil', '2', '120');
   await purchase.locator('input[name="discount"]').fill('5');
-  await purchase.locator('input[name="extra"]').fill('5');
+  await purchase.getByRole('button', { name: '+ Add charge', exact: true }).click();
+  await purchase.getByLabel('Extra charge 1 name', { exact: true }).fill('Transport');
+  await purchase.getByLabel('Extra charge 1 amount ₹', { exact: true }).fill('5');
   await expect(purchase).toContainText('Draft saved on this device');
   const image = await page.evaluate(() => {
     const c = document.createElement('canvas');
@@ -117,7 +119,10 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
   );
   await expect(purchase.locator('select[name="partyId"]')).toHaveValue(originalSupplier);
   await expect(purchase.locator('input[name="discount"]')).toHaveValue('5');
-  await expect(purchase.locator('input[name="extra"]')).toHaveValue('5');
+  await expect(purchase.getByLabel('Extra charge 1 name', { exact: true })).toHaveValue(
+    'Transport',
+  );
+  await expect(purchase.getByLabel('Extra charge 1 amount ₹', { exact: true })).toHaveValue('5');
   await expect(purchase.getByLabel('Item 1 name', { exact: true })).toHaveValue('Daily oil');
   await expect(purchase.getByLabel('Item 1 quantity', { exact: true })).toHaveValue('2');
   await expect(purchase.getByLabel('Item 1 rate ₹', { exact: true })).toHaveValue('120');

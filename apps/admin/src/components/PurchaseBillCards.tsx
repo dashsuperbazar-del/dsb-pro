@@ -23,6 +23,7 @@ import {
   type NewItemFields,
 } from '../lib/newItem';
 import { learnedUnits } from '../lib/unitLearning';
+import { gstHint } from '../lib/billExtras';
 import {
   cardSaleResult,
   conversionLines,
@@ -360,6 +361,8 @@ export function PurchaseBillCards(props: {
                             costMode: 'unit',
                             unitHint: undefined,
                             sale: undefined,
+                            discount: undefined,
+                            gst: undefined,
                           }
                         : { ...c, search },
                     );
@@ -605,9 +608,61 @@ export function PurchaseBillCards(props: {
                 }
               />
             )}
+            <div class="bill-card-figures">
+              <label>
+                Discount %
+                <input
+                  aria-label={`Item ${n} discount %`}
+                  data-field="discount"
+                  type="text"
+                  inputMode="decimal"
+                  autocomplete="off"
+                  placeholder="0"
+                  value={card.discount ?? ''}
+                  disabled={disabled}
+                  onInput={(e) => {
+                    const discount = e.currentTarget.value;
+                    patch(card.key, (c) => ({ ...c, discount }));
+                  }}
+                />
+              </label>
+              <label>
+                GST %
+                <input
+                  aria-label={`Item ${n} GST %`}
+                  data-field="gst"
+                  type="text"
+                  inputMode="decimal"
+                  autocomplete="off"
+                  placeholder="Included"
+                  value={card.gst ?? ''}
+                  disabled={disabled}
+                  onInput={(e) => {
+                    const gst = e.currentTarget.value;
+                    patch(card.key, (c) => ({ ...c, gst }));
+                  }}
+                />
+              </label>
+            </div>
+            <small class="muted bill-card-gst-hint" data-testid={`item-${n}-gst-hint`}>
+              {gstHint(card.gst ?? '')}
+            </small>
             <p class="bill-card-amount" aria-live="polite" data-testid={`item-${n}-amount`}>
               {result.kind === 'ok' ? (
-                <strong>Amount {rupees(result.amountPaise)}</strong>
+                result.amountPaise === result.grossPaise &&
+                !result.line.discountBp &&
+                !result.line.gstBp ? (
+                  <strong>Amount {rupees(result.amountPaise)}</strong>
+                ) : (
+                  <>
+                    <span class="muted">
+                      {rupees(result.grossPaise)}
+                      {result.line.discountBp ? ` − ${card.discount?.trim()}% discount` : ''}
+                      {result.line.gstBp ? ` + ${card.gst?.trim()}% GST` : ''}
+                    </span>{' '}
+                    <strong>Item total {rupees(result.amountPaise)}</strong>
+                  </>
+                )
               ) : result.kind === 'problem' && !typedTotal ? (
                 <span class="muted">{result.message}</span>
               ) : null}

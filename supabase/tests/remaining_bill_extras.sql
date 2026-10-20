@@ -3,7 +3,7 @@
 -- named extra charges, several bill images, and an atomic void of a paid bill.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(117);
+select plan(130);
 insert into auth.users(id) values
  ('e3000000-0000-0000-0000-000000000001'),  -- owner
  ('e3000000-0000-0000-0000-000000000002'),  -- manager
@@ -369,6 +369,37 @@ select throws_like($$update purchase_returns set round_off_paise=0 where client_
 set role authenticated;
 select pg_temp.act('e3000000-0000-0000-0000-000000000001');
 
+-- Deferred (bill-card packet): a replayed completing return answers with the same return and round-off; voiding
+-- the completing return frees the round-off for the next completing return; a rounded bill with named extra
+-- charges, fully returned, leaves exactly the extra charges outstanding (charges stay with the shop).
+select is((select (r->>'id')||'/'||(r->>'total_paise')||'/'||(r->>'round_off_paise') from (select pg_temp.ret(pg_temp.id('up'),'e3-ret-up2','1') r) x),
+  (select id::text||'/5075/50' from purchase_returns where client_id='e3-ret-up2'),
+  'a replayed completing return returns the same return with the same round-off');
+select is((select count(*) from purchase_returns where purchase_bill_id=pg_temp.id('up')),2::bigint,'the replay adds no return');
+select is(pg_temp.net(pg_temp.id('up')),0::bigint,'after the replay the bill still nets to zero');
+select set_config('e3.vr2',pg_temp.post('e3000000-0000-0000-0000-0000000000c8',jsonb_build_object('party_id',pg_temp.id('sup'),
+  'business_date','2026-10-05','total_paise',10100,'round_off_paise',50,'lines',jsonb_build_array(pg_temp.line('2',5025,0,null,10050))))->>'billId',false);
+select is((select (r->>'total_paise')||'/'||(r->>'round_off_paise') from (select pg_temp.ret(pg_temp.id('vr2'),'e3-ret-vr1','1') r) x),'5025/0',
+  'partial return before the completing one');
+select is((select (r->>'total_paise')||'/'||(r->>'round_off_paise') from (select pg_temp.ret(pg_temp.id('vr2'),'e3-ret-vr2','1') r) x),'5075/50',
+  'the completing return takes the round-off');
+select is(void_return('PURCHASE',(select id from purchase_returns where client_id='e3-ret-vr2'),'e3-ret-vr2-void'),
+  (select id from purchase_returns where client_id='e3-ret-vr2'),'the completing return is voided');
+select is((select row(status,round_off_paise)::text from purchase_returns where client_id='e3-ret-vr2'),'(VOID,50)',
+  'a voided return keeps its round-off on record');
+select is(pg_temp.net(pg_temp.id('vr2')),5075::bigint,'the void puts the item value and the round-off back on the bill');
+select is((select (r->>'total_paise')||'/'||(r->>'round_off_paise') from (select pg_temp.ret(pg_temp.id('vr2'),'e3-ret-vr3','1') r) x),'5075/50',
+  're-completing after the void takes the round-off again (never twice)');
+select is(pg_temp.net(pg_temp.id('vr2')),0::bigint,'the re-completed bill nets to zero');
+select set_config('e3.xc',pg_temp.post('e3000000-0000-0000-0000-0000000000c9',jsonb_build_object('party_id',pg_temp.id('sup'),
+  'business_date','2026-10-05','total_paise',10100,'round_off_paise',25,'lines',jsonb_build_array(pg_temp.line('1',10050,0,null,10050)),
+  'charges',jsonb_build_array(jsonb_build_object('label','Transport','amount_paise',25))))->>'billId',false);
+select is((select row(subtotal_paise,extra_charges_paise,round_off_paise,total_paise)::text from purchase_bills where id=pg_temp.id('xc')),
+  '(10050,25,25,10100)','₹100.50 + ₹0.25 transport = ₹100.75 -> ₹101 (+25)');
+select is((select (r->>'total_paise')||'/'||(r->>'round_off_paise') from (select pg_temp.ret(pg_temp.id('xc'),'e3-ret-xc','1') r) x),'10075/25',
+  'the full return gives back what was billed for the items (total - extra), round-off included');
+select is(pg_temp.net(pg_temp.id('xc')),25::bigint,'a fully returned rounded bill leaves exactly its extra charges outstanding');
+
 -- Party merge moves a rounded bill unchanged; the v1 void works on a rounded credit bill.
 select set_config('e3.mb',pg_temp.post('e3000000-0000-0000-0000-0000000000c7',jsonb_build_object('party_id',pg_temp.id('m1'),
   'business_date','2026-10-05','total_paise',18300,'round_off_paise',9,'lines',jsonb_build_array(pg_temp.line('20',871,0,500,18291))))->>'billId',false);
@@ -414,10 +445,10 @@ select is((select row(taxable_purchases_paise,gross_purchases_paise)::text from 
   '(17246,18108)','GST summary uses the line''s GST rate (gross shares the bill discount)');
 
 -- Business export carries the new tables.
-select ok((phase6_export_tenant(pg_temp.id('shop')) ? 'purchaseCharges') and jsonb_array_length(phase6_export_tenant(pg_temp.id('shop'))->'purchaseCharges')=2,
+select ok((phase6_export_tenant(pg_temp.id('shop')) ? 'purchaseCharges') and jsonb_array_length(phase6_export_tenant(pg_temp.id('shop'))->'purchaseCharges')=3,
   'export carries named charges');
 select is(jsonb_array_length(phase6_export_tenant(pg_temp.id('shop'))->'purchaseImages'),2,'export carries bill images');
-select is((select count(*) from purchase_bills where tenant_id=pg_temp.id('tenant') and status='POSTED'),14::bigint,'posted bill count is exact (18 bills, 4 voided)');
+select is((select count(*) from purchase_bills where tenant_id=pg_temp.id('tenant') and status='POSTED'),16::bigint,'posted bill count is exact (20 bills, 4 voided)');
 select is(check_invariants()->>'ok','true','financial invariants hold after paid, credit, voided and multi-image bills');
 
 select * from finish();

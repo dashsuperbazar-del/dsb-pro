@@ -26,6 +26,15 @@ const api = vi.hoisted(() => ({
   listPurchaseHistory: vi.fn().mockResolvedValue([]),
   getPurchaseDetail: vi.fn(),
   postPurchaseOutcome: vi.fn(),
+  postPurchaseV2Outcome: vi.fn(),
+  getPurchaseExtras: vi.fn().mockResolvedValue({
+    paymentType: 'credit',
+    notes: null,
+    lines: [],
+    charges: [],
+    images: [],
+    settlement: { status: 'unpaid' },
+  }),
   listItemPurchasePrices: vi.fn().mockResolvedValue([]),
   listItemSaleMovements: vi.fn().mockResolvedValue({ sales: [], returns: [], truncated: false }),
 }));
@@ -156,7 +165,7 @@ test('blank or unchanged prices write nothing; the bill still posts', async () =
   await vi.waitFor(() => expect(input('Item 1 retail ₹').value).toBe('10.00'));
   await setField(label('Item 1 retail ₹'), '10');
   await setField(label('Item 1 wholesale price ₹'), '');
-  api.postPurchaseOutcome.mockResolvedValue({ kind: 'confirmed', value: {} });
+  api.postPurchaseV2Outcome.mockResolvedValue({ kind: 'confirmed', value: {} });
   await post();
   await vi.waitFor(() => expect(host.textContent).toContain('Purchase posted (1 item)'));
   expect(api.setItemPrice).not.toHaveBeenCalled();
@@ -172,7 +181,7 @@ test('a wholesale qty alone never divides the current wholesale price; it blocks
     'Enter the wholesale price for 12 pcs, or clear the wholesale qty.',
   );
   await post();
-  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  expect(api.postPurchaseV2Outcome).not.toHaveBeenCalled();
   expect(api.setItemPrice).not.toHaveBeenCalled();
 });
 
@@ -184,7 +193,7 @@ test('a price that is not a number is a problem, not a blank', async () => {
     /retail price in rupees/,
   );
   await post();
-  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  expect(api.postPurchaseV2Outcome).not.toHaveBeenCalled();
 });
 
 test('wholesale price for N units that is not whole paise per unit is refused before posting', async () => {
@@ -196,7 +205,7 @@ test('wholesale price for N units that is not whole paise per unit is refused be
     '₹100.00 for 12 pcs is not a whole number of paise per pcs',
   );
   await post();
-  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  expect(api.postPurchaseV2Outcome).not.toHaveBeenCalled();
   expect(host.querySelector('.bill-bar')!.textContent).toContain('Item 1: ₹100.00 for 12 pcs');
   expect(document.activeElement).toBe(input('Item 1 wholesale price ₹'));
   // ₹108 for 12 is exactly ₹9.00 per pcs: shown, and allowed.
@@ -211,7 +220,7 @@ test('prices are written only after the bill posts, one call each, with derived 
   await setField(label('Item 1 wholesale qty'), '12');
   await setField(label('Item 1 wholesale price ₹'), '120');
   const order: string[] = [];
-  api.postPurchaseOutcome.mockImplementation(async () => {
+  api.postPurchaseV2Outcome.mockImplementation(async () => {
     order.push('post');
     expect(api.setItemPrice).not.toHaveBeenCalled();
     return { kind: 'confirmed', value: {} };
@@ -223,7 +232,7 @@ test('prices are written only after the bill posts, one call each, with derived 
   await post();
   await vi.waitFor(() => expect(host.textContent).toContain('Sale prices updated: 2.'));
   expect(order).toEqual(['post', 'retail', 'wholesale']);
-  const bill = api.postPurchaseOutcome.mock.calls[0][0].clientId as string;
+  const bill = api.postPurchaseV2Outcome.mock.calls[0][0].clientId as string;
   expect(api.setItemPrice.mock.calls.map((c) => c[0])).toEqual([
     {
       itemId: 'bis',
@@ -253,7 +262,7 @@ test('a refused bill writes no price', async () => {
   await mountEditor();
   await fillCard(1, 'Biscuit');
   await setField(label('Item 1 retail ₹'), '12.50');
-  api.postPurchaseOutcome.mockResolvedValue({ kind: 'rejected', message: 'no' });
+  api.postPurchaseV2Outcome.mockResolvedValue({ kind: 'rejected', message: 'no' });
   await post();
   await vi.waitFor(() => expect(host.textContent).toContain('Not posted: no.'));
   expect(api.setItemPrice).not.toHaveBeenCalled();
@@ -264,14 +273,14 @@ test('an unconfirmed bill writes prices only once its retry confirms', async () 
   await mountEditor();
   await fillCard(1, 'Biscuit');
   await setField(label('Item 1 retail ₹'), '12.50');
-  api.postPurchaseOutcome.mockResolvedValueOnce({ kind: 'unknown', message: 'timeout' });
+  api.postPurchaseV2Outcome.mockResolvedValueOnce({ kind: 'unknown', message: 'timeout' });
   await post();
   await vi.waitFor(() => expect(host.textContent).toContain('Not confirmed: timeout'));
   expect(api.setItemPrice).not.toHaveBeenCalled();
-  api.postPurchaseOutcome.mockResolvedValueOnce({ kind: 'confirmed', value: {} });
+  api.postPurchaseV2Outcome.mockResolvedValueOnce({ kind: 'confirmed', value: {} });
   await click(button('Retry same purchase'));
-  await vi.waitFor(() => expect(api.postPurchaseOutcome).toHaveBeenCalledTimes(2));
-  expect(api.postPurchaseOutcome.mock.calls[1][1]).toBe(true);
+  await vi.waitFor(() => expect(api.postPurchaseV2Outcome).toHaveBeenCalledTimes(2));
+  expect(api.postPurchaseV2Outcome.mock.calls[1][1]).toBe(true);
   await vi.waitFor(() => expect(api.setItemPrice).toHaveBeenCalledTimes(1));
   expect(api.setItemPrice.mock.calls[0][0]).toMatchObject({ kind: 'retail', pricePaise: 1250 });
 });
@@ -280,12 +289,12 @@ test('a bill that confirms more than a day after its prices were entered writes 
   await mountEditor();
   await fillCard(1, 'Biscuit');
   await setField(label('Item 1 retail ₹'), '12.50');
-  api.postPurchaseOutcome.mockResolvedValueOnce({ kind: 'unknown', message: 'timeout' });
+  api.postPurchaseV2Outcome.mockResolvedValueOnce({ kind: 'unknown', message: 'timeout' });
   await post();
   await vi.waitFor(() => expect(host.textContent).toContain('Not confirmed: timeout'));
   const later = Date.now() + 25 * 3_600_000;
   vi.spyOn(Date, 'now').mockReturnValue(later);
-  api.postPurchaseOutcome.mockResolvedValueOnce({ kind: 'confirmed', value: {} });
+  api.postPurchaseV2Outcome.mockResolvedValueOnce({ kind: 'confirmed', value: {} });
   await click(button('Retry same purchase'));
   await vi.waitFor(() =>
     expect(host.textContent).toContain(
@@ -302,7 +311,7 @@ test('a failed price write keeps the bill posted and offers a retry with the sam
   await mountEditor();
   await fillCard(1, 'Biscuit');
   await setField(label('Item 1 retail ₹'), '12.50');
-  api.postPurchaseOutcome.mockResolvedValue({ kind: 'confirmed', value: {} });
+  api.postPurchaseV2Outcome.mockResolvedValue({ kind: 'confirmed', value: {} });
   api.setItemPrice.mockRejectedValueOnce(new Error('network down'));
   await post();
   await vi.waitFor(() =>
@@ -396,7 +405,7 @@ test('an error a retry cannot fix (item gone) is offered only for discard', asyn
   await mountEditor();
   await fillCard(1, 'Biscuit');
   await setField(label('Item 1 retail ₹'), '12.50');
-  api.postPurchaseOutcome.mockResolvedValue({ kind: 'confirmed', value: {} });
+  api.postPurchaseV2Outcome.mockResolvedValue({ kind: 'confirmed', value: {} });
   api.setItemPrice.mockRejectedValueOnce(new Error('item not in tenant'));
   await post();
   await vi.waitFor(() =>
@@ -422,14 +431,14 @@ test('a bill refused on its retry after a reload leaves no stored price and no a
   await mountEditor();
   await fillCard(1, 'Biscuit');
   await setField(label('Item 1 retail ₹'), '12.50');
-  api.postPurchaseOutcome.mockResolvedValueOnce({ kind: 'unknown', message: 'timeout' });
+  api.postPurchaseV2Outcome.mockResolvedValueOnce({ kind: 'unknown', message: 'timeout' });
   await post();
   await vi.waitFor(() => expect(host.textContent).toContain('Not confirmed: timeout'));
   expect(priceKeys()).toHaveLength(1);
   act(() => render(null, host));
   await mountEditor();
   await vi.waitFor(() => expect(button('Retry same purchase')).toBeTruthy());
-  api.postPurchaseOutcome.mockResolvedValueOnce({ kind: 'rejected', message: 'no' });
+  api.postPurchaseV2Outcome.mockResolvedValueOnce({ kind: 'rejected', message: 'no' });
   await click(button('Retry same purchase'));
   await vi.waitFor(() => expect(host.textContent).toContain('Not posted: no.'));
   expect(priceKeys()).toEqual([]);
@@ -444,16 +453,16 @@ test('a bill confirmed on its retry after a reload writes the prices planned bef
   await mountEditor();
   await fillCard(1, 'Biscuit');
   await setField(label('Item 1 retail ₹'), '12.50');
-  api.postPurchaseOutcome.mockResolvedValueOnce({ kind: 'unknown', message: 'timeout' });
+  api.postPurchaseV2Outcome.mockResolvedValueOnce({ kind: 'unknown', message: 'timeout' });
   await post();
   await vi.waitFor(() => expect(host.textContent).toContain('Not confirmed: timeout'));
-  const bill = api.postPurchaseOutcome.mock.calls[0][0].clientId as string;
+  const bill = api.postPurchaseV2Outcome.mock.calls[0][0].clientId as string;
   act(() => render(null, host));
   await mountEditor();
   await vi.waitFor(() => expect(button('Retry same purchase')).toBeTruthy());
   // The pending bill's plan is not offered as an alert while the bill is unconfirmed.
   expect(host.querySelector('.price-retry')).toBeNull();
-  api.postPurchaseOutcome.mockResolvedValueOnce({ kind: 'confirmed', value: {} });
+  api.postPurchaseV2Outcome.mockResolvedValueOnce({ kind: 'confirmed', value: {} });
   await click(button('Retry same purchase'));
   await vi.waitFor(() => expect(api.setItemPrice).toHaveBeenCalledTimes(1));
   expect(api.setItemPrice.mock.calls[0][0]).toMatchObject({

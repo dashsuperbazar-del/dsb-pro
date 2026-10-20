@@ -257,3 +257,111 @@ test('typed sale prices are kept with the draft and count as unsaved entry', () 
     hasTypedPurchaseInput({ ...blank, cards: [{ ...bare, sale: { level: 1, retail: '5' } }] }),
   ).toBe(true);
 });
+
+test('billextras: payment type, notes, named charges, item discount/GST and several photos round-trip', () => {
+  const prefix = purchaseDraftPrefix('u', 's');
+  const client = 'c0000000-0000-0000-0000-000000000001';
+  const photo = (n: number) => ({
+    id: `d000000${n}-0000-0000-0000-000000000000`,
+    path: `a0000000-0000-0000-0000-000000000001/a0000000-0000-0000-0000-000000000002/${client}/d000000${n}-0000-0000-0000-000000000000.webp`,
+    name: `bill-${n}.png`,
+    mime: 'image/webp' as const,
+    size: 100 + n,
+    sha256: String(n).repeat(64),
+    uploaded: n === 1,
+  });
+  const full: PurchaseDraft = {
+    ...draft(),
+    clientId: client,
+    extra: '',
+    paymentType: 'upi',
+    notes: 'Rate agreed on phone',
+    charges: [
+      { label: 'Transport', amount: '25.50' },
+      { label: 'Loading', amount: '' },
+    ],
+    cards: [
+      {
+        item,
+        search: 'Oil',
+        unitLevel: 2,
+        qty: '3',
+        price: '7.45',
+        costMode: 'unit',
+        discount: '2.5',
+        gst: '',
+      },
+      { item, search: 'Oil', unitLevel: 1, qty: '1', price: '9', costMode: 'unit', gst: '0' },
+    ],
+    document: photo(1),
+    documents: [photo(1), photo(2)],
+  };
+  savePurchaseDraft(prefix, 'w', full);
+  const back = listPurchaseDrafts(prefix)[0]!.draft;
+  expect(back).toEqual(full);
+  // Blank GST stays blank (price includes GST) and an explicit 0 stays "0" — never merged.
+  expect(back.cards![0]!.gst).toBe('');
+  expect(back.cards![1]!.gst).toBe('0');
+  expect(restorePurchaseDraft(back, [item], [])).toMatchObject({
+    paymentType: 'upi',
+    notes: 'Rate agreed on phone',
+    charges: full.charges,
+    documents: full.documents,
+  });
+  const empty = {
+    ...draft(),
+    billNo: '',
+    discount: '',
+    extra: '',
+    cart: [],
+    lineItem: null,
+    qty: '',
+    price: '',
+  };
+  expect(hasTypedPurchaseInput({ ...empty, notes: 'x' })).toBe(true);
+  expect(hasTypedPurchaseInput({ ...empty, paymentType: 'cash' })).toBe(true);
+  expect(
+    hasTypedPurchaseInput({
+      ...empty,
+      paymentType: 'credit',
+      charges: [{ label: '', amount: '' }],
+    }),
+  ).toBe(false);
+});
+
+test('billextras: unreadable new fields are refused and the draft kept; a photo of another bill is refused', () => {
+  const prefix = purchaseDraftPrefix('u', 's');
+  const bad = (over: Record<string, unknown>) => {
+    localStorage.setItem(`${prefix}x:w`, JSON.stringify({ ...draft(), ...over }));
+    const scan = scanPurchaseDrafts(prefix);
+    localStorage.clear();
+    return scan.unreadable.length;
+  };
+  expect(bad({ paymentType: 'cheque' })).toBe(1);
+  expect(bad({ notes: 5 })).toBe(1);
+  expect(bad({ charges: [{ label: 'x' }] })).toBe(1);
+  expect(bad({ documents: new Array(11).fill(null) })).toBe(1);
+  expect(
+    bad({
+      documents: [
+        {
+          id: 'd0000001-0000-0000-0000-000000000000',
+          path: 'a0000000-0000-0000-0000-000000000001/a0000000-0000-0000-0000-000000000002/c0000000-0000-0000-0000-00000000000f/d0000001-0000-0000-0000-000000000000.webp',
+          name: 'x',
+          mime: 'image/webp',
+          size: 1,
+          sha256: '1'.repeat(64),
+          uploaded: true,
+        },
+      ],
+    }),
+  ).toBe(1);
+  expect(
+    bad({
+      cards: [
+        { item: null, search: '', unitLevel: 1, qty: '', price: '', costMode: 'unit', gst: 5 },
+      ],
+    }),
+  ).toBe(1);
+  expect(bad({ paymentType: 'cash', notes: 'ok', charges: [] })).toBe(0);
+});

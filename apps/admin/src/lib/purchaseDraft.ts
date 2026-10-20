@@ -29,12 +29,23 @@ export type PurchaseDraft = {
   /** Bill entry cards (every item editable at once). Absent in drafts saved by the older single-form editor,
    * which restore from `cart` plus the half-typed form instead. `cart` always holds the complete cards. */
   cards?: BillCardDraft[];
+  /** billextras: Credit (default, absent in older drafts) / Cash / UPI. */
+  paymentType?: 'credit' | 'cash' | 'upi';
+  notes?: string;
+  /** Named extra charges as typed. Older drafts carry one amount in `extra` instead (shown as one row). */
+  charges?: { label: string; amount: string }[];
+  /** Bill photos in order (≤10). Older drafts carry one in `document`; new drafts keep `document` = the first. */
+  documents?: BillDocument[];
 };
 export type SavedPurchaseDraft = { key: string; draft: PurchaseDraft };
 /** N08: the purchase editor holds typed input (a preselected supplier alone does not count). */
 export function hasTypedPurchaseInput(d: PurchaseDraft): boolean {
   return Boolean(
     d.document ||
+    d.documents?.length ||
+    (d.paymentType && d.paymentType !== 'credit') ||
+    d.notes?.trim() ||
+    d.charges?.some((c) => c.label.trim() || c.amount.trim()) ||
     d.cart.length ||
     d.billNo ||
     d.discount ||
@@ -44,7 +55,16 @@ export function hasTypedPurchaseInput(d: PurchaseDraft): boolean {
     d.price ||
     // Typed sale prices sit on a card with an item, so they count through c.item; hasTypedSale is
     // checked as well so a price edit can never be the one unsaved entry the guard misses.
-    d.cards?.some((c) => c.item || c.search.trim() || c.qty || c.price || hasTypedSale(c)),
+    d.cards?.some(
+      (c) =>
+        c.item ||
+        c.search.trim() ||
+        c.qty ||
+        c.price ||
+        c.discount?.trim() ||
+        c.gst?.trim() ||
+        hasTypedSale(c),
+    ),
   );
 }
 // VF-017: a snapshot stores only what restore compares (id, name, units, conversions); restore swaps in
@@ -119,6 +139,8 @@ function checked(value: unknown): PurchaseDraft {
           typeof c.price === 'string' &&
           (c.costMode === 'unit' || c.costMode === 'total') &&
           (c.unitHint === undefined || (Number.isSafeInteger(c.unitHint) && c.unitHint >= 0)) &&
+          (c.discount === undefined || typeof c.discount === 'string') &&
+          (c.gst === undefined || typeof c.gst === 'string') &&
           (c.sale === undefined ||
             (!!c.sale &&
               [1, 2, 3].includes(c.sale.level) &&
@@ -138,9 +160,25 @@ function checked(value: unknown): PurchaseDraft {
     throw new Error('Saved paper bill total is unreadable. The draft has been kept.');
   if (d.documentIssue !== undefined && typeof d.documentIssue !== 'string')
     throw new Error('Saved document selection state is unreadable. The draft has been kept.');
-  if (d.document) {
-    const photo = d.document,
-      parts = BILL_DOCUMENT_PATH.exec(photo.path);
+  if (d.paymentType !== undefined && !['credit', 'cash', 'upi'].includes(d.paymentType))
+    throw new Error('Saved payment type is unreadable. The draft has been kept.');
+  if (d.notes !== undefined && typeof d.notes !== 'string')
+    throw new Error('Saved notes are unreadable. The draft has been kept.');
+  if (
+    d.charges !== undefined &&
+    !(
+      Array.isArray(d.charges) &&
+      d.charges.every((c) => c && typeof c.label === 'string' && typeof c.amount === 'string')
+    )
+  )
+    throw new Error('Saved extra charges are unreadable. The draft has been kept.');
+  if (d.documents !== undefined && !(Array.isArray(d.documents) && d.documents.length <= 10))
+    throw new Error('Saved bill photos are unreadable. The draft has been kept.');
+  const photos = [...(d.document ? [d.document] : []), ...(d.documents ?? [])];
+  if (d.documents && new Set(d.documents.map((p) => p?.id)).size !== d.documents.length)
+    throw new Error('Saved bill photos are unreadable. The draft has been kept.');
+  for (const photo of photos) {
+    const parts = photo ? BILL_DOCUMENT_PATH.exec(photo.path) : null;
     if (
       !parts ||
       parts[3] !== d.clientId ||
@@ -217,6 +255,10 @@ export function clearPurchaseDrafts(prefix: string, clientId: string) {
     if (key?.startsWith(`${prefix}${clientId}:`)) keys.push(key);
   }
   for (const key of keys) localStorage.removeItem(key);
+}
+/** The bill photos of a draft, whichever version saved it. */
+export function draftDocuments(d: PurchaseDraft): BillDocument[] {
+  return d.documents ?? (d.document ? [d.document] : []);
 }
 export function restorePurchaseDraft(
   draft: PurchaseDraft,

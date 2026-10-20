@@ -1,8 +1,14 @@
-import { canonicalQuantity, parseRupeesToPaise, quantityTimesPaise } from '@dsb-pro/core';
+import {
+  canonicalQuantity,
+  parseRupeesToPaise,
+  purchaseLineTotalPaise,
+  quantityTimesPaise,
+} from '@dsb-pro/core';
 import type { Item } from '@dsb-pro/adapters';
 import type { PurchaseDraftLine } from './purchaseWorkflow';
 import { deriveUnitCostFromTotal } from './purchaseCost';
 import { paiseToDecimal } from './money';
+import { parsePercentBp, percentText } from './billExtras';
 
 // Bill entry cards (old DSB "ITEM 1, ITEM 2 …" layout). Every item of the bill is an editable card; the
 // posted lines are derived from the cards with exactly the rules the old single "add line" form used
@@ -25,6 +31,11 @@ export type BillCardDraft = {
   /** Optional sale prices typed in the card's "Sale prices" box (lib/billSalePrices). Never posted with
    * the bill; written to the item after the bill posts. */
   sale?: CardSale;
+  /** Discount % on this item as typed (old DSB "DISCOUNT %"); blank = none. */
+  discount?: string;
+  /** GST % as typed (old DSB "GST %"). Blank = the rate already includes GST (sent as null); a number,
+   * 0 included, is ADDED on top of the discounted amount. */
+  gst?: string;
 };
 /** Typed sale price box fields; a field left undefined shows the item's current price. */
 export type CardSale = { level: 1 | 2 | 3; retail?: string; wsQty?: string; wsPrice?: string };
@@ -33,7 +44,16 @@ export type BillCard = BillCardDraft & { key: string };
 export type CardResult =
   | { kind: 'blank' }
   | { kind: 'problem'; message: string }
-  | { kind: 'ok'; line: PurchaseDraftLine; amountPaise: number };
+  | {
+      kind: 'ok';
+      line: BillLine;
+      /** Item total after discount and GST: exactly the server's line total. */
+      amountPaise: number;
+      /** Quantity × rate, before discount and GST. */
+      grossPaise: number;
+    };
+/** A posted line: the old add-line fields plus discount (basis points) and GST (basis points or null). */
+export type BillLine = PurchaseDraftLine & { discountBp: number; gstBp: number | null };
 
 let seq = 0;
 const newKey = () => `card-${Date.now().toString(36)}-${(seq++).toString(36)}`;
@@ -51,7 +71,14 @@ export function emptyCard(): BillCard {
 }
 
 export function isBlankCard(c: BillCardDraft): boolean {
-  return !c.item && !c.search.trim() && !c.qty.trim() && !c.price.trim();
+  return (
+    !c.item &&
+    !c.search.trim() &&
+    !c.qty.trim() &&
+    !c.price.trim() &&
+    !c.discount?.trim() &&
+    !c.gst?.trim()
+  );
 }
 
 /** Nothing chosen or entered yet (a half-typed search may be replaced by a scan or voice result). */
@@ -66,10 +93,14 @@ export function withItem<T extends BillCardDraft>(c: T, item: Item, unitLevel: 1
   if (!c.item || (c.item.id === item.id && c.unitLevel === unitLevel))
     return { ...c, item, search: item.name, unitLevel };
   // Sale prices were typed for the old item; a change of purchase unit keeps them (they name their own unit).
-  const { sale, ...rest } = c;
+  // Discount and GST belong to the item; a change of unit keeps them, a different item drops them.
+  const { sale, discount, gst, ...rest } = c;
+  const same = c.item.id === item.id;
   return {
     ...(rest as T),
-    ...(c.item.id === item.id && sale ? { sale } : {}),
+    ...(same && sale ? { sale } : {}),
+    ...(same && discount !== undefined ? { discount } : {}),
+    ...(same && gst !== undefined ? { gst } : {}),
     item,
     search: item.name,
     unitLevel,
@@ -119,11 +150,11 @@ export function evaluateCard(c: BillCardDraft): CardResult {
       hint >= 0 &&
       quantityTimesPaise(qty, hint) === totalPaise
     )
-      return {
-        kind: 'ok',
-        line: { item, unitLevel: c.unitLevel, qty, unitPricePaise: hint },
-        amountPaise: totalPaise,
-      };
+      return withAdjustments(
+        c,
+        { item, unitLevel: c.unitLevel, qty, unitPricePaise: hint },
+        totalPaise,
+      );
     if (!derived.exact)
       return {
         kind: 'problem',
@@ -141,25 +172,57 @@ export function evaluateCard(c: BillCardDraft): CardResult {
     if (!(unitPricePaise >= 0) || !Number.isSafeInteger(unitPricePaise))
       return { kind: 'problem', message: 'Enter the cost per unit.' };
   }
-  let amountPaise: number;
+  let grossPaise: number;
   try {
-    amountPaise = quantityTimesPaise(qty, unitPricePaise);
+    grossPaise = quantityTimesPaise(qty, unitPricePaise);
   } catch {
     return { kind: 'problem', message: 'This amount is too large. Check the quantity and cost.' };
   }
-  return { kind: 'ok', line: { item, unitLevel: c.unitLevel, qty, unitPricePaise }, amountPaise };
+  return withAdjustments(c, { item, unitLevel: c.unitLevel, qty, unitPricePaise }, grossPaise);
+}
+
+/** Discount and GST on a complete line; the item total is core purchaseLineTotalPaise (the server's figure). */
+function withAdjustments(
+  c: BillCardDraft,
+  base: PurchaseDraftLine,
+  grossPaise: number,
+): CardResult {
+  let discountBp: number;
+  let gstBp: number | null;
+  try {
+    discountBp = parsePercentBp(c.discount ?? '') ?? 0;
+  } catch {
+    return { kind: 'problem', message: 'Enter the discount as a % from 0 to 100.' };
+  }
+  try {
+    gstBp = parsePercentBp(c.gst ?? '');
+  } catch {
+    return { kind: 'problem', message: 'Enter GST as a % from 0 to 100, or leave it blank.' };
+  }
+  let amountPaise: number;
+  try {
+    amountPaise = purchaseLineTotalPaise({
+      qty: base.qty,
+      unitPricePaise: base.unitPricePaise,
+      discountBp,
+      gstBp,
+    });
+  } catch {
+    return { kind: 'problem', message: 'This amount is too large. Check the quantity and cost.' };
+  }
+  return { kind: 'ok', line: { ...base, discountBp, gstBp }, amountPaise, grossPaise };
 }
 
 export type BillFromCards = {
   /** Request lines in card order; blank cards are skipped. */
-  lines: PurchaseDraftLine[];
+  lines: BillLine[];
   /** Cards that are started but cannot be posted yet ("Item 2: Enter the cost per unit."). */
   problems: { index: number; message: string }[];
   itemsTotalPaise: number;
 };
 
 export function billFromCards(cards: BillCardDraft[]): BillFromCards {
-  const lines: PurchaseDraftLine[] = [];
+  const lines: BillLine[] = [];
   const problems: { index: number; message: string }[] = [];
   let itemsTotalPaise = 0;
   cards.forEach((c, index) => {
@@ -172,7 +235,9 @@ export function billFromCards(cards: BillCardDraft[]): BillFromCards {
   return { lines, problems, itemsTotalPaise };
 }
 
-export function cardFromLine(l: PurchaseDraftLine): BillCard {
+export function cardFromLine(
+  l: PurchaseDraftLine & { discountBp?: number; gstBp?: number | null },
+): BillCard {
   return {
     key: newKey(),
     item: l.item,
@@ -181,6 +246,8 @@ export function cardFromLine(l: PurchaseDraftLine): BillCard {
     qty: l.qty,
     price: paiseToDecimal(l.unitPricePaise),
     costMode: 'unit',
+    ...(l.discountBp ? { discount: percentText(l.discountBp) } : {}),
+    ...(l.gstBp !== undefined && l.gstBp !== null ? { gst: percentText(l.gstBp) } : {}),
   };
 }
 
@@ -194,13 +261,14 @@ export function addLineAsCard(cards: BillCard[], line: PurchaseDraftLine): BillC
 /** Switch per unit ⇄ total. The other figure is filled only when it is exact; otherwise it is cleared. */
 export function switchCostMode(c: BillCard, mode: CostMode): BillCard {
   if (c.costMode === mode) return c;
-  const r = evaluateCard(c);
+  // The cost figure alone decides the switch (a discount or GST typo never clears the cost).
+  const r = evaluateCard({ ...c, discount: '', gst: '' });
   if (r.kind !== 'ok') return { ...c, costMode: mode, price: '', unitHint: undefined };
   return mode === 'total'
     ? {
         ...c,
         costMode: mode,
-        price: paiseToDecimal(r.amountPaise),
+        price: paiseToDecimal(r.grossPaise),
         unitHint: r.line.unitPricePaise,
       }
     : { ...c, costMode: mode, price: paiseToDecimal(r.line.unitPricePaise), unitHint: undefined };
@@ -246,5 +314,7 @@ export function cardDrafts(cards: BillCard[]): BillCardDraft[] {
     costMode: c.costMode,
     ...(c.unitHint !== undefined ? { unitHint: c.unitHint } : {}),
     ...(c.sale ? { sale: c.sale } : {}),
+    ...(c.discount ? { discount: c.discount } : {}),
+    ...(c.gst ? { gst: c.gst } : {}),
   }));
 }
