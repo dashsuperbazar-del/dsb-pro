@@ -486,3 +486,64 @@ test('Total mode is labelled as before discount/GST and warns when GST is typed'
   await click(button('Per unit', host.querySelector(label('Item 1 cost entered as'))!));
   expect(host.querySelector('[data-testid="item-1-total-gst"]')).toBeNull();
 });
+
+const extrasOf = () => ({
+  paymentType: 'credit',
+  notes: null,
+  lines: [{ lineNo: 1, discountBp: 200, gstBp: 500 }],
+  charges: [],
+  images: [],
+  settlement: { status: 'unpaid' },
+});
+test.each(['repeat', 'tap'] as const)(
+  'a supplier change while the last bill is being read copies nothing and says so (%s)',
+  async (start) => {
+    api.listParties.mockResolvedValue([
+      { id: 'p1', name: 'Acme' },
+      { id: 'p2', name: 'Beta' },
+    ]);
+    let release!: (v: unknown) => void;
+    api.getPurchaseExtras.mockImplementation(() => new Promise((resolve) => (release = resolve)));
+    await withLastBill();
+    if (start === 'repeat') await click(button('↺ Repeat last bill'));
+    else await click(button('Item A · ₹8.71/piece'));
+    await vi.waitFor(() => expect(api.getPurchaseExtras).toHaveBeenCalled());
+    // The shopkeeper picks another supplier before the extras answer arrives.
+    await setField('select[name="partyId"]', 'p2', 'change');
+    await act(async () => release(extrasOf()));
+    await vi.waitFor(() => expect(host.textContent).toContain('Supplier changed — not copied'));
+    expect(host.querySelectorAll('section[aria-label^="Item "]')).toHaveLength(1);
+    expect(host.querySelector<HTMLInputElement>(label('Item 1 name'))!.value).toBe('');
+    expect(host.querySelector<HTMLInputElement>(label('Item 1 GST %'))!.value).toBe('');
+  },
+);
+
+test('a new bill is refused while an older app version stored an unconfirmed v1 purchase after this page opened', async () => {
+  await mountEditor();
+  await item(1, '1', '10');
+  // Another tab still on the previous version saves its unconfirmed v1 bill after this editor opened.
+  const v1 = {
+    shopId: SHOP,
+    clientId: 'c0000000-0000-0000-0000-000000000009',
+    businessDate: '2026-10-11',
+    discountPaise: 0,
+    extraChargesPaise: 0,
+    lines: [{ itemId: 'a', unitLevel: 1, qty: '2', unitPricePaise: 1000 }],
+    savedAt: 1,
+  };
+  localStorage.setItem(`dsb-pending-purchase:${SHOP}:${v1.clientId}`, JSON.stringify(v1));
+  await click(postButton());
+  await vi.waitFor(() =>
+    expect(host.textContent).toContain(
+      'Another unconfirmed purchase is stored on this device. Nothing was sent; reload this page to finish it first.',
+    ),
+  );
+  expect(api.postPurchaseV2Outcome).not.toHaveBeenCalled();
+  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  expect(loadPendingIntent(`dsb-pending-purchase-v2:${SHOP}`)).toEqual({ ok: true, value: null });
+  // The other tab's v1 request is left exactly as it was, and the bill stays editable.
+  expect(JSON.parse(localStorage.getItem(`dsb-pending-purchase:${SHOP}:${v1.clientId}`)!)).toEqual(
+    v1,
+  );
+  expect(postButton().textContent).toBe('Post purchase');
+});

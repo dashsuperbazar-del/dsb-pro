@@ -270,6 +270,9 @@ export function InventoryScreen({
   const [recentDetail, setRecentDetail] = useState<Awaited<
     ReturnType<typeof getPurchaseDetail>
   > | null>(null);
+  // Latest rendered values, read after an await (repeat/tap-to-add) to drop a stale answer.
+  const copyContextRef = useRef({ shopId, purchaseSupplier, recentDetail });
+  copyContextRef.current = { shopId, purchaseSupplier, recentDetail };
   const contextApplied = useRef('');
   const contextNeedsReset = useRef(false);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
@@ -288,6 +291,8 @@ export function InventoryScreen({
   // form stays frozen so a retry resends the SAME request id and payload; the server returns the
   // stored bill if it was committed (and refuses a changed payload).
   const [purchaseLocked, setPurchaseLocked] = useState(false);
+  const purchaseLockedRef = useRef(purchaseLocked);
+  purchaseLockedRef.current = purchaseLocked;
   useEffect(() => {
     if (purchaseLocked) setView('purchase');
   }, [purchaseLocked]);
@@ -318,6 +323,8 @@ export function InventoryScreen({
     }
   }, [shopId]);
   const [purchaseBusy, setPurchaseBusy] = useState(false);
+  const purchaseBusyRef = useRef(purchaseBusy);
+  purchaseBusyRef.current = purchaseBusy;
   // Old-draft discard never offers the draft of this window's purchase or of a purchase awaiting
   // confirmation (its pending request id), so an unconfirmed bill's editable copy is never removed.
   function discardableDrafts() {
@@ -1185,19 +1192,42 @@ export function InventoryScreen({
   // Old DSB "↺ Repeat": the items of this supplier's last bill replace the cards (discount/extra untouched).
   // Items of a posted bill as cards, WITH their discount/GST (getPurchaseExtras). If the extras cannot be
   // read nothing is copied: a card without its discount/GST would silently change what the bill costs.
+  // The extras read is awaited, so the answer is dropped (null) if meanwhile the shop, supplier, source
+  // bill or bill being entered changed, or the bill was sent/locked: never copy into another bill.
+  // A dropped answer resolves to `{ stale: message }`, shown instead of copying.
   async function cardsFromBill(
     detail: NonNullable<typeof recentDetail>,
     lines: NonNullable<typeof recentDetail>['lines'],
-  ): Promise<BillCard[]> {
+  ): Promise<BillCard[] | { stale: string }> {
     const cart = repeatPurchase(detail.bill, lines, items);
+    const startShop = shopId;
+    const startSupplier = purchaseSupplier;
+    const startClient = purchaseClientRef.current;
+    const staleReason = () => {
+      const now = copyContextRef.current;
+      if (now.shopId !== startShop || now.purchaseSupplier !== startSupplier)
+        return 'Supplier changed — not copied.';
+      if (
+        now.recentDetail?.bill.id !== detail.bill.id ||
+        purchaseClientRef.current !== startClient ||
+        purchaseLockedRef.current ||
+        purchaseBusyRef.current
+      )
+        return 'The bill changed while the last bill was being read — not copied.';
+      return '';
+    };
     let extras;
     try {
-      extras = await getPurchaseExtras(shopId, detail.bill.id);
+      extras = await getPurchaseExtras(startShop, detail.bill.id);
     } catch {
+      const stale = staleReason();
+      if (stale) return { stale };
       throw new Error(
         "This bill's discount and GST could not be read, so its items were not copied. Try again when connected.",
       );
     }
+    const stale = staleReason();
+    if (stale) return { stale };
     return cart.map((line, i) => {
       const x = extras.lines.find((e) => e.lineNo === lines[i]?.line_no);
       return cardFromLine(x ? { ...line, discountBp: x.discountBp, gstBp: x.gstBp } : line);
@@ -1207,7 +1237,12 @@ export function InventoryScreen({
     if (!recentDetail) return;
     let cards: BillCard[];
     try {
-      cards = await cardsFromBill(recentDetail, recentDetail.lines);
+      const got = await cardsFromBill(recentDetail, recentDetail.lines);
+      if (!Array.isArray(got)) {
+        setMessage(got.stale);
+        return;
+      }
+      cards = got;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       return;
@@ -2380,7 +2415,12 @@ export function InventoryScreen({
                       label: `${l.item_name_snapshot} · ${rupees(l.unit_price_paise)}/${l.unit_name_snapshot}`,
                       onAdd: async () => {
                         try {
-                          const [card] = await cardsFromBill(recentDetail, [l]);
+                          const got = await cardsFromBill(recentDetail, [l]);
+                          if (!Array.isArray(got)) {
+                            setMessage(got.stale);
+                            return;
+                          }
+                          const [card] = got;
                           setPurchaseCards((c) => addCardAtEnd(c, card!));
                           setDraftTouched(true);
                           setMessage(
