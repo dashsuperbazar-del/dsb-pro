@@ -15,16 +15,11 @@ import { BillDocumentPreview } from '../components/BillDocumentPreview';
 import { InventoryScreen } from './InventoryScreen';
 import { shopContext } from '../lib/shopContext';
 import { appRoute } from '../lib/paths';
-import { correctionBlocker } from '../lib/billCorrection';
 import { roundOffLabel, rupees } from '../lib/money';
 import { PAYMENT_LABEL, percentText } from '../lib/billExtras';
 import { settlementLabel, voidPaidAccess } from '../lib/purchaseSettlement';
 import { filterBills, listBadge, type BillStatusFilter } from '../lib/purchaseListFilter';
-import {
-  BillCorrectionLinks,
-  CorrectionAlerts,
-  CreditVoidPanel,
-} from '../components/BillCorrection';
+import { CreditVoidPanel, VoidReasonNote, voidBlocker } from '../components/CreditVoidPanel';
 import {
   dropSnapshot,
   peekSnapshot,
@@ -256,8 +251,6 @@ export function PurchasesScreen({ url }: { url?: string }) {
       setVoidBusy(false);
     }
   }
-  const editBlocker = (d: NonNullable<typeof detail>, paymentType: PurchaseExtras['paymentType']) =>
-    correctionBlocker(d, paymentType);
   const name = (id: string | null) =>
     parties.find((p) => p.id === id)?.name ?? (id ? 'Supplier unavailable' : 'No supplier');
   const visible = filterBills(
@@ -296,7 +289,6 @@ export function PurchasesScreen({ url }: { url?: string }) {
         <a href={appRoute.suppliers}>Suppliers & payments</a>
       </nav>
       {error && <p role="alert">{error}</p>}
-      {shop && <CorrectionAlerts shopId={shop} onDone={() => void refresh()} />}
       {loading && <p role="status">Loading purchases…</p>}
       {!entering && <SnapshotNote at={snapshotAt} failed={snapshotFailed} />}
       {allowed && canPost && (
@@ -306,7 +298,6 @@ export function PurchasesScreen({ url }: { url?: string }) {
             purchaseContextActive={entering}
             purchaseSupplierId={query.get('supplier') ?? ''}
             purchaseRepeatId={query.get('repeat') ?? ''}
-            purchaseCorrect={query.get('correct') === '1'}
             onPurchasePosted={() => void refresh()}
           />
         </div>
@@ -458,12 +449,9 @@ export function PurchasesScreen({ url }: { url?: string }) {
               </p>
             )}
             {creditVoidNote && <p role="status">{creditVoidNote}</p>}
-            <BillCorrectionLinks
-              shopId={shop}
-              billId={detail.bill.id}
-              status={detail.bill.status}
-              onOpen={(id) => void open(id)}
-            />
+            {detail.bill.status === 'VOID' && (
+              <VoidReasonNote shopId={shop} billId={detail.bill.id} />
+            )}
             {extras?.notes && <p data-testid="bill-notes">Notes: {extras.notes}</p>}
             {detail.balance && (
               <p>
@@ -558,7 +546,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
                   <CreditVoidPanel
                     billId={detail.bill.id}
                     label={detail.bill.bill_no || 'this bill'}
-                    blocked={editBlocker(detail, 'credit')}
+                    blocked={voidBlocker(detail.balance)}
                     onVoided={(note) => {
                       void refresh();
                       void open(detail.bill.id).then(() => setCreditVoidNote(note));
@@ -572,22 +560,6 @@ export function PurchasesScreen({ url }: { url?: string }) {
               </>
             )}
             <nav class="context-actions" aria-label="Bill actions">
-              {extras &&
-                detail.bill.status === 'POSTED' &&
-                (extras.paymentType === 'credit' ? canPost : voidPaidAccess(role)) &&
-                !editBlocker(detail, extras.paymentType) && (
-                  <a
-                    class="button-link"
-                    data-testid="edit-bill"
-                    href={
-                      appRoute.purchases +
-                      '?new=1&correct=1&repeat=' +
-                      encodeURIComponent(detail.bill.id)
-                    }
-                  >
-                    Edit bill
-                  </a>
-                )}
               {canPost && detail.bill.status === 'POSTED' && (
                 <a
                   class="button-link primary"

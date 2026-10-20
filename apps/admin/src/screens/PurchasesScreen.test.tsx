@@ -18,12 +18,9 @@ const api = vi.hoisted(() => ({
   voidPurchaseOutcome: vi.fn(),
   VOID_REASON_MAX: 200,
   purchaseVoidRequestId: (id: string, tag: { reason?: string; correctedBy?: string }) =>
-    tag.reason !== undefined
-      ? `purchase.void.v1:${id}:reason:${tag.reason.trim()}`
-      : `purchase.void.v1:${id}:corrected-by:${tag.correctedBy}`,
+    tag.reason !== undefined ? `purchase.void.v1:${id}:reason:${tag.reason.trim()}` : 'unused',
   listPurchaseSettlements: vi.fn().mockResolvedValue(new Map()),
   getPurchaseVoidInfo: vi.fn().mockResolvedValue(null),
-  findCorrectedBill: vi.fn().mockResolvedValue(null),
 }));
 vi.mock('@dsb-pro/adapters', () => api);
 vi.mock('./InventoryScreen', () => ({
@@ -36,6 +33,7 @@ beforeEach(() => {
   vi.spyOn(window, 'confirm').mockReturnValue(true);
 });
 afterEach(() => {
+  localStorage.removeItem('dsb-pending-purchase-void:cash1');
   vi.restoreAllMocks();
   shopContext.invalidate();
   act(() => render(null, host));
@@ -303,13 +301,22 @@ test('a credit bill: plain "Void bill" (never the paid-bill void), reason requir
   expect(host.textContent).not.toContain('Void bill and its payment');
   expect(voidBtn().disabled).toBe(true);
   await typeReason('entered twice');
+  expect(host.textContent).toContain('Staff who can see this bill can read the reason');
   api.voidPurchaseOutcome.mockResolvedValueOnce({ kind: 'unknown', message: 'answer lost' });
   await act(async () => voidBtn().click());
   expect(vi.mocked(window.confirm).mock.calls[0]![0]).toMatch(/stock comes off.*supplier balance/i);
   await vi.waitFor(() => expect(voidBtn().textContent).toBe('Retry void (same request)'));
+  // Leaving the bill (even the screen) while the outcome is unknown keeps the same request.
+  await act(async () => render(null, host));
+  await openCash('manager', extras('unpaid', 'credit'), creditDetail());
+  await vi.waitFor(() => expect(voidBtn().textContent).toBe('Retry void (same request)'));
+  expect(host.querySelector<HTMLInputElement>('[aria-label="Void bill"] input')!.value).toBe(
+    'entered twice',
+  );
   api.voidPurchaseOutcome.mockResolvedValueOnce({ kind: 'committed', value: 'cash1' });
   await act(async () => voidBtn().click());
   await vi.waitFor(() => expect(host.textContent).toContain('Bill voided.'));
+  expect(localStorage.getItem('dsb-pending-purchase-void:cash1')).toBeNull();
   const [a, b] = api.voidPurchaseOutcome.mock.calls.map((c) => c[0]);
   expect(a.clientId).toMatch(/^purchase\.void\.v1:.+:reason:entered twice$/);
   expect(b).toEqual(a);
@@ -317,7 +324,7 @@ test('a credit bill: plain "Void bill" (never the paid-bill void), reason requir
   expect(api.voidPaidPurchaseOutcome).not.toHaveBeenCalled();
 });
 
-test('credit void refused by the server says what to do; a known payment/return blocks void and edit', async () => {
+test('credit void refused by the server says what to do; a known payment/return blocks the void', async () => {
   await openCash('owner', extras('unpaid', 'credit'), creditDetail());
   await vi.waitFor(() => expect(voidBtn().textContent).toBe('Void bill'));
   await typeReason('wrong supplier');
@@ -329,7 +336,7 @@ test('credit void refused by the server says what to do; a known payment/return 
   await act(async () => voidBtn().click());
   await vi.waitFor(() => expect(host.textContent).toContain('Release or void that payment first'));
   expect(voidBtn().textContent).toBe('Void bill');
-  // Known from the ledger before sending: no void button, no Edit bill.
+  // Known from the ledger before sending: no void button.
   await act(async () => render(null, host));
   await openCash('owner', extras('partial', 'credit'), creditDetail('0', '500'));
   await vi.waitFor(() =>
@@ -337,25 +344,19 @@ test('credit void refused by the server says what to do; a known payment/return 
       'supplier returns',
     ),
   );
-  expect(host.querySelector('[data-testid="edit-bill"]')).toBeNull();
 });
 
-test('role gating: an accountant sees neither void nor Edit bill; a manager may edit a credit bill but not a cash one', async () => {
+test('role gating: an accountant cannot void a credit bill; a manager can', async () => {
   await openCash('accountant', extras('unpaid', 'credit'), creditDetail());
   await vi.waitFor(() => expect(host.textContent).toContain('Credit bill'));
   expect(host.querySelector('[aria-label="Void bill"] button')).toBeNull();
-  expect(host.querySelector('[data-testid="edit-bill"]')).toBeNull();
-  await act(async () => render(null, host));
-  await openCash('manager', extras('unpaid', 'credit'), creditDetail());
-  await vi.waitFor(() =>
-    expect(host.querySelector<HTMLAnchorElement>('[data-testid="edit-bill"]')?.href).toContain(
-      'correct=1&repeat=cash1',
-    ),
+  expect(host.querySelector('[data-testid="void-not-allowed"]')?.textContent).toContain(
+    'Only the owner or a manager',
   );
   await act(async () => render(null, host));
-  await openCash('manager', extras('settled', 'cash'));
-  await vi.waitFor(() => expect(host.textContent).toContain('Cash bill'));
-  expect(host.querySelector('[data-testid="edit-bill"]')).toBeNull();
+  await openCash('manager', extras('unpaid', 'credit'), creditDetail());
+  await vi.waitFor(() => expect(voidBtn().textContent).toBe('Void bill'));
+  expect(host.textContent).not.toContain('Edit bill');
 });
 
 test('list shows Paid/Partial/Unpaid/Void from the ledger and filters by it', async () => {

@@ -91,15 +91,6 @@ import {
   type PendingPurchaseV2,
 } from '../lib/billExtras';
 import { repeatPurchase, rankedPurchaseParties } from '../lib/purchaseWorkflow';
-import {
-  CORRECTION_EVENT,
-  completeCorrection,
-  correctionBlocker,
-  loadCorrection,
-  removeCorrection,
-  saveCorrection,
-  type CorrectionRecord,
-} from '../lib/billCorrection';
 import { readCatalogForScreen, markCatalogDirty, catalogDirtySince } from '../lib/catalogRead';
 import { boundedItemOptions } from '../lib/itemOptions';
 import { BatchPurchaseEntry } from '../components/BatchPurchaseEntry';
@@ -182,15 +173,12 @@ export function InventoryScreen({
   purchaseContextActive = true,
   purchaseSupplierId = '',
   purchaseRepeatId = '',
-  purchaseCorrect = false,
   onPurchasePosted,
 }: {
   purchaseOnly?: boolean;
   purchaseContextActive?: boolean;
   purchaseSupplierId?: string;
   purchaseRepeatId?: string;
-  /** "Edit bill": the repeated bill is a correction; the original is voided when this one posts. */
-  purchaseCorrect?: boolean;
   onPurchasePosted?: () => void;
 } = {}) {
   type View = 'items' | 'purchase' | 'suppliers' | 'advanced';
@@ -313,14 +301,6 @@ export function InventoryScreen({
   // form stays frozen so a retry resends the SAME request id and payload; the server returns the
   // stored bill if it was committed (and refuses a changed payload).
   const [purchaseLocked, setPurchaseLocked] = useState(false);
-  const [purchaseRole, setPurchaseRole] = useState('');
-  // Re-read the correction record of the bill in the form whenever records change (post, retry, reload).
-  const [correctionTick, setCorrectionTick] = useState(0);
-  useEffect(() => {
-    const bump = () => setCorrectionTick((t) => t + 1);
-    window.addEventListener(CORRECTION_EVENT, bump);
-    return () => window.removeEventListener(CORRECTION_EVENT, bump);
-  }, []);
   const purchaseLockedRef = useRef(purchaseLocked);
   purchaseLockedRef.current = purchaseLocked;
   useEffect(() => {
@@ -418,7 +398,6 @@ export function InventoryScreen({
     // Roles granted POST_SALES or VIEW_REPORTS (sale_returns RLS).
     setCanReadSaleReturns(['owner', 'manager', 'accountant', 'cashier'].includes(membership.role));
     setCanSetSalePrices(['owner', 'manager'].includes(membership.role));
-    setPurchaseRole(membership.role);
     setSaleUser(session.user.id);
     if (['owner', 'manager'].includes(membership.role)) {
       draftUser.current = session.user.id;
@@ -725,14 +704,6 @@ export function InventoryScreen({
     }
     let active = true;
     let completed = false;
-    let correction: {
-      originalId: string;
-      originalLabel: string;
-      paymentType: 'credit' | 'cash' | 'upi';
-      billNo: string;
-      date: string;
-      notes: string;
-    } | null = null;
     setPurchaseContextReady(false);
     setContextBusy(true);
     void (async () => {
@@ -741,12 +712,6 @@ export function InventoryScreen({
         if (!active) return;
         if (purchaseRepeatId) {
           const d = await getPurchaseDetail(shopId, purchaseRepeatId);
-          if (purchaseCorrect) {
-            if (d.bill.status !== 'POSTED')
-              throw new Error('This bill is already voided; there is nothing to correct.');
-            const blocker = correctionBlocker(d, null);
-            if (blocker) throw new Error(`This bill cannot be edited: ${blocker}`);
-          }
           const cart = repeatPurchase(d.bill, d.lines, itemsRef.current);
           if (!active) return;
           if (d.bill.party_id && !partiesRef.current.some((p) => p.id === d.bill.party_id))
@@ -760,24 +725,6 @@ export function InventoryScreen({
           const extras = await getPurchaseExtras(shopId, purchaseRepeatId);
           if (!active) return;
           if (extras.charges.length) charges = chargeRowsFromPaise(extras.charges);
-          if (purchaseCorrect) {
-            const blocker = correctionBlocker(d, extras.paymentType);
-            if (blocker) throw new Error(`This bill cannot be edited: ${blocker}`);
-            if (extras.paymentType !== 'credit' && purchaseRole !== 'owner')
-              throw new Error(
-                `Only the owner can edit a ${PAYMENT_LABEL[extras.paymentType]} bill, because the correction also voids its payment.`,
-              );
-            correction = {
-              originalId: d.bill.id,
-              originalLabel: d.bill.bill_no
-                ? `bill ${d.bill.bill_no}`
-                : `bill of ${d.bill.business_date}`,
-              paymentType: extras.paymentType,
-              billNo: d.bill.bill_no ?? '',
-              date: d.bill.business_date,
-              notes: extras.notes ?? '',
-            };
-          }
           const cards = cart.map((line, i) => {
             const x = extras.lines.find((e) => e.lineNo === d.lines[i]?.line_no);
             return cardFromLine(x ? { ...line, discountBp: x.discountBp, gstBp: x.gstBp } : line);
@@ -805,37 +752,7 @@ export function InventoryScreen({
         setBillDocuments([]);
         setDocumentBusy(false);
         setDocumentSaveError('');
-        const newClientId = crypto.randomUUID();
-        if (correction) {
-          // Durable before the draft exists: the draft and its pending post carry newClientId, which
-          // finds this record again after any reload. Not storable = no correction.
-          try {
-            saveCorrection({
-              v: 1,
-              shopId,
-              newClientId,
-              originalId: correction.originalId,
-              originalLabel: correction.originalLabel,
-              originalPaymentType: correction.paymentType,
-              voidRequestId: crypto.randomUUID(),
-              state: 'draft',
-              savedAt: Date.now(),
-            });
-          } catch (e) {
-            throw new Error(
-              `The correction could not be kept on this device, so it was not started: ${String(e)}`,
-              { cause: e },
-            );
-          }
-          setPurchasePaymentType(correction.paymentType);
-          setPurchaseNotes(correction.notes);
-          setBusinessDate(correction.date);
-          setPurchaseBillNo(correction.billNo);
-          setMessage(
-            `Correcting ${correction.originalLabel}: change what is wrong and post. When this bill posts, ${correction.originalLabel} is voided automatically.`,
-          );
-        }
-        setPurchaseClientId(newClientId);
+        setPurchaseClientId(crypto.randomUUID());
         completed = true;
       } catch (e) {
         if (active) {
@@ -859,7 +776,6 @@ export function InventoryScreen({
     catalogLoaded,
     purchaseSupplierId,
     purchaseRepeatId,
-    purchaseCorrect,
     purchaseOnly,
     purchaseContextActive,
     purchaseLocked,
@@ -1759,36 +1675,6 @@ export function InventoryScreen({
       }
       ownPlans.current.set(request.clientId, salePlan.length ? ownKey : null);
     }
-    // Correction: the original must still be voidable, or posting would leave both bills live.
-    if (!isRetry) {
-      const rec = loadCorrection(request.shopId, request.clientId);
-      if (rec && rec.state === 'draft') {
-        let d: Awaited<ReturnType<typeof getPurchaseDetail>>;
-        try {
-          d = await getPurchaseDetail(request.shopId, rec.originalId);
-        } catch (e) {
-          setError(
-            `Could not check ${rec.originalLabel} before posting its correction; nothing was sent: ${String(e)}`,
-          );
-          return;
-        }
-        if (d.bill.status === 'VOID') {
-          if (
-            !confirm(
-              `${rec.originalLabel} is already voided. Post this as a normal new bill (no correction)?`,
-            )
-          )
-            return;
-          removeCorrection(rec.shopId, rec.newClientId);
-        } else {
-          const blocker = correctionBlocker(d, rec.originalPaymentType);
-          if (blocker) {
-            setError(`Not posted: ${rec.originalLabel} cannot be voided now — ${blocker}`);
-            return;
-          }
-        }
-      }
-    }
     // Durable before dispatch, or not sent at all.
     try {
       // A new bill waits for an unconfirmed one stored under the other name too.
@@ -1827,32 +1713,6 @@ export function InventoryScreen({
           `Not confirmed: ${outcome.message}. The bill is locked — retry sends the same bill and never posts it (or its payment) twice.`,
         );
         return;
-      }
-      // A posted correction is recorded as 'posted' (original still to void) BEFORE its pending intent is
-      // cleared, so a crash here leaves either the intent (retried) or the posted record (Retry void alert).
-      let posted: CorrectionRecord | null = null;
-      if (outcome.kind === 'committed') {
-        const rec = loadCorrection(request.shopId, request.clientId);
-        const newBillId =
-          typeof outcome.value === 'string'
-            ? outcome.value
-            : (outcome.value as { billId: string }).billId;
-        if (rec) {
-          posted = {
-            ...rec,
-            state: 'posted',
-            newBillId,
-            newBillLabel: request.billNo
-              ? `bill ${request.billNo}`
-              : `new bill of ${request.businessDate}`,
-            lastError: undefined,
-          };
-          try {
-            saveCorrection(posted);
-          } catch {
-            // the void below still runs; if it fails, the error says so
-          }
-        }
       }
       lockedPurchase.current = null;
       setPurchaseLocked(false);
@@ -1933,18 +1793,12 @@ export function InventoryScreen({
       }
       // Sale prices only now, after the bill is confirmed. A failed price write never undoes the bill.
       const priceNote = await writeSalePrices(request.shopId, request.clientId);
-      let correctionNote = '';
-      if (posted) {
-        const r = await completeCorrection(posted);
-        correctionNote = ` ${r.message}`;
-        if (!r.done) setError(r.message);
-      }
       onPurchasePosted?.();
       // Refresh before announcing, as before: the screen is settled when the message appears.
       let refreshNote = '';
       await refresh(true).catch((e) => (refreshNote = ` (Refresh failed: ${String(e)})`));
       setMessage(
-        `Purchase posted (${lineCount} item${lineCount === 1 ? '' : 's'}) and stock updated.${paidNote}${priceNote}${correctionNote}${refreshNote}`,
+        `Purchase posted (${lineCount} item${lineCount === 1 ? '' : 's'}) and stock updated.${paidNote}${priceNote}${refreshNote}`,
       );
     } finally {
       setPurchaseBusy(false);
@@ -2011,11 +1865,6 @@ export function InventoryScreen({
         Your signed-in account changed. Reload to open purchases for the current account.
       </p>
     );
-  // correctionTick re-renders when a record changes; the record itself is always read fresh.
-  const formCorrection: CorrectionRecord | null =
-    purchaseOnly && correctionTick >= 0
-      ? loadCorrection(shopId, lockedPurchase.current?.clientId ?? purchaseClientId)
-      : null;
   const Container = purchaseOnly ? 'section' : 'main';
   return (
     <Container>
@@ -2096,25 +1945,6 @@ export function InventoryScreen({
         <p class="muted">Showing up to 50 matches · {items.length} items</p>
       </section>
       {error && <p role="alert">{error}</p>}
-      {purchaseOnly && formCorrection && formCorrection.state === 'draft' && (
-        <p class="card" role="note" data-testid="correcting">
-          Correcting {formCorrection.originalLabel}. When this bill posts,{' '}
-          {formCorrection.originalLabel} is voided automatically.{' '}
-          <button
-            type="button"
-            onClick={() => {
-              if (
-                confirm(
-                  `Stop correcting? ${formCorrection.originalLabel} stays as it is and this becomes a normal new bill.`,
-                )
-              )
-                removeCorrection(formCorrection.shopId, formCorrection.newClientId);
-            }}
-          >
-            Stop correcting
-          </button>
-        </p>
-      )}
       {!purchaseOnly && <SnapshotNote at={snapshotAt} failed={snapshotFailed} />}
       {message && <p role="status">{message}</p>}
       {priceRetries.map((r) => {

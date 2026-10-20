@@ -274,7 +274,6 @@ export {
 export type { PurchaseVoidInfo } from './purchaseVoid';
 export {
   VOID_REASON_MAX,
-  findCorrectedBill,
   getPurchaseVoidInfo,
   listPurchaseSettlements,
   parsePurchaseVoidId,

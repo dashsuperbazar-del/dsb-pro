@@ -1,10 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  findCorrectedBill,
-  parsePurchaseVoidId,
-  purchaseVoidRequestId,
-  voidPurchaseOutcome,
-} from './purchaseVoid';
+import { parsePurchaseVoidId, purchaseVoidRequestId, voidPurchaseOutcome } from './purchaseVoid';
 
 const { rpc, from } = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn() }));
 vi.mock('./client', () => ({ getSupabaseClient: () => ({ rpc, from }) }));
@@ -18,24 +13,20 @@ beforeEach(() => {
 });
 
 describe('purchase void request id', () => {
-  it('carries the reason or the correcting bill and parses back from a stock movement id', () => {
+  it('carries the reason and parses back only from an exact stock movement id', () => {
     const r = purchaseVoidRequestId(REQ, { reason: '  entered   twice ' });
     expect(r).toBe(`purchase.void.v1:${REQ}:reason:entered twice`);
-    expect(parsePurchaseVoidId(`${r}:stock:2`)).toEqual({
-      reason: 'entered twice',
-      correctedBy: null,
-    });
-    const c = purchaseVoidRequestId(REQ, { correctedBy: NEW });
-    expect(parsePurchaseVoidId(`${c}:stock:1`)).toEqual({ reason: null, correctedBy: NEW });
-    expect(parsePurchaseVoidId('purchase.void_paid.v1:x:stock:1')).toEqual({
-      reason: null,
-      correctedBy: null,
-    });
-    expect(parsePurchaseVoidId(`${REQ}:stock:1`)).toEqual({ reason: null, correctedBy: null });
+    expect(parsePurchaseVoidId(`${r}:stock:2`)).toEqual({ reason: 'entered twice' });
+    expect(parsePurchaseVoidId(r)).toBeNull();
+    expect(parsePurchaseVoidId(`x${r}:stock:2`)).toBeNull();
+    expect(parsePurchaseVoidId(`purchase.void.v1:${REQ}:reason:a:b:stock:1`)).toBeNull();
+    expect(parsePurchaseVoidId('purchase.void_paid.v1:x:stock:1')).toBeNull();
+    expect(parsePurchaseVoidId(`${REQ}:stock:1`)).toBeNull();
   });
-  it('refuses an empty or too long reason', () => {
+  it('refuses an empty, too long or colon-containing reason', () => {
     expect(() => purchaseVoidRequestId(REQ, { reason: '  ' })).toThrow(/Reason required/);
     expect(() => purchaseVoidRequestId(REQ, { reason: 'x'.repeat(201) })).toThrow();
+    expect(() => purchaseVoidRequestId(REQ, { reason: 'a:stock:1' })).toThrow(/colon/);
     expect(() => purchaseVoidRequestId('nope', { reason: 'x' })).toThrow();
   });
 });
@@ -66,23 +57,5 @@ describe('voidPurchaseOutcome', () => {
     await expect(voidPurchaseOutcome({ purchaseId: BILL, clientId: 'c' })).resolves.toMatchObject({
       kind: 'unknown',
     });
-  });
-});
-
-describe('findCorrectedBill', () => {
-  it('looks up the void movement that names the new bill', async () => {
-    const q: Record<string, unknown> = {};
-    const chain = {
-      select: () => chain,
-      eq: () => chain,
-      like: (_c: string, p: string) => {
-        q.like = p;
-        return chain;
-      },
-      limit: () => Promise.resolve({ data: [{ source_id: BILL }], error: null }),
-    };
-    from.mockReturnValue(chain);
-    await expect(findCorrectedBill('s', NEW)).resolves.toBe(BILL);
-    expect(q.like).toBe(`purchase.void.v1:%:corrected-by:${NEW}:stock:%`);
   });
 });
