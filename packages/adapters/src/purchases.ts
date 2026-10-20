@@ -13,6 +13,8 @@ export type PurchaseRecord = {
   subtotal_paise: string;
   discount_paise: string;
   extra_charges_paise: string;
+  /** billextras (0064): signed rupee round-off; 0 for v1/old bills. Optional for older saved lists. */
+  round_off_paise?: string;
   total_paise: string;
 };
 export type PurchaseHistoryLine = {
@@ -35,7 +37,7 @@ export type PurchaseBalance = {
   returned_paise: string;
 };
 const header =
-  'id,party_id,bill_no,business_date,created_at,status,bill_image_path,subtotal_paise::text,discount_paise::text,extra_charges_paise::text,total_paise::text';
+  'id,party_id,bill_no,business_date,created_at,status,bill_image_path,subtotal_paise::text,discount_paise::text,extra_charges_paise::text,round_off_paise::text,total_paise::text';
 async function authorize(shopId: string) {
   const m = await getCurrentMembership();
   if (!m || !['owner', 'manager', 'accountant'].includes(m.role) || !m.shopIds.includes(shopId))

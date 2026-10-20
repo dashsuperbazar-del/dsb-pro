@@ -79,7 +79,8 @@ export function purchaseBillTotals(input: {
     throw new Error('discountPaise must be a non-negative integer');
   const total = subtotal - BigInt(discount) + extra;
   if (total < 0n) throw new Error('bill total cannot be negative');
-  if (subtotal > MAX_SAFE || extra > MAX_SAFE || total > MAX_SAFE)
+  // MAX_SAFE - 50 before rounding keeps the rounded total safe (same bound as post_purchase_v2).
+  if (subtotal > MAX_SAFE || extra > MAX_SAFE || total > MAX_SAFE - 50n)
     throw new Error('bill total exceeds the safe integer range');
   const before = Number(total);
   const roundOff = billRoundOff(before);

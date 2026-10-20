@@ -77,6 +77,16 @@ describe('purchase line totals (old DSB calcItemRow, exact paise)', () => {
   });
 });
 
+describe('known difference from old DSB (decision recorded in STATE.md)', () => {
+  // Pro rounds each line to the paisa, then the bill to the rupee. Old DSB kept float lines and rounded
+  // only the bill, so in rare cases near a half rupee the bill differs by ₹1.
+  it('1 x ₹95.71 @ 5% GST: Pro ₹101 (line ₹100.50), old DSB ₹100 (float 100.4955)', () => {
+    const t = purchaseBillTotals({ lines: [{ qty: '1', unitPricePaise: 9571, gstBp: 500 }] });
+    expect([t.lineTotalsPaise[0], t.roundOffPaise, t.totalPaise]).toEqual([10050, 50, 10100]);
+    expect(Math.round(oldDsbLineTotal(1, 95.71, 0, 5))).toBe(100);
+  });
+});
+
 describe('large quantities (pure integer half-up, same as the SQL bx_purchase_line_total)', () => {
   // Exact values from rational arithmetic; numeric division in SQL misrounded the first one (50002000).
   it.each([
@@ -133,6 +143,14 @@ describe('purchase bill totals', () => {
     ]);
     const rupees = Number(qty) * (price / 100) * (1 + (gst ?? 0) / 10000);
     expect(Math.round(Math.max(0, rupees)) * 100).toBe(total);
+  });
+
+  it('refuses a total whose rounding could pass the safe integer range (same bound as the server)', () => {
+    const max = Number.MAX_SAFE_INTEGER;
+    expect(() =>
+      purchaseBillTotals({ lines: [{ qty: '1', unitPricePaise: max - 50 }] }),
+    ).not.toThrow();
+    expect(() => purchaseBillTotals({ lines: [{ qty: '1', unitPricePaise: max - 49 }] })).toThrow();
   });
 
   it('refuses a negative total and non-positive charges', () => {

@@ -19,3 +19,11 @@ export function paiseToDecimal(paise: string | number): string {
   const whole = digits.slice(0, -2).replace(/^0+(?=\d)/, '');
   return `${neg ? '-' : ''}${whole}.${digits.slice(-2)}`;
 }
+
+// Bill round-off as old DSB showed it: "Round off +₹0.09" / "Round off −₹0.49"; null when zero or absent.
+export function roundOffLabel(paise: string | number | null | undefined): string | null {
+  if (paise === null || paise === undefined) return null;
+  const s = String(paise).trim();
+  if (!/^-?\d+$/.test(s) || /^-?0+$/.test(s)) return null;
+  return `Round off ${s.startsWith('-') ? '' : '+'}${rupees(s)}`;
+}

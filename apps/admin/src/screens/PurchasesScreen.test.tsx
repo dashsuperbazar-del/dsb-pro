@@ -110,3 +110,37 @@ test('SP2: a role that lost access clears the saved list instead of showing it',
   await vi.waitFor(() => expect(host.textContent).toContain('restricted by your role'));
   expect(host.textContent).not.toContain('SAVED-1');
 });
+
+test('bill detail shows the round-off only when it is not zero', async () => {
+  const { clearSnapshots } = await import('../lib/routeSnapshot');
+  clearSnapshots();
+  api.listPurchaseHistory.mockResolvedValue([bill('r1', 'RND-1'), bill('r0', 'OLD-0')]);
+  const detail = (round: string | undefined) => ({
+    bill: {
+      ...bill('r1', 'RND-1'),
+      subtotal_paise: '18291',
+      discount_paise: '0',
+      extra_charges_paise: '0',
+      round_off_paise: round,
+      total_paise: '18300',
+      bill_image_path: null,
+    },
+    lines: [],
+    balance: null,
+  });
+  await act(async () => {
+    render(<PurchasesScreen url="/purchases" />, host);
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('RND-1'));
+  api.getPurchaseDetail.mockResolvedValueOnce(detail('9'));
+  await act(async () => {
+    [...host.querySelectorAll('button')].find((b) => b.textContent?.includes('RND-1'))!.click();
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('Round off +₹0.09'));
+  api.getPurchaseDetail.mockResolvedValueOnce(detail(undefined));
+  await act(async () => {
+    [...host.querySelectorAll('button')].find((b) => b.textContent?.includes('OLD-0'))!.click();
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('Lines ₹182.91'));
+  expect(host.textContent).not.toContain('Round off');
+});

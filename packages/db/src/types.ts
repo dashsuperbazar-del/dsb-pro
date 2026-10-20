@@ -1881,6 +1881,7 @@ export type Database = {
           posted_at: string | null
           purchase_bill_id: string
           request_fingerprint: string
+          round_off_paise: number
           shop_id: string
           status: string
           tenant_id: string
@@ -1902,6 +1903,7 @@ export type Database = {
           posted_at?: string | null
           purchase_bill_id: string
           request_fingerprint: string
+          round_off_paise?: number
           shop_id: string
           status?: string
           tenant_id: string
@@ -1923,6 +1925,7 @@ export type Database = {
           posted_at?: string | null
           purchase_bill_id?: string
           request_fingerprint?: string
+          round_off_paise?: number
           shop_id?: string
           status?: string
           tenant_id?: string
@@ -3612,6 +3615,7 @@ export type Database = {
           doc_no: string
           extra_charges_paise: number
           party_name: string
+          round_off_paise: number
           status: string
           subtotal_paise: number
           total_paise: number

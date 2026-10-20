@@ -800,7 +800,16 @@ select (select present from _billextras_receipt),
     and exists(select 1 from information_schema.columns where table_schema='public' and table_name='purchase_bills' and column_name='notes')
     and exists(select 1 from information_schema.columns where table_schema='public' and table_name='purchase_bill_items' and column_name='discount_bp')),
    (exists(select 1 from pg_proc where oid=to_regprocedure('public.post_purchase_v2(uuid,text,jsonb)')
-      and position('dsb.purchase.v2.payment:' in prosrc)>0 and position('DSB_TOTAL_MISMATCH' in prosrc)>0)
+      and position('dsb.purchase.v2.payment:' in prosrc)>0 and position('DSB_TOTAL_MISMATCH' in prosrc)>0
+      and position('r0_round_off(' in prosrc)>0)
+    and exists(select 1 from pg_proc where oid=to_regprocedure('public.phase65_post_return_unlocked(text,uuid,date,text,jsonb,text)')
+      and position('v_purchase.round_off_paise<>0' in prosrc)>0 and position('round_off_paise=v_round,posted_at' in prosrc)>0)
+    and exists(select 1 from pg_proc where oid=to_regprocedure('public.check_invariants()')
+      and position('purchase_return_items i where i.purchase_return_id=r.id)+r.round_off_paise' in prosrc)>0)
+    and exists(select 1 from pg_proc where oid=to_regprocedure('public.phase65_purchase_return_guard()')
+      and position('new.round_off_paise=old.round_off_paise' in prosrc)>0)
+    and exists(select 1 from information_schema.columns where table_schema='public' and table_name='purchase_returns' and column_name='round_off_paise')
+    and position('round_off_paise bigint' in coalesce(pg_get_function_result(to_regprocedure('public.get_purchase_register(uuid,date,date)')),''))>0
     and exists(select 1 from pg_proc where oid=to_regprocedure('public.void_paid_purchase(uuid,text,text)')
       and position('void_supplier_payment' in prosrc)>0)
     and exists(select 1 from pg_proc where oid=to_regprocedure('public.bx_purchase_line_total(numeric,bigint,integer,integer)')

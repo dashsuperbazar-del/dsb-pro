@@ -10,7 +10,7 @@ import { BillDocumentPreview } from '../components/BillDocumentPreview';
 import { InventoryScreen } from './InventoryScreen';
 import { shopContext } from '../lib/shopContext';
 import { appRoute } from '../lib/paths';
-import { rupees } from '../lib/money';
+import { roundOffLabel, rupees } from '../lib/money';
 import { purchaseStatus } from '../lib/purchaseWorkflow';
 import { filterBills, type BillStatusFilter } from '../lib/purchaseListFilter';
 import {
@@ -335,6 +335,8 @@ export function PurchasesScreen({ url }: { url?: string }) {
             <p>
               Lines {rupees(detail.bill.subtotal_paise)} · Discount{' '}
               {rupees(detail.bill.discount_paise)} · Extra {rupees(detail.bill.extra_charges_paise)}
+              {roundOffLabel(detail.bill.round_off_paise) &&
+                ` · ${roundOffLabel(detail.bill.round_off_paise)}`}
             </p>
             <nav class="context-actions" aria-label="Bill actions">
               {canPost && detail.bill.status === 'POSTED' && (
