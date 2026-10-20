@@ -46,12 +46,20 @@ describe('GST-extra sale maths (golden: same cases as supabase/tests/remaining_s
   });
 
   it('GST included (default) is unchanged: no tax added, same total as before', () => {
-    const bill = saleBillTotals([{ qty: '3', unitPricePaise: 1049, discountPaise: 0, taxRateBp: 1800 }], {
-      invoiceType: 'gst_included',
-      billDiscountPaise: 0,
-      extraChargesPaise: 0,
+    const bill = saleBillTotals(
+      [{ qty: '3', unitPricePaise: 1049, discountPaise: 0, taxRateBp: 1800 }],
+      {
+        invoiceType: 'gst_included',
+        billDiscountPaise: 0,
+        extraChargesPaise: 0,
+      },
+    );
+    expect(bill).toMatchObject({
+      subtotalPaise: 3147,
+      taxPaise: 0,
+      roundOffPaise: -47,
+      totalPaise: 3100,
     });
-    expect(bill).toMatchObject({ subtotalPaise: 3147, taxPaise: 0, roundOffPaise: -47, totalPaise: 3100 });
   });
 
   it('agrees with old DSB saveInvoice (GST on the after-discount value, rupee total) for shop-like bills', () => {
@@ -90,7 +98,10 @@ describe('GST-extra sale maths (golden: same cases as supabase/tests/remaining_s
       }),
     ).toThrow(/bill discount/i);
     expect(() =>
-      saleLineTotals({ qty: 1, unitPricePaise: 100, discountPaise: 101, taxRateBp: 0 }, 'gst_extra'),
+      saleLineTotals(
+        { qty: 1, unitPricePaise: 100, discountPaise: 101, taxRateBp: 0 },
+        'gst_extra',
+      ),
     ).toThrow();
   });
 });

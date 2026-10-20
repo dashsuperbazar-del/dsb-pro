@@ -5,7 +5,8 @@ import { billRoundOff } from './totals';
 export type SaleInvoiceType = 'gst_included' | 'gst_extra';
 
 function assertPaise(value: number, name: string): void {
-  if (!Number.isSafeInteger(value) || value < 0) throw new Error(`${name} must be non-negative whole paise`);
+  if (!Number.isSafeInteger(value) || value < 0)
+    throw new Error(`${name} must be non-negative whole paise`);
 }
 
 /**
@@ -14,7 +15,8 @@ function assertPaise(value: number, name: string): void {
  */
 export function saleGstExtraTax(netPaise: number, rateBp: number): number {
   assertPaise(netPaise, 'netPaise');
-  if (!Number.isSafeInteger(rateBp) || rateBp < 0 || rateBp > 10000) throw new Error('rateBp must be 0..10000');
+  if (!Number.isSafeInteger(rateBp) || rateBp < 0 || rateBp > 10000)
+    throw new Error('rateBp must be 0..10000');
   const tax = (2n * BigInt(netPaise) * BigInt(rateBp) + 10000n) / 20000n;
   return Number(tax);
 }
@@ -87,7 +89,8 @@ export function saleBillTotals(
   const discountPaise = itemDiscounts + options.billDiscountPaise;
   if (discountPaise > subtotal) throw new Error('Discount exceeds subtotal.');
   const totalBeforeRoundOffPaise = subtotal - discountPaise + options.extraChargesPaise;
-  if (!Number.isSafeInteger(totalBeforeRoundOffPaise + 50)) throw new Error('Sale total exceeds the safe range.');
+  if (!Number.isSafeInteger(totalBeforeRoundOffPaise + 50))
+    throw new Error('Sale total exceeds the safe range.');
   const roundOffPaise = billRoundOff(totalBeforeRoundOffPaise);
   return {
     lines: results,
