@@ -39,6 +39,14 @@ const api = vi.hoisted(() => ({
   listItemSaleMovements: vi.fn().mockResolvedValue({ sales: [], returns: [], truncated: false }),
 }));
 vi.mock('@dsb-pro/adapters', () => api);
+// A real post_purchase_v2 answer for a credit bill (the screen reads only kind and the paid fields).
+const COMMITTED_CREDIT = {
+  billId: 'b0000000-0000-0000-0000-000000000001',
+  paymentId: null,
+  totalPaise: 0,
+  roundOffPaise: 0,
+  businessDate: '2026-10-12',
+};
 const offline = vi.hoisted(() => ({ getSyncedOfflineCatalog: vi.fn(), runSyncNow: vi.fn() }));
 vi.mock('../lib/offlineSync', () => offline);
 
@@ -165,7 +173,7 @@ test('blank or unchanged prices write nothing; the bill still posts', async () =
   await vi.waitFor(() => expect(input('Item 1 retail ₹').value).toBe('10.00'));
   await setField(label('Item 1 retail ₹'), '10');
   await setField(label('Item 1 wholesale price ₹'), '');
-  api.postPurchaseV2Outcome.mockResolvedValue({ kind: 'confirmed', value: {} });
+  api.postPurchaseV2Outcome.mockResolvedValue({ kind: 'committed', value: COMMITTED_CREDIT });
   await post();
   await vi.waitFor(() => expect(host.textContent).toContain('Purchase posted (1 item)'));
   expect(api.setItemPrice).not.toHaveBeenCalled();
@@ -223,7 +231,7 @@ test('prices are written only after the bill posts, one call each, with derived 
   api.postPurchaseV2Outcome.mockImplementation(async () => {
     order.push('post');
     expect(api.setItemPrice).not.toHaveBeenCalled();
-    return { kind: 'confirmed', value: {} };
+    return { kind: 'committed', value: COMMITTED_CREDIT };
   });
   api.setItemPrice.mockImplementation(async (w: { kind: string }) => {
     order.push(w.kind);
@@ -277,7 +285,7 @@ test('an unconfirmed bill writes prices only once its retry confirms', async () 
   await post();
   await vi.waitFor(() => expect(host.textContent).toContain('Not confirmed: timeout'));
   expect(api.setItemPrice).not.toHaveBeenCalled();
-  api.postPurchaseV2Outcome.mockResolvedValueOnce({ kind: 'confirmed', value: {} });
+  api.postPurchaseV2Outcome.mockResolvedValueOnce({ kind: 'committed', value: COMMITTED_CREDIT });
   await click(button('Retry same purchase'));
   await vi.waitFor(() => expect(api.postPurchaseV2Outcome).toHaveBeenCalledTimes(2));
   expect(api.postPurchaseV2Outcome.mock.calls[1][1]).toBe(true);
@@ -294,7 +302,7 @@ test('a bill that confirms more than a day after its prices were entered writes 
   await vi.waitFor(() => expect(host.textContent).toContain('Not confirmed: timeout'));
   const later = Date.now() + 25 * 3_600_000;
   vi.spyOn(Date, 'now').mockReturnValue(later);
-  api.postPurchaseV2Outcome.mockResolvedValueOnce({ kind: 'confirmed', value: {} });
+  api.postPurchaseV2Outcome.mockResolvedValueOnce({ kind: 'committed', value: COMMITTED_CREDIT });
   await click(button('Retry same purchase'));
   await vi.waitFor(() =>
     expect(host.textContent).toContain(
@@ -311,7 +319,7 @@ test('a failed price write keeps the bill posted and offers a retry with the sam
   await mountEditor();
   await fillCard(1, 'Biscuit');
   await setField(label('Item 1 retail ₹'), '12.50');
-  api.postPurchaseV2Outcome.mockResolvedValue({ kind: 'confirmed', value: {} });
+  api.postPurchaseV2Outcome.mockResolvedValue({ kind: 'committed', value: COMMITTED_CREDIT });
   api.setItemPrice.mockRejectedValueOnce(new Error('network down'));
   await post();
   await vi.waitFor(() =>
@@ -405,7 +413,7 @@ test('an error a retry cannot fix (item gone) is offered only for discard', asyn
   await mountEditor();
   await fillCard(1, 'Biscuit');
   await setField(label('Item 1 retail ₹'), '12.50');
-  api.postPurchaseV2Outcome.mockResolvedValue({ kind: 'confirmed', value: {} });
+  api.postPurchaseV2Outcome.mockResolvedValue({ kind: 'committed', value: COMMITTED_CREDIT });
   api.setItemPrice.mockRejectedValueOnce(new Error('item not in tenant'));
   await post();
   await vi.waitFor(() =>
@@ -462,7 +470,7 @@ test('a bill confirmed on its retry after a reload writes the prices planned bef
   await vi.waitFor(() => expect(button('Retry same purchase')).toBeTruthy());
   // The pending bill's plan is not offered as an alert while the bill is unconfirmed.
   expect(host.querySelector('.price-retry')).toBeNull();
-  api.postPurchaseV2Outcome.mockResolvedValueOnce({ kind: 'confirmed', value: {} });
+  api.postPurchaseV2Outcome.mockResolvedValueOnce({ kind: 'committed', value: COMMITTED_CREDIT });
   await click(button('Retry same purchase'));
   await vi.waitFor(() => expect(api.setItemPrice).toHaveBeenCalledTimes(1));
   expect(api.setItemPrice.mock.calls[0][0]).toMatchObject({

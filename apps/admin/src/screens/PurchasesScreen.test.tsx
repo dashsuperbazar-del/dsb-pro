@@ -220,11 +220,14 @@ test('paid badge comes from the settlement: a cash bill whose payment was voided
   await vi.waitFor(() =>
     expect(host.querySelector('[data-testid="settlement-badge"]')?.textContent).toBe('Settled'),
   );
-  // Extras that cannot be read show no badge at all (never guessed from the payment type).
+  // Extras that cannot be read say so (never guessed from the payment type).
   await act(async () => render(null, host));
   await openCash('owner', new Error('offline'));
   await vi.waitFor(() => expect(host.textContent).toContain('Payment details could not be loaded'));
-  expect(host.querySelector('[data-testid="settlement-badge"]')).toBeNull();
+  expect(host.querySelector('[data-testid="settlement-badge"]')?.textContent).toBe(
+    'Payment status unavailable',
+  );
+  expect(host.textContent).not.toContain('Settled');
 });
 
 test('void of a cash bill: owner voids bill and payment with one request id; others are told why not', async () => {

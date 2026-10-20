@@ -47,6 +47,14 @@ const api = vi.hoisted(() => ({
   listItemSaleMovements: vi.fn().mockResolvedValue({ sales: [], returns: [], truncated: false }),
 }));
 vi.mock('@dsb-pro/adapters', () => api);
+// A real post_purchase_v2 answer for a credit bill (the screen reads only kind and the paid fields).
+const COMMITTED_CREDIT = {
+  billId: 'b0000000-0000-0000-0000-000000000001',
+  paymentId: null,
+  totalPaise: 0,
+  roundOffPaise: 0,
+  businessDate: '2026-10-12',
+};
 const offline = vi.hoisted(() => ({
   getSyncedOfflineCatalog: vi.fn(),
   runSyncNow: vi.fn(),
@@ -435,7 +443,7 @@ test('reload restores all draft fields and unfinished edit without posting; conf
       .find((b) => b.textContent === 'Credit')!
       .dispatchEvent(new MouseEvent('click', { bubbles: true }));
   });
-  api.postPurchaseV2Outcome.mockResolvedValue({ kind: 'confirmed', value: {} });
+  api.postPurchaseV2Outcome.mockResolvedValue({ kind: 'committed', value: COMMITTED_CREDIT });
   await act(async () => {
     host
       .querySelector('input[name="billNo"]')!
@@ -706,7 +714,7 @@ test('bill bytes and complete draft are durable before upload; reload resumes th
   await act(async () => {
     finish();
   });
-  api.postPurchaseV2Outcome.mockResolvedValue({ kind: 'confirmed', value: {} });
+  api.postPurchaseV2Outcome.mockResolvedValue({ kind: 'committed', value: COMMITTED_CREDIT });
   await act(async () => {
     host
       .querySelector('input[name="billNo"]')!
@@ -1152,7 +1160,7 @@ test('P06: a quick bill checks items against its paper total before posting and 
   await submit();
   await vi.waitFor(() => expect(host.textContent).toContain('Not confirmed'));
   expect(confirmSpy).toHaveBeenCalledTimes(2);
-  api.postPurchaseV2Outcome.mockResolvedValueOnce({ kind: 'confirmed', value: {} });
+  api.postPurchaseV2Outcome.mockResolvedValueOnce({ kind: 'committed', value: COMMITTED_CREDIT });
   await submit();
   await vi.waitFor(() => expect(host.textContent).toContain('Purchase posted'));
   expect(confirmSpy).toHaveBeenCalledTimes(2);

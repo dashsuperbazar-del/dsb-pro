@@ -1519,6 +1519,12 @@ body {
   display: block;
   margin-top: 2px;
 }
+.bill-card-total-warning {
+  display: block;
+  margin-top: 4px;
+  color: var(--danger);
+  font-weight: 600;
+}
 .bill-paid-note {
   margin: 10px 0 0;
   padding: 8px 10px;

@@ -403,7 +403,14 @@ export function PurchasesScreen({ url }: { url?: string }) {
                 </>
               )}
             </p>
-            {extrasError && <p class="muted">{extrasError}</p>}
+            {extrasError && (
+              <p class="muted">
+                <span class="badge" data-testid="settlement-badge">
+                  Payment status unavailable
+                </span>{' '}
+                {extrasError}
+              </p>
+            )}
             {extras?.notes && <p data-testid="bill-notes">Notes: {extras.notes}</p>}
             {detail.balance && (
               <p>

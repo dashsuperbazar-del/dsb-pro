@@ -14,7 +14,7 @@ import {
 } from '../lib/newItem';
 import { PurchaseBillCards } from '../components/PurchaseBillCards';
 import {
-  addLineAsCard,
+  addCardAtEnd,
   billFromCards,
   cardDrafts,
   cardFromLine,
@@ -114,7 +114,12 @@ import {
   type PriceLoad,
   type StoredPlan,
 } from '../lib/billSalePrices';
-import { clearPendingIntent, loadPendingIntent, savePendingIntent } from '../lib/pendingIntent';
+import {
+  clearPendingIntent,
+  loadPendingIntent,
+  savePendingIntent,
+  type IntentLoad,
+} from '../lib/pendingIntent';
 
 import {
   purchaseDraftPrefix,
@@ -289,11 +294,22 @@ export function InventoryScreen({
   const lockedPurchase = useRef<PendingPurchase | null>(null);
   // Survives a reload: stored BEFORE the first send (V002 VF-005), so an unconfirmed purchase is
   // retried as the same request, never re-entered. Unreadable storage blocks new purchases.
-  const pendingKey = (shop: string) => `dsb-pending-purchase:${shop}`;
+  // v1 entries (stored by the previous version) and v2 entries live under different names, so an older
+  // app version never finds a v2 request and resends it through post_purchase without its charges, GST
+  // and payment. This version reads both, v1 first.
+  const pendingKey = (shop: string, v2: boolean) =>
+    v2 ? `dsb-pending-purchase-v2:${shop}` : `dsb-pending-purchase:${shop}`;
+  const pendingKeyFor = (request: PendingPurchase) =>
+    pendingKey(request.shopId, isV2Pending(request));
+  const loadPending = (shop: string): IntentLoad<PendingPurchase> => {
+    const v1 = loadPendingIntent<PendingPurchase>(pendingKey(shop, false));
+    if (!v1.ok || v1.value) return v1;
+    return loadPendingIntent<PendingPurchase>(pendingKey(shop, true));
+  };
   const [purchaseStorageBlocked, setPurchaseStorageBlocked] = useState('');
   useEffect(() => {
     if (!shopId) return;
-    const saved = loadPendingIntent<PendingPurchase>(pendingKey(shopId));
+    const saved = loadPending(shopId);
     if (!saved.ok) {
       setPurchaseStorageBlocked(saved.message);
     } else if (saved.value) {
@@ -305,13 +321,20 @@ export function InventoryScreen({
   // Old-draft discard never offers the draft of this window's purchase or of a purchase awaiting
   // confirmation (its pending request id), so an unconfirmed bill's editable copy is never removed.
   function discardableDrafts() {
-    const pending = shopId ? loadPendingIntent<PendingPurchase>(pendingKey(shopId)) : null;
-    const pendingId = pending?.ok ? pending.value?.clientId : undefined;
+    const ids = shopId
+      ? [false, true].map((v2) => {
+          const p = loadPendingIntent<PendingPurchase>(pendingKey(shopId, v2));
+          return p.ok ? p.value?.clientId : undefined;
+        })
+      : [];
+    const pendingId = ids[0];
+    const pendingV2Id = ids[1];
     return staleDrafts(
       savedDrafts.filter(
         (s) =>
           s.draft.clientId !== purchaseClientId &&
           s.draft.clientId !== pendingId &&
+          s.draft.clientId !== pendingV2Id &&
           // A quick bill is the only record of a paper bill not yet entered; never swept with old drafts.
           !s.draft.expectedTotalPaise,
       ),
@@ -659,10 +682,10 @@ export function InventoryScreen({
     if (!shopId || !saleEnabled) return;
     const pending = new Set<string>();
     try {
-      const head = pendingKey(shopId);
+      const heads = [pendingKey(shopId, false), pendingKey(shopId, true)];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (!key || (key !== head && !key.startsWith(`${head}:`))) continue;
+        if (!key || !heads.some((head) => key === head || key.startsWith(`${head}:`))) continue;
         const v = JSON.parse(localStorage.getItem(key) ?? 'null') as { clientId?: unknown } | null;
         if (typeof v?.clientId === 'string') pending.add(v.clientId);
       }
@@ -804,7 +827,7 @@ export function InventoryScreen({
   const [barProblem, setBarProblem] = useState('');
   useEffect(() => setBarProblem(''), [purchaseCards]);
   const draftSnapshot: PurchaseDraft = {
-    version: 1,
+    version: 2,
     clientId: purchaseClientId,
     savedAt: Date.now(),
     supplier: purchaseSupplier,
@@ -1160,13 +1183,33 @@ export function InventoryScreen({
     return { item, unitLevel: hit.unit_level };
   }
   // Old DSB "↺ Repeat": the items of this supplier's last bill replace the cards (discount/extra untouched).
-  function repeatLastBill() {
+  // Items of a posted bill as cards, WITH their discount/GST (getPurchaseExtras). If the extras cannot be
+  // read nothing is copied: a card without its discount/GST would silently change what the bill costs.
+  async function cardsFromBill(
+    detail: NonNullable<typeof recentDetail>,
+    lines: NonNullable<typeof recentDetail>['lines'],
+  ): Promise<BillCard[]> {
+    const cart = repeatPurchase(detail.bill, lines, items);
+    let extras;
+    try {
+      extras = await getPurchaseExtras(shopId, detail.bill.id);
+    } catch {
+      throw new Error(
+        "This bill's discount and GST could not be read, so its items were not copied. Try again when connected.",
+      );
+    }
+    return cart.map((line, i) => {
+      const x = extras.lines.find((e) => e.lineNo === lines[i]?.line_no);
+      return cardFromLine(x ? { ...line, discountBp: x.discountBp, gstBp: x.gstBp } : line);
+    });
+  }
+  async function repeatLastBill() {
     if (!recentDetail) return;
     let cards: BillCard[];
     try {
-      cards = repeatPurchase(recentDetail.bill, recentDetail.lines, items).map(cardFromLine);
+      cards = await cardsFromBill(recentDetail, recentDetail.lines);
     } catch (e) {
-      setError(String(e));
+      setError(e instanceof Error ? e.message : String(e));
       return;
     }
     if (
@@ -1384,7 +1427,17 @@ export function InventoryScreen({
     }
     // Durable before dispatch, or not sent at all.
     try {
-      savePendingIntent(pendingKey(request.shopId), request, { retry: isRetry });
+      // A new bill waits for an unconfirmed one stored under the other name too.
+      if (!isRetry) {
+        const other = loadPendingIntent<PendingPurchase>(
+          pendingKey(request.shopId, !isV2Pending(request)),
+        );
+        if (!other.ok || other.value)
+          throw new Error(
+            'Another unconfirmed purchase is stored on this device. Nothing was sent; reload this page to finish it first.',
+          );
+      }
+      savePendingIntent(pendingKeyFor(request), request, { retry: isRetry });
     } catch (e) {
       // Only this window's own plan is removed; another window's plan for the same bill is kept.
       if (!isRetry) {
@@ -1413,9 +1466,9 @@ export function InventoryScreen({
       }
       lockedPurchase.current = null;
       setPurchaseLocked(false);
-      clearPendingIntent(pendingKey(request.shopId), request.clientId);
+      clearPendingIntent(pendingKeyFor(request), request.clientId);
       // Another window's unconfirmed purchase may still be stored: lock onto it next, same id (VF-009).
-      const next = loadPendingIntent<PendingPurchase>(pendingKey(request.shopId));
+      const next = loadPending(request.shopId);
       const another = Boolean(next.ok && next.value);
       if (next.ok && next.value) {
         lockedPurchase.current = next.value;
@@ -2325,10 +2378,10 @@ export function InventoryScreen({
                   ? recentDetail.lines.slice(0, 8).map((l, n) => ({
                       key: `${l.item_id}:${l.unit_level}:${n}`,
                       label: `${l.item_name_snapshot} · ${rupees(l.unit_price_paise)}/${l.unit_name_snapshot}`,
-                      onAdd: () => {
+                      onAdd: async () => {
                         try {
-                          const line = repeatPurchase(recentDetail.bill, [l], items)[0]!;
-                          setPurchaseCards((c) => addLineAsCard(c, line));
+                          const [card] = await cardsFromBill(recentDetail, [l]);
+                          setPurchaseCards((c) => addCardAtEnd(c, card!));
                           setDraftTouched(true);
                           setMessage(
                             'Added from the last supplier bill. Check the quantity and rate.',

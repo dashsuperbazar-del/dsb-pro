@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import {
   billDocumentHash,
   billDocumentPath,
@@ -65,7 +65,9 @@ export function BillAttachmentEditor({
     props.current.documents = next;
   }
   const busy = picking || busyIds.length > 0;
-  useEffect(() => props.current.onBusy(busy), [busy]);
+  // Layout effect: the screen learns "not busy" before the buttons can be pressed again, so a pick is
+  // never refused by a stale busy flag.
+  useLayoutEffect(() => props.current.onBusy(busy), [busy]);
   const full = documents.length >= MAX_BILL_PHOTOS;
   async function choose(e: Event) {
     const input = e.currentTarget as HTMLInputElement,

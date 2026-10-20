@@ -5,7 +5,9 @@ import type { BillCardDraft } from './billCards';
 import { hasTypedSale } from './billSalePrices';
 
 export type PurchaseDraft = {
-  version: 1;
+  /** 2 = written by the bill-extras editor (payment type, notes, charges, discount/GST, photos). Older app
+   * versions accept only 1, so they keep a v2 draft as unreadable instead of posting it without those fields. */
+  version: 1 | 2;
   clientId: string;
   savedAt: number;
   supplier: string;
@@ -95,7 +97,7 @@ function checked(value: unknown): PurchaseDraft {
   const d = value as PurchaseDraft | null;
   if (
     !d ||
-    d.version !== 1 ||
+    (d.version !== 1 && d.version !== 2) ||
     typeof d.clientId !== 'string' ||
     !d.clientId ||
     !Number.isFinite(d.savedAt) ||

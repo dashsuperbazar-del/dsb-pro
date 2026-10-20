@@ -253,9 +253,12 @@ export function cardFromLine(
 
 /** Tap-to-add (recent supplier items): fills a trailing empty card, otherwise appends a new one. */
 export function addLineAsCard(cards: BillCard[], line: PurchaseDraftLine): BillCard[] {
+  return addCardAtEnd(cards, cardFromLine(line));
+}
+export function addCardAtEnd(cards: BillCard[], card: BillCard): BillCard[] {
   const last = cards[cards.length - 1];
-  if (last && isBlankCard(last)) return [...cards.slice(0, -1), cardFromLine(line)];
-  return [...cards, cardFromLine(line)];
+  if (last && isBlankCard(last)) return [...cards.slice(0, -1), card];
+  return [...cards, card];
 }
 
 /** Switch per unit ⇄ total. The other figure is filled only when it is exact; otherwise it is cleared. */

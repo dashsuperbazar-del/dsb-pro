@@ -7,6 +7,7 @@ import { purchaseBillTotals } from '@dsb-pro/core';
 import { InventoryScreen } from './InventoryScreen';
 import { shopContext } from '../lib/shopContext';
 import { resetCatalogDirtyForTests } from '../lib/catalogRead';
+import { loadPendingIntent } from '../lib/pendingIntent';
 
 // billextras bill entry (v2): payment type, notes, item discount/GST, named charges, several photos and the
 // round-off, posted through postPurchaseV2Outcome with the pending-intent retry pattern.
@@ -294,10 +295,15 @@ test('a lost reply is retried as the same v2 request (same id, same payload), ev
   expect(host.textContent).toContain('never posts it (or its payment) twice');
   const first = api.postPurchaseV2Outcome.mock.calls[0];
   expect(first[1]).toBe(false);
-  // Stored before sending, as a v2 entry.
+  // Stored before sending, as a v2 entry under its own name: the previous app version reads only
+  // `dsb-pending-purchase:<shop>` and must never find (and resend through v1) this request.
   const stored = JSON.parse(
-    localStorage.getItem(`dsb-pending-purchase:${SHOP}:${first[0].clientId}`)!,
+    localStorage.getItem(`dsb-pending-purchase-v2:${SHOP}:${first[0].clientId}`)!,
   );
+  expect(loadPendingIntent(`dsb-pending-purchase:${SHOP}`)).toEqual({ ok: true, value: null });
+  // The editor's draft is version 2: older versions accept only version 1, so they keep it unread.
+  const draftKey = Object.keys(localStorage).find((k) => k.startsWith('dsb-purchase-draft:'))!;
+  expect(JSON.parse(localStorage.getItem(draftKey)!).version).toBe(2);
   expect(stored).toMatchObject({ api: 'v2', clientId: first[0].clientId, paymentType: 'cash' });
   expect(host.textContent).toContain('This bill was sent as a Cash bill');
   // Reload: the screen offers only the safe retry of the stored request.
@@ -315,9 +321,7 @@ test('a lost reply is retried as the same v2 request (same id, same payload), ev
   // The resent request is the stored one (savedAt is storage bookkeeping) and equals the first send.
   expect(withoutSavedAt(again)).toEqual(withoutSavedAt(stored));
   expect(withoutSavedAt(again)).toEqual(JSON.parse(JSON.stringify(first[0])));
-  expect(Object.keys(localStorage).filter((k) => k.startsWith('dsb-pending-purchase:'))).toEqual(
-    [],
-  );
+  expect(Object.keys(localStorage).filter((k) => k.startsWith('dsb-pending-purchase'))).toEqual([]);
 });
 
 test('a payload mismatch is a final refusal shown clearly; nothing is resent', async () => {
@@ -336,9 +340,7 @@ test('a payload mismatch is a final refusal shown clearly; nothing is resent', a
   expect(host.textContent).toContain('already used for a different purchase (bill b-9)');
   expect(postButton().textContent).toBe('Post purchase');
   expect(api.postPurchaseV2Outcome).toHaveBeenCalledTimes(1);
-  expect(Object.keys(localStorage).filter((k) => k.startsWith('dsb-pending-purchase:'))).toEqual(
-    [],
-  );
+  expect(Object.keys(localStorage).filter((k) => k.startsWith('dsb-pending-purchase'))).toEqual([]);
 });
 
 test('a v1 purchase left unconfirmed by the previous version is retried as v1, unchanged', async () => {
@@ -380,6 +382,7 @@ test('several bill photos are uploaded to this bill and sent in order; the first
     await vi.waitFor(() => expect(host.textContent).toContain(name));
     // Picking waits while a file is still being saved or uploaded (the buttons are disabled meanwhile).
     await vi.waitFor(() => expect(button('Choose PDF').disabled).toBe(false));
+    await vi.waitFor(() => expect(postButton().disabled).toBe(false));
   }
   await vi.waitFor(() =>
     expect(host.querySelectorAll('[data-testid^="bill-photo-"]')).toHaveLength(2),
@@ -397,4 +400,89 @@ test('several bill photos are uploaded to this bill and sent in order; the first
   await click(postButton());
   await vi.waitFor(() => expect(api.postPurchaseV2Outcome).toHaveBeenCalledTimes(1));
   expect(api.postPurchaseV2Outcome.mock.calls[0][0].images).toEqual(paths);
+});
+
+const lastBill = {
+  bill: {
+    id: 'last',
+    status: 'POSTED',
+    party_id: 'p1',
+    bill_no: 'L-1',
+    business_date: '2026-10-10',
+    discount_paise: '0',
+    extra_charges_paise: '0',
+  },
+  lines: [
+    {
+      item_id: 'a',
+      line_no: 1,
+      item_name_snapshot: 'Item A',
+      unit_level: 1,
+      unit_name_snapshot: 'piece',
+      conv1_snapshot: null,
+      conv2_snapshot: null,
+      qty: '20',
+      unit_price_paise: '871',
+    },
+  ],
+  balance: null,
+};
+async function withLastBill() {
+  api.listPurchaseHistory.mockResolvedValue([
+    { id: 'last', party_id: 'p1', status: 'POSTED', business_date: '2026-10-10' },
+  ]);
+  api.getPurchaseDetail.mockResolvedValue(lastBill);
+  await mountEditor();
+  await setField('select[name="partyId"]', 'p1', 'change');
+  await vi.waitFor(() => expect(host.textContent).toContain('↺ Repeat last bill'));
+}
+test("repeat last bill and tap-to-add keep each item's discount and GST (never a silently lower bill)", async () => {
+  api.getPurchaseExtras.mockResolvedValue({
+    paymentType: 'credit',
+    notes: null,
+    lines: [{ lineNo: 1, discountBp: 200, gstBp: 500 }],
+    charges: [],
+    images: [],
+    settlement: { status: 'unpaid' },
+  });
+  await withLastBill();
+  await click(button('↺ Repeat last bill'));
+  await vi.waitFor(() =>
+    expect(host.querySelector<HTMLInputElement>(label('Item 1 GST %'))!.value).toBe('5'),
+  );
+  expect(host.querySelector<HTMLInputElement>(label('Item 1 discount %'))!.value).toBe('2');
+  // 20 x 8.71 = 174.20, 2% off, +5% GST = 179.25 (core line total)
+  expect(text('item-1-amount')).toContain('Item total ₹179.25');
+  await click(button('Item A · ₹8.71/piece'));
+  await vi.waitFor(() =>
+    expect(host.querySelectorAll('section[aria-label^="Item "]')).toHaveLength(2),
+  );
+  expect(host.querySelector<HTMLInputElement>(label('Item 2 GST %'))!.value).toBe('5');
+  expect(host.querySelector<HTMLInputElement>(label('Item 2 discount %'))!.value).toBe('2');
+});
+
+test("if the last bill's discount/GST cannot be read, repeat and tap-to-add copy nothing and say why", async () => {
+  api.getPurchaseExtras.mockRejectedValue(new Error('offline'));
+  await withLastBill();
+  await click(button('↺ Repeat last bill'));
+  await vi.waitFor(() =>
+    expect(host.textContent).toContain('could not be read, so its items were not copied'),
+  );
+  await click(button('Item A · ₹8.71/piece'));
+  expect(host.querySelectorAll('section[aria-label^="Item "]')).toHaveLength(1);
+  expect(host.querySelector<HTMLInputElement>(label('Item 1 name'))!.value).toBe('');
+});
+
+test('Total mode is labelled as before discount/GST and warns when GST is typed', async () => {
+  await mountEditor();
+  await item(1, '2', '10');
+  await click(button('Total', host.querySelector(label('Item 1 cost entered as'))!));
+  expect(host.querySelector(label('Item 1 total ₹'))!.closest('label')!.textContent).toContain(
+    'Total before discount/GST ₹',
+  );
+  expect(host.querySelector('[data-testid="item-1-total-gst"]')).toBeNull();
+  await setField(label('Item 1 GST %'), '5');
+  expect(text('item-1-total-gst')).toContain('or the GST is added twice');
+  await click(button('Per unit', host.querySelector(label('Item 1 cost entered as'))!));
+  expect(host.querySelector('[data-testid="item-1-total-gst"]')).toBeNull();
 });

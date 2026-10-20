@@ -560,7 +560,7 @@ export function PurchaseBillCards(props: {
                 />
               </label>
               <label>
-                {card.costMode === 'total' ? 'Total cost ₹' : 'Rate per unit ₹'}
+                {card.costMode === 'total' ? 'Total before discount/GST ₹' : 'Rate per unit ₹'}
                 <input
                   aria-label={`Item ${n} ${priceLabel}`}
                   data-field="price"
@@ -647,6 +647,16 @@ export function PurchaseBillCards(props: {
             <small class="muted bill-card-gst-hint" data-testid={`item-${n}-gst-hint`}>
               {gstHint(card.gst ?? '')}
             </small>
+            {card.costMode === 'total' && !!card.gst?.trim() && (
+              <small
+                class="bill-card-total-warning"
+                role="note"
+                data-testid={`item-${n}-total-gst`}
+              >
+                Total mode: the total typed is before discount and GST. If the paper bill's total
+                already includes GST, leave GST blank, or the GST is added twice.
+              </small>
+            )}
             <p class="bill-card-amount" aria-live="polite" data-testid={`item-${n}-amount`}>
               {result.kind === 'ok' ? (
                 result.amountPaise === result.grossPaise &&
