@@ -22,7 +22,12 @@ export type BillCardDraft = {
   /** Paise per unit typed before switching to "Total"; reused while it still makes the total exactly,
    * so a per unit / total round trip never changes the stored unit cost. */
   unitHint?: number;
+  /** Optional sale prices typed in the card's "Sale prices" box (lib/billSalePrices). Never posted with
+   * the bill; written to the item after the bill posts. */
+  sale?: CardSale;
 };
+/** Typed sale price box fields; a field left undefined shows the item's current price. */
+export type CardSale = { level: 1 | 2 | 3; retail?: string; wsQty?: string; wsPrice?: string };
 export type BillCard = BillCardDraft & { key: string };
 
 export type CardResult =
@@ -60,8 +65,11 @@ export function withItem<T extends BillCardDraft>(c: T, item: Item, unitLevel: 1
   // Choosing the first item keeps a quantity typed before it; only a change of item or unit clears.
   if (!c.item || (c.item.id === item.id && c.unitLevel === unitLevel))
     return { ...c, item, search: item.name, unitLevel };
+  // Sale prices were typed for the old item; a change of purchase unit keeps them (they name their own unit).
+  const { sale, ...rest } = c;
   return {
-    ...c,
+    ...(rest as T),
+    ...(c.item.id === item.id && sale ? { sale } : {}),
     item,
     search: item.name,
     unitLevel,
@@ -237,5 +245,6 @@ export function cardDrafts(cards: BillCard[]): BillCardDraft[] {
     price: c.price,
     costMode: c.costMode,
     ...(c.unitHint !== undefined ? { unitHint: c.unitHint } : {}),
+    ...(c.sale ? { sale: c.sale } : {}),
   }));
 }
