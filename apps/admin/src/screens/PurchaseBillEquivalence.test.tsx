@@ -32,6 +32,7 @@ const api = vi.hoisted(() => ({
   setItemPrice: vi.fn(),
   listPurchaseHistory: vi.fn().mockResolvedValue([]),
   getPurchaseDetail: vi.fn(),
+  listSupplierPurchaseLines: vi.fn().mockResolvedValue([]),
   postPurchaseOutcome: vi.fn(),
   postPurchaseV2Outcome: vi.fn(),
   getPurchaseExtras: vi.fn().mockResolvedValue({
@@ -260,7 +261,7 @@ test('a draft saved by the old add-line editor resumes as cards and posts the id
   expect(request).toStrictEqual({ ...GOLDEN, clientId: 'old-client' });
 });
 
-test('layout follows old DSB: items, then extra and discount, then the live bill total and one post bar', async () => {
+test('fast bill layout: items, the live bill total, then closed bill details (charges, discount), and one post bar', async () => {
   api.listPurchaseHistory.mockResolvedValue([
     { id: 'last', party_id: 'p1', status: 'POSTED', business_date: '2026-10-10' },
   ]);
@@ -301,35 +302,34 @@ test('layout follows old DSB: items, then extra and discount, then the live bill
   await setField('select[name="partyId"]', 'p1', 'change');
   await vi.waitFor(() => expect(host.textContent).toContain('↺ Repeat last bill'));
   expect(host.textContent).not.toMatch(/\blines?\b/i);
-  // Tap-to-add fills the empty first card instead of adding a second one.
-  await click(button('Item A · ₹10.50/piece'));
-  expect(host.querySelectorAll('section[aria-label^="Item "]')).toHaveLength(1);
-  // Tap-to-add reads the bill's discount/GST first (getPurchaseExtras), then fills the card.
-  await vi.waitFor(() =>
-    expect(host.querySelector<HTMLInputElement>(label('Item 1 quantity'))!.value).toBe('4'),
-  );
   await click(button('↺ Repeat last bill'));
-  await vi.waitFor(() => expect(window.confirm).toHaveBeenCalled());
   await vi.waitFor(() =>
     expect(host.querySelectorAll('section[aria-label^="Item "]')).toHaveLength(2),
   );
   const order = [
     host.querySelector(label('Item 2'))!,
-    host.querySelector('[aria-label="Extra charges"]')!,
-    host.querySelector('input[name="discount"]')!,
     host.querySelector('[data-testid="bill-total"]')!,
+    host.querySelector('.bill-details')!,
+    host.querySelector('input[name="discount"]')!,
+    host.querySelector('[aria-label="Extra charges"]')!,
     host.querySelector('.bill-bar')!,
   ];
+  // Bill details start closed; nothing in them is set, and the summary says what they hold.
+  expect(host.querySelector('.bill-details-toggle')!.getAttribute('aria-expanded')).toBe('false');
+  expect(host.querySelector('#bill-details-body')!.hasAttribute('hidden')).toBe(true);
   for (let i = 1; i < order.length; i++)
     expect(
       order[i - 1]!.compareDocumentPosition(order[i]!) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   expect(host.querySelector('[data-testid="bill-total"]')!.textContent).toContain('₹162.00');
-  expect(host.querySelector('[data-testid="bill-total"]')!.textContent).toContain('Round off');
-  expect(host.querySelectorAll('.bill-bar button')).toHaveLength(1);
+  // ₹162.00 needs no round-off: the round-off line is shown only when it is not zero.
+  expect(host.querySelector('[data-testid="bill-total"]')!.textContent).not.toContain('Round off');
+  // One button in the bar posts; the others (payment type, + Add item) are plain buttons.
+  expect(host.querySelectorAll('.bill-bar button:not([type="button"])')).toHaveLength(1);
+  expect(host.querySelector('.bill-bar [aria-label="Payment type"]')).not.toBeNull();
 });
 
-test('Enter inside a card moves to the next field and never posts a partial bill', async () => {
+test('Enter in the rate moves to the next item row (added when needed) and never posts a partial bill', async () => {
   await mountEditor();
   await pickItem(1, 'Item A');
   await setField(label('Item 1 quantity'), '2');
@@ -341,8 +341,9 @@ test('Enter inside a card moves to the next field and never posts a partial bill
     rate.dispatchEvent(enter);
   });
   expect(enter.defaultPrevented).toBe(true);
-  expect(document.activeElement).not.toBe(rate);
-  expect(document.activeElement?.tagName).toBe('BUTTON');
+  // Enter in the rate goes to the next item's name: a new row is added after the last one.
+  expect(host.querySelectorAll('section[aria-label^="Item "]')).toHaveLength(2);
+  expect(document.activeElement).toBe(host.querySelector(label('Item 2 name')));
   // Even an implicit submission that slips through (no Post button as submitter) posts nothing.
   await act(async () => {
     rate.form!.requestSubmit();

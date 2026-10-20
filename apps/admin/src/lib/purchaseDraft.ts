@@ -143,6 +143,10 @@ function checked(value: unknown): PurchaseDraft {
           (c.unitHint === undefined || (Number.isSafeInteger(c.unitHint) && c.unitHint >= 0)) &&
           (c.discount === undefined || typeof c.discount === 'string') &&
           (c.gst === undefined || typeof c.gst === 'string') &&
+          (c.suggested === undefined ||
+            (!!c.suggested &&
+              typeof c.suggested.date === 'string' &&
+              typeof c.suggested.price === 'string')) &&
           (c.sale === undefined ||
             (!!c.sale &&
               [1, 2, 3].includes(c.sale.level) &&

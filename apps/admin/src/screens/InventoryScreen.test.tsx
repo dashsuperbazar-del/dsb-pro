@@ -33,6 +33,7 @@ const api = vi.hoisted(() => ({
   listCurrentPrices: vi.fn(),
   listPurchaseHistory: vi.fn().mockResolvedValue([]),
   getPurchaseDetail: vi.fn(),
+  listSupplierPurchaseLines: vi.fn().mockResolvedValue([]),
   postPurchaseOutcome: vi.fn(),
   postPurchaseV2Outcome: vi.fn(),
   getPurchaseExtras: vi.fn().mockResolvedValue({
@@ -422,7 +423,7 @@ test('reload restores all draft fields and unfinished edit without posting; conf
     host
       .querySelector('input[name="billNo"]')!
       .closest('form')!
-      .requestSubmit(host.querySelector<HTMLButtonElement>('.bill-bar button'));
+      .requestSubmit(host.querySelector<HTMLButtonElement>('.bill-bar button.primary'));
   });
   expect(host.textContent).toContain('Item 2: Choose the item.');
   expect(api.postPurchaseV2Outcome).not.toHaveBeenCalled();
@@ -434,7 +435,7 @@ test('reload restores all draft fields and unfinished edit without posting; conf
     host
       .querySelector('input[name="billNo"]')!
       .closest('form')!
-      .requestSubmit(host.querySelector<HTMLButtonElement>('.bill-bar button'));
+      .requestSubmit(host.querySelector<HTMLButtonElement>('.bill-bar button.primary'));
   });
   expect(host.textContent).toContain('A UPI bill is paid to a supplier');
   expect(api.postPurchaseV2Outcome).not.toHaveBeenCalled();
@@ -448,7 +449,7 @@ test('reload restores all draft fields and unfinished edit without posting; conf
     host
       .querySelector('input[name="billNo"]')!
       .closest('form')!
-      .requestSubmit(host.querySelector<HTMLButtonElement>('.bill-bar button'));
+      .requestSubmit(host.querySelector<HTMLButtonElement>('.bill-bar button.primary'));
   });
   await vi.waitFor(() => expect(host.textContent).toContain('Purchase posted'));
   expect(api.postPurchaseV2Outcome.mock.calls[0][0]).toMatchObject({
@@ -527,7 +528,7 @@ test('a rejected restored payload never rotates its identity into a new potentia
       host
         .querySelector('input[name="billNo"]')!
         .closest('form')!
-        .requestSubmit(host.querySelector<HTMLButtonElement>('.bill-bar button'));
+        .requestSubmit(host.querySelector<HTMLButtonElement>('.bill-bar button.primary'));
     });
   await submit();
   await vi.waitFor(() => expect(host.textContent).toContain('DSB_PAYLOAD_MISMATCH'));
@@ -573,7 +574,7 @@ test('UNKNOWN posting hides the unposted draft label and retains the exact reque
     host
       .querySelector('input[name="billNo"]')!
       .closest('form')!
-      .requestSubmit(host.querySelector<HTMLButtonElement>('.bill-bar button'));
+      .requestSubmit(host.querySelector<HTMLButtonElement>('.bill-bar button.primary'));
   });
   await vi.waitFor(() => expect(host.textContent).toContain('Not confirmed'));
   expect(host.textContent).not.toContain('not posted');
@@ -592,7 +593,7 @@ test('UNKNOWN posting hides the unposted draft label and retains the exact reque
     host
       .querySelector('input[name="billNo"]')!
       .closest('form')!
-      .requestSubmit(host.querySelector<HTMLButtonElement>('.bill-bar button'));
+      .requestSubmit(host.querySelector<HTMLButtonElement>('.bill-bar button.primary'));
   });
   const retry = { ...api.postPurchaseV2Outcome.mock.calls[1][0] };
   delete retry.savedAt; // local persistence metadata is never part of the RPC payload
@@ -719,7 +720,7 @@ test('bill bytes and complete draft are durable before upload; reload resumes th
     host
       .querySelector('input[name="billNo"]')!
       .closest('form')!
-      .requestSubmit(host.querySelector<HTMLButtonElement>('.bill-bar button'));
+      .requestSubmit(host.querySelector<HTMLButtonElement>('.bill-bar button.primary'));
   });
   await vi.waitFor(() => expect(host.textContent).toContain('Purchase posted'));
   expect(api.postPurchaseV2Outcome.mock.calls[0][0]).toMatchObject({
@@ -1146,7 +1147,7 @@ test('P06: a quick bill checks items against its paper total before posting and 
       host
         .querySelector('input[name="billNo"]')!
         .closest('form')!
-        .requestSubmit(host.querySelector<HTMLButtonElement>('.bill-bar button'));
+        .requestSubmit(host.querySelector<HTMLButtonElement>('.bill-bar button.primary'));
     });
   // Declining the mismatch posts nothing and leaves no pending request behind.
   const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
@@ -1287,9 +1288,13 @@ test('P03: a retry refused as a duplicate client id finds the saved item and sel
     min_stock: 0,
   };
   await createInCardTwice(async () => saved);
+  // A one-unit item shows no unit chips: the chosen item is the name in the row.
   await vi.waitFor(() =>
-    expect(host.querySelector('[aria-label="Item 1 purchased in"]')).toBeTruthy(),
+    expect(host.querySelector<HTMLInputElement>('[aria-label="Item 1 name"]')!.value).toBe(
+      'Lost Rice',
+    ),
   );
+  expect(host.querySelector('[aria-label="Item 1 purchased in"]')).toBeNull();
   expect(host.querySelector('[aria-label="New item for item 1"]')).toBeNull();
   expect(host.textContent).not.toContain('duplicate key');
   expect(host.textContent).toContain('Created Lost Rice');

@@ -102,3 +102,92 @@ export async function getPurchaseDetail(
     balance: balance.data as unknown as PurchaseBalance | null,
   };
 }
+
+const LINE_PAGE = 500;
+const MAX_LINE_PAGES = 40;
+/** One line of a supplier's posted bill, with the bill's date (for the "usual items" list). */
+export type SupplierPurchaseLine = {
+  purchase_bill_id: string;
+  business_date: string;
+  created_at: string;
+  line_no: number;
+  item_id: string;
+  item_name_snapshot: string;
+  unit_level: 1 | 2 | 3;
+  unit_name_snapshot: string;
+  /** The item's conversions when the bill was posted (a unit redefined since makes the rate stale). */
+  conv1_snapshot: number | null;
+  conv2_snapshot: number | null;
+  unit_price_paise: string;
+  discount_bp: number;
+  gst_bp: number | null;
+};
+/**
+ * Lines of a supplier's most recent POSTED bills (voided and deleted bills excluded), newest bill
+ * first. Read-only: two PostgREST reads under the caller's RLS. Each line's discount/GST come from the
+ * same read as its rate, so a line is never returned without them.
+ */
+export async function listSupplierPurchaseLines(
+  shopId: string,
+  partyId: string,
+  maxBills = 40,
+): Promise<SupplierPurchaseLine[]> {
+  await authorize(shopId);
+  if (!Number.isSafeInteger(maxBills) || maxBills < 1 || maxBills > 100)
+    throw new Error('Invalid bill count.');
+  const client = getSupabaseClient();
+  const bills = await client
+    .from('purchase_bills')
+    .select('id,business_date,created_at')
+    .eq('shop_id', shopId)
+    .eq('party_id', partyId)
+    .eq('status', 'POSTED')
+    .is('deleted_at', null)
+    .order('business_date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .order('id')
+    .limit(maxBills);
+  if (bills.error) throw new Error(errorMessage(classifyError(bills.error), bills.error));
+  if (!Array.isArray(bills.data)) throw new Error('Supplier bills could not be read.');
+  if (!bills.data.length) return [];
+  const order = new Map(bills.data.map((b, i) => [b.id as string, { ...b, i }]));
+  // Paged with a stable order (bill, line, id) below the server's row cap: a long history is read
+  // completely, never cut off silently; past MAX_LINE_PAGES it fails instead.
+  const rows: unknown[] = [];
+  for (let page = 0; ; page++) {
+    if (page >= MAX_LINE_PAGES) throw new Error('Too many supplier bill lines to read.');
+    const from = page * LINE_PAGE;
+    const lines = await client
+      .from('purchase_bill_items')
+      .select(
+        'purchase_bill_id,line_no,item_id,item_name_snapshot,unit_level,unit_name_snapshot,conv1_snapshot,conv2_snapshot,unit_price_paise::text,discount_bp,gst_bp',
+      )
+      .eq('shop_id', shopId)
+      .in('purchase_bill_id', [...order.keys()])
+      .is('deleted_at', null)
+      .order('purchase_bill_id')
+      .order('line_no')
+      .order('id')
+      .range(from, from + LINE_PAGE - 1);
+    if (lines.error) throw new Error(errorMessage(classifyError(lines.error), lines.error));
+    if (!Array.isArray(lines.data)) throw new Error('Supplier bill lines could not be read.');
+    rows.push(...lines.data);
+    if (lines.data.length < LINE_PAGE) break;
+  }
+  type Row = Omit<SupplierPurchaseLine, 'business_date' | 'created_at'>;
+  const out: { i: number; line: SupplierPurchaseLine }[] = [];
+  for (const l of rows as Row[]) {
+    const bill = order.get(l.purchase_bill_id);
+    if (!bill) continue;
+    out.push({
+      i: bill.i,
+      line: {
+        ...l,
+        business_date: bill.business_date as string,
+        created_at: bill.created_at as string,
+      },
+    });
+  }
+  out.sort((a, b) => a.i - b.i || a.line.line_no - b.line.line_no);
+  return out.map((o) => o.line);
+}

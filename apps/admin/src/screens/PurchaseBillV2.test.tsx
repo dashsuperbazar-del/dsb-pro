@@ -35,6 +35,7 @@ const api = vi.hoisted(() => ({
   setItemPrice: vi.fn(),
   listPurchaseHistory: vi.fn().mockResolvedValue([]),
   getPurchaseDetail: vi.fn(),
+  listSupplierPurchaseLines: vi.fn().mockResolvedValue([]),
   getPurchaseExtras: vi.fn(),
   postPurchaseOutcome: vi.fn(),
   postPurchaseV2Outcome: vi.fn(),
@@ -82,7 +83,7 @@ const label = (text: string) => `[aria-label="${text}"]`;
 const button = (text: string, root: ParentNode = host) =>
   [...root.querySelectorAll('button')].find((b) => b.textContent === text)!;
 const click = (el: HTMLElement) => act(async () => el.click());
-const postButton = () => host.querySelector<HTMLButtonElement>('.bill-bar button')!;
+const postButton = () => host.querySelector<HTMLButtonElement>('.bill-bar button.primary')!;
 const text = (testId: string) => host.querySelector(`[data-testid="${testId}"]`)?.textContent ?? '';
 async function mountEditor() {
   await act(async () => {
@@ -436,7 +437,22 @@ async function withLastBill() {
   await setField('select[name="partyId"]', 'p1', 'change');
   await vi.waitFor(() => expect(host.textContent).toContain('↺ Repeat last bill'));
 }
-test("repeat last bill and tap-to-add keep each item's discount and GST (never a silently lower bill)", async () => {
+test("repeat last bill keeps each item's discount and GST (never a silently lower bill); usual items never add it twice", async () => {
+  api.listSupplierPurchaseLines.mockResolvedValue([
+    {
+      purchase_bill_id: 'last',
+      business_date: '2026-10-10',
+      created_at: '2026-10-10T10:00:00Z',
+      line_no: 1,
+      item_id: 'a',
+      item_name_snapshot: 'Item A',
+      unit_level: 1,
+      unit_name_snapshot: 'piece',
+      unit_price_paise: '871',
+      discount_bp: 200,
+      gst_bp: 500,
+    },
+  ]);
   api.getPurchaseExtras.mockResolvedValue({
     paymentType: 'credit',
     notes: null,
@@ -453,22 +469,22 @@ test("repeat last bill and tap-to-add keep each item's discount and GST (never a
   expect(host.querySelector<HTMLInputElement>(label('Item 1 discount %'))!.value).toBe('2');
   // 20 x 8.71 = 174.20, 2% off, +5% GST = 179.25 (core line total)
   expect(text('item-1-amount')).toContain('Item total ₹179.25');
-  await click(button('Item A · ₹8.71/piece'));
-  await vi.waitFor(() =>
-    expect(host.querySelectorAll('section[aria-label^="Item "]')).toHaveLength(2),
-  );
-  expect(host.querySelector<HTMLInputElement>(label('Item 2 GST %'))!.value).toBe('5');
-  expect(host.querySelector<HTMLInputElement>(label('Item 2 discount %'))!.value).toBe('2');
+  // The item is on the bill now: the usual items list (folded once the bill has items) shows it as
+  // added and cannot add it twice.
+  await click(host.querySelector<HTMLButtonElement>('.usual-toggle')!);
+  const usualRow = host.querySelector<HTMLInputElement>('[aria-label="Item A (on the bill)"]')!;
+  expect(usualRow.checked).toBe(true);
+  expect(usualRow.disabled).toBe(true);
+  expect(host.querySelectorAll('section[aria-label^="Item "]')).toHaveLength(1);
 });
 
-test("if the last bill's discount/GST cannot be read, repeat and tap-to-add copy nothing and say why", async () => {
+test("if the last bill's discount/GST cannot be read, repeat copies nothing and says why", async () => {
   api.getPurchaseExtras.mockRejectedValue(new Error('offline'));
   await withLastBill();
   await click(button('↺ Repeat last bill'));
   await vi.waitFor(() =>
     expect(host.textContent).toContain('could not be read, so its items were not copied'),
   );
-  await click(button('Item A · ₹8.71/piece'));
   expect(host.querySelectorAll('section[aria-label^="Item "]')).toHaveLength(1);
   expect(host.querySelector<HTMLInputElement>(label('Item 1 name'))!.value).toBe('');
 });
@@ -495,7 +511,7 @@ const extrasOf = () => ({
   images: [],
   settlement: { status: 'unpaid' },
 });
-test.each(['repeat', 'tap'] as const)(
+test.each(['repeat'] as const)(
   'a supplier change while the last bill is being read copies nothing and says so (%s)',
   async (start) => {
     api.listParties.mockResolvedValue([
@@ -505,8 +521,8 @@ test.each(['repeat', 'tap'] as const)(
     let release!: (v: unknown) => void;
     api.getPurchaseExtras.mockImplementation(() => new Promise((resolve) => (release = resolve)));
     await withLastBill();
-    if (start === 'repeat') await click(button('↺ Repeat last bill'));
-    else await click(button('Item A · ₹8.71/piece'));
+    expect(start).toBe('repeat');
+    await click(button('↺ Repeat last bill'));
     await vi.waitFor(() => expect(api.getPurchaseExtras).toHaveBeenCalled());
     // The shopkeeper picks another supplier before the extras answer arrives.
     await setField('select[name="partyId"]', 'p2', 'change');
@@ -565,21 +581,6 @@ test('typing into the blank card while the last bill is being read: repeat asks 
   // Declined: the typed work stays.
   expect(host.querySelector<HTMLInputElement>(label('Item 1 quantity'))!.value).toBe('7');
   expect(host.querySelector<HTMLInputElement>(label('Item 1 GST %'))!.value).toBe('');
-});
-
-test('typing into the blank card while the last bill is being read: tap-to-add adds a card, never replaces it', async () => {
-  let release!: (v: unknown) => void;
-  api.getPurchaseExtras.mockImplementation(() => new Promise((resolve) => (release = resolve)));
-  await withLastBill();
-  await click(button('Item A · ₹8.71/piece'));
-  await vi.waitFor(() => expect(api.getPurchaseExtras).toHaveBeenCalled());
-  await setField(label('Item 1 quantity'), '7');
-  await act(async () => release(extrasOf()));
-  await vi.waitFor(() =>
-    expect(host.querySelectorAll('section[aria-label^="Item "]')).toHaveLength(2),
-  );
-  expect(host.querySelector<HTMLInputElement>(label('Item 1 quantity'))!.value).toBe('7');
-  expect(host.querySelector<HTMLInputElement>(label('Item 2 GST %'))!.value).toBe('5');
 });
 
 test('a bill posted while the last bill is being read: nothing is copied into the next bill', async () => {

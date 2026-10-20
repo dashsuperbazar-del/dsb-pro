@@ -55,3 +55,14 @@ export async function fillBillItem(
     await purchase.getByLabel(`Item ${n} total ₹`, { exact: true }).fill(cost);
   } else await purchase.getByLabel(`Item ${n} rate ₹`, { exact: true }).fill(cost);
 }
+// Fast bill entry: the closed parts of the purchase form.
+export async function openBillDetails(purchase: Locator) {
+  const toggle = purchase.locator('.bill-details-toggle');
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+}
+export async function openItemMore(purchase: Locator, n: number) {
+  const more = purchase.getByRole('button', { name: `More for item ${n}`, exact: true });
+  if ((await more.getAttribute('aria-expanded')) !== 'true') await more.click();
+  await expect(more).toHaveAttribute('aria-expanded', 'true');
+}

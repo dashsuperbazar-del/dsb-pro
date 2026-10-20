@@ -1,6 +1,11 @@
 export { getSupabaseClient } from './client';
-export { listPurchaseHistory, getPurchaseDetail } from './purchases';
-export type { PurchaseRecord, PurchaseHistoryLine, PurchaseBalance } from './purchases';
+export { listPurchaseHistory, getPurchaseDetail, listSupplierPurchaseLines } from './purchases';
+export type {
+  PurchaseRecord,
+  PurchaseHistoryLine,
+  PurchaseBalance,
+  SupplierPurchaseLine,
+} from './purchases';
 export type { ErrorClass } from './errors';
 export { classifyError, errorMessage } from './errors';
 export {
