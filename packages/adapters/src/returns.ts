@@ -230,16 +230,18 @@ export async function getPurchaseReturnRoundOffs(
   shopId: string,
   ids: string[],
 ): Promise<Record<string, string>> {
-  if (!ids.length) return {};
-  const { data, error } = await getSupabaseClient()
-    .from('purchase_returns')
-    .select('id,round_off_paise::text')
-    .eq('shop_id', shopId)
-    .in('id', ids);
-  if (error) fail(error);
   const out: Record<string, string> = {};
-  for (const row of (data ?? []) as unknown as { id: string; round_off_paise: string }[])
-    if (/^-?\d+$/.test(String(row.round_off_paise))) out[row.id] = String(row.round_off_paise);
+  // 100 uuids per request keeps the PostgREST URL short for any statement length.
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data, error } = await getSupabaseClient()
+      .from('purchase_returns')
+      .select('id,round_off_paise::text')
+      .eq('shop_id', shopId)
+      .in('id', ids.slice(i, i + 100));
+    if (error) fail(error);
+    for (const row of (data ?? []) as unknown as { id: string; round_off_paise: string }[])
+      if (/^-?\d+$/.test(String(row.round_off_paise))) out[row.id] = String(row.round_off_paise);
+  }
   return out;
 }
 

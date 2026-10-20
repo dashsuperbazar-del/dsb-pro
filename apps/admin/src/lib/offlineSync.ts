@@ -607,10 +607,36 @@ export async function postReturnResilient(
 ): Promise<OfflineReturnRecord> {
   const rt = requireRuntime();
   if (input.shopId !== rt.identity.shopId) throw new Error('Return shop does not match this till.');
-  const record = await queueOfflineReturn(rt.db, input, {
-    role: rt.identity.role,
-    deviceId: rt.identity.deviceId,
-  });
+  const queue = () =>
+    queueOfflineReturn(rt.db, input, {
+      role: rt.identity.role,
+      deviceId: rt.identity.deviceId,
+    });
+  let record: OfflineReturnRecord;
+  try {
+    record = await queue();
+  } catch (error) {
+    // Same as sales: right after a purchase the device stock copy may not have it yet (the sync pull
+    // skips rows changed in the last second). The refusal happens before anything is stored or sent,
+    // so online we wait past that second, pull fresh stock and check again; a joined in-flight cycle
+    // may have started too early, so one more fresh cycle if it is still refused.
+    if (
+      !navigator.onLine ||
+      !(error instanceof Error) ||
+      !error.message.startsWith('Insufficient cached stock')
+    )
+      throw error;
+    await new Promise((resolve) => window.setTimeout(resolve, 1100));
+    await runSyncNow();
+    try {
+      record = await queue();
+    } catch (again) {
+      if (!(again instanceof Error) || !again.message.startsWith('Insufficient cached stock'))
+        throw again;
+      await runSyncNow();
+      record = await queue();
+    }
+  }
   emit();
   if (navigator.onLine) {
     await runSyncNow();

@@ -488,30 +488,21 @@ test('returning a whole rounded bill shows the return round off in Returns and t
     page.getByRole('status').filter({ hasText: 'Purchase posted (1 item)' }).first(),
   ).toBeVisible();
 
-  // A purchase return checks this device's stock copy: bring it up to date first. A stale copy is
-  // refused on the device before anything is sent ("Insufficient cached stock"), so syncing again and
-  // retrying can never post twice.
+  // Straight to the supplier return, before any later sync cycle: the device's stock copy may not have
+  // the purchase yet (the sync pull skips rows changed in the last second), so the return must refresh it
+  // itself instead of refusing "Insufficient cached stock".
   const posted = page.getByRole('status').filter({ hasText: 'Purchase return posted' }).first();
-  const staleStock = page.getByRole('alert').filter({ hasText: 'Insufficient cached stock' });
-  for (let attempt = 1; ; attempt++) {
-    await page.goto('/sync');
-    await page.getByRole('button', { name: 'Sync now', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Sync now', exact: true })).toBeEnabled({
-      timeout: 20000,
-    });
-    await page.goto('/returns');
-    await expect(page.getByRole('heading', { name: 'Returns', exact: true })).toBeVisible();
-    await page.getByLabel('Return type').selectOption('PURCHASE');
-    const source = page.getByLabel('Source document');
-    await expect(source.locator('option', { hasText: 'RO-1' })).toHaveCount(1);
-    await source.selectOption({
-      label: (await source.locator('option', { hasText: 'RO-1' }).textContent())!,
-    });
-    await page.getByLabel('Return quantity for Round Rice').fill('1');
-    await page.getByRole('button', { name: 'Post return' }).click();
-    await expect(posted.or(staleStock)).toBeVisible({ timeout: 20000 });
-    if (!(await staleStock.isVisible()) || attempt === 3) break;
-  }
+  await page.goto('/returns');
+  await expect(page.getByRole('heading', { name: 'Returns', exact: true })).toBeVisible();
+  await page.getByLabel('Return type').selectOption('PURCHASE');
+  const source = page.getByLabel('Source document');
+  await expect(source.locator('option', { hasText: 'RO-1' })).toHaveCount(1);
+  await source.selectOption({
+    label: (await source.locator('option', { hasText: 'RO-1' }).textContent())!,
+  });
+  await page.getByLabel('Return quantity for Round Rice').fill('1');
+  await page.getByRole('button', { name: 'Post return' }).click();
+  await expect(posted.or(page.getByRole('alert'))).toBeVisible({ timeout: 20000 });
   await expect(page.getByRole('alert')).toHaveCount(0);
   await expect(posted).toBeVisible();
   // The return that completes the bill takes back exactly ₹100.00: ₹100.49 of items, round off −₹0.49.

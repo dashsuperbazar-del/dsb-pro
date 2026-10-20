@@ -724,6 +724,24 @@ export function InventoryScreen({
       ),
     ]);
   }, [shopId, saleEnabled, saleUser]);
+  // Writes (with a known old price) whose item price now differs from the one the bill saw; an
+  // unreadable price counts as changed (it cannot be shown to be unchanged).
+  async function changedSinceBill(shop: string, writes: PlannedPriceWrite[]) {
+    const out: PlannedPriceWrite[] = [];
+    const byItem = new Map<string, Promise<ItemPrice[] | null>>();
+    for (const w of writes) {
+      if (w.oldPaise === undefined) continue;
+      if (!byItem.has(w.itemId))
+        byItem.set(
+          w.itemId,
+          listCurrentPrices(w.itemId).catch(() => null),
+        );
+      const prices = await byItem.get(w.itemId)!;
+      const nowPaise = prices ? currentPricePaise(prices, shop, w.kind, w.unitLevel) : undefined;
+      if (nowPaise === undefined || priceChangedQuestion(w, nowPaise)) out.push(w);
+    }
+    return out;
+  }
   async function writeSalePrices(shop: string, bill: string): Promise<string> {
     const own = ownPlans.current.get(bill);
     ownPlans.current.delete(bill);
@@ -748,7 +766,17 @@ export function InventoryScreen({
         );
         continue;
       }
-      const failed = await writePriceList(plan.writes, (w) =>
+      // A plan saved by an earlier page (after a reload): a price someone changed since the bill was
+      // entered is never written by itself; it becomes a "check" alert whose Retry asks first.
+      let writes = plan.writes;
+      if (own === undefined) {
+        const changed = await changedSinceBill(shop, writes);
+        entries.push(
+          ...changed.map((write) => ({ ...base, write, state: 'check' as const, message: '' })),
+        );
+        writes = writes.filter((w) => !changed.includes(w));
+      }
+      const failed = await writePriceList(writes, (w) =>
         setItemPrice({
           itemId: w.itemId,
           shopId: shop,
@@ -758,7 +786,7 @@ export function InventoryScreen({
           clientId: w.clientId,
         }),
       );
-      done += plan.writes.length - failed.length;
+      done += writes.length - failed.length;
       // Re-read before storing: a write discarded while these ran is never stored again.
       const kept = loadPricePlan(plan.key)?.writes ?? [];
       const live = failed.filter(
@@ -766,10 +794,11 @@ export function InventoryScreen({
           !discarded.current.has(entryId(plan.key, f.write.clientId)) &&
           kept.some((w) => w.clientId === f.write.clientId),
       );
-      updatePricePlan(
-        plan.key,
-        live.filter((f) => !isPermanentPriceError(f.message)).map((f) => f.write),
-      );
+      const checks = entries.filter((e) => e.key === plan.key && e.state === 'check');
+      updatePricePlan(plan.key, [
+        ...checks.map((e) => e.write),
+        ...live.filter((f) => !isPermanentPriceError(f.message)).map((f) => f.write),
+      ]);
       entries.push(
         ...live.map((f) => ({
           ...base,
@@ -802,18 +831,16 @@ export function InventoryScreen({
     setPriceRetryBusy(entry.write.clientId);
     try {
       const w = entry.write;
-      // A plan found later ("check"/"late"): someone may have changed the price since. Read it now and
-      // ask before replacing a price the bill never saw.
-      if (entry.state !== 'failed') {
-        const nowPaise = currentPricePaise(
-          await listCurrentPrices(w.itemId),
-          entry.shop,
-          w.kind,
-          w.unitLevel,
-        );
-        const question = priceChangedQuestion(w, nowPaise);
-        if (question && !confirm(question)) return;
-      }
+      // Someone may have changed the price since the bill was entered: read it now and ask before
+      // replacing a price the bill never saw (every Retry, failed/check/late alike).
+      const nowPaise = currentPricePaise(
+        await listCurrentPrices(w.itemId),
+        entry.shop,
+        w.kind,
+        w.unitLevel,
+      );
+      const question = priceChangedQuestion(w, nowPaise);
+      if (question && !confirm(question)) return;
       await setItemPrice({
         itemId: w.itemId,
         shopId: entry.shop,
