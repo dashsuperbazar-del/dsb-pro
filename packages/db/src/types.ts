@@ -283,6 +283,7 @@ export type Database = {
           normalized_name: string | null
           notes: string | null
           phone: string | null
+          sale_credit_limit_paise: number | null
           tenant_id: string
           updated_at: number
         }
@@ -299,6 +300,7 @@ export type Database = {
           normalized_name?: string | null
           notes?: string | null
           phone?: string | null
+          sale_credit_limit_paise?: number | null
           tenant_id: string
           updated_at?: number
         }
@@ -315,6 +317,7 @@ export type Database = {
           normalized_name?: string | null
           notes?: string | null
           phone?: string | null
+          sale_credit_limit_paise?: number | null
           tenant_id?: string
           updated_at?: number
         }
@@ -2012,10 +2015,14 @@ export type Database = {
           item_name_snapshot: string
           line_no: number
           line_total_paise: number
+          list_price_snapshot_paise: number | null
+          overridden_by: string | null
           price_kind: string
+          price_source: string
           qty: number
           sale_invoice_id: string
           shop_id: string
+          tax_paise: number
           tax_rate_bp_snapshot: number
           tenant_id: string
           unit_level: number
@@ -2040,10 +2047,14 @@ export type Database = {
           item_name_snapshot: string
           line_no: number
           line_total_paise: number
+          list_price_snapshot_paise?: number | null
+          overridden_by?: string | null
           price_kind: string
+          price_source?: string
           qty: number
           sale_invoice_id: string
           shop_id: string
+          tax_paise?: number
           tax_rate_bp_snapshot: number
           tenant_id: string
           unit_level: number
@@ -2068,10 +2079,14 @@ export type Database = {
           item_name_snapshot?: string
           line_no?: number
           line_total_paise?: number
+          list_price_snapshot_paise?: number | null
+          overridden_by?: string | null
           price_kind?: string
+          price_source?: string
           qty?: number
           sale_invoice_id?: string
           shop_id?: string
+          tax_paise?: number
           tax_rate_bp_snapshot?: number
           tenant_id?: string
           unit_level?: number
@@ -2130,6 +2145,9 @@ export type Database = {
           client_id: string
           created_at: string
           created_by: string
+          credit_limit_snapshot_paise: number | null
+          credit_outstanding_snapshot_paise: number | null
+          credit_override_by: string | null
           customer_id: string | null
           deleted_at: number | null
           discount_paise: number
@@ -2138,11 +2156,13 @@ export type Database = {
           extra_charges_paise: number
           finalized_at: string | null
           id: string
+          invoice_type: string
           notes: string | null
           round_off_paise: number
           shop_id: string
           status: string
           subtotal_paise: number
+          tax_paise: number
           tenant_id: string
           total_paise: number
           updated_at: number
@@ -2153,6 +2173,9 @@ export type Database = {
           client_id: string
           created_at?: string
           created_by?: string
+          credit_limit_snapshot_paise?: number | null
+          credit_outstanding_snapshot_paise?: number | null
+          credit_override_by?: string | null
           customer_id?: string | null
           deleted_at?: number | null
           discount_paise?: number
@@ -2161,11 +2184,13 @@ export type Database = {
           extra_charges_paise?: number
           finalized_at?: string | null
           id?: string
+          invoice_type?: string
           notes?: string | null
           round_off_paise?: number
           shop_id: string
           status?: string
           subtotal_paise: number
+          tax_paise?: number
           tenant_id: string
           total_paise: number
           updated_at?: number
@@ -2176,6 +2201,9 @@ export type Database = {
           client_id?: string
           created_at?: string
           created_by?: string
+          credit_limit_snapshot_paise?: number | null
+          credit_outstanding_snapshot_paise?: number | null
+          credit_override_by?: string | null
           customer_id?: string | null
           deleted_at?: number | null
           discount_paise?: number
@@ -2184,11 +2212,13 @@ export type Database = {
           extra_charges_paise?: number
           finalized_at?: string | null
           id?: string
+          invoice_type?: string
           notes?: string | null
           round_off_paise?: number
           shop_id?: string
           status?: string
           subtotal_paise?: number
+          tax_paise?: number
           tenant_id?: string
           total_paise?: number
           updated_at?: number
@@ -4080,6 +4110,39 @@ export type Database = {
         Returns: string
       }
       shop_business_date: { Args: { p_shop_id: string }; Returns: string }
+      sp_gst_extra_tax: {
+        Args: { p_net: number; p_rate_bp: number }
+        Returns: number
+      }
+      sp_list_price: {
+        Args: {
+          p_item: string
+          p_kind: string
+          p_level: number
+          p_shop: string
+          p_tenant: string
+        }
+        Returns: number
+      }
+      sp_sync_post_sale: {
+        Args: {
+          p_business_date: string
+          p_client_id: string
+          p_credit_override: boolean
+          p_customer_id: string
+          p_device_id: string
+          p_discount_paise: number
+          p_expected_total_paise: number
+          p_extra_charges_paise: number
+          p_invoice_type: string
+          p_lines: Json
+          p_notes: string
+          p_payments: Json
+          p_schema_version: number
+          p_shop_id: string
+        }
+        Returns: Json
+      }
       update_shop_settings: {
         Args: {
           p_address: string

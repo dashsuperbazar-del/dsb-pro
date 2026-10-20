@@ -5,7 +5,10 @@ import {
   canonicalQuantity,
   parseRupeesToPaise,
   quantityTimesPaise,
+  saleBillTotals,
   searchCatalogItems,
+  splitGst,
+  type SaleInvoiceType,
 } from '@dsb-pro/core';
 import { route } from 'preact-router';
 import {
@@ -22,7 +25,12 @@ import {
   type Item,
   type SaleInvoice,
 } from '@dsb-pro/adapters';
-import { resolveHeldCart, type HeldCartRecord, type OfflineSaleRecord } from '@dsb-pro/sync';
+import {
+  isDefinitiveFinancialRejectionMessage,
+  resolveHeldCart,
+  type HeldCartRecord,
+  type OfflineSaleRecord,
+} from '@dsb-pro/sync';
 import { appRoute } from '../lib/paths';
 import {
   finalizeSaleResilient,
@@ -33,6 +41,7 @@ import {
   getOfflineItemCount,
   getOfflinePrices,
   getOfflineRuntimeIdentity,
+  getOfflineSaleStatus,
   listOfflineSales,
   waitForOfflineRuntime,
   reviewOfflineSaleMismatch,
@@ -46,6 +55,7 @@ import {
 import { mergeCatalog, watchOfflineCatalog } from '../lib/catalogWatch';
 import { ReceiptHeader } from '../components/ReceiptHeader';
 import { loadShopProfile, type ProfileLoad } from '../lib/shopProfile';
+import { addSalePricePlans, flushSalePricePlans, type SalePricePlan } from '../lib/salePricePlans';
 
 type CartLine = {
   item: Item;
@@ -53,6 +63,19 @@ type CartLine = {
   qty: string;
   priceKind: 'retail' | 'wholesale';
   unitPricePaise: number;
+  discountPaise: number;
+  /** salepricing: 'manual' = typed by an owner/manager at the counter (stored with the sale). */
+  priceSource?: 'manual';
+  /** The active list price when the item was added (null = the item had none). */
+  listPricePaise?: number | null;
+  /** "Save as this item's sale price" (default off): written only after the sale is confirmed. */
+  savePrice?: boolean;
+};
+type PendingPrice = {
+  item: Item;
+  unitLevel: 1 | 2 | 3;
+  qty: string;
+  priceKind: 'retail' | 'wholesale';
   discountPaise: number;
 };
 type Tender = { mode: 'cash' | 'upi' | 'card' | 'bank' | 'other'; amount: string };
@@ -65,7 +88,20 @@ const lineGross = (qty: string, pricePaise: number) => {
     return 0;
   }
 };
+const tenderTotalOf = (tenders: Tender[]) => tenders.reduce((sum, t) => sum + paise(t.amount), 0);
 const HOLD_LABEL_DRAFT_KEY = 'dsb-pro:pos:hold-label-draft';
+/** A typed price in rupees: more than zero, at most two decimals; null when invalid. */
+function typedPricePaise(value: string): number | null {
+  const typed = value.trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(typed)) return null;
+  const amount = parseRupeesToPaise(typed);
+  return amount > 0 ? amount : null;
+}
+/** Server codes stay in the log; the counter sees the sentence. */
+const plainError = (e: unknown) =>
+  String(e)
+    .replace(/^Error: /, '')
+    .replace(/DSB_[A-Z_]+: /, '');
 
 function readHoldLabelDraft() {
   if (typeof sessionStorage === 'undefined') return '';
@@ -148,6 +184,15 @@ export function PosScreen() {
   const [holdLabelResetVersion, setHoldLabelResetVersion] = useState(0);
   const [resumeBusyId, setResumeBusyId] = useState('');
   const [heldCleanup, setHeldCleanup] = useState<{ id: string; token: string } | null>(null);
+  const [role, setRole] = useState('');
+  const [invoiceType, setInvoiceType] = useState<SaleInvoiceType>('gst_included');
+  const [creditOverride, setCreditOverride] = useState(false);
+  const [creditRefused, setCreditRefused] = useState(false);
+  const [pendingPrice, setPendingPrice] = useState<PendingPrice | null>(null);
+  const [pendingPriceInput, setPendingPriceInput] = useState('');
+  const [pendingSave, setPendingSave] = useState(false);
+  const [editingPrice, setEditingPrice] = useState<number | null>(null);
+  const canTypePrice = role === 'owner' || role === 'manager';
   const scanBlocked = useRef(false);
   const resumeLock = useRef(false);
 
@@ -178,6 +223,7 @@ export function PosScreen() {
     if (!identity) throw new Error('Offline shop cache is not ready.');
     setTenantId(identity.tenantId);
     setShopId(identity.shopId);
+    setRole(identity.role);
     const useOffline = typeof navigator !== 'undefined' && !navigator.onLine;
     if (useOffline) {
       const [i, c, d] = await Promise.all([
@@ -236,6 +282,19 @@ export function PosScreen() {
     }
     setOfflineSales(await listOfflineSales());
     setHeldCarts(await listHeldCartsForShop());
+    if (!useOffline) void savePlannedPrices(identity.shopId);
+  }
+  /** Saves typed prices the owner asked to keep, once their sale is confirmed. */
+  async function savePlannedPrices(shop: string): Promise<string> {
+    try {
+      const { saved, failed } = await flushSalePricePlans(shop, getOfflineSaleStatus);
+      if (failed.length)
+        setError(`The sale is saved, but a sale price was not: ${failed.join('; ')}`);
+      return saved.length ? ` Saved as sale price: ${saved.join(', ')}.` : '';
+    } catch (e) {
+      setError(`The sale is saved, but a sale price was not: ${plainError(e)}`);
+      return '';
+    }
   }
   useEffect(() => {
     void refresh().catch((e) => setError(String(e)));
@@ -284,13 +343,46 @@ export function PosScreen() {
       paise(extra),
     [cart, globalDiscount, extra],
   );
+  // salepricing: the same arithmetic as the server (GST added on top per item when chosen).
+  const bill = useMemo(() => {
+    try {
+      return saleBillTotals(
+        cart.map((l) => ({
+          qty: l.qty,
+          unitPricePaise: l.unitPricePaise,
+          discountPaise: l.discountPaise,
+          taxRateBp: l.item.tax_rate_bp ?? 0,
+        })),
+        {
+          invoiceType,
+          billDiscountPaise: invoiceType === 'gst_extra' ? 0 : paise(globalDiscount),
+          extraChargesPaise: paise(extra),
+        },
+      );
+    } catch {
+      return null;
+    }
+  }, [cart, globalDiscount, extra, invoiceType]);
   // R0: the bill total is rounded to the nearest rupee (half up); item values stay exact.
-  const previewRoundOff = preview > 0 ? billRoundOff(preview) : 0;
-  const previewTotal = Math.max(0, preview) + previewRoundOff;
-  const tenderTotal = useMemo(
-    () => tenders.reduce((sum, t) => sum + paise(t.amount), 0),
-    [tenders],
-  );
+  const previewRoundOff =
+    invoiceType === 'gst_extra' && bill
+      ? bill.roundOffPaise
+      : preview > 0
+        ? billRoundOff(preview)
+        : 0;
+  const previewTotal =
+    invoiceType === 'gst_extra' && bill ? bill.totalPaise : Math.max(0, preview) + previewRoundOff;
+  const gst = invoiceType === 'gst_extra' && bill ? splitGst(bill.taxPaise) : null;
+  const selectedCustomer = customers.find((c) => c.id === customerId);
+  const creditLimit = selectedCustomer?.sale_credit_limit_paise;
+  const unpaidPaise = Math.max(0, previewTotal - tenderTotalOf(tenders));
+  const outstandingPaise = customerId ? (balances[customerId] ?? 0) : 0;
+  const overLimit =
+    !!customerId &&
+    typeof creditLimit === 'number' &&
+    unpaidPaise > 0 &&
+    outstandingPaise + unpaidPaise > creditLimit;
+  const tenderTotal = useMemo(() => tenderTotalOf(tenders), [tenders]);
 
   async function currentPrices(itemId: string) {
     let prices;
@@ -317,14 +409,66 @@ export function PosScreen() {
     const matching = prices.filter((p) => p.kind === priceKind && p.unit_level === unitLevel);
     const chosen =
       matching.find((p) => p.shop_id === shopId) ?? matching.find((p) => p.shop_id === null);
-    if (!chosen)
+    if (!chosen) {
+      // Owner decision 2026-10-20: an owner/manager types the price; a cashier cannot sell an unpriced item.
+      if (canTypePrice) {
+        setPendingPrice({ item, unitLevel, qty, priceKind, discountPaise });
+        setPendingPriceInput('');
+        setPendingSave(false);
+        return;
+      }
       throw new Error(
-        `No active ${priceKind} price for ${item.name} / ${unitName(item, unitLevel)}.`,
+        `No ${priceKind} price for ${item.name} / ${unitName(item, unitLevel)}. Ask the owner or a manager to enter a price.`,
       );
+    }
     setCart((v) => [
       ...v,
-      { item, unitLevel, qty, priceKind, unitPricePaise: chosen.price_paise, discountPaise },
+      {
+        item,
+        unitLevel,
+        qty,
+        priceKind,
+        unitPricePaise: chosen.price_paise,
+        discountPaise,
+        listPricePaise: chosen.price_paise,
+      },
     ]);
+  }
+  function confirmPendingPrice(ev: Event) {
+    ev.preventDefault();
+    if (!pendingPrice) return;
+    const price = typedPricePaise(pendingPriceInput);
+    if (price === null) {
+      setError('Enter a price above zero in rupees, for example 120 or 120.50.');
+      return;
+    }
+    setError('');
+    const line: CartLine = {
+      ...pendingPrice,
+      unitPricePaise: price,
+      priceSource: 'manual',
+      listPricePaise: null,
+      savePrice: pendingSave,
+    };
+    setCart((v) => [...v, line]);
+    setPendingPrice(null);
+  }
+  function typeLinePrice(n: number, value: string) {
+    const price = typedPricePaise(value);
+    if (price === null) {
+      setError('Enter a price above zero in rupees, for example 120 or 120.50.');
+      return;
+    }
+    setError('');
+    setCart((v) =>
+      v.map((x, i) =>
+        i !== n
+          ? x
+          : price === x.listPricePaise
+            ? { ...x, unitPricePaise: price, priceSource: undefined, savePrice: false }
+            : { ...x, unitPricePaise: price, priceSource: 'manual' },
+      ),
+    );
   }
 
   async function holdCartNow() {
@@ -335,6 +479,13 @@ export function PosScreen() {
     }
     if (!cart.length) {
       setError('Add at least one item before holding.');
+      return;
+    }
+    // A held cart keeps item, quantity and discount only; it would come back at list prices.
+    if (cart.some((l) => l.priceSource === 'manual') || invoiceType === 'gst_extra') {
+      setError(
+        'A cart with typed prices or GST added on top cannot be held. Finalize it, or remove the typed prices and choose GST included.',
+      );
       return;
     }
     try {
@@ -394,7 +545,7 @@ export function PosScreen() {
       setCustomerId(candidate.customerId);
       setGlobalDiscount(candidate.globalDiscount);
       setExtra(candidate.extra);
-      setCart(candidate.lines);
+      setCart(candidate.lines.map((l) => ({ ...l, listPricePaise: l.unitPricePaise })));
       setHeldCleanup({ id, token });
       setMessage('Cart restored. Removing the held copy…');
     } catch (e) {
@@ -496,9 +647,36 @@ export function PosScreen() {
       setError('Add at least one item.');
       return;
     }
+    if (overLimit && !creditOverride) {
+      setError(
+        canTypePrice
+          ? "This credit sale is over the customer's credit limit. Tick the override to allow it, or take more payment."
+          : "This credit sale is over the customer's credit limit. Take more payment, or ask the owner or a manager.",
+      );
+      return;
+    }
+    if (invoiceType === 'gst_extra' && paise(globalDiscount) !== 0) {
+      setError('A bill discount is not allowed when GST is added on top. Use item discounts.');
+      return;
+    }
+    // Typed prices, GST added on top and any customer (credit limit) go through the new sale format.
+    const needsV2 =
+      invoiceType === 'gst_extra' || !!customerId || cart.some((l) => l.priceSource === 'manual');
+    const plans: SalePricePlan[] = cart
+      .filter((l) => l.priceSource === 'manual' && l.savePrice)
+      .map((l) => ({
+        saleClientId,
+        itemId: l.item.id,
+        itemName: l.item.name,
+        kind: l.priceKind,
+        unitLevel: l.unitLevel,
+        pricePaise: l.unitPricePaise,
+      }));
     setBusy(true);
     setError('');
     try {
+      // Kept before sending: written only once this sale is confirmed (never for a rejected sale).
+      addSalePricePlans(shopId, plans);
       const result = await finalizeSaleResilient({
         shopId,
         customerId: customerId || undefined,
@@ -512,15 +690,27 @@ export function PosScreen() {
           qty: canonicalQuantity(l.qty),
           priceKind: l.priceKind,
           discountPaise: l.discountPaise,
+          ...(l.priceSource === 'manual' ? { manualUnitPricePaise: l.unitPricePaise } : {}),
         })),
         payments: tenders
           .filter((t) => paise(t.amount) > 0)
           .map((t) => ({ amountPaise: paise(t.amount), mode: t.mode })),
+        ...(needsV2
+          ? {
+              saleV2: {
+                invoiceType,
+                creditOverride: creditOverride && canTypePrice,
+                expectedTotalPaise: previewTotal,
+              },
+            }
+          : {}),
       });
+      const savedNote =
+        result.kind === 'synced' && plans.length ? await savePlannedPrices(shopId) : '';
       setMessage(
         result.kind === 'synced'
-          ? `Sale finalized: ${result.docNo}`
-          : `Saved locally as ${result.provisionalDocNo}. It will sync automatically when the backend is reachable.`,
+          ? `Sale finalized: ${result.docNo}.${savedNote}`
+          : `Saved locally as ${result.provisionalDocNo}. It will sync automatically when the backend is reachable.${plans.length ? ' The typed price is saved to the item after the sale syncs.' : ''}`,
       );
       setSaleClientId(crypto.randomUUID());
       setCart([]);
@@ -528,9 +718,16 @@ export function PosScreen() {
       setGlobalDiscount('0');
       setExtra('0');
       setTenders([{ mode: 'cash', amount: '' }]);
+      setCreditOverride(false);
+      setCreditRefused(false);
+      setInvoiceType('gst_included');
       await refresh();
     } catch (e) {
-      setError(String(e));
+      const text = String(e);
+      if (/DSB_CREDIT_LIMIT_EXCEEDED/.test(text)) setCreditRefused(true);
+      // A sale the server refused is final: the next attempt is a new sale (new request id).
+      if (isDefinitiveFinancialRejectionMessage(text)) setSaleClientId(crypto.randomUUID());
+      setError(plainError(e));
     } finally {
       setBusy(false);
     }
@@ -628,7 +825,7 @@ export function PosScreen() {
       <div class="pos-overview no-print" aria-label="Bill summary">
         <div>
           <small>
-            {cart.length} cart line{cart.length === 1 ? '' : 's'}
+            {cart.length} item{cart.length === 1 ? '' : 's'} in bill
           </small>
           <strong>{money(previewTotal)}</strong>
         </div>
@@ -755,7 +952,7 @@ export function PosScreen() {
             </select>
           </label>
           <label>
-            Line discount ₹{' '}
+            Discount ₹{' '}
             <input
               name="lineDiscount"
               type="number"
@@ -765,8 +962,38 @@ export function PosScreen() {
               value="0"
             />
           </label>
-          <button>Add line</button>
+          <button>Add item</button>
         </form>
+        {pendingPrice && (
+          <form class="price-prompt" aria-label="Enter a price" onSubmit={confirmPendingPrice}>
+            <p>
+              <strong>{pendingPrice.item.name}</strong> has no {pendingPrice.priceKind} price for{' '}
+              {unitName(pendingPrice.item, pendingPrice.unitLevel)}. Enter the price for this sale.
+            </p>
+            <label>
+              Price ₹ per {unitName(pendingPrice.item, pendingPrice.unitLevel)}{' '}
+              <input
+                autofocus
+                aria-label="Price for this sale ₹"
+                inputMode="decimal"
+                value={pendingPriceInput}
+                onInput={(e) => setPendingPriceInput((e.currentTarget as HTMLInputElement).value)}
+              />
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={pendingSave}
+                onChange={(e) => setPendingSave((e.currentTarget as HTMLInputElement).checked)}
+              />{' '}
+              Save as this item's sale price
+            </label>
+            <button class="primary">Use this price</button>{' '}
+            <button type="button" onClick={() => setPendingPrice(null)}>
+              Cancel
+            </button>
+          </form>
+        )}
       </section>
 
       <section class="card pos-cart" id="pos-cart" hidden={checkout}>
@@ -811,7 +1038,60 @@ export function PosScreen() {
                         }}
                       />
                     </td>
-                    <td data-label="Price">{money(l.unitPricePaise)}</td>
+                    <td data-label="Price">
+                      {canTypePrice && editingPrice === n ? (
+                        <input
+                          autofocus
+                          type="number"
+                          inputMode="decimal"
+                          min="0.01"
+                          step="0.01"
+                          defaultValue={(l.unitPricePaise / 100).toFixed(2)}
+                          aria-label={`Price for ${l.item.name}`}
+                          onChange={(e) => {
+                            typeLinePrice(n, (e.currentTarget as HTMLInputElement).value);
+                            setEditingPrice(null);
+                          }}
+                          onBlur={() => setEditingPrice(null)}
+                        />
+                      ) : (
+                        <>
+                          {money(l.unitPricePaise)}
+                          {canTypePrice && (
+                            <button
+                              type="button"
+                              class="link-button"
+                              aria-label="Change price"
+                              onClick={() => setEditingPrice(n)}
+                            >
+                              Change
+                            </button>
+                          )}
+                        </>
+                      )}
+                      {l.priceSource === 'manual' && (
+                        <small class="typed-price">
+                          Typed price
+                          {l.listPricePaise != null
+                            ? ` · list ${money(l.listPricePaise)}`
+                            : ' · no list price'}
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={!!l.savePrice}
+                              aria-label="Save as sale price"
+                              onChange={(e) => {
+                                const savePrice = (e.currentTarget as HTMLInputElement).checked;
+                                setCart((v) =>
+                                  v.map((x, i) => (i === n ? { ...x, savePrice } : x)),
+                                );
+                              }}
+                            />{' '}
+                            Save as this item's sale price
+                          </label>
+                        </small>
+                      )}
+                    </td>
                     <td data-label="Discount ₹">
                       <input
                         type="number"
@@ -830,7 +1110,15 @@ export function PosScreen() {
                       />
                     </td>
                     <td data-label="Total" class="cart-line-total">
-                      {money(lineGross(l.qty, l.unitPricePaise) - l.discountPaise)}
+                      {invoiceType === 'gst_extra' && bill
+                        ? money(bill.lines[n].lineTotalPaise)
+                        : money(lineGross(l.qty, l.unitPricePaise) - l.discountPaise)}
+                      {invoiceType === 'gst_extra' && bill ? (
+                        <small>
+                          incl. GST {money(bill.lines[n].taxPaise)} @{' '}
+                          {(l.item.tax_rate_bp ?? 0) / 100}%
+                        </small>
+                      ) : null}
                     </td>
                     <td>
                       <button
@@ -848,8 +1136,29 @@ export function PosScreen() {
         )}
         <div key="cart-totals" class="row">
           <label>
+            Invoice type{' '}
+            <select
+              aria-label="Invoice type"
+              value={invoiceType}
+              onChange={(e) => {
+                const next = (e.currentTarget as HTMLSelectElement).value as SaleInvoiceType;
+                setInvoiceType(next);
+                if (next === 'gst_extra') setGlobalDiscount('0');
+              }}
+            >
+              <option value="gst_included">GST included in prices</option>
+              <option value="gst_extra">GST added on top</option>
+            </select>
+          </label>
+          <label>
             Invoice discount ₹{' '}
             <input
+              disabled={invoiceType === 'gst_extra'}
+              title={
+                invoiceType === 'gst_extra'
+                  ? 'Use item discounts when GST is added on top.'
+                  : undefined
+              }
               value={globalDiscount}
               type="number"
               inputMode="decimal"
@@ -869,6 +1178,12 @@ export function PosScreen() {
               onInput={(e) => setExtra((e.currentTarget as HTMLInputElement).value)}
             />
           </label>
+          {gst && (
+            <span data-testid="gst-extra-summary">
+              GST {money(bill!.taxPaise)} (CGST {money(gst.cgstPaise)} + SGST {money(gst.sgstPaise)}
+              ) ·{' '}
+            </span>
+          )}
           {previewRoundOff !== 0 && (
             <span>
               Round off {previewRoundOff > 0 ? '+' : '−'}
@@ -941,12 +1256,17 @@ export function PosScreen() {
         <h2>Customer & payment</h2>
         <p class="payment-total">
           Bill total <strong>{money(previewTotal)}</strong>
+          {gst ? ` · includes GST ${money(bill!.taxPaise)} added on top` : ''}
         </p>
         <label>
           Customer{' '}
           <select
             value={customerId}
-            onChange={(e) => setCustomerId((e.currentTarget as HTMLSelectElement).value)}
+            onChange={(e) => {
+              setCustomerId((e.currentTarget as HTMLSelectElement).value);
+              setCreditOverride(false);
+              setCreditRefused(false);
+            }}
           >
             <option value="">Walk-in</option>
             {customers.map((c) => (
@@ -1019,6 +1339,33 @@ export function PosScreen() {
             )}
           </div>
         ))}
+        {(overLimit || (creditRefused && !!customerId)) && (
+          <div role="alert" class="alert credit-warning" data-testid="credit-limit-warning">
+            <p>
+              Over credit limit
+              {typeof creditLimit === 'number' ? (
+                <>
+                  : {selectedCustomer?.name} owes {money(outstandingPaise)}, this bill adds{' '}
+                  {money(unpaidPaise)} on credit, limit {money(creditLimit)}.
+                </>
+              ) : (
+                ' (the server refused this credit sale).'
+              )}
+            </p>
+            {canTypePrice ? (
+              <label>
+                <input
+                  type="checkbox"
+                  checked={creditOverride}
+                  onChange={(e) => setCreditOverride((e.currentTarget as HTMLInputElement).checked)}
+                />{' '}
+                Allow this credit sale anyway (owner/manager override, recorded with the sale)
+              </label>
+            ) : (
+              <p>Take more payment, or ask the owner or a manager.</p>
+            )}
+          </div>
+        )}
         <div class="row checkout-actions">
           <button
             type="button"
@@ -1174,21 +1521,35 @@ export function PosScreen() {
                   </td>
                   <td>{l.qty}</td>
                   <td data-label="Price">{money(l.unitPricePaise)}</td>
-                  <td>{money(l.lineTotalPaise)}</td>
+                  <td>{money(l.lineTotalPaise - (l.taxPaise ?? 0))}</td>
                 </tr>
               ))}
             </tbody>
           </table>
           <dl class="receipt-totals">
             <div>
-              <dt>Subtotal</dt>
-              <dd>{money(localReceipt.subtotalPaise)}</dd>
+              <dt>
+                {localReceipt.invoiceType === 'gst_extra' ? 'Subtotal (before GST)' : 'Subtotal'}
+              </dt>
+              <dd>{money(localReceipt.subtotalPaise - (localReceipt.taxPaise ?? 0))}</dd>
             </div>
             {localReceipt.discountPaise > 0 && (
               <div>
                 <dt>Discount</dt>
                 <dd>−{money(localReceipt.discountPaise)}</dd>
               </div>
+            )}
+            {localReceipt.invoiceType === 'gst_extra' && (
+              <>
+                <div>
+                  <dt>CGST</dt>
+                  <dd>{money(splitGst(localReceipt.taxPaise ?? 0).cgstPaise)}</dd>
+                </div>
+                <div>
+                  <dt>SGST</dt>
+                  <dd>{money(splitGst(localReceipt.taxPaise ?? 0).sgstPaise)}</dd>
+                </div>
+              </>
             )}
             {localReceipt.extraChargesPaise > 0 && (
               <div>

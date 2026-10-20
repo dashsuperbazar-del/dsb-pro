@@ -57,7 +57,7 @@ async function addOnePaidLine(page: import('@playwright/test').Page) {
   await expect(page.getByLabel('Item').locator('option')).toHaveCount(2);
   await page.getByLabel('Item').selectOption({ index: 1 });
   await page.getByLabel('Quantity').fill('1');
-  await page.getByRole('button', { name: 'Add line' }).click();
+  await page.getByRole('button', { name: 'Add item', exact: true }).click();
   await expect(
     page.locator('section').filter({ has: page.getByRole('heading', { name: 'Current bill' }) }),
   ).toContainText('Offline E2E Item');

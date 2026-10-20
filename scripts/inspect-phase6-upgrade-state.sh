@@ -859,11 +859,63 @@ if [[ "$billextras" != '0' && "$itemindex" != '2' && ! ( "$billextras" == '1' &&
  echo 'Purchase bill extras appear ahead of completed item history indexes. Refusing migration.' >&2; exit 1
 fi
 
+# Sale pricing (0065): additive classifier field. Five anchors, all or nothing. phase5_sync_post_sale keeps the
+# batchb anchors (six places, intentFingerprint) and post_sale/r0_sync_post_sale are not redefined.
+salepricing_probe=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -F' ' <<'SQL'
+do $$ begin
+ create temp table _salepricing_receipt (present boolean);
+ if to_regclass('public.app_migration_receipts') is not null then
+   insert into _salepricing_receipt select exists(select 1 from public.app_migration_receipts where version='0065');
+ else insert into _salepricing_receipt values(false); end if;
+end $$;
+select (select present from _salepricing_receipt),
+ (select count(*) from (values
+   ((select count(*) from information_schema.columns where table_schema='public' and (
+      (table_name='sale_invoices' and column_name in ('invoice_type','tax_paise','credit_limit_snapshot_paise','credit_outstanding_snapshot_paise','credit_override_by'))
+      or (table_name='sale_invoice_items' and column_name in ('price_source','list_price_snapshot_paise','overridden_by','tax_paise'))
+      or (table_name='customers' and column_name='sale_credit_limit_paise')))=10
+    and exists(select 1 from pg_constraint where conrelid=to_regclass('public.sale_invoices') and conname='sale_invoices_tax_type_check')
+    and exists(select 1 from pg_constraint where conrelid=to_regclass('public.sale_invoice_items') and conname='sale_invoice_items_manual_by_check')),
+   (exists(select 1 from pg_proc where oid=to_regprocedure('public.phase4_post_sale_unlocked(uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text)')
+      and position('DSB_PRICE_OVERRIDE_NOT_PERMITTED' in prosrc)>0 and position('DSB_CREDIT_LIMIT_EXCEEDED' in prosrc)>0
+      and position('DSB_GST_EXTRA_BILL_DISCOUNT' in prosrc)>0 and position('sp_gst_extra_tax(' in prosrc)>0)
+    and exists(select 1 from pg_proc where oid=to_regprocedure('public.phase5_sync_post_sale(text,integer,uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text)')
+      and position('''sale_v2'',jsonb_build_object' in prosrc)>0)
+    and exists(select 1 from pg_proc where oid=to_regprocedure('public.sp_gst_extra_tax(bigint,integer)') and position('div(' in prosrc)>0)
+    and exists(select 1 from pg_proc where oid=to_regprocedure('public.get_gst_summary(uuid,date,date)') and position('extra_taxable' in prosrc)>0)),
+   (case when to_regprocedure('public.sp_sync_post_sale(text,integer,uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text,text,boolean,bigint)') is null then false
+     else exists(select 1 from pg_proc where oid=to_regprocedure('public.sp_sync_post_sale(text,integer,uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text,text,boolean,bigint)')
+       and position('DSB_TOTAL_MISMATCH' in prosrc)>0)
+      and has_function_privilege('authenticated','public.sp_sync_post_sale(text,integer,uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text,text,boolean,bigint)','execute')
+      and not has_function_privilege('anon','public.sp_sync_post_sale(text,integer,uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text,text,boolean,bigint)','execute') end),
+   ((select count(*) from pg_trigger where not tgisinternal and tgname in ('sp_sale_fields_immutable','sp_customer_credit_limit_guard','sale_items_immutable'))=3),
+   (case when to_regprocedure('public.sp_list_price(uuid,uuid,uuid,text,integer)') is null then false
+     else not has_function_privilege('authenticated','public.sp_list_price(uuid,uuid,uuid,text,integer)','execute')
+      and not has_function_privilege('authenticated','public.phase4_post_sale_unlocked(uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text)','execute') end)
+ ) p(ok) where ok);
+SQL
+)
+read -r salepricing_receipt salepricing_anchors <<<"$(tail -n 1 <<<"$salepricing_probe")"
+case "$salepricing_receipt:$salepricing_anchors" in
+ f:0) salepricing=0; needs_salepricing=true ;;
+ f:5) salepricing=1; needs_salepricing=true ;;
+ t:5) salepricing=2; needs_salepricing=false ;;
+ *) echo "Sale pricing partial/drift state ($salepricing_receipt/$salepricing_anchors). Refusing migration." >&2; exit 1 ;;
+esac
+if [[ "$salepricing" == '2' ]]; then
+ salepricing_expected=$(sha256sum "$repo_root/supabase/migrations/0065_sale_pricing.sql" | cut -d' ' -f1)
+ salepricing_recorded=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -c "select checksum_sha256 from public.app_migration_receipts where version='0065'")
+ [[ "$salepricing_expected" == "$salepricing_recorded" ]] || { echo '0065 receipt checksum mismatch. Refusing migration.' >&2; exit 1; }
+fi
+if [[ "$salepricing" != '0' && "$billextras" != '2' && ! ( "$salepricing" == '1' && "$billextras" == '1' ) ]]; then
+ echo 'Sale pricing appears ahead of completed purchase bill extras. Refusing migration.' >&2; exit 1
+fi
+
 emit_state() {
   local needs_foundation=$1 needs_hardening=$2 needs_phase65=$3 needs_batcha=$4 needs_batchb=$5 needs_p1=$6 needs_p2=$7 needs_c0=$8 needs_c1=$9 needs_c2=${10} needs_c3=${11} needs_c3b=${12} needs_r0=${13} needs_d1=${14} needs_r0b=${15} needs_o1=${16} needs_o2=${17} needs_d2b=${18} needs_d3a=${19}
   local needs_upgrade=true
   if [[ "$needs_foundation:$needs_hardening:$needs_phase65:$needs_batcha:$needs_batchb:$needs_p1:$needs_p2:$needs_c0:$needs_c1:$needs_c2:$needs_c3:$needs_c3b:$needs_r0:$needs_d1:$needs_r0b:$needs_o1:$needs_o2:$needs_d2b:$needs_d3a" == "false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false" ]]; then
-    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" && "$needs_supplierschedule" == "false" && "$needs_partymerge" == "false" && "$needs_itemindex" == "false" && "$needs_billextras" == "false" ]]; then needs_upgrade=false; fi
+    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" && "$needs_supplierschedule" == "false" && "$needs_partymerge" == "false" && "$needs_itemindex" == "false" && "$needs_billextras" == "false" && "$needs_salepricing" == "false" ]]; then needs_upgrade=false; fi
   fi
   printf 'observed_state=%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s\n' "$foundation" "$hardening" "$phase65" "$batcha" "$batchb" "$p1" "$p2" "$c0" "$c1" "$c2" "$c3" "$c3b" "$r0" "$d1" "$r0b" "$o1" "$o2" "$d2b" "$d3a"
   printf 'needs_upgrade=%s\n' "$needs_upgrade"
@@ -900,6 +952,8 @@ emit_state() {
   printf 'needs_itemindex=%s\n' "$needs_itemindex"
   printf 'billextras_state=%s\n' "$billextras"
   printf 'needs_billextras=%s\n' "$needs_billextras"
+  printf 'salepricing_state=%s\n' "$salepricing"
+  printf 'needs_salepricing=%s\n' "$needs_salepricing"
 }
 
 # Legacy (0030-0043) classification is unchanged from before Packet P1: the

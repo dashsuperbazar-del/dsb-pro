@@ -1,155 +1,328 @@
 import type { Json } from '@dsb-pro/db';
 import { getSupabaseClient } from './client';
-import { classifyError,errorMessage } from './errors';
-import type { SaleLineInput,SalePaymentInput } from './sales';
+import { classifyError, errorMessage } from './errors';
+import type { SaleLineInput, SalePaymentInput } from './sales';
 
-export const SYNC_SCHEMA_VERSION=1;
-export const SYNC_PULL_LIMITS={items:1000,barcodes:1000,prices:1000,customers:1000,stock:1000} as const;
-export type SyncPullTable=keyof typeof SYNC_PULL_LIMITS;
-const SYNC_PULL_TABLES=Object.keys(SYNC_PULL_LIMITS) as SyncPullTable[];
-const DISABLED_CURSOR:SyncCursorWire={updatedAt:Number.MAX_SAFE_INTEGER,id:'\uffff'};
+export const SYNC_SCHEMA_VERSION = 1;
+export const SYNC_PULL_LIMITS = {
+  items: 1000,
+  barcodes: 1000,
+  prices: 1000,
+  customers: 1000,
+  stock: 1000,
+} as const;
+export type SyncPullTable = keyof typeof SYNC_PULL_LIMITS;
+const SYNC_PULL_TABLES = Object.keys(SYNC_PULL_LIMITS) as SyncPullTable[];
+const DISABLED_CURSOR: SyncCursorWire = { updatedAt: Number.MAX_SAFE_INTEGER, id: '\uffff' };
 
-export type SyncCursorWire={updatedAt:number;id:string};
-export type SyncPullWire={
-  schemaVersion:number;serverNowMs:number;cutoffMs:number;businessDate:string;
-  policy:{allowCashierOfflineFinalization:boolean;allowNegativeStock:boolean;canViewCostPrices:boolean};
-  items:Array<Record<string,unknown>>;barcodes:Array<Record<string,unknown>>;prices:Array<Record<string,unknown>>;
-  customers:Array<Record<string,unknown>>;stock:Array<Record<string,unknown>>;
+export type SyncCursorWire = { updatedAt: number; id: string };
+export type SyncPullWire = {
+  schemaVersion: number;
+  serverNowMs: number;
+  cutoffMs: number;
+  businessDate: string;
+  policy: {
+    allowCashierOfflineFinalization: boolean;
+    allowNegativeStock: boolean;
+    canViewCostPrices: boolean;
+  };
+  items: Array<Record<string, unknown>>;
+  barcodes: Array<Record<string, unknown>>;
+  prices: Array<Record<string, unknown>>;
+  customers: Array<Record<string, unknown>>;
+  stock: Array<Record<string, unknown>>;
 };
-export type SyncSaleResultWire={
-  saleId:string;docNo:string;clientId:string;intentFingerprint:string;stock:Array<Record<string,unknown>>;
-  subtotalPaise:number;discountPaise:number;extraChargesPaise:number;totalPaise:number;roundOffPaise?:number;
-  lines:Array<Record<string,unknown>>;payments:Array<Record<string,unknown>>;
+export type SyncSaleResultWire = {
+  saleId: string;
+  docNo: string;
+  clientId: string;
+  intentFingerprint: string;
+  stock: Array<Record<string, unknown>>;
+  subtotalPaise: number;
+  discountPaise: number;
+  extraChargesPaise: number;
+  totalPaise: number;
+  roundOffPaise?: number;
+  lines: Array<Record<string, unknown>>;
+  payments: Array<Record<string, unknown>>;
 };
-export type ServerSyncConflict={
-  id:string;op_client_id:string|null;kind:string;target:string;reason:string;status:'OPEN'|'RESOLVED';
-  created_at:string;resolved_at:string|null;
+export type ServerSyncConflict = {
+  id: string;
+  op_client_id: string | null;
+  kind: string;
+  target: string;
+  reason: string;
+  status: 'OPEN' | 'RESOLVED';
+  created_at: string;
+  resolved_at: string | null;
 };
 
-const friendly=(error:unknown)=>errorMessage(classifyError(error),error);
-function object(value:unknown):Record<string,unknown>|null{
-  return value!==null&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:null;
+const friendly = (error: unknown) => errorMessage(classifyError(error), error);
+function object(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
-function requirePull(value:unknown):SyncPullWire{
-  const row=object(value);
-  const policy=object(row?.policy);
-  if(!row||row.schemaVersion!==SYNC_SCHEMA_VERSION||typeof row.serverNowMs!=='number'||typeof row.cutoffMs!=='number'||
-    typeof row.businessDate!=='string'||!policy||typeof policy.canViewCostPrices!=='boolean'||
-    typeof policy.allowCashierOfflineFinalization!=='boolean'||typeof policy.allowNegativeStock!=='boolean'||
-    !Array.isArray(row.items)||!Array.isArray(row.barcodes)||
-    !Array.isArray(row.prices)||!Array.isArray(row.customers)||!Array.isArray(row.stock)){
+function requirePull(value: unknown): SyncPullWire {
+  const row = object(value);
+  const policy = object(row?.policy);
+  if (
+    !row ||
+    row.schemaVersion !== SYNC_SCHEMA_VERSION ||
+    typeof row.serverNowMs !== 'number' ||
+    typeof row.cutoffMs !== 'number' ||
+    typeof row.businessDate !== 'string' ||
+    !policy ||
+    typeof policy.canViewCostPrices !== 'boolean' ||
+    typeof policy.allowCashierOfflineFinalization !== 'boolean' ||
+    typeof policy.allowNegativeStock !== 'boolean' ||
+    !Array.isArray(row.items) ||
+    !Array.isArray(row.barcodes) ||
+    !Array.isArray(row.prices) ||
+    !Array.isArray(row.customers) ||
+    !Array.isArray(row.stock)
+  ) {
     throw new Error('Server returned an invalid sync payload.');
   }
   return value as SyncPullWire;
 }
-function requireSale(value:unknown):SyncSaleResultWire{
-  const row=object(value);
-  const money=(amount:unknown)=>typeof amount==='number'&&Number.isSafeInteger(amount)&&amount>=0;
-  const validLine=(value:unknown)=>{
-    const line=object(value);
-    return Boolean(line&&typeof line.itemId==='string'&&(line.unitLevel===1||line.unitLevel===2||line.unitLevel===3)&&
-      typeof line.qty==='string'&&(line.priceKind==='retail'||line.priceKind==='wholesale')&&money(line.unitPricePaise)&&
-      money(line.discountPaise)&&money(line.lineTotalPaise));
+function requireSale(value: unknown): SyncSaleResultWire {
+  const row = object(value);
+  const money = (amount: unknown) =>
+    typeof amount === 'number' && Number.isSafeInteger(amount) && amount >= 0;
+  const validLine = (value: unknown) => {
+    const line = object(value);
+    return Boolean(
+      line &&
+      typeof line.itemId === 'string' &&
+      (line.unitLevel === 1 || line.unitLevel === 2 || line.unitLevel === 3) &&
+      typeof line.qty === 'string' &&
+      (line.priceKind === 'retail' || line.priceKind === 'wholesale') &&
+      money(line.unitPricePaise) &&
+      money(line.discountPaise) &&
+      money(line.lineTotalPaise),
+    );
   };
-  const validPayment=(value:unknown)=>{
-    const payment=object(value);
-    return Boolean(payment&&money(payment.amountPaise)&&['cash','upi','card','bank','other'].includes(String(payment.mode))&&
-      (payment.reference===null||payment.reference===undefined||typeof payment.reference==='string'));
+  const validPayment = (value: unknown) => {
+    const payment = object(value);
+    return Boolean(
+      payment &&
+      money(payment.amountPaise) &&
+      ['cash', 'upi', 'card', 'bank', 'other'].includes(String(payment.mode)) &&
+      (payment.reference === null ||
+        payment.reference === undefined ||
+        typeof payment.reference === 'string'),
+    );
   };
-  if(!row||typeof row.saleId!=='string'||typeof row.docNo!=='string'||typeof row.clientId!=='string'||
-    typeof row.intentFingerprint!=='string'||!money(row.subtotalPaise)||!money(row.discountPaise)||
-    !money(row.extraChargesPaise)||!money(row.totalPaise)||!Array.isArray(row.lines)||!row.lines.every(validLine)||
-    !Array.isArray(row.payments)||!row.payments.every(validPayment)||!Array.isArray(row.stock)||
-    (row.roundOffPaise!==undefined&&!(Number.isSafeInteger(row.roundOffPaise)&&Number(row.roundOffPaise)>=-49&&Number(row.roundOffPaise)<=50))){
+  if (
+    !row ||
+    typeof row.saleId !== 'string' ||
+    typeof row.docNo !== 'string' ||
+    typeof row.clientId !== 'string' ||
+    typeof row.intentFingerprint !== 'string' ||
+    !money(row.subtotalPaise) ||
+    !money(row.discountPaise) ||
+    !money(row.extraChargesPaise) ||
+    !money(row.totalPaise) ||
+    !Array.isArray(row.lines) ||
+    !row.lines.every(validLine) ||
+    !Array.isArray(row.payments) ||
+    !row.payments.every(validPayment) ||
+    !Array.isArray(row.stock) ||
+    (row.roundOffPaise !== undefined &&
+      !(
+        Number.isSafeInteger(row.roundOffPaise) &&
+        Number(row.roundOffPaise) >= -49 &&
+        Number(row.roundOffPaise) <= 50
+      ))
+  ) {
     throw new Error('Server returned an invalid synced-sale result.');
   }
   return value as SyncSaleResultWire;
 }
 
-export function syncPullMayHaveMore(pull:SyncPullWire):boolean{
-  return pull.items.length>=SYNC_PULL_LIMITS.items||
-    pull.barcodes.length>=SYNC_PULL_LIMITS.barcodes||
-    pull.prices.length>=SYNC_PULL_LIMITS.prices||
-    pull.customers.length>=SYNC_PULL_LIMITS.customers||
-    pull.stock.length>=SYNC_PULL_LIMITS.stock;
+export function syncPullMayHaveMore(pull: SyncPullWire): boolean {
+  return (
+    pull.items.length >= SYNC_PULL_LIMITS.items ||
+    pull.barcodes.length >= SYNC_PULL_LIMITS.barcodes ||
+    pull.prices.length >= SYNC_PULL_LIMITS.prices ||
+    pull.customers.length >= SYNC_PULL_LIMITS.customers ||
+    pull.stock.length >= SYNC_PULL_LIMITS.stock
+  );
 }
 
-export function isolateSyncPullCursors(table:SyncPullTable,cursors:Record<string,SyncCursorWire>):Record<string,SyncCursorWire>{
-  return Object.fromEntries(SYNC_PULL_TABLES.map(key=>[key,key===table?(cursors[key]??{updatedAt:0,id:''}):DISABLED_CURSOR]));
+export function isolateSyncPullCursors(
+  table: SyncPullTable,
+  cursors: Record<string, SyncCursorWire>,
+): Record<string, SyncCursorWire> {
+  return Object.fromEntries(
+    SYNC_PULL_TABLES.map((key) => [
+      key,
+      key === table ? (cursors[key] ?? { updatedAt: 0, id: '' }) : DISABLED_CURSOR,
+    ]),
+  );
 }
 
-export async function pullSyncTable(input:{
-  table:SyncPullTable;deviceId:string;shopId:string;cursors:Record<string,SyncCursorWire>;
-}):Promise<SyncPullWire>{
-  return pullSync({...input,cursors:isolateSyncPullCursors(input.table,input.cursors)});
+export async function pullSyncTable(input: {
+  table: SyncPullTable;
+  deviceId: string;
+  shopId: string;
+  cursors: Record<string, SyncCursorWire>;
+}): Promise<SyncPullWire> {
+  return pullSync({ ...input, cursors: isolateSyncPullCursors(input.table, input.cursors) });
 }
 
-export async function pullSync(input:{deviceId:string;shopId:string;cursors:Record<string,SyncCursorWire>}):Promise<SyncPullWire>{
-  const {data,error}=await getSupabaseClient().rpc('phase5_sync_pull',{
-    p_device_id:input.deviceId,p_shop_id:input.shopId,p_schema_version:SYNC_SCHEMA_VERSION,p_cursors:input.cursors,
+export async function pullSync(input: {
+  deviceId: string;
+  shopId: string;
+  cursors: Record<string, SyncCursorWire>;
+}): Promise<SyncPullWire> {
+  const { data, error } = await getSupabaseClient().rpc('phase5_sync_pull', {
+    p_device_id: input.deviceId,
+    p_shop_id: input.shopId,
+    p_schema_version: SYNC_SCHEMA_VERSION,
+    p_cursors: input.cursors,
   });
-  if(error)throw new Error(friendly(error));
+  if (error) throw new Error(friendly(error));
   return requirePull(data);
 }
-export async function ackSync(input:{deviceId:string;cursors:Record<string,SyncCursorWire>}):Promise<void>{
-  const {error}=await getSupabaseClient().rpc('phase5_sync_ack',{
-    p_device_id:input.deviceId,p_schema_version:SYNC_SCHEMA_VERSION,p_cursors:input.cursors,
+export async function ackSync(input: {
+  deviceId: string;
+  cursors: Record<string, SyncCursorWire>;
+}): Promise<void> {
+  const { error } = await getSupabaseClient().rpc('phase5_sync_ack', {
+    p_device_id: input.deviceId,
+    p_schema_version: SYNC_SCHEMA_VERSION,
+    p_cursors: input.cursors,
   });
-  if(error)throw new Error(friendly(error));
+  if (error) throw new Error(friendly(error));
 }
-export async function pushSyncedSale(input:{
-  deviceId:string;shopId:string;customerId?:string;businessDate:string;discountPaise:number;extraChargesPaise:number;
-  clientId:string;lines:Array<SaleLineInput&{expectedUnitPricePaise?:number}>;payments:SalePaymentInput[];notes?:string;
-  intentFingerprint:string;
+export async function pushSyncedSale(input: {
+  deviceId: string;
+  shopId: string;
+  customerId?: string;
+  businessDate: string;
+  discountPaise: number;
+  extraChargesPaise: number;
+  clientId: string;
+  lines: Array<SaleLineInput & { expectedUnitPricePaise?: number; manualUnitPricePaise?: number }>;
+  payments: SalePaymentInput[];
+  notes?: string;
+  intentFingerprint: string;
   /** R0: sales created with bill rounding go through the opt-in endpoint; queued older sales do not. */
-  roundTotal?:boolean;
-}):Promise<SyncSaleResultWire>{
-  const {data,error}=await getSupabaseClient().rpc(input.roundTotal?'r0_sync_post_sale':'phase5_sync_post_sale',{
-    p_device_id:input.deviceId,p_schema_version:SYNC_SCHEMA_VERSION,p_shop_id:input.shopId,p_customer_id:input.customerId??null,
-    p_business_date:input.businessDate,p_discount_paise:input.discountPaise,p_extra_charges_paise:input.extraChargesPaise,
-    p_client_id:input.clientId,
-    p_lines:input.lines.map(l=>({item_id:l.itemId,unit_level:l.unitLevel,qty:l.qty,price_kind:l.priceKind,discount_paise:l.discountPaise??0,expected_unit_price_paise:l.expectedUnitPricePaise??null,
-      ...(input.intentFingerprint?{intent_fingerprint:input.intentFingerprint}:{})})),
-    p_payments:input.payments.map(p=>({amount_paise:p.amountPaise,mode:p.mode,reference:p.reference??null})),p_notes:input.notes??null,
-  });
-  if(error)throw new Error(friendly(error));
+  roundTotal?: boolean;
+  /** salepricing (0065): typed prices, invoice type, credit override and the device total (sp_sync_post_sale). */
+  saleV2?: {
+    invoiceType: 'gst_included' | 'gst_extra';
+    creditOverride: boolean;
+    expectedTotalPaise: number;
+  };
+}): Promise<SyncSaleResultWire> {
+  const lines = input.lines.map((l) => ({
+    item_id: l.itemId,
+    unit_level: l.unitLevel,
+    qty: l.qty,
+    price_kind: l.priceKind,
+    discount_paise: l.discountPaise ?? 0,
+    expected_unit_price_paise: l.expectedUnitPricePaise ?? null,
+    ...(input.saleV2 && l.manualUnitPricePaise !== undefined
+      ? { manual_unit_price_paise: l.manualUnitPricePaise }
+      : {}),
+    ...(input.intentFingerprint ? { intent_fingerprint: input.intentFingerprint } : {}),
+  }));
+  const common = {
+    p_device_id: input.deviceId,
+    p_schema_version: SYNC_SCHEMA_VERSION,
+    p_shop_id: input.shopId,
+    p_customer_id: input.customerId ?? null,
+    p_business_date: input.businessDate,
+    p_discount_paise: input.discountPaise,
+    p_extra_charges_paise: input.extraChargesPaise,
+    p_client_id: input.clientId,
+    p_lines: lines,
+    p_payments: input.payments.map((p) => ({
+      amount_paise: p.amountPaise,
+      mode: p.mode,
+      reference: p.reference ?? null,
+    })),
+    p_notes: input.notes ?? null,
+  };
+  const { data, error } = input.saleV2
+    ? await getSupabaseClient().rpc('sp_sync_post_sale', {
+        ...common,
+        p_invoice_type: input.saleV2.invoiceType,
+        p_credit_override: input.saleV2.creditOverride,
+        p_expected_total_paise: input.saleV2.expectedTotalPaise,
+      })
+    : await getSupabaseClient().rpc(
+        input.roundTotal ? 'r0_sync_post_sale' : 'phase5_sync_post_sale',
+        common,
+      );
+  if (error) throw new Error(friendly(error));
   return requireSale(data);
 }
-export async function setOfflineCashierFinalization(allow:boolean):Promise<boolean>{
-  const {data,error}=await getSupabaseClient().rpc('phase5_set_offline_finalization_policy',{p_allow_cashier:allow});
-  if(error)throw new Error(friendly(error));
+export async function setOfflineCashierFinalization(allow: boolean): Promise<boolean> {
+  const { data, error } = await getSupabaseClient().rpc('phase5_set_offline_finalization_policy', {
+    p_allow_cashier: allow,
+  });
+  if (error) throw new Error(friendly(error));
   return Boolean(data);
 }
-export async function recordServerSyncConflict(input:{
-  deviceId:string;opClientId?:string;kind:string;target:string;reason:string;payload:unknown;serverRef:unknown;clientId:string;
-}):Promise<string>{
-  const {data,error}=await getSupabaseClient().rpc('phase5_record_sync_conflict',{
-    p_device_id:input.deviceId,p_schema_version:SYNC_SCHEMA_VERSION,p_op_client_id:input.opClientId??null,
-    p_kind:input.kind,p_target:input.target,p_reason:input.reason,p_payload:input.payload as Json,p_server_ref:input.serverRef as Json,p_client_id:input.clientId,
+export async function recordServerSyncConflict(input: {
+  deviceId: string;
+  opClientId?: string;
+  kind: string;
+  target: string;
+  reason: string;
+  payload: unknown;
+  serverRef: unknown;
+  clientId: string;
+}): Promise<string> {
+  const { data, error } = await getSupabaseClient().rpc('phase5_record_sync_conflict', {
+    p_device_id: input.deviceId,
+    p_schema_version: SYNC_SCHEMA_VERSION,
+    p_op_client_id: input.opClientId ?? null,
+    p_kind: input.kind,
+    p_target: input.target,
+    p_reason: input.reason,
+    p_payload: input.payload as Json,
+    p_server_ref: input.serverRef as Json,
+    p_client_id: input.clientId,
   });
-  if(error)throw new Error(friendly(error));
-  if(typeof data!=='string')throw new Error('Conflict record id was not returned.');
+  if (error) throw new Error(friendly(error));
+  if (typeof data !== 'string') throw new Error('Conflict record id was not returned.');
   return data;
 }
-export async function listServerSyncConflicts():Promise<ServerSyncConflict[]>{
-  const {data,error}=await getSupabaseClient().from('sync_conflicts')
-    .select('id,op_client_id,kind,target,reason,status,created_at,resolved_at').order('created_at',{ascending:false});
-  if(error)throw new Error(friendly(error));
-  return (data??[]) as ServerSyncConflict[];
+export async function listServerSyncConflicts(): Promise<ServerSyncConflict[]> {
+  const { data, error } = await getSupabaseClient()
+    .from('sync_conflicts')
+    .select('id,op_client_id,kind,target,reason,status,created_at,resolved_at')
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(friendly(error));
+  return (data ?? []) as ServerSyncConflict[];
 }
-export async function resolveServerSyncConflict(input:{deviceId:string;id:string}):Promise<void>{
-  const {error}=await getSupabaseClient().rpc('phase5_resolve_sync_conflict',{
-    p_device_id:input.deviceId,p_schema_version:SYNC_SCHEMA_VERSION,p_id:input.id,
+export async function resolveServerSyncConflict(input: {
+  deviceId: string;
+  id: string;
+}): Promise<void> {
+  const { error } = await getSupabaseClient().rpc('phase5_resolve_sync_conflict', {
+    p_device_id: input.deviceId,
+    p_schema_version: SYNC_SCHEMA_VERSION,
+    p_id: input.id,
   });
-  if(error)throw new Error(friendly(error));
+  if (error) throw new Error(friendly(error));
 }
 
-export function subscribeSyncWakeup(onWakeup:()=>void):()=>void{
-  const client=getSupabaseClient();
-  let channel=client.channel(`dsb-sync-${crypto.randomUUID()}`);
-  for(const table of ['items','item_barcodes','item_prices','customers','stock_current']){
-    channel=channel.on('postgres_changes',{event:'*',schema:'public',table},()=>onWakeup());
+export function subscribeSyncWakeup(onWakeup: () => void): () => void {
+  const client = getSupabaseClient();
+  let channel = client.channel(`dsb-sync-${crypto.randomUUID()}`);
+  for (const table of ['items', 'item_barcodes', 'item_prices', 'customers', 'stock_current']) {
+    channel = channel.on('postgres_changes', { event: '*', schema: 'public', table }, () =>
+      onWakeup(),
+    );
   }
   channel.subscribe();
-  return ()=>{void client.removeChannel(channel);};
+  return () => {
+    void client.removeChannel(channel);
+  };
 }

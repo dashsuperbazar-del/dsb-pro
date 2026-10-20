@@ -97,7 +97,7 @@ test('the missing reports show real low stock, item-wise sales, purchase registe
   await expect(page.getByLabel('Item').locator('option')).toHaveCount(2);
   await page.getByLabel('Item').selectOption({ index: 1 });
   await page.getByLabel('Quantity').fill('8');
-  await page.getByRole('button', { name: 'Add line' }).click();
+  await page.getByRole('button', { name: 'Add item', exact: true }).click();
   await reviewPayment(page);
   await page.getByLabel('Amount ₹').first().fill('80');
   await reviewPayment(page);
@@ -110,7 +110,7 @@ test('the missing reports show real low stock, item-wise sales, purchase registe
   await page.getByLabel('Find product').fill('Reports E2E Item');
   await page.getByLabel('Item').selectOption({ index: 1 });
   await page.getByLabel('Quantity').fill('1');
-  await page.getByRole('button', { name: 'Add line' }).click();
+  await page.getByRole('button', { name: 'Add item', exact: true }).click();
   await reviewPayment(page);
   await page.getByText('Add a new customer', { exact: true }).click();
   await page.getByLabel('Quick customer').fill('Aging E2E Customer');

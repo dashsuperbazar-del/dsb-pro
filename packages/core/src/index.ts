@@ -79,3 +79,6 @@ export type { ExportFile } from './businessExport';
 
 export { PURCHASE_PAYMENT_TYPES, purchaseBillTotals, purchaseLineTotalPaise } from './purchaseBill';
 export type { PurchaseCharge, PurchaseLineAmounts, PurchasePaymentType } from './purchaseBill';
+
+export { saleBillTotals, saleGstExtraTax, saleLineTotals, splitGst } from './saleGst';
+export type { SaleBillResult, SaleInvoiceType, SaleLineInput, SaleLineResult } from './saleGst';
