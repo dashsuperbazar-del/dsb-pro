@@ -983,6 +983,9 @@ jobs:
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "drop trigger purchase_bill_charges_check on purchase_bill_charges"
           if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Missing charges-sum guard accepted'; exit 1; fi
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "create constraint trigger purchase_bill_charges_check after insert on purchase_bill_charges deferrable initially deferred for each row execute function bx_purchase_children_check()"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "drop trigger purchase_bills_round_off_immutable on purchase_bills"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Mutable purchase round-off accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "create trigger purchase_bills_round_off_immutable before update on purchase_bills for each row execute function r0_round_off_immutable()"
           grep -Fx 'needs_upgrade=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
           echo 'DISPOSABLE PURCHASE BILL EXTRAS UPGRADE: PASS'
       - name: Stop and erase the disposable target

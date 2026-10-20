@@ -3,7 +3,7 @@
 -- named extra charges, several bill images, and an atomic void of a paid bill.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(86);
+select plan(102);
 insert into auth.users(id) values
  ('e3000000-0000-0000-0000-000000000001'),  -- owner
  ('e3000000-0000-0000-0000-000000000002'),  -- manager
@@ -18,7 +18,9 @@ create function pg_temp.line(p_qty text,p_price bigint,p_disc int,p_gst int,p_to
  select jsonb_build_object('item_id',pg_temp.id('item'),'qty',p_qty,'unit_price_paise',p_price,'discount_bp',p_disc,
    'gst_bp',p_gst,'line_total_paise',p_total) $$;
 create function pg_temp.post(p_client text,p_bill jsonb) returns jsonb language sql as $$
- select post_purchase_v2(pg_temp.id('shop'),p_client,p_bill) $$;
+ -- Most fixtures are whole rupees: round-off 0 unless the case sets it (round-off tests call the RPC directly).
+ select post_purchase_v2(pg_temp.id('shop'),p_client,
+   case when p_bill ? 'round_off_paise' then p_bill else p_bill||'{"round_off_paise":0}'::jsonb end) $$;
 set role authenticated;
 select pg_temp.act('e3000000-0000-0000-0000-000000000001');
 select create_tenant('E3 Co','e3-co','E3 Shop','e3-tenant');
@@ -77,17 +79,18 @@ select set_config('e3.bal0',pg_temp.bal('sup')::text,false);
 
 -- v2 credit bill with discount/GST lines, named charges and a bill discount.
 select set_config('e3.b1json',jsonb_build_object('party_id',pg_temp.id('sup'),'bill_no','S-1','business_date','2026-10-01',
-  'payment_type','credit','notes','  check rate  ','discount_paise',500,'total_paise',74648,
+  'payment_type','credit','notes','  check rate  ','discount_paise',500,'total_paise',74600,'round_off_paise',-48,
   'lines',jsonb_build_array(pg_temp.line('20',871,0,500,18291),pg_temp.line('3',9999,1000,1800,31857)),
   'charges',jsonb_build_array(jsonb_build_object('label',' Freight ','amount_paise',20000),jsonb_build_object('label','Loading','amount_paise',5000)))::text,false);
 select set_config('e3.b1',(pg_temp.post('e3000000-0000-0000-0000-0000000000b1',current_setting('e3.b1json')::jsonb)->>'billId'),false);
 select is((select row(subtotal_paise,discount_paise,extra_charges_paise,total_paise,payment_type,notes)::text from purchase_bills where id=pg_temp.id('b1')),
-  '(50148,500,25000,74648,credit,"check rate")','credit bill totals, notes trimmed');
+  '(50148,500,25000,74600,credit,"check rate")','credit bill totals (rounded to the rupee), notes trimmed');
+select is((select round_off_paise from purchase_bills where id=pg_temp.id('b1')),-48::bigint,'₹746.48 rounds down to ₹746: round-off -48 paise');
 select is((select string_agg(row(line_no,discount_bp,gst_bp,tax_rate_bp_snapshot,line_total_paise)::text,';' order by line_no) from purchase_bill_items where purchase_bill_id=pg_temp.id('b1')),
   '(1,0,500,500,18291);(2,1000,1800,1800,31857)','lines store discount, GST and GST as the line rate');
 select is((select string_agg(label||'='||amount_paise,',' order by line_no) from purchase_bill_charges where purchase_bill_id=pg_temp.id('b1')),
   'Freight=20000,Loading=5000','named charges stored in order, trimmed');
-select is(pg_temp.bal('sup')-current_setting('e3.bal0')::numeric,74648::numeric,'credit bill raises the supplier balance by its total');
+select is(pg_temp.bal('sup')-current_setting('e3.bal0')::numeric,74600::numeric,'credit bill raises the supplier balance by its rounded total');
 select is((select count(*) from payments where party_id=pg_temp.id('sup')),0::bigint,'credit bill posts no payment');
 select is((select qty_base from stock_movements where source_id=pg_temp.id('b1') order by client_id limit 1),20.000000::numeric,'stock received');
 
@@ -282,6 +285,46 @@ select throws_like(format($$select void_paid_purchase(%L::uuid,'x','e3000000-000
 select is((select status from payments where id=(current_setting('e3.qres')::jsonb->>'paymentId')::uuid),'POSTED',
   'the refused void left the payment posted');
 
+-- Round-off (old DSB Math.round on every bill, half up), checked against the client's figures.
+select throws_like($$select post_purchase_v2(pg_temp.id('shop'),'e3000000-0000-0000-0000-0000000000c1',jsonb_build_object('party_id',pg_temp.id('sup'),
+  'total_paise',18300,'lines',jsonb_build_array(pg_temp.line('20',871,0,500,18291))))$$,'%DSB_TOTAL_MISMATCH%','the round-off is required');
+select throws_like($$select pg_temp.post('e3000000-0000-0000-0000-0000000000c1',jsonb_build_object('party_id',pg_temp.id('sup'),
+  'total_paise',18291,'round_off_paise',0,'lines',jsonb_build_array(pg_temp.line('20',871,0,500,18291))))$$,'%DSB_TOTAL_MISMATCH%',
+  'an unrounded total is refused');
+select throws_like($$select pg_temp.post('e3000000-0000-0000-0000-0000000000c1',jsonb_build_object('party_id',pg_temp.id('sup'),
+  'total_paise',18200,'round_off_paise',-91,'lines',jsonb_build_array(pg_temp.line('20',871,0,500,18291))))$$,'%DSB_TOTAL_MISMATCH%',
+  'a wrongly rounded total is refused');
+select set_config('e3.bal_r',pg_temp.bal('sup')::text,false);
+select set_config('e3.r1',pg_temp.post('e3000000-0000-0000-0000-0000000000c1',jsonb_build_object('party_id',pg_temp.id('sup'),
+  'payment_type','cash','business_date','2026-10-05','total_paise',18300,'round_off_paise',9,
+  'lines',jsonb_build_array(pg_temp.line('20',871,0,500,18291))))::text,false);
+select is((select row(subtotal_paise,round_off_paise,total_paise)::text from purchase_bills where id=(current_setting('e3.r1')::jsonb->>'billId')::uuid),
+  '(18291,9,18300)','₹182.91 -> ₹183 (+9 paise), as old DSB');
+select is((select amount_paise from payments where id=(current_setting('e3.r1')::jsonb->>'paymentId')::uuid),18300::bigint,
+  'the cash payment is the rounded total exactly');
+select is(current_setting('e3.r1')::jsonb->>'roundOffPaise','9','the answer carries the server round-off');
+select is((select outstanding_paise from purchase_bill_outstanding where purchase_bill_id=(current_setting('e3.r1')::jsonb->>'billId')::uuid),0::bigint,
+  'a rounded cash bill is fully paid');
+select is(pg_temp.post('e3000000-0000-0000-0000-0000000000c2',jsonb_build_object('party_id',pg_temp.id('sup'),'business_date','2026-10-05',
+  'total_paise',10100,'round_off_paise',50,'lines',jsonb_build_array(pg_temp.line('1',10050,0,null,10050))))->>'roundOffPaise','50',
+  'exactly half a rupee rounds up (₹100.50 -> ₹101)');
+select is(pg_temp.post('e3000000-0000-0000-0000-0000000000c3',jsonb_build_object('party_id',pg_temp.id('sup'),'business_date','2026-10-05',
+  'total_paise',18200,'round_off_paise',-40,'lines',jsonb_build_array(pg_temp.line('1',18240,0,null,18240))))->>'roundOffPaise','-40',
+  '₹182.40 rounds down to ₹182 (-40)');
+select is(pg_temp.bal('sup')-current_setting('e3.bal_r')::numeric,10100+18200::numeric,'the ledger carries rounded totals (cash bill nets to zero)');
+select is((select row(taxable_purchases_paise,gross_purchases_paise)::text from get_gst_summary(pg_temp.id('shop'),'2026-10-05','2026-10-05') where tax_rate_bp=500),
+  '(17420,18291)','GST summary uses item values, never the round-off');
+select is((select (e->>'round_off_paise')::bigint from jsonb_array_elements(phase6_export_tenant(pg_temp.id('shop'))->'purchases') e
+  where e->>'id'=current_setting('e3.r1')::jsonb->>'billId'),9::bigint,'the export carries the round-off');
+select set_config('e3.vr',void_paid_purchase((current_setting('e3.r1')::jsonb->>'billId')::uuid,'test void','e3000000-0000-0000-0000-0000000000ac')::text,false);
+select is(pg_temp.bal('sup')-current_setting('e3.bal_r')::numeric,10100+18200::numeric,'voiding the rounded cash bill restores the ledger exactly');
+select is((select round_off_paise from purchase_bills where id=(current_setting('e3.r1')::jsonb->>'billId')::uuid),9::bigint,'a void keeps the round-off');
+reset role;
+select throws_like(format($$update purchase_bills set round_off_paise=0 where id=%L$$,current_setting('e3.r1')::jsonb->>'billId'),
+  '%round-off is immutable%','the round-off cannot be changed');
+set role authenticated;
+select pg_temp.act('e3000000-0000-0000-0000-000000000001');
+
 -- Manager may post purchases but not void a paid bill (voiding a supplier payment is owner-only).
 select pg_temp.act('e3000000-0000-0000-0000-000000000002');
 select throws_like(format($$select void_paid_purchase(%L::uuid,'x','e3000000-0000-0000-0000-0000000000ab')$$,
@@ -319,7 +362,7 @@ select is((select row(taxable_purchases_paise,gross_purchases_paise)::text from 
 select ok((phase6_export_tenant(pg_temp.id('shop')) ? 'purchaseCharges') and jsonb_array_length(phase6_export_tenant(pg_temp.id('shop'))->'purchaseCharges')=2,
   'export carries named charges');
 select is(jsonb_array_length(phase6_export_tenant(pg_temp.id('shop'))->'purchaseImages'),2,'export carries bill images');
-select is((select count(*) from purchase_bills where tenant_id=pg_temp.id('tenant') and status='POSTED'),9::bigint,'posted bill count is exact (11 bills, 2 voided)');
+select is((select count(*) from purchase_bills where tenant_id=pg_temp.id('tenant') and status='POSTED'),11::bigint,'posted bill count is exact (14 bills, 3 voided)');
 select is(check_invariants()->>'ok','true','financial invariants hold after paid, credit, voided and multi-image bills');
 
 select * from finish();

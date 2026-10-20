@@ -1,4 +1,5 @@
 import { parseQuantityMicros, type DecimalInput } from './fixedPoint';
+import { billRoundOff } from './totals';
 
 // billextras (mig 0064): exact purchase-line and bill totals, identical to the server's post_purchase_v2.
 // Old DSB calcItemRow: total = qty x rate, minus discount %, plus GST % on the discounted amount. Here the
@@ -59,6 +60,11 @@ export function purchaseBillTotals(input: {
   lineTotalsPaise: number[];
   subtotalPaise: number;
   extraChargesPaise: number;
+  /** subtotal - discount + charges, exact paise. */
+  totalBeforeRoundOffPaise: number;
+  /** Old DSB rounded every purchase bill to the nearest rupee, half up: -49..+50 paise. */
+  roundOffPaise: number;
+  /** The bill total (rounded): what the supplier is owed and what a cash/UPI bill pays. */
   totalPaise: number;
 } {
   const lineTotalsPaise = input.lines.map(purchaseLineTotalPaise);
@@ -75,10 +81,14 @@ export function purchaseBillTotals(input: {
   if (total < 0n) throw new Error('bill total cannot be negative');
   if (subtotal > MAX_SAFE || extra > MAX_SAFE || total > MAX_SAFE)
     throw new Error('bill total exceeds the safe integer range');
+  const before = Number(total);
+  const roundOff = billRoundOff(before);
   return {
     lineTotalsPaise,
     subtotalPaise: Number(subtotal),
     extraChargesPaise: Number(extra),
-    totalPaise: Number(total),
+    totalBeforeRoundOffPaise: before,
+    roundOffPaise: roundOff,
+    totalPaise: before + roundOff,
   };
 }

@@ -1665,6 +1665,7 @@ export type Database = {
           notes: string | null
           party_id: string | null
           payment_type: string
+          round_off_paise: number
           shop_id: string
           status: string
           subtotal_paise: number
@@ -1687,6 +1688,7 @@ export type Database = {
           notes?: string | null
           party_id?: string | null
           payment_type?: string
+          round_off_paise?: number
           shop_id: string
           status?: string
           subtotal_paise: number
@@ -1709,6 +1711,7 @@ export type Database = {
           notes?: string | null
           party_id?: string | null
           payment_type?: string
+          round_off_paise?: number
           shop_id?: string
           status?: string
           subtotal_paise?: number

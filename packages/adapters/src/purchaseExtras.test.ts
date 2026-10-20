@@ -42,7 +42,8 @@ const request = (over: object = {}) => ({
 const answer = (over: object = {}) => ({
   billId: BILL,
   paymentId: null,
-  totalPaise: '74648',
+  totalPaise: '74600',
+  roundOffPaise: '-48',
   businessDate: '2026-10-01',
   ...over,
 });
@@ -55,7 +56,7 @@ beforeEach(() => {
 describe('post_purchase_v2 payload', () => {
   it('carries exact line and bill totals the server recomputes', () => {
     const { bill, totals } = buildPurchaseV2Payload(request());
-    expect(totals.totalPaise).toBe(74648);
+    expect([totals.totalPaise, totals.roundOffPaise]).toEqual([74600, -48]);
     expect(bill).toEqual({
       party_id: SUP,
       bill_no: null,
@@ -63,7 +64,8 @@ describe('post_purchase_v2 payload', () => {
       discount_paise: 500,
       payment_type: 'credit',
       notes: 'check rate',
-      total_paise: 74648,
+      round_off_paise: -48,
+      total_paise: 74600,
       lines: [
         {
           item_id: ITEM,
@@ -128,7 +130,13 @@ describe('post_purchase_v2 outcome', () => {
     rpc.mockResolvedValue({ data: answer({ paymentId: PAY }), error: null });
     await expect(postPurchaseV2Outcome(request({ paymentType: 'cash' }))).resolves.toEqual({
       kind: 'committed',
-      value: { billId: BILL, paymentId: PAY, totalPaise: 74648, businessDate: '2026-10-01' },
+      value: {
+        billId: BILL,
+        paymentId: PAY,
+        totalPaise: 74600,
+        roundOffPaise: -48,
+        businessDate: '2026-10-01',
+      },
     });
     expect(rpc).toHaveBeenCalledWith(
       'post_purchase_v2',
@@ -140,7 +148,11 @@ describe('post_purchase_v2 outcome', () => {
     await expect(postPurchaseV2Outcome(request({ paymentType: 'upi' }))).resolves.toMatchObject({
       kind: 'unknown',
     });
-    rpc.mockResolvedValueOnce({ data: answer({ totalPaise: '74647' }), error: null });
+    rpc.mockResolvedValueOnce({ data: answer({ totalPaise: '74648' }), error: null });
+    await expect(postPurchaseV2Outcome(request())).resolves.toMatchObject({ kind: 'unknown' });
+  });
+  it('an answer with a different round-off is unknown', async () => {
+    rpc.mockResolvedValueOnce({ data: answer({ roundOffPaise: '52' }), error: null });
     await expect(postPurchaseV2Outcome(request())).resolves.toMatchObject({ kind: 'unknown' });
   });
   it('a total mismatch from the server is a rejection', async () => {

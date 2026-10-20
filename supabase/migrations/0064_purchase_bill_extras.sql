@@ -13,13 +13,25 @@
 --  * Named extra charges (purchase_bill_charges); their sum must equal purchase_bills.extra_charges_paise.
 --  * Several bill images (purchase_bill_images); the first is also bill_image_path, so every existing reader,
 --    viewer and backup reference keeps working, and old bills keep their single bill_image_path.
+--  * Round-off (owner decision B, 2026-10-20; old DSB saveBill billTotal = Math.round(rawTotal), every bill):
+--    a v2 bill's total is rounded to the nearest rupee, half up, exactly like sales (0051 r0_round_off); the
+--    signed adjustment is purchase_bills.round_off_paise (-49..+50, immutable) and total_paise is the rounded
+--    total. The client sends its round-off and total; any difference is DSB_TOTAL_MISMATCH. The cash/UPI
+--    payment is the rounded total. Like sales, item values stay exact: the GST summary, FIFO landed cost and
+--    purchase-return caps use line values (subtotal - discount, + extra charges for cost) and never the
+--    round-off. v1 and existing bills keep round_off_paise = 0.
 --  * void_paid_purchase (owner, as voiding a supplier payment is owner-only) voids the auto payment and the
 --    bill together. The v1 void_purchase keeps refusing a bill with live allocations.
 -- post_purchase (v1) is NOT redefined: its body is an upgrade-classifier anchor (billdocs, partymerge, c3b).
 
 alter table purchase_bills
+ add column round_off_paise bigint not null default 0 check(round_off_paise between -49 and 50),
  add column payment_type text not null default 'credit' check(payment_type in ('credit','cash','upi')),
  add column notes text check(notes is null or (char_length(notes) between 1 and 500 and notes=btrim(notes)));
+
+-- Same guard as sale_invoices (0051): the round-off never changes after posting.
+create trigger purchase_bills_round_off_immutable before update on purchase_bills
+ for each row execute function r0_round_off_immutable();
 
 alter table purchase_bill_items
  add column discount_bp integer not null default 0 check(discount_bp between 0 and 10000),
@@ -138,7 +150,7 @@ create function post_purchase_v2(p_shop_id uuid,p_client_id text,p_bill jsonb)
 returns jsonb language plpgsql security definer set search_path=public as $$
 declare
  v_tenant uuid; v_req uuid; v_client text; v_request jsonb; v_prev jsonb;
- v_party uuid; v_bill_no text; v_date date; v_given_date date; v_discount bigint; v_type text; v_notes text; v_expected bigint;
+ v_party uuid; v_bill_no text; v_date date; v_given_date date; v_discount bigint; v_type text; v_notes text; v_expected bigint; v_round_given bigint; v_round bigint; v_before numeric;
  v_lines jsonb:='[]'::jsonb; v_charges jsonb:='[]'::jsonb; v_images jsonb:='[]'::jsonb;
  v_e jsonb; v_o bigint; v_qty numeric; v_level int; v_price bigint; v_disc int; v_gst int; v_lt bigint; v_given_lt bigint;
  v_item items%rowtype; v_base numeric; v_subtotal numeric:=0; v_extra numeric:=0; v_total numeric;
@@ -159,10 +171,13 @@ begin
  v_type:=coalesce(p_bill->>'payment_type','credit');
  v_notes:=nullif(btrim(coalesce(p_bill->>'notes','')),'');
  v_expected:=(p_bill->>'total_paise')::bigint;
+ v_round_given:=(p_bill->>'round_off_paise')::bigint;
  if v_type not in ('credit','cash','upi') then raise exception 'DSB_INVALID_PAYMENT_TYPE: payment type must be credit, cash or upi'; end if;
  if v_notes is not null and char_length(v_notes)>500 then raise exception 'DSB_INVALID_NOTES: notes are limited to 500 characters'; end if;
  if v_bill_no is not null and char_length(v_bill_no)>100 then raise exception 'DSB_INVALID_PURCHASE: bill number too long'; end if;
- if v_expected is null then raise exception 'DSB_TOTAL_MISMATCH: the bill total is required'; end if;
+ if v_expected is null or v_round_given is null then
+   raise exception 'DSB_TOTAL_MISMATCH: the bill total and its round-off are required';
+ end if;
  if v_discount<0 then raise exception 'negative adjustment'; end if;
  perform phase65_assert_quantity_lines(p_bill->'lines');
  if jsonb_array_length(p_bill->'lines')>200 then raise exception 'DSB_INVALID_PURCHASE: at most 200 lines'; end if;
@@ -199,7 +214,7 @@ begin
    end loop;
  end if;
  v_request:=jsonb_build_object('shopId',p_shop_id,'partyId',v_party,'billNo',v_bill_no,'businessDate',v_given_date,
-   'discountPaise',v_discount::text,'paymentType',v_type,'notes',v_notes,'totalPaise',v_expected::text,
+   'discountPaise',v_discount::text,'paymentType',v_type,'notes',v_notes,'totalPaise',v_expected::text,'roundOffPaise',v_round_given::text,
    'lines',v_lines,'charges',v_charges,'images',v_images);
 
  perform dsb_lock_shop_finance(v_tenant,p_shop_id);
@@ -259,19 +274,22 @@ begin
    end if;
    v_subtotal:=v_subtotal+v_lt;
  end loop;
- v_total:=v_subtotal-v_discount+v_extra;
- if v_total<0 then raise exception 'negative total'; end if;
- if v_subtotal>9007199254740991 or v_extra>9007199254740991 or v_total>9007199254740991 then
+ v_before:=v_subtotal-v_discount+v_extra;
+ if v_before<0 then raise exception 'negative total'; end if;
+ if v_subtotal>9007199254740991 or v_extra>9007199254740991 or v_before>9007199254740900 then
    raise exception 'DSB_AMOUNT_OUT_OF_RANGE: amount out of safe range';
  end if;
- if v_total<>v_expected then
-   raise exception 'DSB_TOTAL_MISMATCH: bill total is % paise, not %',v_total,v_expected;
+ -- Old DSB: the bill rounds to the nearest rupee, half up (same function as sales, 0051).
+ v_round:=r0_round_off(v_before::bigint);
+ v_total:=v_before+v_round;
+ if v_round<>v_round_given or v_total<>v_expected then
+   raise exception 'DSB_TOTAL_MISMATCH: bill total is % paise (round-off %), not % (round-off %)',v_total,v_round,v_expected,v_round_given;
  end if;
 
  insert into purchase_bills(tenant_id,shop_id,party_id,bill_no,business_date,subtotal_paise,discount_paise,extra_charges_paise,
-   total_paise,bill_image_path,client_id,payment_type,notes)
+   total_paise,bill_image_path,client_id,payment_type,notes,round_off_paise)
  values(v_tenant,p_shop_id,v_party,v_bill_no,v_date,v_subtotal::bigint,v_discount,v_extra::bigint,v_total::bigint,
-   v_images->>0,v_client,v_type,v_notes)
+   v_images->>0,v_client,v_type,v_notes,v_round)
  returning id into v_bill;
  for v_e,v_o in select value,ordinality from jsonb_array_elements(v_lines) with ordinality loop
    select * into v_item from items where id=(v_e->>0)::uuid and tenant_id=v_tenant;
@@ -305,7 +323,8 @@ begin
      md5('dsb.purchase.v2.payment:'||v_bill::text)::uuid::text);
  end if;
 
- v_result:=jsonb_build_object('billId',v_bill,'paymentId',v_payment,'totalPaise',v_total::bigint::text,'businessDate',v_date);
+ v_result:=jsonb_build_object('billId',v_bill,'paymentId',v_payment,'totalPaise',v_total::bigint::text,
+   'roundOffPaise',v_round::text,'businessDate',v_date);
  insert into financial_requests(tenant_id,shop_id,operation,request,result,client_id)
  values(v_tenant,p_shop_id,'purchase.post.v2',v_request,v_result,v_client);
  return v_result;
@@ -384,6 +403,86 @@ begin
  end if;
  return jsonb_build_object('state','COMMITTED','result',v_row.result,'currentStatus',v_status);
 end $$;
+
+-- check_invariants (from 0055), unchanged except: a purchase total includes its round-off.
+CREATE OR REPLACE FUNCTION public.check_invariants()
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_tenant uuid:=phase6_assert_report_access();
+ bad_sales bigint; bad_purchases bigint; bad_stock bigint; bad_alloc bigint; bad_projection bigint; bad_voids bigint;
+ bad_sale_returns bigint; bad_purchase_returns bigint; bad_return_qty bigint; bad_refunds bigint; bad_payment_direction bigint; bad_settlements bigint;
+begin
+ select count(*) into bad_sales from sale_invoices s where s.tenant_id=v_tenant and s.status='FINALIZED' and
+  (s.subtotal_paise<>(select coalesce(sum(li.line_total_paise+li.discount_paise),0) from sale_invoice_items li where li.sale_invoice_id=s.id)
+   or s.total_paise<>s.subtotal_paise-s.discount_paise+s.extra_charges_paise+s.round_off_paise);
+ select count(*) into bad_purchases from purchase_bills b where b.tenant_id=v_tenant and b.status='POSTED' and
+  (b.subtotal_paise<>(select coalesce(sum(li.line_total_paise),0) from purchase_bill_items li where li.purchase_bill_id=b.id)
+   or b.total_paise<>b.subtotal_paise-b.discount_paise+b.extra_charges_paise+b.round_off_paise);
+ select count(*) into bad_stock from stock_current sc where sc.tenant_id=v_tenant and sc.qty_base<0
+  and not coalesce((select allow_negative_stock from shops where id=sc.shop_id),false);
+ select count(*) into bad_alloc from payments p where p.tenant_id=v_tenant and
+  o2_payment_assigned(p.tenant_id,p.id)>p.amount_paise;  -- O2: allocations + opening settlements
+ -- O2: a POSTED settlement needs a POSTED payment of the right account/direction and a POSTED positive
+ -- opening it does not overdraw.
+ select count(*) into bad_settlements from opening_settlements st
+  join payments p on p.tenant_id=st.tenant_id and p.id=st.payment_id
+  join account_openings o on o.tenant_id=st.tenant_id and o.id=st.opening_id
+  where st.tenant_id=v_tenant and st.status='POSTED' and (p.status<>'POSTED' or o.status<>'POSTED' or o.amount_paise<=0
+   or not ((o.account_kind='CUSTOMER' and p.kind='customer' and p.direction='in' and p.customer_id=o.customer_id)
+        or (o.account_kind='SUPPLIER' and p.kind='party' and p.direction='out' and p.party_id=o.party_id))
+   or (select sum(x.amount_paise) from opening_settlements x where x.tenant_id=o.tenant_id and x.opening_id=o.id and x.status='POSTED')>o.amount_paise);
+ select count(*) into bad_payment_direction from payment_allocations a join payments p on p.tenant_id=a.tenant_id and p.id=a.payment_id
+  where a.tenant_id=v_tenant and a.status='POSTED' and (p.status<>'POSTED'
+   or (a.sale_invoice_id is not null and p.direction<>'in')
+   or (a.purchase_bill_id is not null and (p.direction<>'out' or p.party_id is null)));
+ select count(*) into bad_projection from (
+  select coalesce(sc.shop_id,m.shop_id) shop_id,coalesce(sc.item_id,m.item_id) item_id,coalesce(sc.qty_base,0) projected,coalesce(m.moved,0) moved
+  from stock_current sc full join (select tenant_id,shop_id,item_id,sum(qty_base) moved from stock_movements where tenant_id=v_tenant group by tenant_id,shop_id,item_id) m
+   on m.tenant_id=sc.tenant_id and m.shop_id=sc.shop_id and m.item_id=sc.item_id where coalesce(sc.tenant_id,m.tenant_id)=v_tenant
+ ) q where q.projected<>q.moved;
+ select count(*) into bad_voids from (
+  select s.id,m.item_id,sum(m.qty_base) net from sale_invoices s join stock_movements m on m.tenant_id=s.tenant_id and m.source_id=s.id
+   where s.tenant_id=v_tenant and s.status='VOID' and m.source_type in ('SALE','SALE_VOID') group by s.id,m.item_id having sum(m.qty_base)<>0
+  union all
+  select p.id,m.item_id,sum(m.qty_base) net from purchase_bills p join stock_movements m on m.tenant_id=p.tenant_id and m.source_id=p.id
+   where p.tenant_id=v_tenant and p.status='VOID' and m.source_type in ('PURCHASE','PURCHASE_VOID') group by p.id,m.item_id having sum(m.qty_base)<>0
+  union all
+  select r.id,m.item_id,sum(m.qty_base) net from sale_returns r join stock_movements m on m.tenant_id=r.tenant_id and m.source_id=r.id
+   where r.tenant_id=v_tenant and r.status='VOID' and m.source_type in ('SALE_RETURN','SALE_RETURN_VOID') group by r.id,m.item_id having sum(m.qty_base)<>0
+  union all
+  select r.id,m.item_id,sum(m.qty_base) net from purchase_returns r join stock_movements m on m.tenant_id=r.tenant_id and m.source_id=r.id
+   where r.tenant_id=v_tenant and r.status='VOID' and m.source_type in ('PURCHASE_RETURN','PURCHASE_RETURN_VOID') group by r.id,m.item_id having sum(m.qty_base)<>0
+ ) violations;
+ select count(*) into bad_sale_returns from sale_returns r where r.tenant_id=v_tenant and r.status in ('POSTED','VOID') and
+  (r.total_paise<>(select coalesce(sum(i.amount_paise),0) from sale_return_items i where i.sale_return_id=r.id)+r.round_off_paise
+   or r.total_paise<>r.cash_refund_paise+r.balance_credit_paise);
+ select count(*) into bad_purchase_returns from purchase_returns r where r.tenant_id=v_tenant and r.status in ('POSTED','VOID') and
+  r.total_paise<>(select coalesce(sum(i.amount_paise),0) from purchase_return_items i where i.purchase_return_id=r.id);
+ select count(*) into bad_return_qty from (
+  select li.id from sale_invoice_items li left join sale_return_items ri on ri.tenant_id=li.tenant_id and ri.sale_invoice_item_id=li.id
+   left join sale_returns r on r.tenant_id=ri.tenant_id and r.id=ri.sale_return_id and r.status='POSTED'
+   where li.tenant_id=v_tenant group by li.id,li.base_qty having coalesce(sum(ri.base_qty) filter(where r.id is not null),0)>li.base_qty
+  union all
+  select li.id from purchase_bill_items li left join purchase_return_items ri on ri.tenant_id=li.tenant_id and ri.purchase_bill_item_id=li.id
+   left join purchase_returns r on r.tenant_id=ri.tenant_id and r.id=ri.purchase_return_id and r.status='POSTED'
+   where li.tenant_id=v_tenant group by li.id,li.base_qty having coalesce(sum(ri.base_qty) filter(where r.id is not null),0)>li.base_qty
+ ) excess;
+ select count(*) into bad_refunds from sale_returns r where r.tenant_id=v_tenant and (
+  (r.status='POSTED' and ((r.cash_refund_paise=0 and exists(select 1 from payments p where p.source_sale_return_id=r.id and p.status='POSTED'))
+    or (r.cash_refund_paise>0 and (select count(*) from payments p where p.source_sale_return_id=r.id and p.status='POSTED' and p.direction='out' and p.amount_paise=r.cash_refund_paise)<>1)))
+  or (r.status='VOID' and exists(select 1 from payments p where p.source_sale_return_id=r.id and p.status<>'VOID'))
+ );
+ return jsonb_build_object('ok',bad_sales=0 and bad_purchases=0 and bad_stock=0 and bad_alloc=0 and bad_projection=0 and bad_voids=0
+   and bad_sale_returns=0 and bad_purchase_returns=0 and bad_return_qty=0 and bad_refunds=0 and bad_payment_direction=0 and bad_settlements=0,
+  'saleTotalViolations',bad_sales,'purchaseTotalViolations',bad_purchases,'negativeStock',bad_stock,
+  'allocationViolations',bad_alloc,'stockProjectionViolations',bad_projection,'voidReversalViolations',bad_voids,
+  'saleReturnViolations',bad_sale_returns,'purchaseReturnViolations',bad_purchase_returns,
+  'returnQuantityViolations',bad_return_qty,'refundViolations',bad_refunds,'paymentDirectionViolations',bad_payment_direction,'settlementViolations',bad_settlements);
+end
+$function$;
 
 -- The business export carries the named charges and bill images (shop-scoped, like the bill lines).
 create or replace function phase6_export_tenant(p_shop_id uuid)

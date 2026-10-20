@@ -807,6 +807,10 @@ select (select present from _billextras_receipt),
       and position('div(' in prosrc)>0)
     and exists(select 1 from pg_proc where oid=to_regprocedure('public.get_financial_request(uuid,text,text)')
       and position('purchase.post.v2' in prosrc)>0)
+    and exists(select 1 from pg_proc where oid=to_regprocedure('public.check_invariants()')
+      and position('b.extra_charges_paise+b.round_off_paise' in prosrc)>0)
+    and exists(select 1 from pg_constraint where conrelid=to_regclass('public.purchase_bills')
+      and pg_get_constraintdef(oid)='CHECK (((round_off_paise >= ''-49''::integer) AND (round_off_paise <= 50)))')
     and exists(select 1 from pg_constraint where conname='financial_requests_operation_check'
       and position('purchase.post.v2' in pg_get_constraintdef(oid))>0)),
    (case when to_regclass('public.purchase_bill_charges') is null or to_regclass('public.purchase_bill_images') is null
@@ -821,7 +825,7 @@ select (select present from _billextras_receipt),
       and not has_table_privilege('authenticated','public.purchase_bill_charges','insert,update,delete')
       and not has_table_privilege('authenticated','public.purchase_bill_images','insert,update,delete') end),
    ((select count(*) from pg_trigger where not tgisinternal and tgname in ('purchase_bill_charges_check','purchase_bill_images_check',
-      'purchase_bill_charges_immutable','purchase_bill_images_immutable'))=4),
+      'purchase_bill_charges_immutable','purchase_bill_images_immutable','purchase_bills_round_off_immutable'))=5),
    (position('''purchaseCharges'',coalesce' in coalesce(pg_get_functiondef(to_regprocedure('public.phase6_export_tenant(uuid)')),''))>0
     and position('''purchaseImages'',coalesce' in coalesce(pg_get_functiondef(to_regprocedure('public.phase6_export_tenant(uuid)')),''))>0)
  ) p(ok) where ok);

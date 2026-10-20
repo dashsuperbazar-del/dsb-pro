@@ -42,7 +42,9 @@ export type PurchaseV2Request = {
 export type PurchaseV2Result = {
   billId: string;
   paymentId: string | null;
+  /** Rounded bill total (old DSB: nearest rupee, half up). */
   totalPaise: number;
+  roundOffPaise: number;
   businessDate: string;
 };
 
@@ -77,6 +79,7 @@ export function buildPurchaseV2Payload(input: PurchaseV2Request) {
       discount_paise: input.discountPaise ?? 0,
       payment_type: paymentType,
       notes,
+      round_off_paise: totals.roundOffPaise,
       total_paise: totals.totalPaise,
       lines: input.lines.map((l, i) => ({
         item_id: l.itemId,
@@ -140,12 +143,14 @@ export async function postPurchaseV2Outcome(
     const r = data as Record<string, unknown> | null;
     if (!r || typeof r !== 'object' || !isUuid(r.billId)) return null;
     if (r.totalPaise !== String(payload.totals.totalPaise)) return null;
+    if (r.roundOffPaise !== String(payload.totals.roundOffPaise)) return null;
     if (paid ? !isUuid(r.paymentId) : r.paymentId !== null) return null;
     if (typeof r.businessDate !== 'string') return null;
     return {
       billId: r.billId,
       paymentId: (r.paymentId as string | null) ?? null,
       totalPaise: payload.totals.totalPaise,
+      roundOffPaise: payload.totals.roundOffPaise,
       businessDate: r.businessDate,
     };
   };

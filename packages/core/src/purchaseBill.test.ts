@@ -91,7 +91,7 @@ describe('large quantities (pure integer half-up, same as the SQL bx_purchase_li
 });
 
 describe('purchase bill totals', () => {
-  it('sums lines, adds named charges, subtracts the bill discount (no rounding on purchases)', () => {
+  it('sums lines, adds named charges, subtracts the bill discount, rounds the bill to the rupee', () => {
     const t = purchaseBillTotals({
       lines: [
         { qty: '20', unitPricePaise: 871, gstBp: 500 },
@@ -107,11 +107,32 @@ describe('purchase bill totals', () => {
       lineTotalsPaise: [18291, 31857],
       subtotalPaise: 50148,
       extraChargesPaise: 25000,
-      totalPaise: 74648,
+      totalBeforeRoundOffPaise: 74648,
+      roundOffPaise: -48,
+      totalPaise: 74600,
     });
-    // Old DSB rounded the bill to the rupee; the exact paise total rounds to the same rupee.
+    // Old DSB saveBill: billTotal = Math.round(Math.max(0, rawTotal)).
     const old = oldDsbLineTotal(20, 8.71, 0, 5) + oldDsbLineTotal(3, 99.99, 10, 18) + 200 + 50 - 5;
-    expect(Math.round(old)).toBe(Math.round(t.totalPaise / 100));
+    expect(Math.round(old) * 100).toBe(t.totalPaise);
+  });
+
+  // Old DSB rounds every bill (credit or paid) to the nearest rupee, halves up (Math.round).
+  it.each([
+    ['demo seed BILL-1003: 182.91 -> 183', '20', 871, 500, 18291, 9, 18300],
+    ['exact half: 100.50 -> 101', '1', 10050, null, 10050, 50, 10100],
+    ['just under half: 100.49 -> 100', '1', 10049, null, 10049, -49, 10000],
+    ['rounded down: 182.40 -> 182', '1', 18240, null, 18240, -40, 18200],
+    ['whole rupees: no round-off', '2', 5000, null, 10000, 0, 10000],
+    ['under 50 paise rounds to zero', '1', 30, null, 30, -30, 0],
+  ] as const)('%s', (_name, qty, price, gst, before, roundOff, total) => {
+    const t = purchaseBillTotals({ lines: [{ qty, unitPricePaise: price, gstBp: gst }] });
+    expect([t.totalBeforeRoundOffPaise, t.roundOffPaise, t.totalPaise]).toEqual([
+      before,
+      roundOff,
+      total,
+    ]);
+    const rupees = Number(qty) * (price / 100) * (1 + (gst ?? 0) / 10000);
+    expect(Math.round(Math.max(0, rupees)) * 100).toBe(total);
   });
 
   it('refuses a negative total and non-positive charges', () => {
