@@ -271,3 +271,12 @@ export {
   postPurchaseV2Outcome,
   voidPaidPurchaseOutcome,
 } from './purchaseExtras';
+export type { PurchaseVoidInfo } from './purchaseVoid';
+export {
+  VOID_REASON_MAX,
+  getPurchaseVoidInfo,
+  listPurchaseSettlements,
+  parsePurchaseVoidId,
+  purchaseVoidRequestId,
+  voidPurchaseOutcome,
+} from './purchaseVoid';
