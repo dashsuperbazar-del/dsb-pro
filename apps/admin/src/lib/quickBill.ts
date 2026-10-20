@@ -48,7 +48,7 @@ export function buildQuickBillDraft(
   return {
     ok: true,
     draft: {
-      version: 1,
+      version: 2,
       clientId: ctx.newId(),
       savedAt: ctx.now,
       supplier: input.supplierId,

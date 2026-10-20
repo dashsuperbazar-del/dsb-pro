@@ -91,7 +91,7 @@ export function buildBatchDrafts(
     } else unitPricePaise = parseRupeesToPaise(r.cost.trim());
     if (errors.length > before || !item) return;
     drafts.push({
-      version: 1,
+      version: 2,
       clientId: ctx.newId(),
       savedAt: ctx.now,
       supplier: r.supplierId,

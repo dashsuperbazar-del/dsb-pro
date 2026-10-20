@@ -798,7 +798,9 @@ select (select present from _billextras_receipt),
     and exists(select 1 from pg_constraint where conrelid=to_regclass('public.purchase_bill_items')
       and conname='purchase_bill_items_gst_snapshot_check')
     and exists(select 1 from information_schema.columns where table_schema='public' and table_name='purchase_bills' and column_name='notes')
-    and exists(select 1 from information_schema.columns where table_schema='public' and table_name='purchase_bill_items' and column_name='discount_bp')),
+    and exists(select 1 from information_schema.columns where table_schema='public' and table_name='purchase_bill_items' and column_name='discount_bp')
+    and exists(select 1 from pg_constraint where conrelid=to_regclass('public.purchase_returns') and contype='c'
+      and conname='purchase_returns_round_off_paise_check' and pg_get_constraintdef(oid)='CHECK ((round_off_paise <= 50))')),
    (exists(select 1 from pg_proc where oid=to_regprocedure('public.post_purchase_v2(uuid,text,jsonb)')
       and position('dsb.purchase.v2.payment:' in prosrc)>0 and position('DSB_TOTAL_MISMATCH' in prosrc)>0
       and position('r0_round_off(' in prosrc)>0)

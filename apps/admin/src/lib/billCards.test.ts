@@ -11,8 +11,10 @@ import {
   isBlankCard,
   switchCostMode,
   unitChoices,
+  withItem,
   type BillCard,
 } from './billCards';
+import { purchaseLineTotalPaise } from '@dsb-pro/core';
 
 const A = { id: 'a', name: 'Item A', unit1: 'piece' } as Item;
 const C = { id: 'c', name: 'Item C', unit1: 'box', unit2: 'pack', conv1: 12 } as unknown as Item;
@@ -37,8 +39,9 @@ test('a blank card is skipped; a started card must be complete', () => {
 test('per unit: exact paise and exact amount', () => {
   expect(evaluateCard(card({ item: A, qty: '2.50', price: '10.50' }))).toEqual({
     kind: 'ok',
-    line: { item: A, unitLevel: 1, qty: '2.5', unitPricePaise: 1050 },
+    line: { item: A, unitLevel: 1, qty: '2.5', unitPricePaise: 1050, discountBp: 0, gstBp: null },
     amountPaise: 2625,
+    grossPaise: 2625,
   });
 });
 
@@ -47,8 +50,9 @@ test('total: derived unit cost only when exact; never silently rounded', () => {
     evaluateCard(card({ item: C, unitLevel: 2, qty: '1.5', price: '30', costMode: 'total' })),
   ).toEqual({
     kind: 'ok',
-    line: { item: C, unitLevel: 2, qty: '1.5', unitPricePaise: 2000 },
+    line: { item: C, unitLevel: 2, qty: '1.5', unitPricePaise: 2000, discountBp: 0, gstBp: null },
     amountPaise: 3000,
+    grossPaise: 3000,
   });
   expect(evaluateCard(card({ item: A, qty: '3', price: '100', costMode: 'total' }))).toMatchObject({
     kind: 'problem',
@@ -145,7 +149,9 @@ test('an old draft editing a cart line with a blank form keeps that cart line', 
     price: '',
     editingLine: 1,
   });
-  expect(billFromCards(cards).lines).toEqual(cart);
+  expect(billFromCards(cards).lines).toEqual(
+    cart.map((l) => ({ ...l, discountBp: 0, gstBp: null })),
+  );
 });
 
 test('switching total and back keeps the unit cost typed, when it still makes the total exactly', () => {
@@ -159,4 +165,80 @@ test('switching total and back keeps the unit cost typed, when it still makes th
   const edited = { ...total, price: '6' };
   expect(evaluateCard(edited)).toMatchObject({ kind: 'ok', line: { unitPricePaise: 1200 } });
   expect(switchCostMode(edited, 'unit')).toMatchObject({ price: '12.00' });
+});
+
+test('discount and GST: blank GST is null (price includes GST), 0 is "0% added", totals equal core', () => {
+  const base = { item: A, qty: '20', price: '8.71' };
+  const blank = evaluateCard(card(base));
+  expect(blank).toMatchObject({
+    kind: 'ok',
+    line: { discountBp: 0, gstBp: null },
+    amountPaise: 17420,
+  });
+  const zero = evaluateCard(card({ ...base, gst: '0' }));
+  expect(zero).toMatchObject({ kind: 'ok', line: { gstBp: 0 }, amountPaise: 17420 });
+  // Golden case shared with core and the server: 20 x 8.71 + 5% GST = 182.91.
+  const five = evaluateCard(card({ ...base, gst: '5' }));
+  expect(five).toMatchObject({
+    kind: 'ok',
+    line: { gstBp: 500 },
+    amountPaise: 18291,
+    grossPaise: 17420,
+  });
+  expect(five.kind === 'ok' && five.amountPaise).toBe(
+    purchaseLineTotalPaise({ qty: '20', unitPricePaise: 871, gstBp: 500 }),
+  );
+  // 3 x 99.99, 10% off, 18% GST added = 318.57 (core golden 31857).
+  expect(
+    evaluateCard(card({ item: A, qty: '3', price: '99.99', discount: '10', gst: '18' })),
+  ).toMatchObject({
+    kind: 'ok',
+    line: { discountBp: 1000, gstBp: 1800 },
+    amountPaise: 31857,
+  });
+  expect(evaluateCard(card({ ...base, discount: '12.5' }))).toMatchObject({
+    line: { discountBp: 1250 },
+  });
+  expect(evaluateCard(card({ ...base, discount: '101' }))).toMatchObject({
+    kind: 'problem',
+    message: expect.stringContaining('discount'),
+  });
+  expect(evaluateCard(card({ ...base, gst: '5.555' }))).toMatchObject({
+    kind: 'problem',
+    message: expect.stringContaining('GST'),
+  });
+  // A discount typed on an empty card makes it a started card.
+  expect(evaluateCard(card({ discount: '5' }))).toMatchObject({ kind: 'problem' });
+});
+
+test('a different item drops discount and GST; a different unit keeps them; repeat copies them', () => {
+  const c = { ...card({ item: C, qty: '1', price: '1', discount: '5', gst: '12' }) };
+  expect(withItem(c, C, 2)).toMatchObject({ discount: '5', gst: '12', qty: '' });
+  const other = withItem(c, A, 1);
+  expect(other.discount).toBeUndefined();
+  expect(other.gst).toBeUndefined();
+  expect(
+    cardFromLine({
+      item: A,
+      unitLevel: 1,
+      qty: '1',
+      unitPricePaise: 100,
+      discountBp: 250,
+      gstBp: 0,
+    }),
+  ).toMatchObject({ discount: '2.5', gst: '0' });
+  expect(
+    cardFromLine({
+      item: A,
+      unitLevel: 1,
+      qty: '1',
+      unitPricePaise: 100,
+      discountBp: 0,
+      gstBp: null,
+    }),
+  ).not.toHaveProperty('gst');
+  // Total mode is the amount before discount and GST (old DSB "TOTAL COST").
+  const t = switchCostMode(card({ item: A, qty: '2', price: '10', gst: '5' }), 'total');
+  expect(t.price).toBe('20.00');
+  expect(evaluateCard(t)).toMatchObject({ amountPaise: 2100 });
 });

@@ -1479,6 +1479,86 @@ body {
   background: var(--surface-2);
   border-top: 1px solid var(--border);
 }
+.bill-charges {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 8px;
+}
+.bill-section-title {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted, var(--text));
+}
+.bill-charge-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+.bill-charges .row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.bill-notes {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0;
+}
+.bill-notes textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+.bill-notes small {
+  justify-self: end;
+}
+.bill-card-gst-hint {
+  display: block;
+  margin-top: 2px;
+}
+.bill-card-total-warning {
+  display: block;
+  margin-top: 4px;
+  color: var(--danger);
+  font-weight: 600;
+}
+.bill-paid-note {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border: 1px solid var(--success);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--success) 10%, var(--surface));
+  font-weight: 650;
+}
+.bill-attachment-row p {
+  margin: 6px 0 2px;
+  overflow-wrap: anywhere;
+}
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 650;
+}
+.badge.settle-settled {
+  border-color: var(--success);
+  color: var(--success);
+}
+.badge.settle-unpaid,
+.badge.settle-partial {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.void-paid {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+}
 .bill-bar-problem {
   flex-basis: 100%;
   color: #b3261e;

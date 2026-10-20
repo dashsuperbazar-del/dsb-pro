@@ -6,6 +6,7 @@ import 'fake-indexeddb/auto';
 import { InventoryScreen } from './InventoryScreen';
 import { shopContext } from '../lib/shopContext';
 import { resetCatalogDirtyForTests } from '../lib/catalogRead';
+import { purchaseBillTotals, quantityTimesPaise } from '@dsb-pro/core';
 const api = vi.hoisted(() => ({
   BILL_DOCUMENT_PATH:
     /^([0-9a-f-]{36})\/([0-9a-f-]{36})\/([0-9a-f-]{36})\/([0-9a-f-]{36})\.(webp|pdf)$/,
@@ -32,10 +33,27 @@ const api = vi.hoisted(() => ({
   listPurchaseHistory: vi.fn().mockResolvedValue([]),
   getPurchaseDetail: vi.fn(),
   postPurchaseOutcome: vi.fn(),
+  postPurchaseV2Outcome: vi.fn(),
+  getPurchaseExtras: vi.fn().mockResolvedValue({
+    paymentType: 'credit',
+    notes: null,
+    lines: [],
+    charges: [],
+    images: [],
+    settlement: { status: 'unpaid' },
+  }),
   listItemPurchasePrices: vi.fn().mockResolvedValue([]),
   listItemSaleMovements: vi.fn().mockResolvedValue({ sales: [], returns: [], truncated: false }),
 }));
 vi.mock('@dsb-pro/adapters', () => api);
+// A real post_purchase_v2 answer for a credit bill (the screen reads only kind and the paid fields).
+const COMMITTED_CREDIT = {
+  billId: 'b0000000-0000-0000-0000-000000000001',
+  paymentId: null,
+  totalPaise: 0,
+  roundOffPaise: 0,
+  businessDate: '2026-10-12',
+};
 const offline = vi.hoisted(() => ({
   getSyncedOfflineCatalog: vi.fn(),
   runSyncNow: vi.fn(),
@@ -59,36 +77,58 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// Payload equivalence (UI restructure only). GOLDEN is the exact request the previous single "Add purchase
-// line" editor passed to postPurchaseOutcome for this bill, captured by driving that editor at main 1ee18e6
-// (supplier Acme, bill G-1, discount 5.50, extra 2.25; Item A 2 @ 10.50; Item C 1.5 pack as total 30;
-// Item A 3 @ 0.07). Only clientId is random per bill. Both the new cards and an old-format draft must
-// produce it byte for byte, with the same isRetry flag.
+// Payload equivalence. The card editor now posts to post_purchase_v2 (billextras). GOLDEN keeps the bill the
+// old single "Add purchase line" editor posted at main 1ee18e6 (supplier Acme, bill G-1, discount 5.50,
+// extra 2.25; Item A 2 @ 10.50; Item C 1.5 pack as total 30; Item A 3 @ 0.07): the same lines, quantities,
+// unit costs and adjustments, now as a v2 request. With no discount/GST every line total equals the old
+// qty x cost (core purchaseBillTotals), and the old single extra amount is one named charge. Only clientId
+// is random per bill. Both the new cards and an old-format draft must produce it byte for byte.
 const GOLDEN = {
+  api: 'v2',
   shopId: 'shop',
   partyId: 'p1',
   billNo: 'G-1',
   businessDate: '2026-10-12',
   discountPaise: 550,
-  extraChargesPaise: 225,
-  billImagePath: undefined,
+  paymentType: 'credit',
+  notes: null,
   lines: [
-    { itemId: 'a', unitLevel: 1, qty: '2', unitPricePaise: 1050 },
-    { itemId: 'c', unitLevel: 2, qty: '1.5', unitPricePaise: 2000 },
-    { itemId: 'a', unitLevel: 1, qty: '3', unitPricePaise: 7 },
+    { itemId: 'a', unitLevel: 1, qty: '2', unitPricePaise: 1050, discountBp: 0, gstBp: null },
+    { itemId: 'c', unitLevel: 2, qty: '1.5', unitPricePaise: 2000, discountBp: 0, gstBp: null },
+    { itemId: 'a', unitLevel: 1, qty: '3', unitPricePaise: 7, discountBp: 0, gstBp: null },
   ],
+  charges: [{ label: 'Extra charges', amountPaise: 225 }],
+  images: [],
 };
 const GOLDEN_KEYS = [
+  'api',
   'shopId',
+  'clientId',
   'partyId',
   'billNo',
   'businessDate',
   'discountPaise',
-  'extraChargesPaise',
-  'clientId',
-  'billImagePath',
+  'paymentType',
+  'notes',
   'lines',
+  'charges',
+  'images',
 ];
+// The old v1 request for the same bill (main 1ee18e6): every money figure must match the v2 one.
+const OLD_V1 = {
+  discountPaise: 550,
+  extraChargesPaise: 225,
+  lines: [
+    { qty: '2', unitPricePaise: 1050 },
+    { qty: '1.5', unitPricePaise: 2000 },
+    { qty: '3', unitPricePaise: 7 },
+  ],
+};
+async function addCharge(n: number, name: string, amount: string) {
+  await click(button('+ Add charge'));
+  await setField(label(`Extra charge ${n} name`), name);
+  await setField(label(`Extra charge ${n} amount ₹`), amount);
+}
 const itemA = { id: 'a', name: 'Item A', unit1: 'piece', min_stock: 0 };
 const itemC = { id: 'c', name: 'Item C', unit1: 'box', unit2: 'pack', conv1: 12, min_stock: 0 };
 beforeEach(() => {
@@ -142,19 +182,38 @@ test('the card editor posts exactly the payload the old add-line editor posted',
   await pickItem(3, 'Item A');
   await setField(label('Item 3 quantity'), '3');
   await setField(label('Item 3 rate ₹'), '0.07');
-  await setField('input[name="extra"]', '2.25');
+  await addCharge(1, 'Extra charges', '2.25');
   await setField('input[name="discount"]', '5.50');
   expect(host.querySelector('[data-testid="item-2-amount"]')!.textContent).toBe('Amount ₹30.00');
-  expect(host.querySelector('[data-testid="bill-total"]')!.textContent).toContain('₹51.21');
-  expect(host.querySelector('[data-testid="bill-total"]')!.textContent).toContain('₹47.96');
-  expect(host.querySelector('.bill-bar')!.textContent).toContain('Total ₹47.96');
-  api.postPurchaseOutcome.mockResolvedValue({ kind: 'confirmed', value: {} });
+  const total = host.querySelector('[data-testid="bill-total"]')!.textContent!;
+  expect(total).toContain('Items (3)₹51.21');
+  expect(total).toContain('Bill discount−₹5.50');
+  expect(total).toContain('Extra charges+₹2.25');
+  expect(total).toContain('Total before round off₹47.96');
+  expect(host.querySelector('[data-testid="round-off"]')!.textContent).toBe('Round off+₹0.04');
+  expect(total).toContain('Bill total₹48.00');
+  expect(host.querySelector('.bill-bar')!.textContent).toContain('Total ₹48.00');
+  api.postPurchaseV2Outcome.mockResolvedValue({ kind: 'committed', value: COMMITTED_CREDIT });
   await click(button('Post purchase'));
-  await vi.waitFor(() => expect(api.postPurchaseOutcome).toHaveBeenCalledTimes(1));
-  const [request, isRetry] = api.postPurchaseOutcome.mock.calls[0];
+  await vi.waitFor(() => expect(api.postPurchaseV2Outcome).toHaveBeenCalledTimes(1));
+  const [request, isRetry] = api.postPurchaseV2Outcome.mock.calls[0];
   expect(isRetry).toBe(false);
   expect(Object.keys(request)).toEqual(GOLDEN_KEYS);
   expect(request).toStrictEqual({ ...GOLDEN, clientId: expect.any(String) });
+  // Same money as the old v1 request, and exactly what the server will compute (core totals).
+  expect(
+    request.lines.map((l: { qty: string; unitPricePaise: number }) => [l.qty, l.unitPricePaise]),
+  ).toEqual(OLD_V1.lines.map((l) => [l.qty, l.unitPricePaise]));
+  const t = purchaseBillTotals({
+    lines: request.lines,
+    discountPaise: request.discountPaise,
+    charges: request.charges,
+  });
+  expect(t.subtotalPaise).toBe(
+    OLD_V1.lines.reduce((s, l) => s + quantityTimesPaise(l.qty, l.unitPricePaise), 0),
+  );
+  expect(t.extraChargesPaise).toBe(OLD_V1.extraChargesPaise);
+  expect(t).toMatchObject({ totalBeforeRoundOffPaise: 4796, roundOffPaise: 4, totalPaise: 4800 });
   await vi.waitFor(() => expect(host.textContent).toContain('Purchase posted (3 items)'));
   // The next bill starts with one empty card.
   expect(host.querySelectorAll('section[aria-label^="Item "]')).toHaveLength(1);
@@ -192,10 +251,10 @@ test('a draft saved by the old add-line editor resumes as cards and posts the id
   expect(
     button('pack', host.querySelector(label('Item 2 purchased in'))!).getAttribute('aria-pressed'),
   ).toBe('true');
-  api.postPurchaseOutcome.mockResolvedValue({ kind: 'confirmed', value: {} });
+  api.postPurchaseV2Outcome.mockResolvedValue({ kind: 'committed', value: COMMITTED_CREDIT });
   await click(button('Post purchase'));
-  await vi.waitFor(() => expect(api.postPurchaseOutcome).toHaveBeenCalledTimes(1));
-  const [request, isRetry] = api.postPurchaseOutcome.mock.calls[0];
+  await vi.waitFor(() => expect(api.postPurchaseV2Outcome).toHaveBeenCalledTimes(1));
+  const [request, isRetry] = api.postPurchaseV2Outcome.mock.calls[0];
   expect(isRetry).toBe(false);
   expect(Object.keys(request)).toEqual(GOLDEN_KEYS);
   expect(request).toStrictEqual({ ...GOLDEN, clientId: 'old-client' });
@@ -245,13 +304,18 @@ test('layout follows old DSB: items, then extra and discount, then the live bill
   // Tap-to-add fills the empty first card instead of adding a second one.
   await click(button('Item A · ₹10.50/piece'));
   expect(host.querySelectorAll('section[aria-label^="Item "]')).toHaveLength(1);
-  expect(host.querySelector<HTMLInputElement>(label('Item 1 quantity'))!.value).toBe('4');
+  // Tap-to-add reads the bill's discount/GST first (getPurchaseExtras), then fills the card.
+  await vi.waitFor(() =>
+    expect(host.querySelector<HTMLInputElement>(label('Item 1 quantity'))!.value).toBe('4'),
+  );
   await click(button('↺ Repeat last bill'));
-  expect(window.confirm).toHaveBeenCalled();
-  expect(host.querySelectorAll('section[aria-label^="Item "]')).toHaveLength(2);
+  await vi.waitFor(() => expect(window.confirm).toHaveBeenCalled());
+  await vi.waitFor(() =>
+    expect(host.querySelectorAll('section[aria-label^="Item "]')).toHaveLength(2),
+  );
   const order = [
     host.querySelector(label('Item 2'))!,
-    host.querySelector('input[name="extra"]')!,
+    host.querySelector('[aria-label="Extra charges"]')!,
     host.querySelector('input[name="discount"]')!,
     host.querySelector('[data-testid="bill-total"]')!,
     host.querySelector('.bill-bar')!,
@@ -286,7 +350,7 @@ test('Enter inside a card moves to the next field and never posts a partial bill
   await act(async () => {
     rate.form!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
   });
-  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  expect(api.postPurchaseV2Outcome).not.toHaveBeenCalled();
 });
 
 test('a refused post focuses the first item that needs a look and says so in the post bar', async () => {
@@ -298,7 +362,7 @@ test('a refused post focuses the first item that needs a look and says so in the
   await pickItem(2, 'Item C');
   await setField(label('Item 2 quantity'), '1');
   await click(button('Post purchase'));
-  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  expect(api.postPurchaseV2Outcome).not.toHaveBeenCalled();
   expect(document.activeElement).toBe(host.querySelector(label('Item 2 rate ₹')));
   expect(host.querySelector('.bill-bar')!.textContent).toContain(
     'Item 2: Enter the cost per unit.',
@@ -327,12 +391,12 @@ test('sale prices typed on the cards leave the posted payload identical', async 
   await pickItem(3, 'Item A');
   await setField(label('Item 3 quantity'), '3');
   await setField(label('Item 3 rate ₹'), '0.07');
-  await setField('input[name="extra"]', '2.25');
+  await addCharge(1, 'Extra charges', '2.25');
   await setField('input[name="discount"]', '5.50');
-  api.postPurchaseOutcome.mockResolvedValue({ kind: 'confirmed', value: {} });
+  api.postPurchaseV2Outcome.mockResolvedValue({ kind: 'committed', value: COMMITTED_CREDIT });
   await click(button('Post purchase'));
-  await vi.waitFor(() => expect(api.postPurchaseOutcome).toHaveBeenCalledTimes(1));
-  const [request, isRetry] = api.postPurchaseOutcome.mock.calls[0];
+  await vi.waitFor(() => expect(api.postPurchaseV2Outcome).toHaveBeenCalledTimes(1));
+  const [request, isRetry] = api.postPurchaseV2Outcome.mock.calls[0];
   expect(isRetry).toBe(false);
   expect(Object.keys(request)).toEqual(GOLDEN_KEYS);
   expect(request).toStrictEqual({ ...GOLDEN, clientId: expect.any(String) });

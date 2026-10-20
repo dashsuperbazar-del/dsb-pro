@@ -247,7 +247,7 @@ test('a purchase whose answer is lost is retried as the same bill, never posted 
     .filter({ has: page.getByRole('heading', { name: 'Post purchase' }) });
   await fillBillItem(purchase, 1, 'Retry Item', '3', '10');
   let calls = 0;
-  await page.route('**/rpc/post_purchase', async (route) => {
+  await page.route('**/rpc/post_purchase_v2', async (route) => {
     if (calls++ === 0) {
       await route.fetch(); // committed on the server ...
       await route.abort('connectionreset'); // ... answer lost
@@ -357,4 +357,104 @@ test('batch entry saves several single-line bills as drafts; nothing posts until
       .filter({ hasText: /Purchase posted/ })
       .first(),
   ).toBeVisible();
+});
+
+test('a cash bill with item discount/GST and a named charge posts with its round-off, paid in full, and the supplier ledger is settled', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(90000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await createOwnerShop(page);
+  await page.goto('/inventory');
+  await createItem(page, 'Cash Oil');
+  await page.goto('/purchases?new=1');
+  const purchase = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Post purchase', exact: true }) })
+    .last();
+  await expect(purchase.locator('input[name="date"]')).not.toHaveValue('');
+  const supplier = page
+    .getByRole('button', { name: 'Create & select supplier' })
+    .locator('xpath=..');
+  await page.getByText('Add a supplier', { exact: true }).click();
+  await supplier.getByPlaceholder('New supplier name').fill('Counter Supplier');
+  await supplier.getByRole('button', { name: 'Create & select supplier' }).click();
+  await expect(purchase.locator('select[name="partyId"]')).toHaveValue(/.+/);
+  await purchase.locator('input[name="billNo"]').fill('CASH-1');
+  // 3 x 33.53 = 100.59, 2% off = 98.5782, +5% GST = 103.50711 -> ₹103.51 (core = server line total).
+  await fillBillItem(purchase, 1, 'Cash Oil', '3', '33.53');
+  await purchase.getByLabel('Item 1 discount %', { exact: true }).fill('2');
+  await expect(purchase.getByTestId('item-1-gst-hint')).toHaveText(
+    'GST blank: the rate already includes GST. Nothing is added.',
+  );
+  await purchase.getByLabel('Item 1 GST %', { exact: true }).fill('5');
+  await expect(purchase.getByTestId('item-1-gst-hint')).toHaveText(
+    '5% GST added on top of the rate.',
+  );
+  await expect(purchase.getByTestId('item-1-amount')).toContainText('Item total ₹103.51');
+  await purchase.getByRole('button', { name: '+ Add charge', exact: true }).click();
+  await purchase.getByLabel('Extra charge 1 name', { exact: true }).fill('Transport');
+  await purchase.getByLabel('Extra charge 1 amount ₹', { exact: true }).fill('10');
+  await purchase.locator('textarea[name="notes"]').fill('Paid at the counter');
+  await purchase
+    .getByRole('group', { name: 'Payment type', exact: true })
+    .getByRole('button', { name: 'Cash', exact: true })
+    .click();
+  const totals = purchase.getByTestId('bill-total');
+  await expect(totals).toContainText('Total before round off₹113.51');
+  await expect(purchase.getByTestId('round-off')).toHaveText('Round off+₹0.49');
+  await expect(totals).toContainText('Bill total₹114.00');
+  await expect(purchase.getByTestId('paid-now')).toContainText('Paid in full ₹114.00 now by Cash');
+  const post = purchase.getByRole('button', { name: 'Post and pay ₹114.00 by Cash', exact: true });
+  await expect(post).toBeEnabled();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  const shots = process.env.BILL_V2_SHOTS;
+  await purchase.getByRole('region', { name: 'Item 1', exact: true }).scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: shots ? `${shots}/bill-v2-item.png` : testInfo.outputPath('bill-v2-item.png'),
+  });
+  await totals.scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: shots ? `${shots}/bill-v2-totals.png` : testInfo.outputPath('bill-v2-totals.png'),
+  });
+  await page.screenshot({
+    path: shots ? `${shots}/bill-v2-full.png` : testInfo.outputPath('bill-v2-full.png'),
+    fullPage: true,
+  });
+  await post.click();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Purchase posted (1 item)' }).first(),
+  ).toContainText('Paid in full ₹114.00 by Cash.');
+
+  await page.getByRole('link', { name: 'Bill list', exact: true }).click();
+  await page.getByRole('button', { name: /Counter Supplier.*CASH-1/ }).click();
+  const detail = page.getByLabel('Purchase detail');
+  await expect(detail.getByTestId('settlement-badge')).toHaveText('Settled');
+  await expect(detail).toContainText('₹114.00 · Cash bill');
+  await expect(detail).toContainText('Round off +₹0.49');
+  await expect(detail).toContainText('Notes: Paid at the counter');
+  await expect(detail).toContainText('Extra charges: Transport ₹10.00');
+  await expect(detail).toContainText('− 2% discount + 5% GST');
+  await expect(detail.getByRole('button', { name: 'Void bill and its payment' })).toBeVisible();
+  await detail.scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: shots ? `${shots}/bill-v2-detail.png` : testInfo.outputPath('bill-v2-detail.png'),
+  });
+
+  await detail.getByRole('link', { name: 'Supplier ledger', exact: true }).click();
+  const ledger = page.locator('.supplier-ledger');
+  await expect(ledger).toContainText('CASH-1');
+  await expect(ledger).toContainText('Closing: ₹0.00');
+  // The bill (+₹114.00) and its automatic cash payment (−₹114.00, linked to the bill) net to zero.
+  const payment = ledger
+    .locator('tr')
+    .filter({ hasText: 'Paid with purchase bill CASH-1' })
+    .first();
+  await expect(payment.locator('td[data-label="Change"]')).toHaveText('−₹114.00');
+  const billRow = ledger
+    .locator('tr')
+    .filter({ has: page.locator('td[data-label="Entry"]', { hasText: /^Purchase$/ }) })
+    .filter({ hasText: 'CASH-1' })
+    .first();
+  await expect(billRow.locator('td[data-label="Change"]')).toHaveText('₹114.00');
 });

@@ -3,7 +3,10 @@ import {
   listParties,
   listPurchaseHistory,
   getPurchaseDetail,
+  getPurchaseExtras,
+  voidPaidPurchaseOutcome,
   type Party,
+  type PurchaseExtras,
   type PurchaseRecord,
 } from '@dsb-pro/adapters';
 import { BillDocumentPreview } from '../components/BillDocumentPreview';
@@ -11,7 +14,8 @@ import { InventoryScreen } from './InventoryScreen';
 import { shopContext } from '../lib/shopContext';
 import { appRoute } from '../lib/paths';
 import { roundOffLabel, rupees } from '../lib/money';
-import { purchaseStatus } from '../lib/purchaseWorkflow';
+import { PAYMENT_LABEL, percentText } from '../lib/billExtras';
+import { settlementLabel, voidPaidAccess } from '../lib/purchaseSettlement';
 import { filterBills, type BillStatusFilter } from '../lib/purchaseListFilter';
 import {
   dropSnapshot,
@@ -37,6 +41,18 @@ export function PurchasesScreen({ url }: { url?: string }) {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [detail, setDetail] = useState<Awaited<ReturnType<typeof getPurchaseDetail>> | null>(null);
+  // billextras: payment type, notes, charges, photos and the ledger-derived settlement of the open bill.
+  // null while loading or when it could not be read (then no paid/unpaid badge is shown).
+  const [extras, setExtras] = useState<PurchaseExtras | null>(null);
+  const [extrasError, setExtrasError] = useState('');
+  const [role, setRole] = useState('');
+  // Void of a cash/UPI bill: one request id per bill, kept after an unconfirmed answer so a retry can
+  // never void twice or act on a different reason.
+  const [voidReason, setVoidReason] = useState('');
+  const [voidBusy, setVoidBusy] = useState(false);
+  const [voidNote, setVoidNote] = useState('');
+  const voidRequest = useRef<{ billId: string; clientId: string; reason: string } | null>(null);
+  const [voidUnconfirmed, setVoidUnconfirmed] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [canPost, setCanPost] = useState(false);
@@ -109,6 +125,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
         if (!active) return;
         setAllowed(true);
         setCanPost(['owner', 'manager'].includes(m.role));
+        setRole(m.role);
         setShop(s);
         // refresh() reads suppliers together with the bill list; no second supplier read here.
         await refresh(s);
@@ -132,15 +149,85 @@ export function PurchasesScreen({ url }: { url?: string }) {
     }
     const token = ++generation.current;
     setDetail(null);
+    setExtras(null);
+    setExtrasError('');
     setError('');
     setLoading(true);
+    if (voidRequest.current?.billId !== id) {
+      voidRequest.current = null;
+      setVoidUnconfirmed(false);
+      setVoidReason('');
+      setVoidNote('');
+    }
     try {
-      const d = await getPurchaseDetail(shop, id);
-      if (token === generation.current) setDetail(d);
+      const [d, x] = await Promise.all([
+        getPurchaseDetail(shop, id),
+        Promise.resolve()
+          .then(() => getPurchaseExtras(shop, id))
+          .then(
+            (v) => ({ ok: true as const, v }),
+            (e: unknown) => ({ ok: false as const, e }),
+          ),
+      ]);
+      if (token !== generation.current) return;
+      setDetail(d);
+      if (x.ok) setExtras(x.v);
+      else setExtrasError(`Payment details could not be loaded: ${String(x.e)}`);
     } catch (e) {
       if (token === generation.current) setError(String(e));
     } finally {
       if (token === generation.current) setLoading(false);
+    }
+  }
+  async function voidPaid(billId: string) {
+    if (voidBusy) return;
+    const reason = voidReason.trim();
+    if (!reason) return;
+    if (!voidRequest.current || voidRequest.current.billId !== billId) {
+      if (
+        !confirm(
+          'Void this bill and its payment? Stock comes off and the supplier payment is cancelled. This cannot be undone.',
+        )
+      )
+        return;
+      voidRequest.current = { billId, clientId: crypto.randomUUID(), reason };
+    }
+    const req = voidRequest.current;
+    setVoidBusy(true);
+    setVoidNote('');
+    try {
+      const outcome = await voidPaidPurchaseOutcome({
+        purchaseId: req.billId,
+        reason: req.reason,
+        clientId: req.clientId,
+      });
+      if (outcome.kind === 'unknown') {
+        setVoidUnconfirmed(true);
+        setVoidNote(
+          `Not confirmed: ${outcome.message}. Retry sends the same void request; it never voids twice.`,
+        );
+        return;
+      }
+      voidRequest.current = null;
+      setVoidUnconfirmed(false);
+      if (outcome.kind === 'rejected') {
+        setVoidNote(`Not voided: ${outcome.message}`);
+        return;
+      }
+      setVoidReason('');
+      setVoidNote(
+        outcome.value.paymentVoided
+          ? 'Bill and its payment voided.'
+          : 'Bill voided (its payment had already been voided).',
+      );
+      await refresh();
+      const note = outcome.value.paymentVoided
+        ? 'Bill and its payment voided.'
+        : 'Bill voided (its payment had already been voided).';
+      await open(billId);
+      setVoidNote(note);
+    } finally {
+      setVoidBusy(false);
     }
   }
   const name = (id: string | null) =>
@@ -302,9 +389,29 @@ export function PurchasesScreen({ url }: { url?: string }) {
               {name(detail.bill.party_id)} · {detail.bill.business_date}
             </p>
             <p>
-              <strong>{rupees(detail.bill.total_paise)}</strong> ·{' '}
-              {purchaseStatus(detail.bill, detail.balance)}
+              <strong>{rupees(detail.bill.total_paise)}</strong>
+              {extras && (
+                <>
+                  {' '}
+                  · {PAYMENT_LABEL[extras.paymentType]} bill ·{' '}
+                  <span
+                    class={`badge settle-${extras.settlement.status}`}
+                    data-testid="settlement-badge"
+                  >
+                    {settlementLabel(extras.settlement)}
+                  </span>
+                </>
+              )}
             </p>
+            {extrasError && (
+              <p class="muted">
+                <span class="badge" data-testid="settlement-badge">
+                  Payment status unavailable
+                </span>{' '}
+                {extrasError}
+              </p>
+            )}
+            {extras?.notes && <p data-testid="bill-notes">Notes: {extras.notes}</p>}
             {detail.balance && (
               <p>
                 Paid {rupees(detail.balance.allocated_paise)} · Returned{' '}
@@ -312,32 +419,86 @@ export function PurchasesScreen({ url }: { url?: string }) {
                 {rupees(detail.balance.outstanding_paise)}
               </p>
             )}
-            {detail.bill.bill_image_path && (
+            {(
+              extras?.images ?? (detail.bill.bill_image_path ? [detail.bill.bill_image_path] : [])
+            ).map((path, i) => (
               <BillDocumentPreview
-                key={detail.bill.id}
-                path={detail.bill.bill_image_path}
-                name={`${detail.bill.bill_no || 'Purchase bill'}.${detail.bill.bill_image_path.endsWith('.pdf') ? 'pdf' : 'webp'}`}
+                key={`${detail.bill.id}:${path}`}
+                path={path}
+                name={`${detail.bill.bill_no || 'Purchase bill'}${i ? `-${i + 1}` : ''}.${path.endsWith('.pdf') ? 'pdf' : 'webp'}`}
               />
-            )}
+            ))}
             <div class="record-list">
-              {detail.lines.map((l) => (
-                <div class="purchase-line" key={l.id}>
-                  <span>
-                    <strong>{l.item_name_snapshot}</strong>
-                    <small>
-                      {l.qty} {l.unit_name_snapshot} × {rupees(l.unit_price_paise)}
-                    </small>
-                  </span>
-                  <strong>{rupees(l.line_total_paise)}</strong>
-                </div>
-              ))}
+              {detail.lines.map((l) => {
+                const x = extras?.lines.find((e) => e.lineNo === l.line_no);
+                return (
+                  <div class="purchase-line" key={l.id}>
+                    <span>
+                      <strong>{l.item_name_snapshot}</strong>
+                      <small>
+                        {l.qty} {l.unit_name_snapshot} × {rupees(l.unit_price_paise)}
+                        {x?.discountBp ? ` − ${percentText(x.discountBp)}% discount` : ''}
+                        {x && x.gstBp !== null ? ` + ${percentText(x.gstBp)}% GST` : ''}
+                      </small>
+                    </span>
+                    <strong>{rupees(l.line_total_paise)}</strong>
+                  </div>
+                );
+              })}
             </div>
+            {!!extras?.charges.length && (
+              <p data-testid="bill-charges">
+                Extra charges:{' '}
+                {extras.charges.map((c) => `${c.label} ${rupees(c.amountPaise)}`).join(' · ')}
+              </p>
+            )}
             <p>
               Lines {rupees(detail.bill.subtotal_paise)} · Discount{' '}
               {rupees(detail.bill.discount_paise)} · Extra {rupees(detail.bill.extra_charges_paise)}
               {roundOffLabel(detail.bill.round_off_paise) &&
                 ` · ${roundOffLabel(detail.bill.round_off_paise)}`}
             </p>
+            {extras && detail.bill.status === 'POSTED' && extras.paymentType !== 'credit' && (
+              <section class="void-paid" aria-label="Void bill">
+                {voidPaidAccess(role) ? (
+                  <>
+                    <label>
+                      Reason for voiding
+                      <input
+                        value={voidReason}
+                        readOnly={voidUnconfirmed}
+                        disabled={voidBusy}
+                        placeholder="e.g. entered twice"
+                        onInput={(e) => setVoidReason(e.currentTarget.value)}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      class="danger"
+                      disabled={voidBusy || !voidReason.trim()}
+                      onClick={() => void voidPaid(detail.bill.id)}
+                    >
+                      {voidBusy
+                        ? 'Voiding…'
+                        : voidUnconfirmed
+                          ? 'Retry void (same request)'
+                          : 'Void bill and its payment'}
+                    </button>
+                    <small class="muted">
+                      Voids this {PAYMENT_LABEL[extras.paymentType]} bill, its stock and the{' '}
+                      {PAYMENT_LABEL[extras.paymentType]} payment of{' '}
+                      {rupees(detail.bill.total_paise)} together.
+                    </small>
+                  </>
+                ) : (
+                  <p class="muted" data-testid="void-not-allowed">
+                    Only the owner can void a {PAYMENT_LABEL[extras.paymentType]} bill, because it
+                    also voids the supplier payment. Ask the owner.
+                  </p>
+                )}
+                {voidNote && <p role="status">{voidNote}</p>}
+              </section>
+            )}
             <nav class="context-actions" aria-label="Bill actions">
               {canPost && detail.bill.status === 'POSTED' && (
                 <a

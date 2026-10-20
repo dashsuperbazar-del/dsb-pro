@@ -149,7 +149,7 @@ test('purchase: a crash after commit keeps the bill locked; the retry posts it o
   await expect(
     page.getByRole('status').filter({ hasText: 'Created Rice bag' }).first(),
   ).toBeVisible();
-  const net = commitThenCrash(page, '**/rpc/post_purchase');
+  const net = commitThenCrash(page, '**/rpc/post_purchase_v2');
   await stockTask(page, 'Purchases');
   const purchase = page
     .locator('section')
@@ -440,7 +440,7 @@ test('purchase without a supplier: a 502 after commit is retried in the same win
     page.getByRole('status').filter({ hasText: 'Created Loose item' }).first(),
   ).toBeVisible();
   let calls = 0;
-  await page.route('**/rpc/post_purchase', async (route) => {
+  await page.route('**/rpc/post_purchase_v2', async (route) => {
     if (calls++ === 0) {
       await route.fetch();
       await route.fulfill({ status: 502, contentType: 'text/plain', body: 'Bad Gateway' });

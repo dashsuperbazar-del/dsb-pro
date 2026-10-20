@@ -34,10 +34,27 @@ const api = vi.hoisted(() => ({
   listPurchaseHistory: vi.fn().mockResolvedValue([]),
   getPurchaseDetail: vi.fn(),
   postPurchaseOutcome: vi.fn(),
+  postPurchaseV2Outcome: vi.fn(),
+  getPurchaseExtras: vi.fn().mockResolvedValue({
+    paymentType: 'credit',
+    notes: null,
+    lines: [],
+    charges: [],
+    images: [],
+    settlement: { status: 'unpaid' },
+  }),
   listItemPurchasePrices: vi.fn().mockResolvedValue([]),
   listItemSaleMovements: vi.fn().mockResolvedValue({ sales: [], returns: [], truncated: false }),
 }));
 vi.mock('@dsb-pro/adapters', () => api);
+// A real post_purchase_v2 answer for a credit bill (the screen reads only kind and the paid fields).
+const COMMITTED_CREDIT = {
+  billId: 'b0000000-0000-0000-0000-000000000001',
+  paymentId: null,
+  totalPaise: 0,
+  roundOffPaise: 0,
+  businessDate: '2026-10-12',
+};
 const offline = vi.hoisted(() => ({
   getSyncedOfflineCatalog: vi.fn(),
   runSyncNow: vi.fn(),
@@ -330,9 +347,29 @@ test('reload restores all draft fields and unfinished edit without posting; conf
   await enter(host, 'billNo', 'UNFINISHED');
   await enter(host, 'date', '2026-10-01');
   await enter(host, 'discount', '0.75');
-  await enter(host, 'extra', '0.35');
+  // The repeated bill's single extra amount became one named row; it is edited and a second row added.
+  expect(host.querySelector<HTMLInputElement>('[aria-label="Extra charge 1 name"]')!.value).toBe(
+    'Extra charges',
+  );
+  await enterLabel(host, 'Extra charge 1 amount ₹', '0.35');
+  await act(async () => {
+    [...host.querySelectorAll('button')].find((b) => b.textContent === '+ Add charge')!.click();
+  });
+  await enterLabel(host, 'Extra charge 2 name', 'Loading');
+  await enterLabel(host, 'Extra charge 2 amount ₹', '1');
   await enterLabel(host, 'Item 1 quantity', '3.25');
   await enterLabel(host, 'Item 1 rate ₹', '1.45');
+  await enterLabel(host, 'Item 1 discount %', '5');
+  await act(async () => {
+    const notes = host.querySelector<HTMLTextAreaElement>('textarea[name="notes"]')!;
+    notes.value = 'Rate agreed on phone';
+    notes.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await act(async () => {
+    [...host.querySelectorAll('[aria-label="Payment type"] button')]
+      .find((b) => b.textContent === 'UPI')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
   // An unfinished second card (no item chosen yet) is part of the draft too.
   await act(async () => {
     [...host.querySelectorAll('button')].find((b) => b.textContent === '+ Add item')!.click();
@@ -359,14 +396,27 @@ test('reload restores all draft fields and unfinished edit without posting; conf
   expect(host.querySelector<HTMLInputElement>('input[name="billNo"]')!.value).toBe('UNFINISHED');
   expect(host.querySelector<HTMLInputElement>('input[name="date"]')!.value).toBe('2026-10-01');
   expect(host.querySelector<HTMLInputElement>('input[name="discount"]')!.value).toBe('0.75');
-  expect(host.querySelector<HTMLInputElement>('input[name="extra"]')!.value).toBe('0.35');
   const field = (label: string) =>
     host.querySelector<HTMLInputElement>(`[aria-label="${label}"]`)!.value;
+  expect(field('Extra charge 1 name')).toBe('Extra charges');
+  expect(field('Extra charge 1 amount ₹')).toBe('0.35');
+  expect(field('Extra charge 2 name')).toBe('Loading');
+  expect(field('Extra charge 2 amount ₹')).toBe('1');
+  expect(field('Item 1 discount %')).toBe('5');
+  expect(field('Item 1 GST %')).toBe('');
+  expect(host.querySelector<HTMLTextAreaElement>('textarea[name="notes"]')!.value).toBe(
+    'Rate agreed on phone',
+  );
+  expect(
+    [...host.querySelectorAll('[aria-label="Payment type"] button')]
+      .find((b) => b.textContent === 'UPI')!
+      .getAttribute('aria-pressed'),
+  ).toBe('true');
   expect(field('Item 1 quantity')).toBe('3.25');
   expect(field('Item 1 rate ₹')).toBe('1.45');
   expect(field('Item 2 name')).toBe('Item');
   expect(field('Item 2 quantity')).toBe('1');
-  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  expect(api.postPurchaseV2Outcome).not.toHaveBeenCalled();
   // A started card that cannot post blocks the bill and says which item needs a look.
   await act(async () => {
     host
@@ -375,11 +425,25 @@ test('reload restores all draft fields and unfinished edit without posting; conf
       .requestSubmit(host.querySelector<HTMLButtonElement>('.bill-bar button'));
   });
   expect(host.textContent).toContain('Item 2: Choose the item.');
-  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  expect(api.postPurchaseV2Outcome).not.toHaveBeenCalled();
   await act(async () => {
     host.querySelector<HTMLButtonElement>('[aria-label="Remove item 2"]')!.click();
   });
-  api.postPurchaseOutcome.mockResolvedValue({ kind: 'confirmed', value: {} });
+  // A UPI bill needs a supplier: refused before anything is sent; the bill goes as credit instead.
+  await act(async () => {
+    host
+      .querySelector('input[name="billNo"]')!
+      .closest('form')!
+      .requestSubmit(host.querySelector<HTMLButtonElement>('.bill-bar button'));
+  });
+  expect(host.textContent).toContain('A UPI bill is paid to a supplier');
+  expect(api.postPurchaseV2Outcome).not.toHaveBeenCalled();
+  await act(async () => {
+    [...host.querySelectorAll('[aria-label="Payment type"] button')]
+      .find((b) => b.textContent === 'Credit')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  api.postPurchaseV2Outcome.mockResolvedValue({ kind: 'committed', value: COMMITTED_CREDIT });
   await act(async () => {
     host
       .querySelector('input[name="billNo"]')!
@@ -387,12 +451,17 @@ test('reload restores all draft fields and unfinished edit without posting; conf
       .requestSubmit(host.querySelector<HTMLButtonElement>('.bill-bar button'));
   });
   await vi.waitFor(() => expect(host.textContent).toContain('Purchase posted'));
-  expect(api.postPurchaseOutcome.mock.calls[0][0]).toMatchObject({
+  expect(api.postPurchaseV2Outcome.mock.calls[0][0]).toMatchObject({
     clientId,
     billNo: 'UNFINISHED',
     discountPaise: 75,
-    extraChargesPaise: 35,
-    lines: [{ itemId: 'a', qty: '3.25', unitPricePaise: 145 }],
+    paymentType: 'credit',
+    notes: 'Rate agreed on phone',
+    charges: [
+      { label: 'Extra charges', amountPaise: 35 },
+      { label: 'Loading', amountPaise: 100 },
+    ],
+    lines: [{ itemId: 'a', qty: '3.25', unitPricePaise: 145, discountBp: 500, gstBp: null }],
   });
   expect(Object.keys(localStorage).filter((k) => k.startsWith('dsb-purchase-draft:'))).toEqual([]);
 });
@@ -415,7 +484,7 @@ test('a signed-in account change hides prior drafts and blocks the old editor', 
   expect(host.textContent).toContain('Your signed-in account changed');
   expect(host.textContent).not.toContain('PRIVATE-BILL');
   expect(host.querySelector('input[name="billNo"]')).toBeNull();
-  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  expect(api.postPurchaseV2Outcome).not.toHaveBeenCalled();
   expect(Object.keys(localStorage).some((k) => k.startsWith('dsb-purchase-draft:user:shop:'))).toBe(
     true,
   );
@@ -445,7 +514,7 @@ test('a rejected restored payload never rotates its identity into a new potentia
       },
     ],
   });
-  api.postPurchaseOutcome.mockResolvedValue({
+  api.postPurchaseV2Outcome.mockResolvedValue({
     kind: 'rejected',
     message: 'DSB_PAYLOAD_MISMATCH: client_id already used for a different purchase',
   });
@@ -464,9 +533,9 @@ test('a rejected restored payload never rotates its identity into a new potentia
   await vi.waitFor(() => expect(host.textContent).toContain('DSB_PAYLOAD_MISMATCH'));
   await enter(host, 'billNo', 'changed-but-same-draft');
   await submit();
-  expect(api.postPurchaseOutcome).toHaveBeenCalledTimes(2);
-  expect(api.postPurchaseOutcome.mock.calls[1][0].clientId).toBe(
-    api.postPurchaseOutcome.mock.calls[0][0].clientId,
+  expect(api.postPurchaseV2Outcome).toHaveBeenCalledTimes(2);
+  expect(api.postPurchaseV2Outcome.mock.calls[1][0].clientId).toBe(
+    api.postPurchaseV2Outcome.mock.calls[0][0].clientId,
   );
   expect(host.querySelector('[data-testid="bill-total"]')?.textContent).toContain('₹2.00');
 });
@@ -494,7 +563,7 @@ test('UNKNOWN posting hides the unposted draft label and retains the exact reque
       },
     ],
   });
-  api.postPurchaseOutcome.mockResolvedValue({ kind: 'unknown', message: 'answer lost' });
+  api.postPurchaseV2Outcome.mockResolvedValue({ kind: 'unknown', message: 'answer lost' });
   await act(async () => {
     render(<InventoryScreen purchaseOnly purchaseRepeatId="unknown-source" />, host);
   });
@@ -508,7 +577,7 @@ test('UNKNOWN posting hides the unposted draft label and retains the exact reque
   });
   await vi.waitFor(() => expect(host.textContent).toContain('Not confirmed'));
   expect(host.textContent).not.toContain('not posted');
-  const first = api.postPurchaseOutcome.mock.calls[0][0];
+  const first = api.postPurchaseV2Outcome.mock.calls[0][0];
   await act(async () => {
     render(null, host);
   });
@@ -525,7 +594,7 @@ test('UNKNOWN posting hides the unposted draft label and retains the exact reque
       .closest('form')!
       .requestSubmit(host.querySelector<HTMLButtonElement>('.bill-bar button'));
   });
-  const retry = { ...api.postPurchaseOutcome.mock.calls[1][0] };
+  const retry = { ...api.postPurchaseV2Outcome.mock.calls[1][0] };
   delete retry.savedAt; // local persistence metadata is never part of the RPC payload
   expect(retry).toEqual(JSON.parse(JSON.stringify(first)));
 });
@@ -622,7 +691,7 @@ test('bill bytes and complete draft are durable before upload; reload resumes th
   expect(
     [...host.querySelectorAll('button')].find((b) => b.textContent === 'Post purchase')!.disabled,
   ).toBe(true);
-  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  expect(api.postPurchaseV2Outcome).not.toHaveBeenCalled();
   const original = api.uploadBillDocument.mock.calls[0][0];
   await act(async () => {
     render(null, host);
@@ -641,11 +710,11 @@ test('bill bytes and complete draft are durable before upload; reload resumes th
   await vi.waitFor(() => expect(host.textContent).toContain('Upload confirmed'));
   expect(api.uploadBillDocument.mock.calls[1][0].path).toBe(original.path);
   expect(host.querySelector<HTMLInputElement>('input[name="billNo"]')!.value).toBe('PHOTO-DRAFT');
-  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  expect(api.postPurchaseV2Outcome).not.toHaveBeenCalled();
   await act(async () => {
     finish();
   });
-  api.postPurchaseOutcome.mockResolvedValue({ kind: 'confirmed', value: {} });
+  api.postPurchaseV2Outcome.mockResolvedValue({ kind: 'committed', value: COMMITTED_CREDIT });
   await act(async () => {
     host
       .querySelector('input[name="billNo"]')!
@@ -653,8 +722,8 @@ test('bill bytes and complete draft are durable before upload; reload resumes th
       .requestSubmit(host.querySelector<HTMLButtonElement>('.bill-bar button'));
   });
   await vi.waitFor(() => expect(host.textContent).toContain('Purchase posted'));
-  expect(api.postPurchaseOutcome.mock.calls[0][0]).toMatchObject({
-    billImagePath: original.path,
+  expect(api.postPurchaseV2Outcome.mock.calls[0][0]).toMatchObject({
+    images: [original.path],
     clientId: (storedAtUpload as { clientId: string }).clientId,
   });
 });
@@ -697,7 +766,7 @@ test('a failed document preparation cannot silently post without the intended at
   await vi.waitFor(() => expect(host.textContent).toContain('Choose a valid PDF'));
   const post = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Post purchase')!;
   expect(post.disabled).toBe(true);
-  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  expect(api.postPurchaseV2Outcome).not.toHaveBeenCalled();
   await act(async () => {
     [...host.querySelectorAll('button')]
       .find((b) => b.textContent === 'Continue without attachment')!
@@ -757,7 +826,7 @@ test('picker eviction preserves the document intent and requires a decision afte
   expect(host.textContent).toContain('Document selection needs review');
   const post = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Post purchase')!;
   expect(post.disabled).toBe(true);
-  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  expect(api.postPurchaseV2Outcome).not.toHaveBeenCalled();
   await act(async () => {
     [...host.querySelectorAll('button')]
       .find((b) => b.textContent === 'Continue without attachment')!
@@ -841,7 +910,7 @@ test('resume stays disabled through the catalogue-to-new-context gap and preserv
     expect(host.querySelector<HTMLInputElement>('input[name="billNo"]')!.value).toBe('RESUME-GAP');
     expect(host.querySelector<HTMLInputElement>('input[name="date"]')!.value).toBe('2026-10-01');
     expect(host.querySelector('[data-testid="bill-total"]')?.textContent).toContain('₹2.00');
-    expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+    expect(api.postPurchaseV2Outcome).not.toHaveBeenCalled();
   } finally {
     observer.disconnect();
   }
@@ -1083,19 +1152,19 @@ test('P06: a quick bill checks items against its paper total before posting and 
   const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
   await submit();
   expect(confirmSpy).toHaveBeenCalledTimes(1);
-  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  expect(api.postPurchaseV2Outcome).not.toHaveBeenCalled();
   expect(localStorage.getItem('dsb-pending-purchase:shop')).toBeNull();
   // An unknown outcome locks the request; the retry resends it without asking again.
   confirmSpy.mockReturnValue(true);
-  api.postPurchaseOutcome.mockResolvedValueOnce({ kind: 'unknown', message: 'network' });
+  api.postPurchaseV2Outcome.mockResolvedValueOnce({ kind: 'unknown', message: 'network' });
   await submit();
   await vi.waitFor(() => expect(host.textContent).toContain('Not confirmed'));
   expect(confirmSpy).toHaveBeenCalledTimes(2);
-  api.postPurchaseOutcome.mockResolvedValueOnce({ kind: 'confirmed', value: {} });
+  api.postPurchaseV2Outcome.mockResolvedValueOnce({ kind: 'committed', value: COMMITTED_CREDIT });
   await submit();
   await vi.waitFor(() => expect(host.textContent).toContain('Purchase posted'));
   expect(confirmSpy).toHaveBeenCalledTimes(2);
-  expect(api.postPurchaseOutcome).toHaveBeenCalledTimes(2);
+  expect(api.postPurchaseV2Outcome).toHaveBeenCalledTimes(2);
   // The next purchase carries no paper total, on screen or in its autosaved draft.
   expect(host.querySelector('[data-testid="paper-total"]')).toBeNull();
   await enter(host, 'billNo', 'NEXT');
@@ -1165,7 +1234,7 @@ test('P03: an item created inside a bill card goes through the Add item adapter,
   expect(api.createItem.mock.calls[1]![0].clientId).toBe(api.createItem.mock.calls[0]![0].clientId);
   await vi.waitFor(() => expect(api.listItems.mock.calls.length).toBeGreaterThan(reads));
   expect(nameBox().value).toBe('New Rice');
-  expect(api.postPurchaseOutcome).not.toHaveBeenCalled();
+  expect(api.postPurchaseV2Outcome).not.toHaveBeenCalled();
   api.listItems.mockResolvedValue([
     { id: 'a', name: 'Item A', unit1: 'piece', min_stock: 0 },
     { id: 'b', name: 'Item B', unit1: 'piece', min_stock: 0 },
