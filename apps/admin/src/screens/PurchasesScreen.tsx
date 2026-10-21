@@ -8,6 +8,7 @@ import {
   getPurchaseEditLinks,
   voidPaidPurchaseOutcome,
   listPurchaseSettlements,
+  listOpenRemarks,
   type Party,
   type PurchaseEditLinks,
   type PurchaseSettlement,
@@ -36,6 +37,8 @@ import {
   snapshotUserId,
 } from '../lib/routeSnapshot';
 import { SnapshotNote } from '../components/SnapshotNote';
+import { RemarkBox } from '../components/RemarkBox';
+import { pendingDocIds } from '../lib/remarkQueue';
 import { createDetailCache } from '../lib/detailCache';
 import { ShareImageButton } from '../components/ShareImageButton';
 import { purchaseBillDoc } from '../lib/shareImage';
@@ -71,7 +74,17 @@ export function PurchasesScreen({ url }: { url?: string }) {
   const [queryText, setQueryText] = useState('');
   const [supplier, setSupplier] = useState('');
   const [sort, setSort] = useState('date');
-  const [statusFilter, setStatusFilter] = useState<BillStatusFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<BillStatusFilter | 'pending'>('all');
+  // 0067: bills with an open remark ("Pending" badge and filter); null = not known (no badge, filter empty).
+  const [pending, setPending] = useState<Set<string> | null>(null);
+  function loadPending(shopId: string) {
+    void Promise.resolve()
+      .then(() => listOpenRemarks(shopId))
+      .then(
+        (r) => setPending(pendingDocIds(r, 'purchase')),
+        () => setPending(null),
+      );
+  }
   // Ledger settlement per listed bill (Paid/Partial/Unpaid/Void badge); missing = not known, no badge.
   const [settlements, setSettlements] = useState<Map<string, PurchaseSettlement>>(new Map());
   function loadSettlements(shopId: string, bills: PurchaseRecord[], reset: boolean) {
@@ -161,6 +174,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
       setRows(bills);
       setParties(suppliers);
       loadSettlements(shopId, bills, true);
+      loadPending(shopId);
       setMore(bills.length === 50);
       setSnapshotAt(null);
       putSnapshot<PurchaseListSnapshot>('purchases', userRef.current, shopId, {
@@ -349,11 +363,12 @@ export function PurchasesScreen({ url }: { url?: string }) {
     parties.find((p) => p.id === id)?.name ?? (id ? 'Supplier unavailable' : 'No supplier');
   const visible = filterBills(
     rows,
-    { status: statusFilter, from: fromDate, to: toDate },
+    { status: statusFilter === 'pending' ? 'all' : statusFilter, from: fromDate, to: toDate },
     settlements,
   )
     .filter(
       (b) =>
+        (statusFilter !== 'pending' || !!pending?.has(b.id)) &&
         (!supplier || b.party_id === supplier) &&
         `${b.bill_no ?? ''} ${name(b.party_id)} ${b.business_date} ${rupees(b.total_paise)}`
           .toLowerCase()
@@ -436,7 +451,9 @@ export function PurchasesScreen({ url }: { url?: string }) {
               Status
               <select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.currentTarget.value as BillStatusFilter)}
+                onChange={(e) =>
+                  setStatusFilter(e.currentTarget.value as BillStatusFilter | 'pending')
+                }
               >
                 <option value="all">All bills</option>
                 <option value="posted">Posted</option>
@@ -444,6 +461,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
                 <option value="paid">Paid</option>
                 <option value="partial">Partial</option>
                 <option value="unpaid">Unpaid</option>
+                <option value="pending">Pending items</option>
               </select>
             </label>
             <label>
@@ -489,6 +507,11 @@ export function PurchasesScreen({ url }: { url?: string }) {
                       data-testid="list-settlement"
                     >
                       {listBadge(settlements.get(b.id))}
+                    </span>
+                  )}
+                  {pending?.has(b.id) && (
+                    <span class="badge remark-open" data-testid="list-pending">
+                      Pending
                     </span>
                   )}
                 </span>
@@ -653,6 +676,26 @@ export function PurchasesScreen({ url }: { url?: string }) {
               <VoidReasonNote shopId={shop} billId={detail.bill.id} />
             )}
             {extras?.notes && <p data-testid="bill-notes">Notes: {extras.notes}</p>}
+            {shop && (
+              <RemarkBox
+                shopId={shop}
+                docKind="purchase"
+                docId={detail.bill.id}
+                userId={userRef.current}
+                role={role}
+                onLoaded={(list) => {
+                  const id = detail.bill.id;
+                  const has = list.some((r) => r.status === 'OPEN');
+                  setPending((old) => {
+                    if (!old || old.has(id) === has) return old;
+                    const next = new Set(old);
+                    if (has) next.add(id);
+                    else next.delete(id);
+                    return next;
+                  });
+                }}
+              />
+            )}
             {detail.balance && (
               <p>
                 Paid {rupees(detail.balance.allocated_paise)} · Returned{' '}

@@ -6,7 +6,8 @@ select plan(5);
 create temp table export_map(tbl text primary key, export_key text, reason text) on commit drop;
 insert into export_map values
  ('account_openings','accountOpenings',null),('audit_log','auditLog',null),('categories','categories',null),
- ('customers','customers',null),('devices','devices',null),('doc_sequences','documentSequences',null),
+ ('customers','customers',null),('devices','devices',null),
+ ('document_remark_events','documentRemarkEvents',null),('document_remarks','documentRemarks',null),('doc_sequences','documentSequences',null),
  ('expenses','expenses',null),('financial_requests','financialRequests',null),('invites','invites',null),
  ('item_barcodes','itemBarcodes',null),('item_prices','itemPrices',null),('items','items',null),
  ('legacy_import_runs','legacyImportRuns',null),('opening_settlements','openingSettlements',null),

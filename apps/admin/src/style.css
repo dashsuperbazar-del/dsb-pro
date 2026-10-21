@@ -1531,6 +1531,46 @@ body {
   border-color: var(--danger);
   color: var(--danger);
 }
+.badge.remark-open,
+.badge.remark-waiting {
+  border-color: var(--warning);
+  color: var(--warning);
+  margin-left: 4px;
+}
+.badge.remark-settled {
+  border-color: var(--success);
+  color: var(--success);
+}
+.remark-box {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+.remark-box h3 {
+  margin: 0;
+}
+.remark-box textarea {
+  width: 100%;
+  min-height: 56px;
+}
+.remark-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+}
+.remark-list li {
+  overflow-wrap: anywhere;
+}
+.remark-actions {
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.remark-history {
+  margin: 4px 0 0;
+  font-size: 14px;
+}
 .void-paid {
   display: grid;
   gap: 6px;

@@ -291,3 +291,22 @@ export {
   purchaseVoidRequestId,
   voidPurchaseOutcome,
 } from './purchaseVoid';
+export {
+  listDocumentRemarks,
+  listOpenRemarks,
+  listRemarkHistory,
+  addRemarkOutcome,
+  editRemarkOutcome,
+  settleRemarkOutcome,
+  reopenRemarkOutcome,
+  plainRemarkRefusal,
+  normalizeRemark,
+  REMARK_MAX_LENGTH,
+} from './remarks';
+export type {
+  DocumentRemark,
+  OpenRemark,
+  RemarkEvent,
+  RemarkDocKind,
+  RemarkStatus,
+} from './remarks';

@@ -25,6 +25,15 @@ const api = vi.hoisted(() => ({
     editedFromId: string | null;
     replacedById: string | null;
   } | null),
+  listOpenRemarks: vi.fn().mockResolvedValue([]),
+  listDocumentRemarks: vi.fn().mockResolvedValue([]),
+  listRemarkHistory: vi.fn().mockResolvedValue([]),
+  addRemarkOutcome: vi.fn(),
+  editRemarkOutcome: vi.fn(),
+  settleRemarkOutcome: vi.fn(),
+  reopenRemarkOutcome: vi.fn(),
+  plainRemarkRefusal: () => '',
+  REMARK_MAX_LENGTH: 300,
 }));
 vi.mock('@dsb-pro/adapters', () => api);
 vi.mock('./InventoryScreen', () => ({
@@ -469,4 +478,68 @@ test('"Edit bill" (0066): offered to owner/manager on a posted bill only when th
       'Open the original',
     ),
   );
+});
+
+test('remarks (0067): "Pending" badge and filter from open remarks; the bill view shows its remark box', async () => {
+  const { clearSnapshots } = await import('../lib/routeSnapshot');
+  clearSnapshots();
+  api.listPurchaseHistory.mockResolvedValue([bill('r1', 'RND-1'), bill('r0', 'OLD-0')]);
+  api.listOpenRemarks.mockResolvedValue([
+    {
+      id: 'rm1',
+      docKind: 'purchase',
+      docId: 'r1',
+      docNo: 'RND-1',
+      partyName: null,
+      businessDate: '2026-10-13',
+      docStatus: 'POSTED',
+      body: '5 kg sugar short',
+      createdAt: '2026-10-13T10:00:00Z',
+      version: 1,
+    },
+  ]);
+  api.listDocumentRemarks.mockResolvedValue([
+    {
+      id: 'rm1',
+      docId: 'r1',
+      fromEarlierBill: false,
+      body: '5 kg sugar short',
+      status: 'OPEN',
+      version: 1,
+      createdBy: 'user',
+      createdAt: '2026-10-13T10:00:00Z',
+      settledBy: null,
+      settledAt: null,
+    },
+  ]);
+  await act(async () => {
+    render(<PurchasesScreen url="/purchases" />, host);
+  });
+  await vi.waitFor(() =>
+    expect(host.querySelectorAll('[data-testid="list-pending"]').length).toBe(1),
+  );
+  const select = [...host.querySelectorAll('select')].find((s) =>
+    [...s.options].some((o) => o.value === 'pending'),
+  )!;
+  await act(async () => {
+    select.value = 'pending';
+    select.dispatchEvent(new Event('change'));
+  });
+  expect(host.textContent).toContain('RND-1');
+  expect(host.textContent).not.toContain('OLD-0');
+  api.getPurchaseDetail.mockResolvedValueOnce({
+    bill: { ...bill('r1', 'RND-1'), bill_image_path: null },
+    lines: [],
+    balance: null,
+  });
+  await act(async () => {
+    [...host.querySelectorAll('button')].find((b) => b.textContent?.includes('RND-1'))!.click();
+  });
+  await vi.waitFor(() =>
+    expect(host.querySelector('[data-testid="remark"]')?.textContent).toContain('5 kg sugar short'),
+  );
+  expect(api.listDocumentRemarks).toHaveBeenCalledWith('purchase', 'r1');
+  expect(host.textContent).toContain('Mark settled');
+  api.listOpenRemarks.mockResolvedValue([]);
+  api.listDocumentRemarks.mockResolvedValue([]);
 });
