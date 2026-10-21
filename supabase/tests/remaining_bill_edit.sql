@@ -3,7 +3,7 @@
 -- refuses unsafe edits (returns, consumed stock, supplier/payment-type change with a payment) with distinct codes.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(62);
+select plan(75);
 insert into auth.users(id) values
  ('e6000000-0000-0000-0000-000000000001'),  -- owner
  ('e6000000-0000-0000-0000-000000000002'),  -- manager
@@ -149,6 +149,36 @@ select is((select outstanding_paise from purchase_bill_outstanding where purchas
   'only the assigned ₹40 is carried; ₹20 is due');
 select is(pg_temp.bal('s')-current_setting('e6.balc')::numeric,1000::numeric,'supplier balance = ₹60 bill - ₹50 paid');
 select is((select count(*) from payments where party_id=pg_temp.id('s')),1::bigint,'still one payment after two edits');
+-- The corrected cash bill stays voidable with its payment (the payment is found through edited_from_id).
+select is(void_paid_purchase(pg_temp.id('c2'),'entered twice','e6000000-0000-0000-0000-0000000000f1')->>'paymentVoided','true',
+  'owner voids the corrected cash bill and its carried payment together');
+select is((select row(p.status,b.status)::text from payments p,purchase_bills b where p.id=pg_temp.id('pay') and b.id=pg_temp.id('c2')),
+  '(VOID,VOID)','payment and corrected bill both void');
+select is(pg_temp.bal('s')-current_setting('e6.balc')::numeric,0::numeric,'supplier balance back where it started');
+
+-- 6c. A cash bill whose payment was voided: corrected only as Credit; an edit never creates a payment.
+select set_config('e6.g1',pg_temp.post('e6000000-0000-0000-0000-0000000000a5',pg_temp.bill('s','cash','a',2,1000))::text,false);
+select set_config('e6.gpay',(select payment_id::text from payment_allocations where purchase_bill_id=pg_temp.id('g1') and status='POSTED'),false);
+select lives_ok($$select void_supplier_payment(pg_temp.id('gpay'),'wrong','e6000000-0000-0000-0000-0000000000f2')$$,'its payment is voided');
+select throws_like($$select pg_temp.edit('g1','e6000000-0000-0000-0000-0000000000eb',pg_temp.bill('s','cash','a',3,1000))$$,
+  '%DSB_EDIT_PAYMENT_GONE%','a paid bill without its payment cannot be re-saved as paid');
+select set_config('e6.g2',pg_temp.edit('g1','e6000000-0000-0000-0000-0000000000eb',pg_temp.bill('s','credit','a',3,1000))->>'billId',false);
+select is((select payment_type from purchase_bills where id=pg_temp.id('g2')),'credit','corrected as Credit');
+select is((select count(*) from payments where party_id=pg_temp.id('s') and status='POSTED'),0::bigint,'no payment created by the edit');
+select throws_like($$select pg_temp.edit('g2','e6000000-0000-0000-0000-0000000000ec',pg_temp.bill('s','cash','a',3,1000))$$,
+  '%DSB_EDIT_PAYMENT_TYPE_CHANGED%','a credit bill cannot become paid through an edit');
+
+-- 6d. A carried allocation is never backdated (as-of reports keep the day it was assigned).
+select set_config('e6.h1',pg_temp.post('e6000000-0000-0000-0000-0000000000a6',
+  pg_temp.bill('s','credit','a',1,1000)||jsonb_build_object('business_date',shop_business_date(pg_temp.id('shop'))-5))::text,false);
+select set_config('e6.hpay',record_supplier_payment(pg_temp.id('shop'),pg_temp.id('s'),shop_business_date(pg_temp.id('shop'))-5,1000,'cash',null,
+  '[]'::jsonb,'e6000000-0000-0000-0000-0000000000f3')::text,false);
+select lives_ok($$select allocate_supplier_payment(pg_temp.id('hpay'),jsonb_build_array(jsonb_build_object('purchase_bill_id',pg_temp.id('h1'),
+  'amount_paise',1000)),'e6000000-0000-0000-0000-0000000000f4')$$,'payment assigned today to a bill from 5 days ago');
+select set_config('e6.h2',pg_temp.edit('h1','e6000000-0000-0000-0000-0000000000ed',
+  pg_temp.bill('s','credit','a',1,1000)||jsonb_build_object('business_date',shop_business_date(pg_temp.id('shop'))-5))->>'billId',false);
+select is((select effective_date from payment_allocations where purchase_bill_id=pg_temp.id('h2') and status='POSTED'),
+  shop_business_date(pg_temp.id('shop')),'carried allocation keeps today, not the payment''s older date');
 
 -- 7. Returns block an edit.
 select set_config('e6.k1',pg_temp.post('e6000000-0000-0000-0000-0000000000a3',pg_temp.bill('s','credit','a',3,1000))::text,false);
@@ -175,6 +205,15 @@ set role authenticated;
 -- Same quantity at a corrected rate: stock nets to zero, so it is allowed.
 select set_config('e6.d2',pg_temp.edit('d1','e6000000-0000-0000-0000-0000000000ea',pg_temp.bill('s','credit','b',5,120))->>'billId',false);
 select is(pg_temp.stock('b'),1::numeric,'rate-only correction keeps stock');
+-- Already oversold (shop allows negative sales): its own code, nothing changes.
+reset role;
+update shops set allow_negative_stock=true where id=pg_temp.id('shop');
+set role authenticated;
+select lives_ok(format($q$select post_sale(%L::uuid,null,null,0,0,'e6-sale-2',jsonb_build_array(jsonb_build_object('item_id',%L,'unit_level',1,'qty',3,'price_kind','retail')),
+  jsonb_build_array(jsonb_build_object('amount_paise',1500,'mode','cash')),null)$q$,current_setting('e6.shop'),current_setting('e6.b')),'oversold to -2');
+select throws_like(format($$select edit_purchase_bill(%L,'e6000000-0000-0000-0000-0000000000ee',pg_temp.bill('s','credit','b',5,140))$$,
+  current_setting('e6.d2')),'%DSB_EDIT_STOCK_NEGATIVE%E6 Dal%','an item already below zero needs a stock count first');
+select is(pg_temp.stock('b'),-2::numeric,'stock unchanged');
 select is(pg_temp.bal('s')-current_setting('e6.balk')::numeric,100::numeric,'supplier balance moves by the rate difference');
 
 -- 9. Links are server-set only.

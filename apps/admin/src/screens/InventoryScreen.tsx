@@ -349,6 +349,11 @@ export function InventoryScreen({
   // post as a new bill next to the original.
   const [purchaseEditOf, setPurchaseEditOf] = useState('');
   const [purchaseEditLabel, setPurchaseEditLabel] = useState('');
+  // A stored edit request (e.g. after a reload) is an edit even when this form did not open it.
+  const lockedEditOf =
+    purchaseLocked && lockedPurchase.current && isV2Pending(lockedPurchase.current)
+      ? (lockedPurchase.current.editOf ?? '')
+      : '';
   const [purchaseStorageBlocked, setPurchaseStorageBlocked] = useState('');
   useEffect(() => {
     if (!shopId) return;
@@ -778,7 +783,14 @@ export function InventoryScreen({
               label,
               billNo: d.bill.bill_no ?? '',
               date: d.bill.business_date,
-              type: extras.paymentType,
+              // An edit keeps the payment type, except a paid bill whose payment is no longer assigned
+              // to it (released/voided): the server corrects that only as Credit.
+              type:
+                extras.paymentType !== 'credit' &&
+                extras.settlement.allocatedPaise !== null &&
+                BigInt(extras.settlement.allocatedPaise) === 0n
+                  ? 'credit'
+                  : extras.paymentType,
               notes: extras.notes ?? '',
             };
             setMessage(
@@ -2400,7 +2412,13 @@ export function InventoryScreen({
         onInput={() => setDraftTouched(true)}
         onChange={() => setDraftTouched(true)}
       >
-        <h2>{purchaseEditOf ? 'Edit bill' : 'Post purchase'}</h2>
+        <h2>{purchaseEditOf || lockedEditOf ? 'Edit bill' : 'Post purchase'}</h2>
+        {lockedEditOf && (
+          <p class="card" data-testid="editing-bill-locked" role="status">
+            An unconfirmed bill edit is locked in this form. Retry sends the same edit: it replaces
+            the original bill once, never twice.
+          </p>
+        )}
         {purchaseEditOf && !purchaseLocked && (
           <p class="card" data-testid="editing-bill" role="status">
             Editing bill {purchaseEditLabel}. Saving posts the corrected bill and voids the original
@@ -3006,7 +3024,9 @@ export function InventoryScreen({
               {purchaseBusy
                 ? 'Posting…'
                 : purchaseLocked
-                  ? 'Retry same purchase'
+                  ? lockedEditOf
+                    ? 'Retry same edit'
+                    : 'Retry same purchase'
                   : purchaseEditOf
                     ? 'Save corrected bill'
                     : postButtonText(shownType, totals.ok ? totals.totalPaise : null)}

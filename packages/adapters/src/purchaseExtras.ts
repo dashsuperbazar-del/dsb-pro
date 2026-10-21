@@ -279,8 +279,12 @@ export function plainEditRefusal(message: string): string {
     return `Some of this bill's stock was already sold or used, so its quantity cannot be taken back: ${message.replace(/^.*DSB_EDIT_STOCK_CONSUMED:\s*/, '')}`;
   if (/DSB_EDIT_SUPPLIER_HAS_PAYMENTS/.test(message))
     return 'A payment is assigned to this bill, so its supplier cannot change. Void the bill and enter it again instead.';
+  if (/DSB_EDIT_STOCK_NEGATIVE/.test(message))
+    return `Stock is already below zero: ${message.replace(/^.*DSB_EDIT_STOCK_NEGATIVE:\s*/, '')}`;
   if (/DSB_EDIT_PAYMENT_TYPE_CHANGED/.test(message))
-    return 'This bill was paid; the payment moves to the corrected bill, so keep the same payment type.';
+    return 'An edit keeps how the bill was paid. Keep the same payment type; record or void a supplier payment separately.';
+  if (/DSB_EDIT_PAYMENT_GONE/.test(message))
+    return "This bill's payment was released or voided. Save the corrected bill as Credit and record any payment separately.";
   if (/DSB_FUTURE_DATE/.test(message)) return 'A paid bill cannot be dated after today.';
   if (/not permitted|permission/i.test(message))
     return 'Only the owner or a manager can edit a bill. Ask them.';

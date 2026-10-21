@@ -939,7 +939,9 @@ select (select present from _billedit_receipt),
    (exists(select 1 from pg_proc where oid=to_regprocedure('public.edit_purchase_bill(uuid,text,jsonb)')
       and position('DSB_EDIT_STOCK_CONSUMED' in prosrc)>0 and position('post_purchase_v2(' in prosrc)>0
       and position('void_purchase(' in prosrc)>0 and position('dsb_lock_shop_finance(' in prosrc)>0
-      and position('''owner'',''manager''' in prosrc)>0)
+      and position('''owner'',''manager''' in prosrc)>0 and position('DSB_EDIT_PAYMENT_GONE' in prosrc)>0)
+    and exists(select 1 from pg_proc where oid=to_regprocedure('public.void_paid_purchase(uuid,text,text)')
+      and position('v_cur.edited_from_id' in prosrc)>0 and position('void_supplier_payment' in prosrc)>0)
     and exists(select 1 from pg_proc where oid=to_regprocedure('public.get_financial_request(uuid,text,text)')
       and position('purchase.edit.v1' in prosrc)>0 and position('purchase.post.v2' in prosrc)>0)
     and exists(select 1 from pg_constraint where conname='financial_requests_operation_check'
