@@ -1342,6 +1342,9 @@ test('P03: an item found by client id with other units than submitted is not rep
   expect(host.querySelector('[aria-label="Item 1 purchased in"]')).toBeNull();
 });
 
+const createButton = (form: HTMLFormElement) =>
+  [...form.querySelectorAll('button')].find((b) => b.textContent === 'Create item')!;
+
 test('P03: the Add item form uses the same labels, trimming and unit rules as the card form', async () => {
   api.createItem.mockResolvedValue({ id: 'z', name: 'Tea' });
   await act(async () => {
@@ -1359,7 +1362,7 @@ test('P03: the Add item form uses the same labels, trimming and unit rules as th
   set('name', ' Tea ');
   set('unit1', ' box ');
   set('unit2', 'pkt');
-  await vi.waitFor(() => expect(form.querySelector('button')!.disabled).toBe(false));
+  await vi.waitFor(() => expect(createButton(form).disabled).toBe(false));
   await act(async () => {
     form.requestSubmit();
   });
@@ -1377,6 +1380,96 @@ test('P03: the Add item form uses the same labels, trimming and unit rules as th
     ),
   );
   api.createItem.mockReset();
+});
+
+test('unit form: preset fills units, live example, piece unit folded but kept, saved through the same path', async () => {
+  api.createItem.mockResolvedValue({ id: 'z', name: 'Atta' });
+  await act(async () => {
+    render(<InventoryScreen />, host);
+  });
+  const form = host.querySelector<HTMLFormElement>('#stock-add-item form')!;
+  const input = (name: string) => form.querySelector<HTMLInputElement>(`input[name="${name}"]`)!;
+  const example = () => host.querySelector('[data-testid="unit-example"]')!.textContent!;
+  const piece = form.querySelector<HTMLElement>('#unit-piece-fields')!;
+  const toggle = [...form.querySelectorAll('button')].find((b) =>
+    /piece unit/.test(b.textContent!),
+  )!;
+  expect(piece.hidden).toBe(true);
+  expect(toggle.textContent).toBe('Add a piece unit');
+  expect(example()).toContain('Type the big unit');
+  // preset
+  await act(async () => {
+    form.querySelector<HTMLButtonElement>('button[aria-label="Use Kg / Gms units"]')!.click();
+  });
+  expect([input('unit1').value, input('unit2').value, input('conv1').value]).toEqual([
+    'Kg',
+    'Gms',
+    '1000',
+  ]);
+  expect(example()).toContain('1 Kg = 1000 Gms');
+  // editable afterwards
+  await act(async () => {
+    input('conv1').value = '500';
+    input('conv1').dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  expect(example()).toContain('1 Kg = 500 Gms');
+  // typing a piece unit opens the fold; collapsing keeps the values and shows a summary
+  await act(async () => {
+    input('unit3').value = 'pcs';
+    input('unit3').dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  expect(piece.hidden).toBe(false);
+  await act(async () => {
+    input('conv2').value = '4';
+    input('conv2').dispatchEvent(new Event('input', { bubbles: true }));
+    toggle.click();
+  });
+  expect(piece.hidden).toBe(true);
+  expect(input('unit3').value).toBe('pcs');
+  expect(host.querySelector('[data-testid="piece-summary"]')!.textContent).toContain(
+    'pcs, 4 per Gms',
+  );
+  expect(example()).toContain('1 Gms = 4 pcs');
+  const set = (name: string, value: string) => {
+    input(name).value = value;
+  };
+  set('name', 'Atta');
+  await vi.waitFor(() => expect(createButton(form).disabled).toBe(false));
+  await act(async () => {
+    form.requestSubmit();
+  });
+  await vi.waitFor(() =>
+    expect(api.createItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Atta',
+        unit1: 'Kg',
+        unit2: 'Gms',
+        unit3: 'pcs',
+        conv1: 500,
+        conv2: 4,
+      }),
+    ),
+  );
+  // after the save the form is back to its folded, empty state
+  await vi.waitFor(() => expect(host.querySelector('[data-testid="piece-summary"]')).toBeNull());
+  expect(example()).toContain('Type the big unit');
+  api.createItem.mockReset();
+});
+
+test('unit form: Packet preset leaves the count to the owner and manual units need no piece unit', async () => {
+  await act(async () => {
+    render(<InventoryScreen />, host);
+  });
+  const form = host.querySelector<HTMLFormElement>('#stock-add-item form')!;
+  await act(async () => {
+    form.querySelector<HTMLButtonElement>('button[aria-label="Use Packet / pcs units"]')!.click();
+  });
+  const conv1 = form.querySelector<HTMLInputElement>('input[name="conv1"]')!;
+  expect(conv1.value).toBe('');
+  expect(host.querySelector('[data-testid="unit-example"]')!.textContent).toContain(
+    'How many pcs make 1 pack?',
+  );
+  expect(form.querySelector<HTMLElement>('#unit-piece-fields')!.hidden).toBe(true);
 });
 
 test('SP2b: a revisit of the stock screen lists the last catalogue at once; a write since then skips it', async () => {

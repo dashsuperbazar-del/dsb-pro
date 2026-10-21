@@ -1,6 +1,7 @@
 import { formatQuantity } from '@dsb-pro/core';
 import { CameraScanner } from '../components/CameraScanner';
 import { PriceHistory } from '../components/PriceHistory';
+import { UnitFields } from '../components/UnitFields';
 import { DemandChart } from '../components/DemandChart';
 import { learnedUnits } from '../lib/unitLearning';
 import {
@@ -25,6 +26,7 @@ import {
 } from '../lib/usualItems';
 import {
   billFromCards,
+  summarizeBill,
   cardDrafts,
   cardFromLine,
   cardsFromDraft,
@@ -646,6 +648,17 @@ export function InventoryScreen({
   }
   // "+ Add item" in the bill bar: a new empty row at the end, its item name focused.
   function addItemRow() {
+    // A last row that is still empty is used, not followed by another empty one.
+    const last = purchaseCards[purchaseCards.length - 1];
+    if (last && isBlankCard(last)) {
+      document
+        .querySelector<HTMLInputElement>(
+          `.bill-items [data-card="${last.key}"] [data-field="name"]`,
+        )
+        ?.focus();
+      setFocusCard(`${last.key}|name`);
+      return;
+    }
     const card = emptyCard();
     setPurchaseCards((c) => [...c, card]);
     setDraftTouched(true);
@@ -881,6 +894,15 @@ export function InventoryScreen({
     return () => window.removeEventListener('storage', changed);
   }, [draftPrefix]);
   const purchaseBill = useMemo(() => billFromCards(purchaseCards), [purchaseCards]);
+  const billSummary = summarizeBill(purchaseBill, purchaseCards.length);
+  // Jumps to the first row that is not in the total, so it is never left unseen.
+  function showFirstNotReady() {
+    const card = purchaseCards[billSummary.firstNotReady];
+    if (!card) return;
+    const row = document.querySelector<HTMLElement>(`.bill-items [data-card="${card.key}"]`);
+    row?.scrollIntoView?.({ block: 'center' });
+    setFocusCard(`${card.key}|name`);
+  }
   // Current sale prices of the items on the cards (and of retry alerts), read once per item and read
   // again after any price write, so "unchanged" is judged against fresh prices.
   const saleItemIds = saleEnabled
@@ -2241,48 +2263,7 @@ export function InventoryScreen({
             <label>
               SKU <input name="sku" placeholder="SKU" />
             </label>{' '}
-            <label>
-              {ITEM_FIELD_LABELS.unit1}{' '}
-              <input
-                name="unit1"
-                placeholder={ITEM_FIELD_LABELS.unit1}
-                required
-                list="learned-units"
-              />
-            </label>{' '}
-            <label>
-              {ITEM_FIELD_LABELS.unit2}{' '}
-              <input name="unit2" placeholder={ITEM_FIELD_LABELS.unit2} list="learned-units" />
-            </label>{' '}
-            <label>
-              {ITEM_FIELD_LABELS.conv1}{' '}
-              <input
-                name="conv1"
-                type="number"
-                min="0"
-                step="any"
-                placeholder={ITEM_FIELD_LABELS.conv1}
-              />
-            </label>{' '}
-            <label>
-              {ITEM_FIELD_LABELS.unit3}{' '}
-              <input name="unit3" placeholder={ITEM_FIELD_LABELS.unit3} list="learned-units" />
-              <datalist id="learned-units">
-                {unitSuggestions.map((u) => (
-                  <option key={u} value={u} />
-                ))}
-              </datalist>
-            </label>{' '}
-            <label>
-              {ITEM_FIELD_LABELS.conv2}{' '}
-              <input
-                name="conv2"
-                type="number"
-                min="0"
-                step="any"
-                placeholder={ITEM_FIELD_LABELS.conv2}
-              />
-            </label>{' '}
+            <UnitFields suggestions={unitSuggestions} />{' '}
             <label>
               GST %{' '}
               <input name="gstPercent" inputMode="decimal" placeholder="0" aria-label="GST %" />
@@ -2750,9 +2731,31 @@ export function InventoryScreen({
             />
             <div class="bill-total" aria-label="Bill total" data-testid="bill-total">
               <p>
-                <span>Items ({purchaseBill.lines.length})</span>
+                <span>
+                  {billSummary.notReady
+                    ? `${billSummary.ready} item${billSummary.ready === 1 ? '' : 's'} ready`
+                    : `Items (${billSummary.ready})`}
+                </span>
                 <span>{rupees(purchaseBill.itemsTotalPaise)}</span>
               </p>
+              {billSummary.notReady > 0 && (
+                <p class="alert bill-not-ready" role="status" data-testid="not-ready">
+                  <span>
+                    {billSummary.notReady} item{billSummary.notReady === 1 ? '' : 's'} not ready —
+                    not in this total
+                  </span>
+                  <button type="button" onClick={showFirstNotReady}>
+                    Go to first
+                  </button>
+                </p>
+              )}
+              {billSummary.blank > 0 && (
+                <p class="muted" data-testid="empty-rows">
+                  <small>
+                    {billSummary.blank} empty row{billSummary.blank === 1 ? '' : 's'} ignored
+                  </small>
+                </p>
+              )}
               {totals.ok ? (
                 <>
                   {totals.discountPaise > 0 && (
@@ -2784,7 +2787,7 @@ export function InventoryScreen({
                 <p class="alert">{totals.message}</p>
               )}
               <p class="bill-total-main">
-                <span>Bill total</span>
+                <span>{billSummary.notReady ? 'Total so far' : 'Bill total'}</span>
                 <strong>{payablePreview}</strong>
               </p>
             </div>

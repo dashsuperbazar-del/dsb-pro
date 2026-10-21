@@ -304,7 +304,7 @@ test('an item cost can be entered as its total; an inexact total is shown, never
   await fillBillItem(purchase, 2, 'Total Cost Item B', '3', '100', { total: true });
   await expect(card(2).getByTestId('cost-derivation')).toContainText('₹0.01 less');
   await expect(purchase.getByTestId('item-2-amount')).toHaveText('');
-  await expect(total).toContainText('Items (1)');
+  await expect(total).toContainText('1 item ready');
   await card(2)
     .getByRole('button', { name: /Use ₹33\.33 per unit/ })
     .click();

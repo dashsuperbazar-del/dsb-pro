@@ -240,6 +240,29 @@ export function billFromCards(cards: BillCardDraft[]): BillFromCards {
   return { lines, problems, itemsTotalPaise };
 }
 
+export type BillSummary = {
+  /** Rows that are in the total and will be posted. */
+  ready: number;
+  /** Started rows that are NOT in the total (no item chosen, no quantity, a bad figure …). */
+  notReady: number;
+  /** Empty rows, ignored. */
+  blank: number;
+  /** 0-based index of the first not-ready row, or -1. */
+  firstNotReady: number;
+};
+
+/** How many rows count, need a look, or are empty; so the total never hides a row silently. */
+export function summarizeBill(bill: BillFromCards, cardCount: number): BillSummary {
+  const ready = bill.lines.length;
+  const notReady = bill.problems.length;
+  return {
+    ready,
+    notReady,
+    blank: Math.max(0, cardCount - ready - notReady),
+    firstNotReady: bill.problems.length ? Math.min(...bill.problems.map((p) => p.index)) : -1,
+  };
+}
+
 export function cardFromLine(
   l: PurchaseDraftLine & { discountBp?: number; gstBp?: number | null },
 ): BillCard {

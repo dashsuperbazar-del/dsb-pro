@@ -21,6 +21,7 @@ import {
   ITEM_UNITS_HINT,
   exactItemMatch,
   newItemProblem,
+  sameUnits,
   type NewItemFields,
 } from '../lib/newItem';
 import { learnedUnits } from '../lib/unitLearning';
@@ -112,6 +113,12 @@ export function PurchaseBillCards(props: {
     if (props.focusCard) setFocusKey(props.focusCard);
   }, [props.focusCard]);
   const [newForms, setNewForms] = useState<Record<string, NewItemForm>>({});
+  const formsRef = useRef(newForms);
+  formsRef.current = newForms;
+  const [savingAll, setSavingAll] = useState(false);
+  const savingAllRef = useRef(false);
+  // Cards whose create just succeeded (read by Save all, whose view of the forms can lag a render).
+  const createdKeys = useRef(new Set<string>());
   const creating = useRef(new Set<string>());
   // Names (trimmed, lower case) whose create is running in any card: a second card cannot race it.
   const creatingNames = useRef(new Set<string>());
@@ -181,8 +188,8 @@ export function PurchaseBillCards(props: {
     }
     return newItemProblem(fields);
   }
-  async function saveNew(key: string) {
-    const form = newForms[key];
+  async function saveNew(key: string, keepFigures = false) {
+    const form = formsRef.current[key];
     const create = latest.current.onCreateItem;
     if (!form || !create || creating.current.has(key)) return;
     const fields: NewItemFields = {
@@ -214,6 +221,7 @@ export function PurchaseBillCards(props: {
     updateForm(key, { busy: true, error: '' });
     try {
       const item = await create(fields, form.clientId);
+      createdKeys.current.add(key);
       closeForm(key);
       const now = latest.current.cards;
       const index = now.findIndex((c) => c.key === key);
@@ -223,20 +231,21 @@ export function PurchaseBillCards(props: {
         );
       else if (index >= 0 && !now[index]!.item) {
         // Selected with nothing carried over: the quantity and cost are entered for this item.
+        // "Save all new items" keeps the quantity and cost already typed on the row.
         patch(key, (c) => ({
           ...c,
           item,
           search: item.name,
           unitLevel: 1,
-          qty: '',
-          price: '',
-          costMode: 'unit',
+          ...(keepFigures ? {} : { qty: '', price: '', costMode: 'unit' as const }),
           unitHint: undefined,
           sale: undefined,
         }));
-        setFocusKey(`${key}|qty`);
+        if (!keepFigures) setFocusKey(`${key}|qty`);
         latest.current.onMessage(
-          `Created ${item.name}. Enter the quantity and cost for item ${index + 1}.`,
+          keepFigures
+            ? `Created ${item.name} for item ${index + 1}. Check its quantity and cost.`
+            : `Created ${item.name}. Enter the quantity and cost for item ${index + 1}.`,
         );
       } else
         latest.current.onMessage(
@@ -260,6 +269,68 @@ export function PurchaseBillCards(props: {
       creatingNames.current.delete(nameKey);
     }
   }
+
+  // "Save all new items": every row still in the new-item state goes through the same saveNew (same
+  // validation and adapter), one after another. A row whose name now matches an existing item uses that
+  // item instead of creating it; a row that fails stays open with its error. Never posts anything, and a
+  // second press only sees the rows still open, so nothing is created twice.
+  async function saveAll() {
+    if (savingAllRef.current) return;
+    savingAllRef.current = true;
+    setSavingAll(true);
+    let saved = 0;
+    let stayed = 0;
+    try {
+      const keys = latest.current.cards
+        .filter((c) => !c.item && formsRef.current[c.key])
+        .map((c) => c.key);
+      for (const key of keys) {
+        const form = formsRef.current[key];
+        const card = latest.current.cards.find((c) => c.key === key);
+        if (!form || !card || card.item || form.busy) continue;
+        const existing = form.attempted
+          ? undefined
+          : exactItemMatch(latest.current.items, form.name);
+        if (existing && sameUnits(existing, form)) {
+          // The same item (name and units): use it; the typed quantity and cost stay on the row.
+          closeForm(key);
+          patch(key, (c) => ({
+            ...c,
+            item: existing,
+            search: existing.name,
+            unitLevel: 1,
+            unitHint: undefined,
+            sale: undefined,
+          }));
+          saved++;
+        } else if (existing) {
+          // Same name, other units: never guess which one was meant.
+          updateForm(key, {
+            error: `“${existing.name}” already exists with other units. Choose it from the matches, or change the name.`,
+          });
+          stayed++;
+        } else {
+          createdKeys.current.delete(key);
+          await saveNew(key, true);
+          if (createdKeys.current.delete(key)) saved++;
+          else stayed++;
+        }
+        // Let the new item reach the list and the card before the next row is looked at.
+        for (let i = 0; i < 50; i++) {
+          await new Promise((r) => setTimeout(r, 10));
+          const now = latest.current.cards.find((c) => c.key === key);
+          if (!now || now.item || formsRef.current[key]) break;
+        }
+      }
+      latest.current.onMessage(
+        `${saved} new item${saved === 1 ? '' : 's'} saved${stayed ? `; ${stayed} need${stayed === 1 ? 's' : ''} a look (see the red notes)` : ''}.`,
+      );
+    } finally {
+      savingAllRef.current = false;
+      setSavingAll(false);
+    }
+  }
+  const pendingNew = cards.filter((c) => !c.item && newForms[c.key]).length;
 
   // Always applies to the newest card list, so a slow scan or voice result cannot undo later typing.
   function patch(key: string, change: (c: BillCard) => BillCard) {
@@ -406,14 +477,14 @@ export function PurchaseBillCards(props: {
             : null;
         return (
           <section
-            class="bill-card bill-row"
+            class={`bill-card bill-row${newForm && !item ? ' bill-card-pending' : ''}`}
             key={card.key}
             data-card={card.key}
             aria-label={`Item ${n}`}
           >
             <div class="bill-card-find">
               <span class="bill-row-no" aria-hidden="true">
-                {n}
+                {isBlankCard(card) && !newForm ? '—' : n}
               </span>
               <input
                 class="bill-row-name"
@@ -535,6 +606,11 @@ export function PurchaseBillCards(props: {
                 ×
               </button>
             </div>
+            {newForm && !item && (
+              <p class="bill-card-pending-badge" data-testid="not-added-badge">
+                Not added yet — tap Save item
+              </p>
+            )}
             {picker && (
               <div
                 class="bill-card-matches"
@@ -867,6 +943,19 @@ export function PurchaseBillCards(props: {
             <option key={u} value={u} />
           ))}
         </datalist>
+      )}
+      {pendingNew >= 2 && (
+        <div class="bill-save-all">
+          <button
+            type="button"
+            class="primary"
+            disabled={disabled || savingAll}
+            onClick={() => void saveAll()}
+          >
+            {savingAll ? 'Saving…' : `Save all new items (${pendingNew})`}
+          </button>
+          <small class="muted">Saves each new item to your items list. Nothing is posted.</small>
+        </div>
       )}
       {props.showAdd !== false && (
         <button type="button" class="bill-add-bottom" disabled={disabled} onClick={addCard}>
