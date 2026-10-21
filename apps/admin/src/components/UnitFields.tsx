@@ -9,21 +9,49 @@ import {
   type UnitText,
 } from '../lib/unitExample';
 
-// The five unit inputs of the new-item form (big → small → piece). The inputs are plain named, uncontrolled
-// fields inside the parent <form>, so the form's own submit reads them exactly as before; this component
-// only mirrors their text to show a live example, fills them from a preset, and folds the rarely used
-// piece unit away. Folding never clears anything: a collapsed piece unit that has values stays in the
+/** Controlled use (the bill card's new-item form): the parent owns the five values. */
+export type UnitFieldsControl = {
+  values: UnitText;
+  onField: (key: keyof UnitText, value: string) => void;
+  /** aria-label = `${ariaPrefix}${aria}`, e.g. "Item 2 big unit". */
+  ariaPrefix: string;
+  /** Unique id of the piece-unit block. */
+  pieceId: string;
+  /** Id of the shared <datalist> of learned units. */
+  listId: string;
+  readOnly?: boolean;
+  disabled?: boolean;
+};
+
+const FIELDS = [
+  { key: 'unit1', aria: 'big unit' },
+  { key: 'unit2', aria: 'small unit' },
+  { key: 'conv1', aria: 'small units per big', number: true },
+  { key: 'unit3', aria: 'piece unit' },
+  { key: 'conv2', aria: 'pieces per small', number: true },
+] as const;
+
+// The five unit inputs of the new-item forms (big → small → piece), shared by the Inventory "Add item" form
+// and the bill card's "+ Create" form. Uncontrolled (default): plain named inputs inside the parent <form>,
+// so its own submit reads them as before; this component only mirrors their text to show a live example,
+// fills them from a preset, and folds the rarely used piece unit away. Controlled: the same, over values
+// the parent holds. Folding never clears anything: a collapsed piece unit that has values stays in the
 // form, is summarised, and is saved.
 export function UnitFields({
   suggestions,
   initial,
+  controlled,
 }: {
-  suggestions: string[];
+  suggestions?: string[];
   initial?: UnitText;
+  controlled?: UnitFieldsControl;
 }) {
   const root = useRef<HTMLDivElement>(null);
-  const [vals, setVals] = useState<UnitText>(initial ?? {});
-  const [pieceOpen, setPieceOpen] = useState(() => hasPieceValues(initial ?? {}));
+  const [mirror, setMirror] = useState<UnitText>(initial ?? controlled?.values ?? {});
+  const vals = controlled ? controlled.values : mirror;
+  const [pieceOpen, setPieceOpen] = useState(() => hasPieceValues(vals));
+  const pieceId = controlled?.pieceId ?? 'unit-piece-fields';
+  const listId = controlled?.listId ?? 'learned-units';
 
   const read = (): UnitText => {
     const get = (name: string) =>
@@ -37,18 +65,20 @@ export function UnitFields({
     };
   };
   const sync = () => {
+    if (controlled) return;
     const v = read();
-    setVals(v);
+    setMirror(v);
     if (hasPieceValues(v)) setPieceOpen(true);
   };
 
   // The parent resets the form after a save; fold the form state back with it.
   useEffect(() => {
+    if (controlled) return;
     const form = root.current?.closest('form');
     if (!form) return;
     const onReset = () => {
       setTimeout(() => {
-        setVals(read());
+        setMirror(read());
         setPieceOpen(false);
       }, 0);
     };
@@ -58,19 +88,63 @@ export function UnitFields({
 
   function usePreset(p: UnitPreset) {
     const fill = applyPreset(p);
-    for (const [name, value] of Object.entries(fill)) {
-      const input = root.current?.querySelector<HTMLInputElement>(`input[name="${name}"]`);
-      if (input) input.value = value;
+    if (controlled) {
+      for (const [key, value] of Object.entries(fill))
+        controlled.onField(key as keyof UnitText, value);
+    } else {
+      for (const [name, value] of Object.entries(fill)) {
+        const input = root.current?.querySelector<HTMLInputElement>(`input[name="${name}"]`);
+        if (input) input.value = value;
+      }
+      sync();
     }
-    sync();
     // "Packet": the owner still has to enter the count.
-    if (!fill.conv1) root.current?.querySelector<HTMLInputElement>('input[name="conv1"]')?.focus();
+    if (!fill.conv1)
+      setTimeout(
+        () =>
+          root.current
+            ?.querySelector<HTMLInputElement>('input[name="conv1"], [data-field="conv1"]')
+            ?.focus(),
+        0,
+      );
   }
 
   const ex = unitExample(vals);
   const pieceSummary = hasPieceValues(vals)
     ? `${(vals.unit3 ?? '').trim() || '?'}${(vals.conv2 ?? '').trim() ? `, ${(vals.conv2 ?? '').trim()} per ${(vals.unit2 ?? '').trim() || 'small unit'}` : ''}`
     : '';
+
+  const field = (f: (typeof FIELDS)[number]) => {
+    const label = ITEM_FIELD_LABELS[f.key];
+    const num = 'number' in f;
+    return (
+      <label>
+        {label}{' '}
+        <input
+          name={f.key}
+          data-field={f.key}
+          placeholder={label}
+          list={num ? undefined : listId}
+          required={f.key === 'unit1'}
+          {...(num ? { type: 'number', inputMode: 'decimal', min: '0', step: 'any' } : {})}
+          {...(controlled
+            ? {
+                'aria-label': `${controlled.ariaPrefix}${f.aria}`,
+                autocomplete: 'off',
+                value: controlled.values[f.key] ?? '',
+                readOnly: controlled.readOnly,
+                disabled: controlled.disabled,
+                onInput: (e: Event) => {
+                  const value = (e.currentTarget as HTMLInputElement).value;
+                  controlled.onField(f.key, value);
+                  if ((f.key === 'unit3' || f.key === 'conv2') && value.trim()) setPieceOpen(true);
+                },
+              }
+            : {})}
+        />
+      </label>
+    );
+  };
 
   return (
     <div class="unit-fields" ref={root} onInput={sync}>
@@ -82,6 +156,7 @@ export function UnitFields({
             class="chip"
             key={p.label}
             aria-label={`Use ${p.label} units`}
+            disabled={controlled?.readOnly || controlled?.disabled}
             onClick={() => usePreset(p)}
           >
             {p.label}
@@ -89,25 +164,9 @@ export function UnitFields({
         ))}
       </div>
       <div class="unit-grid">
-        <label>
-          {ITEM_FIELD_LABELS.unit1}{' '}
-          <input name="unit1" placeholder={ITEM_FIELD_LABELS.unit1} required list="learned-units" />
-        </label>
-        <label>
-          {ITEM_FIELD_LABELS.unit2}{' '}
-          <input name="unit2" placeholder={ITEM_FIELD_LABELS.unit2} list="learned-units" />
-        </label>
-        <label>
-          {ITEM_FIELD_LABELS.conv1}{' '}
-          <input
-            name="conv1"
-            type="number"
-            inputMode="decimal"
-            min="0"
-            step="any"
-            placeholder={ITEM_FIELD_LABELS.conv1}
-          />
-        </label>
+        {field(FIELDS[0])}
+        {field(FIELDS[1])}
+        {field(FIELDS[2])}
       </div>
       <p class="muted unit-help">
         Only the big unit is needed. Leave the small unit and number blank for loose or single-unit
@@ -118,7 +177,7 @@ export function UnitFields({
           type="button"
           class="link-button"
           aria-expanded={pieceOpen}
-          aria-controls="unit-piece-fields"
+          aria-controls={pieceId}
           onClick={() => setPieceOpen((o) => !o)}
         >
           {pieceOpen ? 'Hide piece unit' : 'Add a piece unit'}
@@ -129,28 +188,17 @@ export function UnitFields({
             Piece unit kept: {pieceSummary}
           </span>
         )}
-        <div id="unit-piece-fields" class="unit-grid" hidden={!pieceOpen}>
-          <label>
-            {ITEM_FIELD_LABELS.unit3}{' '}
-            <input name="unit3" placeholder={ITEM_FIELD_LABELS.unit3} list="learned-units" />
-            <datalist id="learned-units">
-              {suggestions.map((u) => (
-                <option key={u} value={u} />
-              ))}
-            </datalist>
-          </label>
-          <label>
-            {ITEM_FIELD_LABELS.conv2}{' '}
-            <input
-              name="conv2"
-              type="number"
-              inputMode="decimal"
-              min="0"
-              step="any"
-              placeholder={ITEM_FIELD_LABELS.conv2}
-            />
-          </label>
+        <div id={pieceId} class="unit-grid" hidden={!pieceOpen}>
+          {field(FIELDS[3])}
+          {field(FIELDS[4])}
         </div>
+        {!controlled && (
+          <datalist id={listId}>
+            {(suggestions ?? []).map((u) => (
+              <option key={u} value={u} />
+            ))}
+          </datalist>
+        )}
       </div>
       <p class="unit-example" role="status" aria-label="Unit example" data-testid="unit-example">
         {ex.sentence && (

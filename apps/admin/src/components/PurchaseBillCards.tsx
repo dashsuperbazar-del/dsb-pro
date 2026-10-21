@@ -34,6 +34,7 @@ import {
   type PriceLoad,
 } from '../lib/billSalePrices';
 import { CameraScanner } from './CameraScanner';
+import { UnitFields } from './UnitFields';
 import { VoiceEntryButton } from './VoiceEntryButton';
 import { CostDerivation } from './CostDerivation';
 import { PriceHistory } from './PriceHistory';
@@ -654,29 +655,31 @@ export function PurchaseBillCards(props: {
                 data-new-item={card.key}
               >
                 <small class="muted">New item, saved to your items list. {ITEM_UNITS_HINT}</small>
-                {NEW_ITEM_FIELDS.map((f) => (
-                  <label key={f.key} class={f.key === 'name' ? 'bill-card-new-name' : undefined}>
-                    {ITEM_FIELD_LABELS[f.key]}
-                    <input
-                      aria-label={`Item ${n} ${f.aria}`}
-                      data-field={f.key}
-                      autocomplete="off"
-                      required={f.required}
-                      list={f.units ? UNIT_LIST_ID : undefined}
-                      {...(f.number
-                        ? { type: 'number', inputMode: 'decimal', min: '0', step: 'any' }
-                        : {})}
-                      placeholder={ITEM_FIELD_LABELS[f.key]}
-                      value={newForm[f.key]}
-                      readOnly={newForm.attempted}
-                      disabled={disabled || newForm.busy}
-                      onInput={(e) => {
-                        const value = e.currentTarget.value;
-                        updateForm(card.key, { [f.key]: value });
-                      }}
-                    />
-                  </label>
-                ))}
+                <label class="bill-card-new-name">
+                  {ITEM_FIELD_LABELS.name}
+                  <input
+                    aria-label={`Item ${n} new item name`}
+                    data-field="name"
+                    autocomplete="off"
+                    required
+                    placeholder={ITEM_FIELD_LABELS.name}
+                    value={newForm.name}
+                    readOnly={newForm.attempted}
+                    disabled={disabled || newForm.busy}
+                    onInput={(e) => updateForm(card.key, { name: e.currentTarget.value })}
+                  />
+                </label>
+                <UnitFields
+                  controlled={{
+                    values: newForm,
+                    onField: (key, value) => updateForm(card.key, { [key]: value }),
+                    ariaPrefix: `Item ${n} `,
+                    pieceId: `piece-${card.key}`,
+                    listId: UNIT_LIST_ID,
+                    readOnly: newForm.attempted,
+                    disabled: disabled || newForm.busy,
+                  }}
+                />
                 {newForm.error && (
                   <p role="alert" class="bill-card-new-error">
                     {newForm.error}

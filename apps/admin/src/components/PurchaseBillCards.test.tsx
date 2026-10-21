@@ -474,6 +474,44 @@ test('Save all uses an item that now has the same name instead of creating it', 
   expect(current.map((c) => c.qty)).toEqual(['1', '2']);
 });
 
+test('the card new-item form has presets, a live example and a folded piece unit that keeps its values', async () => {
+  const create = vi.fn(async (f: NewItemFields) => created(f));
+  await mount([emptyCard()], create);
+  await type('Item 1 name', 'Sugar');
+  await click(button('+ Create “Sugar”'));
+  const form = byLabel<HTMLElement>('New item for item 1');
+  const piece = form.querySelector<HTMLElement>('[id^="piece-"]')!;
+  expect(piece.hidden).toBe(true);
+  expect(button('Add a piece unit', form)).toBeTruthy();
+  await click(button('Kg / Gms', form));
+  expect(byLabel('Item 1 big unit').value).toBe('Kg');
+  expect(byLabel('Item 1 small units per big').value).toBe('1000');
+  expect(form.querySelector('[data-testid="unit-example"]')!.textContent).toContain(
+    '1 Kg = 1000 Gms',
+  );
+  // typing a piece unit opens the fold; folding keeps the values and summarises them
+  await type('Item 1 piece unit', 'pcs');
+  expect(piece.hidden).toBe(false);
+  await type('Item 1 pieces per small', '4');
+  await click(button('Hide piece unit', form));
+  expect(piece.hidden).toBe(true);
+  expect(form.querySelector('[data-testid="piece-summary"]')!.textContent).toContain(
+    'pcs, 4 per Gms',
+  );
+  await click(button('Save item', form));
+  expect(create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      name: 'Sugar',
+      unit1: 'Kg',
+      unit2: 'Gms',
+      conv1: '1000',
+      unit3: 'pcs',
+      conv2: '4',
+    }),
+    expect.any(String),
+  );
+});
+
 test('Save all never adopts a same-named item that has other units', async () => {
   const create = vi.fn(async (f: NewItemFields) => created(f));
   await mount([emptyCard(), emptyCard()], create);
