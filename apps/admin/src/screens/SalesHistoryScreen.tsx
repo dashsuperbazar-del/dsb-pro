@@ -1,5 +1,6 @@
 import { formatQuantity } from '@dsb-pro/core';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { hiddenNote, hideVoided, loadShowVoided, saveShowVoided } from '../lib/voidedVisibility';
 import { compareLegacyDsbDayToPro, splitGst, type LegacyDsbDayComparison } from '@dsb-pro/core';
 import {
   getDefaultShopId,
@@ -50,6 +51,8 @@ export function SalesHistoryScreen() {
   // 0067: invoices with an open remark ("Pending" badge and filter); null = not known.
   const [pending, setPending] = useState<Set<string> | null>(null);
   const [onlyPending, setOnlyPending] = useState(false);
+  const [showVoided, setShowVoided] = useState(false);
+  const voidedTouched = useRef(false);
   const pendingGen = useRef(0);
   const [me, setMe] = useState<{ userId: string; role: string } | null>(null);
 
@@ -89,7 +92,11 @@ export function SalesHistoryScreen() {
       .catch(() => undefined);
     void shopContext
       .get()
-      .then((c) => setMe({ userId: c.session.user.id, role: c.membership.role }))
+      .then((c) => {
+        setMe({ userId: c.session.user.id, role: c.membership.role });
+        // A tick made before this answered stays (it could not be saved without the user id).
+        if (!voidedTouched.current) setShowVoided(loadShowVoided('sales', c.session.user.id));
+      })
       .catch(() => undefined);
     const h = () => forceLocale((v) => v + 1);
     window.addEventListener('dsb-locale-change', h);
@@ -179,6 +186,12 @@ export function SalesHistoryScreen() {
   }
 
   const locale = getLocale();
+  // Display only: voided invoices are hidden by default, never deleted.
+  const { shown: listed, hidden: hiddenVoided } = hideVoided(
+    sales.filter((s) => !onlyPending || !!pending?.has(s.id)),
+    (s) => s.status === 'VOID',
+    showVoided,
+  );
   return (
     <main class="page wide">
       <div class="row no-print">
@@ -501,7 +514,22 @@ export function SalesHistoryScreen() {
             onChange={(e) => setOnlyPending(e.currentTarget.checked)}
           />{' '}
           Only invoices with pending items
+        </label>{' '}
+        <label class="inline-check">
+          <input
+            type="checkbox"
+            checked={showVoided}
+            onChange={(e) => {
+              voidedTouched.current = true;
+              setShowVoided(e.currentTarget.checked);
+              saveShowVoided('sales', me?.userId ?? '', e.currentTarget.checked);
+            }}
+          />{' '}
+          Show voided
         </label>
+        <p class="muted" data-testid="sales-list-count">
+          Showing {listed.length} of {sales.length} loaded items.{hiddenNote(hiddenVoided)}
+        </p>
         <div class="table-wrap">
           <table>
             <thead>
@@ -514,44 +542,42 @@ export function SalesHistoryScreen() {
               </tr>
             </thead>
             <tbody>
-              {sales
-                .filter((s) => !onlyPending || !!pending?.has(s.id))
-                .map((s) => (
-                  <tr>
-                    <td>{s.doc_no}</td>
-                    <td>{s.business_date}</td>
-                    <td>
-                      {s.status}
-                      {pending?.has(s.id) && (
-                        <>
-                          {' '}
-                          <span class="badge remark-open" data-testid="sale-pending">
-                            Pending
-                          </span>
-                        </>
+              {listed.map((s) => (
+                <tr>
+                  <td>{s.doc_no}</td>
+                  <td>{s.business_date}</td>
+                  <td>
+                    {s.status}
+                    {pending?.has(s.id) && (
+                      <>
+                        {' '}
+                        <span class="badge remark-open" data-testid="sale-pending">
+                          Pending
+                        </span>
+                      </>
+                    )}
+                  </td>
+                  <td>{money(s.total_paise)}</td>
+                  <td>
+                    <div class="row">
+                      <button disabled={busy} onClick={() => void viewSale(s.id)}>
+                        View
+                      </button>
+                      <button disabled={busy} onClick={() => void openReceipt(s, 'thermal')}>
+                        {t('printThermal', locale)}
+                      </button>
+                      <button disabled={busy} onClick={() => void openReceipt(s, 'a4')}>
+                        {t('printA4', locale)}
+                      </button>
+                      {s.status === 'FINALIZED' && (
+                        <button disabled={busy} onClick={() => void doVoid(s)}>
+                          {t('voidSale', locale)}
+                        </button>
                       )}
-                    </td>
-                    <td>{money(s.total_paise)}</td>
-                    <td>
-                      <div class="row">
-                        <button disabled={busy} onClick={() => void viewSale(s.id)}>
-                          View
-                        </button>
-                        <button disabled={busy} onClick={() => void openReceipt(s, 'thermal')}>
-                          {t('printThermal', locale)}
-                        </button>
-                        <button disabled={busy} onClick={() => void openReceipt(s, 'a4')}>
-                          {t('printA4', locale)}
-                        </button>
-                        {s.status === 'FINALIZED' && (
-                          <button disabled={busy} onClick={() => void doVoid(s)}>
-                            {t('voidSale', locale)}
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                    </div>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
