@@ -229,7 +229,10 @@ begin
    raise exception 'not permitted';
  end if;
  if char_length(v_body) not between 1 and 300 then raise exception 'DSB_INVALID_REMARK: write 1 to 300 characters'; end if;
- if v_row.version=p_expected_version+1 and v_row.body=v_body and v_row.created_by=auth.uid() then return v_row.version; end if; -- exact retry
+ if v_row.version=p_expected_version+1 and v_row.body=v_body
+    and (select e.actor from document_remark_events e where e.remark_id=v_row.id and e.version=v_row.version)=auth.uid() then
+   return v_row.version; -- exact retry by the person who made that change
+ end if;
  if v_row.status<>'OPEN' then raise exception 'DSB_REMARK_SETTLED: reopen the remark before changing it'; end if;
  if v_row.version<>p_expected_version then
    raise exception 'DSB_REMARK_STALE: the remark was changed by someone else; reload it';
