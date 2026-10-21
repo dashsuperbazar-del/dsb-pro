@@ -1,6 +1,12 @@
 export { getSupabaseClient } from './client';
-export { listPurchaseHistory, getPurchaseDetail, listSupplierPurchaseLines } from './purchases';
+export {
+  listPurchaseHistory,
+  getPurchaseDetail,
+  getPurchaseEditLinks,
+  listSupplierPurchaseLines,
+} from './purchases';
 export type {
+  PurchaseEditLinks,
   PurchaseRecord,
   PurchaseHistoryLine,
   PurchaseBalance,
@@ -257,6 +263,8 @@ export type { ItemPurchasePrice } from './priceHistory';
 export { listItemSaleMovements } from './demand';
 export type { ItemSaleMovements, SaleMovement } from './demand';
 export type {
+  PurchaseEditRequest,
+  PurchaseEditResult,
   PurchaseExtras,
   PurchaseRequestLookup,
   PurchaseSettlement,
@@ -267,8 +275,10 @@ export type {
 export {
   buildPurchaseV2Payload,
   deriveSettlement,
+  editPurchaseBillOutcome,
   getPurchaseExtras,
   lookupPurchaseRequest,
+  plainEditRefusal,
   postPurchaseV2Outcome,
   voidPaidPurchaseOutcome,
 } from './purchaseExtras';

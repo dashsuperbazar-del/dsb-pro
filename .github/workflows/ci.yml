@@ -1019,8 +1019,35 @@ jobs:
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "grant execute on function set_item_tax_rate(uuid,integer) to anon"
           if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Anonymous item GST change accepted'; exit 1; fi
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "revoke execute on function set_item_tax_rate(uuid,integer) from anon"
-          grep -Fx 'needs_upgrade=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          grep -Fx 'needs_salepricing=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
           echo 'DISPOSABLE SALE PRICING UPGRADE: PASS'
+      - name: Prove purchase bill edit upgrade (apply, no-op, tamper/partial refusal)
+        env:
+          PROOF_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          grep -Fx 'needs_billedit=true' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" billedit
+          grep -Fx 'needs_billedit=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" billedit
+          expected_checksum=$(sha256sum supabase/migrations/0066_purchase_bill_edit.sql | cut -d' ' -f1)
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update app_migration_receipts set checksum_sha256=repeat('0',64) where version='0066'"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo '0066 tamper accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update app_migration_receipts set checksum_sha256='$expected_checksum' where version='0066'"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "grant execute on function edit_purchase_bill(uuid,text,jsonb) to anon"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Anonymous bill edit accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "revoke execute on function edit_purchase_bill(uuid,text,jsonb) from anon"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "grant execute on function be_purchase_link_guard() to authenticated"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Exposed edit link guard accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "revoke execute on function be_purchase_link_guard() from authenticated"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "alter table purchase_bills disable trigger purchase_bills_edit_link_guard"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Disabled edit link guard accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "alter table purchase_bills enable trigger purchase_bills_edit_link_guard"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "drop index purchase_bills_edited_from_key"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Missing one-edit-per-bill index accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "create unique index purchase_bills_edited_from_key on purchase_bills(tenant_id,edited_from_id) where edited_from_id is not null"
+          grep -Fx 'needs_upgrade=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          echo 'DISPOSABLE PURCHASE BILL EDIT UPGRADE: PASS'
       - name: Stop and erase the disposable target
         if: always()
         run: supabase stop --workdir "$PROOF_ROOT" --no-backup
@@ -1730,6 +1757,11 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" salepricing
+      - name: Apply purchase bill edit atomically
+        if: steps.preflight.outputs.needs_billedit == 'true'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" billedit
       - name: Verify live Batch B contract
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}

@@ -1663,11 +1663,13 @@ export type Database = {
           created_by: string
           deleted_at: number | null
           discount_paise: number
+          edited_from_id: string | null
           extra_charges_paise: number
           id: string
           notes: string | null
           party_id: string | null
           payment_type: string
+          replaced_by_id: string | null
           round_off_paise: number
           shop_id: string
           status: string
@@ -1686,11 +1688,13 @@ export type Database = {
           created_by?: string
           deleted_at?: number | null
           discount_paise?: number
+          edited_from_id?: string | null
           extra_charges_paise?: number
           id?: string
           notes?: string | null
           party_id?: string | null
           payment_type?: string
+          replaced_by_id?: string | null
           round_off_paise?: number
           shop_id: string
           status?: string
@@ -1709,11 +1713,13 @@ export type Database = {
           created_by?: string
           deleted_at?: number | null
           discount_paise?: number
+          edited_from_id?: string | null
           extra_charges_paise?: number
           id?: string
           notes?: string | null
           party_id?: string | null
           payment_type?: string
+          replaced_by_id?: string | null
           round_off_paise?: number
           shop_id?: string
           status?: string
@@ -1724,6 +1730,20 @@ export type Database = {
           voided_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "purchase_bills_edited_from_fk"
+            columns: ["tenant_id", "edited_from_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_bill_outstanding"
+            referencedColumns: ["tenant_id", "purchase_bill_id"]
+          },
+          {
+            foreignKeyName: "purchase_bills_edited_from_fk"
+            columns: ["tenant_id", "edited_from_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_bills"
+            referencedColumns: ["tenant_id", "id"]
+          },
           {
             foreignKeyName: "purchase_bills_party_id_fkey"
             columns: ["party_id"]
@@ -1736,6 +1756,20 @@ export type Database = {
             columns: ["tenant_id", "party_id"]
             isOneToOne: false
             referencedRelation: "parties"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "purchase_bills_replaced_by_fk"
+            columns: ["tenant_id", "replaced_by_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_bill_outstanding"
+            referencedColumns: ["tenant_id", "purchase_bill_id"]
+          },
+          {
+            foreignKeyName: "purchase_bills_replaced_by_fk"
+            columns: ["tenant_id", "replaced_by_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_bills"
             referencedColumns: ["tenant_id", "id"]
           },
           {
@@ -3523,6 +3557,10 @@ export type Database = {
       dsb_supplier_has_history: {
         Args: { p_party_id: string }
         Returns: boolean
+      }
+      edit_purchase_bill: {
+        Args: { p_bill: Json; p_client_id: string; p_original_id: string }
+        Returns: Json
       }
       get_customer_aging_report: {
         Args: { p_as_of: string; p_shop_id: string }

@@ -169,7 +169,9 @@ export function roundOffText(paise: number): string {
 }
 
 /** The pending-intent copy of a sent purchase. v1 entries (sent before this version) stay retryable as v1. */
-export type PendingPurchaseV2 = PurchaseV2Request & { api: 'v2' };
+// editOf (0066): this request corrects that posted bill through edit_purchase_bill. Edit requests are kept under
+// their own storage name, so an older app version can never resend one as a NEW bill.
+export type PendingPurchaseV2 = PurchaseV2Request & { api: 'v2'; editOf?: string };
 export type PendingPurchase = PurchaseRequest | PendingPurchaseV2;
 export function isV2Pending(p: PendingPurchase): p is PendingPurchaseV2 {
   return (p as { api?: unknown }).api === 'v2';

@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildPurchaseV2Payload,
   deriveSettlement,
+  editPurchaseBillOutcome,
+  plainEditRefusal,
   postPurchaseV2Outcome,
   voidPaidPurchaseOutcome,
 } from './purchaseExtras';
@@ -262,5 +264,84 @@ describe('void_paid_purchase outcome', () => {
     await expect(
       voidPaidPurchaseOutcome({ purchaseId: BILL, reason: 'twice', clientId: REQ }),
     ).resolves.toMatchObject({ kind: 'unknown' });
+  });
+});
+
+describe('edit_purchase_bill outcome (0066)', () => {
+  const ORIG = '77777777-7777-4777-8777-777777777777';
+  const editAnswer = (over: object = {}) => ({
+    ...answer(),
+    originalBillId: ORIG,
+    carriedPaise: '0',
+    ...over,
+  });
+  it('sends the original id and the v2 bill, and accepts only an answer for this edit', async () => {
+    rpc.mockResolvedValueOnce({ data: editAnswer({ carriedPaise: '5000' }), error: null });
+    await expect(editPurchaseBillOutcome({ ...request(), originalId: ORIG })).resolves.toEqual({
+      kind: 'committed',
+      value: {
+        billId: BILL,
+        originalBillId: ORIG,
+        paymentId: null,
+        totalPaise: 74600,
+        roundOffPaise: -48,
+        businessDate: '2026-10-01',
+        carriedPaise: 5000,
+      },
+    });
+    expect(rpc).toHaveBeenCalledWith(
+      'edit_purchase_bill',
+      expect.objectContaining({ p_original_id: ORIG, p_client_id: REQ }),
+    );
+    for (const bad of [
+      editAnswer({ originalBillId: BILL }),
+      editAnswer({ billId: ORIG }),
+      editAnswer({ totalPaise: '74601' }),
+      editAnswer({ carriedPaise: 5 }),
+    ]) {
+      rpc.mockResolvedValueOnce({ data: bad, error: null });
+      await expect(
+        editPurchaseBillOutcome({ ...request(), originalId: ORIG }),
+      ).resolves.toMatchObject({ kind: 'unknown' });
+    }
+  });
+  it('refuses without sending when the original is missing', async () => {
+    await expect(editPurchaseBillOutcome({ ...request(), originalId: '' })).resolves.toMatchObject({
+      kind: 'rejected',
+      code: 'INVALID_INPUT',
+    });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+  it('a refused retry is decided by the stored edit answer', async () => {
+    rpc
+      .mockResolvedValueOnce({ data: null, error: { code: 'P0001', message: 'not permitted' } })
+      .mockResolvedValueOnce({
+        data: { state: 'COMMITTED', result: editAnswer(), currentStatus: null },
+        error: null,
+      });
+    await expect(
+      editPurchaseBillOutcome({ ...request(), originalId: ORIG }, true),
+    ).resolves.toMatchObject({ kind: 'committed', value: { billId: BILL } });
+    expect(rpc).toHaveBeenLastCalledWith('get_financial_request', {
+      p_shop_id: SHOP,
+      p_operation: 'purchase.edit.v1',
+      p_client_id: REQ,
+    });
+  });
+  it('a payload mismatch is final', async () => {
+    rpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: 'P0001', message: 'DSB_PAYLOAD_MISMATCH: x' },
+    });
+    await expect(
+      editPurchaseBillOutcome({ ...request(), originalId: ORIG }),
+    ).resolves.toMatchObject({ kind: 'rejected', code: 'DSB_PAYLOAD_MISMATCH' });
+  });
+  it('explains each refusal in plain words', () => {
+    expect(plainEditRefusal('DSB_EDIT_STOCK_CONSUMED: E6 Dal was already sold')).toContain(
+      'E6 Dal was already sold',
+    );
+    expect(plainEditRefusal('DSB_EDIT_BILL_HAS_RETURNS: x')).toMatch(/supplier returns/);
+    expect(plainEditRefusal('DSB_EDIT_PAYMENT_TYPE_CHANGED: x')).toMatch(/same payment type/);
   });
 });

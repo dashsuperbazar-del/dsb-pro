@@ -104,7 +104,7 @@ export type PurchaseRequestLookup =
 /** Reads the stored answer of a purchase request (post or paid void) by its request id. */
 export async function lookupPurchaseRequest(
   shopId: string,
-  operation: 'purchase.post.v2' | 'purchase.void_paid.v1',
+  operation: 'purchase.post.v2' | 'purchase.void_paid.v1' | 'purchase.edit.v1',
   clientId: string,
 ): Promise<PurchaseRequestLookup> {
   try {
@@ -194,6 +194,101 @@ export async function postPurchaseV2Outcome(
   return value
     ? { kind: 'committed', value }
     : { kind: 'unknown', message: 'The stored purchase answer could not be verified.' };
+}
+
+export type PurchaseEditRequest = PurchaseV2Request & { originalId: string };
+export type PurchaseEditResult = PurchaseV2Result & {
+  originalBillId: string;
+  /** Paise of the original bill's payments re-assigned to the corrected bill (the payments are untouched). */
+  carriedPaise: number;
+};
+
+/**
+ * Owner/manager: corrects a posted bill (mig 0066 edit_purchase_bill). The server posts the corrected bill and
+ * voids the original in ONE transaction; live payments on the original are carried to the corrected bill, never
+ * voided. An exact same-id retry returns the same new bill, so resending after an unknown outcome is safe.
+ */
+export async function editPurchaseBillOutcome(
+  input: PurchaseEditRequest,
+  isRetry = false,
+): Promise<WriteOutcome<PurchaseEditResult>> {
+  let payload: ReturnType<typeof buildPurchaseV2Payload>;
+  try {
+    if (!isUuid(input.originalId)) throw new Error('The bill to correct is missing.');
+    payload = buildPurchaseV2Payload(input);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { kind: 'rejected', code: 'INVALID_INPUT', message };
+  }
+  const ack = (data: unknown): PurchaseEditResult | null => {
+    const r = data as Record<string, unknown> | null;
+    if (!r || typeof r !== 'object' || !isUuid(r.billId) || r.billId === input.originalId)
+      return null;
+    if (r.originalBillId !== input.originalId) return null;
+    if (r.totalPaise !== String(payload.totals.totalPaise)) return null;
+    if (r.roundOffPaise !== String(payload.totals.roundOffPaise)) return null;
+    if (r.paymentId !== null && !isUuid(r.paymentId)) return null;
+    if (typeof r.carriedPaise !== 'string' || !/^[0-9]+$/.test(r.carriedPaise)) return null;
+    if (typeof r.businessDate !== 'string') return null;
+    return {
+      billId: r.billId,
+      originalBillId: input.originalId,
+      paymentId: (r.paymentId as string | null) ?? null,
+      totalPaise: payload.totals.totalPaise,
+      roundOffPaise: payload.totals.roundOffPaise,
+      businessDate: r.businessDate,
+      carriedPaise: Number(r.carriedPaise),
+    };
+  };
+  const outcome = await rpcOutcome(
+    'edit_purchase_bill',
+    { p_original_id: input.originalId, p_client_id: input.clientId, p_bill: payload.bill },
+    ack,
+  );
+  if (outcome.kind === 'committed') return outcome;
+  // Same frozen request always normalizes identically: a mismatch means this id belongs to something else.
+  if (outcome.kind === 'unknown' && MISMATCH.test(outcome.message))
+    return {
+      kind: 'rejected',
+      code: 'DSB_PAYLOAD_MISMATCH',
+      message:
+        'This edit request id was already used for a different bill. Nothing new was saved; open Purchases and check the bill before editing again.',
+    };
+  if (outcome.kind !== 'rejected' || !isRetry) return outcome;
+  // A refused retry may follow a committed first send: the stored answer decides.
+  const found = await lookupPurchaseRequest(input.shopId, 'purchase.edit.v1', input.clientId);
+  if (found.kind === 'not_found') return outcome;
+  if (found.kind === 'unavailable')
+    return {
+      kind: 'unknown',
+      message: `${outcome.message} (the earlier attempt cannot be verified)`,
+    };
+  const value = ack(found.result);
+  return value
+    ? { kind: 'committed', value }
+    : { kind: 'unknown', message: 'The stored edit answer could not be verified.' };
+}
+
+/** Plain words for a refused bill edit, saying what to do next. */
+export function plainEditRefusal(message: string): string {
+  if (/DSB_EDIT_BILL_VOID/.test(message))
+    return 'This bill is void or was already corrected. Open the current bill and edit that.';
+  if (/DSB_EDIT_BILL_HAS_RETURNS/.test(message))
+    return 'This bill has supplier returns. Void those returns first (Returns), then edit the bill.';
+  if (/DSB_EDIT_STOCK_CONSUMED/.test(message))
+    return `Some of this bill's stock was already sold or used, so its quantity cannot be taken back: ${message.replace(/^.*DSB_EDIT_STOCK_CONSUMED:\s*/, '')}`;
+  if (/DSB_EDIT_SUPPLIER_HAS_PAYMENTS/.test(message))
+    return 'A payment is assigned to this bill, so its supplier cannot change. Void the bill and enter it again instead.';
+  if (/DSB_EDIT_STOCK_NEGATIVE/.test(message))
+    return `Stock is already below zero: ${message.replace(/^.*DSB_EDIT_STOCK_NEGATIVE:\s*/, '')}`;
+  if (/DSB_EDIT_PAYMENT_TYPE_CHANGED/.test(message))
+    return 'An edit keeps how the bill was paid. Keep the same payment type; record or void a supplier payment separately.';
+  if (/DSB_EDIT_PAYMENT_GONE/.test(message))
+    return "This bill's payment was released or voided. Save the corrected bill as Credit and record any payment separately.";
+  if (/DSB_FUTURE_DATE/.test(message)) return 'A paid bill cannot be dated after today.';
+  if (/not permitted|permission/i.test(message))
+    return 'Only the owner or a manager can edit a bill. Ask them.';
+  return message;
 }
 
 /** Owner only: voids a cash/UPI bill and its automatic payment together. Same-id retry returns the same answer. */

@@ -105,6 +105,32 @@ export async function getPurchaseDetail(
   };
 }
 
+/** Bill edit links (mig 0066), set by the server only. */
+export type PurchaseEditLinks = { editedFromId: string | null; replacedById: string | null };
+/**
+ * Reads a bill's edit links. Returns null when they cannot be read, including on a database without 0066
+ * (the columns do not exist yet): the caller then offers no edit, so the app never sends an edit the server
+ * cannot take. Kept out of the list/detail header so those reads work before and after the migration.
+ */
+export async function getPurchaseEditLinks(
+  shopId: string,
+  id: string,
+): Promise<PurchaseEditLinks | null> {
+  try {
+    const { data, error } = await getSupabaseClient()
+      .from('purchase_bills')
+      .select('edited_from_id,replaced_by_id')
+      .eq('shop_id', shopId)
+      .eq('id', id)
+      .maybeSingle();
+    if (error || !data) return null;
+    const r = data as { edited_from_id: string | null; replaced_by_id: string | null };
+    return { editedFromId: r.edited_from_id ?? null, replacedById: r.replaced_by_id ?? null };
+  } catch {
+    return null;
+  }
+}
+
 const LINE_PAGE = 500;
 const MAX_LINE_PAGES = 40;
 /** One line of a supplier's posted bill, with the bill's date (for the "usual items" list). */

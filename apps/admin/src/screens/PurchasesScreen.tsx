@@ -5,9 +5,11 @@ import {
   listPurchaseHistory,
   getPurchaseDetail,
   getPurchaseExtras,
+  getPurchaseEditLinks,
   voidPaidPurchaseOutcome,
   listPurchaseSettlements,
   type Party,
+  type PurchaseEditLinks,
   type PurchaseSettlement,
   type PurchaseExtras,
   type PurchaseRecord,
@@ -101,6 +103,26 @@ export function PurchasesScreen({ url }: { url?: string }) {
   // null while loading or when it could not be read (then no paid/unpaid badge is shown).
   const [extras, setExtras] = useState<PurchaseExtras | null>(null);
   const [extrasError, setExtrasError] = useState('');
+  // 0066 edit links of the open bill; null = unknown (or a database without 0066): no "Edit bill" then.
+  const [links, setLinks] = useState<PurchaseEditLinks | null>(null);
+  const openBillId = detail?.bill.id ?? '';
+  const openBillStatus = detail?.bill.status ?? '';
+  useEffect(() => {
+    let active = true;
+    setLinks(null);
+    if (!shop || !openBillId) return;
+    void Promise.resolve()
+      .then(() => getPurchaseEditLinks(shop, openBillId))
+      .then(
+        (l) => {
+          if (active) setLinks(l);
+        },
+        () => {},
+      );
+    return () => {
+      active = false;
+    };
+  }, [shop, openBillId, openBillStatus]);
   const [role, setRole] = useState('');
   // Void of a cash/UPI bill: one request id per bill, kept after an unconfirmed answer so a retry can
   // never void twice or act on a different reason.
@@ -375,6 +397,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
             purchaseContextActive={entering}
             purchaseSupplierId={query.get('supplier') ?? ''}
             purchaseRepeatId={query.get('repeat') ?? ''}
+            purchaseEditId={query.get('edit') ?? ''}
             onPurchasePosted={() => {
               billCache.clear();
               void refresh();
@@ -600,6 +623,30 @@ export function PurchasesScreen({ url }: { url?: string }) {
               </p>
             )}
             {creditVoidNote && <p role="status">{creditVoidNote}</p>}
+            {links?.replacedById && (
+              <p data-testid="bill-replaced">
+                This bill was corrected and replaced.{' '}
+                <button
+                  type="button"
+                  class="link"
+                  onClick={() => void open(links.replacedById as string, true)}
+                >
+                  Open the corrected bill
+                </button>
+              </p>
+            )}
+            {links?.editedFromId && (
+              <p data-testid="bill-edited-from">
+                Corrected bill.{' '}
+                <button
+                  type="button"
+                  class="link"
+                  onClick={() => void open(links.editedFromId as string, true)}
+                >
+                  Open the original
+                </button>
+              </p>
+            )}
             {detail.bill.status === 'VOID' &&
               clearPendingVoid(`${userRef.current}:${shop}`, detail.bill.id)}
             {detail.bill.status === 'VOID' && (
@@ -716,6 +763,15 @@ export function PurchasesScreen({ url }: { url?: string }) {
               </>
             )}
             <nav class="context-actions" aria-label="Bill actions">
+              {canPost && detail.bill.status === 'POSTED' && links && !links.replacedById && (
+                <a
+                  class="button-link"
+                  data-testid="edit-bill"
+                  href={appRoute.purchases + '?new=1&edit=' + encodeURIComponent(detail.bill.id)}
+                >
+                  Edit bill
+                </a>
+              )}
               {canPost && detail.bill.status === 'POSTED' && (
                 <a
                   class="button-link primary"
