@@ -693,7 +693,34 @@ test('voiding a credit bill needs a reason, reverses its stock and supplier bala
   await voidButton.click();
   await expect(detail).toContainText('Bill voided. Stock and supplier balance reversed.');
   await expect(detail.getByTestId('void-reason')).toHaveText('Void reason: entered twice');
+  // Voided bills are hidden by default (never deleted) and say how many are hidden.
+  await expect(page.getByTestId('list-settlement')).toHaveText(['Unpaid']);
+  await expect(
+    page.getByText(/Showing 1 of 2 loaded bills\. 1 voided item hidden\./),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: /VOID-1/ })).toHaveCount(0);
+  const showVoided = page.getByLabel('Show voided');
+  await showVoided.check();
   await expect(page.getByTestId('list-settlement')).toHaveText(['Unpaid', 'Void']);
+  await expect(page.getByText(/Showing 2 of 2 loaded bills\./)).toBeVisible();
+  // The choice is remembered per user; the Voided status filter shows them even when unticked.
+  await page.reload();
+  await expect(showVoided).toBeChecked();
+  await showVoided.uncheck();
+  await expect(page.getByRole('button', { name: /VOID-1/ })).toHaveCount(0);
+  await page.getByLabel('Status').selectOption('void');
+  await expect(page.getByRole('button', { name: /VOID-1/ })).toBeVisible();
+  await expect(showVoided).toBeDisabled();
+  await page.getByLabel('Status').selectOption('all');
+  await expect(page.getByRole('button', { name: /VOID-1/ })).toHaveCount(0);
+  // A voided bill still opens from search / a deep link.
+  await page.goto('/search');
+  await page.getByPlaceholder('Name, SKU, phone, bill no. or amount').fill('VOID-1');
+  await page
+    .getByLabel('Purchase bills', { exact: true })
+    .getByRole('link', { name: 'VOID-1' })
+    .click();
+  await expect(page.getByLabel('Purchase detail')).toContainText('Void reason: entered twice');
 
   await page.goto('/purchases');
   await page.getByRole('button', { name: /Void Supplier.*KEEP-1/ }).click();
