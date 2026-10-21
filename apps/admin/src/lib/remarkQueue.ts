@@ -22,7 +22,7 @@ function read(): QueuedRemark[] {
     const raw = localStorage.getItem(KEY);
     const v: unknown = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(v)) return [];
-    return v.filter(
+    const valid = v.filter(
       (e): e is QueuedRemark =>
         !!e &&
         typeof e === 'object' &&
@@ -33,6 +33,13 @@ function read(): QueuedRemark[] {
         typeof (e as QueuedRemark).docId === 'string' &&
         typeof (e as QueuedRemark).body === 'string',
     );
+    // One entry per client id (the latest), even if two windows wrote the same add.
+    const byId = new Map<string, QueuedRemark>();
+    for (const e of valid) {
+      byId.delete(e.clientId);
+      byId.set(e.clientId, e);
+    }
+    return [...byId.values()];
   } catch {
     return [];
   }

@@ -89,9 +89,11 @@ export function describeAudit(e: AuditEvent, who: (userId: string | null) => str
     case 'sale_void':
       return `Sale ${text(a.doc_no)} voided (${rupees(String(a.total_paise ?? 0))}).`;
     case 'purchase_void':
-      return `Purchase bill ${text(a.bill_no)} voided (${rupees(String(a.total_paise ?? 0))}).`;
+      return e.voidByEdit
+        ? `Purchase bill ${text(a.bill_no)} (${rupees(String(a.total_paise ?? 0))}) voided by a bill edit: part of the edit listed with it, not a separate void.`
+        : `Purchase bill ${text(a.bill_no)} voided (${rupees(String(a.total_paise ?? 0))}).`;
     case 'bill_edit':
-      return `Purchase bill ${text(a.bill_no)} (${rupees(String(a.total_paise ?? 0))}) replaced by a corrected bill (its void is listed just before).`;
+      return `Purchase bill ${text(a.bill_no)} (${rupees(String(a.total_paise ?? 0))}) replaced by a corrected bill (the edit also voided it; that void is labelled "voided by a bill edit").`;
     case 'credit_override':
       return `Sale ${text(a.doc_no)} (${rupees(String(a.total_paise ?? 0))}) went over the credit limit and was allowed by ${who(
         typeof a.credit_override_by === 'string' ? a.credit_override_by : null,

@@ -37,3 +37,4 @@
 0065 salepricing supabase/migrations/0065_sale_pricing.sql
 0066 billedit supabase/migrations/0066_purchase_bill_edit.sql
 0067 remarks supabase/migrations/0067_document_remarks.sql
+0068 remarksfix supabase/migrations/0068_remarks_fixes.sql

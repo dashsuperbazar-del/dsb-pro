@@ -156,7 +156,13 @@ function AuditList() {
                 return (
                   <tr key={e.id}>
                     <td data-label="When">{new Date(e.createdAt).toLocaleString()}</td>
-                    <td data-label="Type">{t ? AUDIT_TYPE_LABEL[t] : e.tableName}</td>
+                    <td data-label="Type">
+                      {t === 'purchase_void' && e.voidByEdit
+                        ? 'Purchase bill edit (its void)'
+                        : t
+                          ? AUDIT_TYPE_LABEL[t]
+                          : e.tableName}
+                    </td>
                     <td data-label="By">{who(e.userId)}</td>
                     <td data-label="What happened">{describeAudit(e, who)}</td>
                   </tr>

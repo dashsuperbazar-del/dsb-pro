@@ -62,6 +62,7 @@ export function SettingsScreen() {
     invoicePrefix,
     timezone,
     printerWidth,
+    fiscalYearStartMonth,
     allowNegativeStock,
   ]);
   const unsaved = loaded && currentJson !== savedJson;
@@ -93,6 +94,7 @@ export function SettingsScreen() {
         s.invoicePrefix ?? '',
         s.timezone,
         s.printerWidth,
+        s.fiscalYearStartMonth,
         s.allowNegativeStock,
       ]),
     );
