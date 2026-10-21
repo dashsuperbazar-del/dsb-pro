@@ -56,6 +56,7 @@ export const ALLOWED_GROUPS = Object.freeze([
   'billedit',
   'remarks',
   'remarksfix',
+  'billcode',
 ]);
 
 const VERSION_RE = /^[0-9]{4}$/;
@@ -235,6 +236,7 @@ const EXPECTED_IN_FLIGHT_GROUP_AND_PATH = Object.freeze({
   '0066': ['billedit', 'supabase/migrations/0066_purchase_bill_edit.sql'],
   '0067': ['remarks', 'supabase/migrations/0067_document_remarks.sql'],
   '0068': ['remarksfix', 'supabase/migrations/0068_remarks_fixes.sql'],
+  '0069': ['billcode', 'supabase/migrations/0069_bill_codes.sql'],
 });
 
 /**

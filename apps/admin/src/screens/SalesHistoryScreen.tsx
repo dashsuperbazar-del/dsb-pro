@@ -23,6 +23,8 @@ import { loadShopProfile, type ProfileLoad } from '../lib/shopProfile';
 import { ShareImageButton } from '../components/ShareImageButton';
 import { saleInvoiceDoc } from '../lib/shareImage';
 import { RemarkBox } from '../components/RemarkBox';
+import { BillCodeChip } from '../components/BillCodeChip';
+import { billCodeMatch } from '../lib/billCode';
 import { pendingDocIds } from '../lib/remarkQueue';
 import { shopContext } from '../lib/shopContext';
 
@@ -50,6 +52,7 @@ export function SalesHistoryScreen() {
   // 0067: invoices with an open remark ("Pending" badge and filter); null = not known.
   const [pending, setPending] = useState<Set<string> | null>(null);
   const [onlyPending, setOnlyPending] = useState(false);
+  const [findText, setFindText] = useState('');
   const pendingGen = useRef(0);
   const [me, setMe] = useState<{ userId: string; role: string } | null>(null);
 
@@ -454,6 +457,7 @@ export function SalesHistoryScreen() {
             {viewing.invoice.business_date} · {viewing.invoice.status} ·{' '}
             {customerOf(viewing.invoice.customer_id)?.name ?? 'Walk-in customer'}
           </p>
+          <BillCodeChip code={viewing.invoice.bill_code} />
           <div class="record-list">
             {viewing.lines.map((l, i) => (
               <div class="purchase-line" key={i}>
@@ -502,6 +506,14 @@ export function SalesHistoryScreen() {
           />{' '}
           Only invoices with pending items
         </label>
+        <label class="search-field">
+          Find an invoice
+          <input
+            value={findText}
+            placeholder="Invoice no. or bill code"
+            onInput={(e) => setFindText(e.currentTarget.value)}
+          />
+        </label>
         <div class="table-wrap">
           <table>
             <thead>
@@ -516,9 +528,18 @@ export function SalesHistoryScreen() {
             <tbody>
               {sales
                 .filter((s) => !onlyPending || !!pending?.has(s.id))
+                .filter(
+                  (s) =>
+                    !findText.trim() ||
+                    s.doc_no.toLowerCase().includes(findText.trim().toLowerCase()) ||
+                    billCodeMatch(s.bill_code, findText) !== null,
+                )
                 .map((s) => (
                   <tr>
-                    <td>{s.doc_no}</td>
+                    <td>
+                      {s.doc_no}
+                      {s.bill_code && <small class="muted"> · {s.bill_code}</small>}
+                    </td>
                     <td>{s.business_date}</td>
                     <td>
                       {s.status}
@@ -565,6 +586,12 @@ export function SalesHistoryScreen() {
           <ReceiptHeader load={profile}>
             <p>
               Invoice {receipt.invoice.doc_no}
+              {receipt.invoice.bill_code && (
+                <>
+                  <br />
+                  Bill code {receipt.invoice.bill_code}
+                </>
+              )}
               <br />
               Date {receipt.invoice.business_date}
               <br />

@@ -15,6 +15,9 @@ import {
   getItemSalesReport,
   getPurchaseRegister,
   getAgingReportV2,
+  labelPartyLedger,
+  labelPurchaseRegister,
+  labelSupplierAging,
   getProfitReport,
   type ProfitReport,
   type DayBookRow,
@@ -110,10 +113,10 @@ export function ReportsScreen() {
       setGst(g);
       setLowStock(ls);
       setItemSales(is);
-      setPurchaseRegister(pr);
+      setPurchaseRegister(await labelPurchaseRegister(pr));
       setCustomerAging(ca);
-      setSupplierAging(sa);
-      if (partyId) setPartyLedger(await getPartyLedger(partyId, from, to));
+      setSupplierAging(await labelSupplierAging(sa));
+      if (partyId) setPartyLedger(await labelPartyLedger(await getPartyLedger(partyId, from, to)));
       setMsg(i.ok ? 'Invariant check: PASS' : 'Invariant check: FAIL — stop and investigate');
     } catch (e) {
       setMsg(String(e));

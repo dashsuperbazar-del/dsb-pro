@@ -1071,11 +1071,66 @@ if [[ "$remarksfix" != '0' && "$remarks" != '2' && ! ( "$remarksfix" == '1' && "
  echo 'Remarks fixes appear ahead of completed document remarks. Refusing migration.' >&2; exit 1
 fi
 
+# Bill codes (0069): additive classifier field. Four anchors, all or nothing: the NOT NULL bill_code columns with
+# their format checks, the per-shop unique indexes, the two enabled guard triggers (with the collision-checked
+# generator body), and the function grants (generator/guard server-only, find_bills_by_code signed-in only).
+billcode_probe=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -F' ' <<'SQL'
+do $$ begin
+ create temp table _billcode_receipt (present boolean);
+ if to_regclass('public.app_migration_receipts') is not null then
+   insert into _billcode_receipt select exists(select 1 from public.app_migration_receipts where version='0069');
+ else insert into _billcode_receipt values(false); end if;
+end $$;
+select (select present from _billcode_receipt),
+ (select count(*) from (values
+   ((select count(*) from pg_attribute a where a.attnum>0 and not a.attisdropped and a.attname='bill_code' and a.attnotnull
+       and a.atttypid='text'::regtype and a.attrelid in (to_regclass('public.purchase_bills'),to_regclass('public.sale_invoices')))=2
+    and (select count(*) from pg_constraint c where c.contype='c' and c.convalidated
+       and c.conname in ('purchase_bills_bill_code_format','sale_invoices_bill_code_format'))=2),
+   ((select count(*) from pg_index i join pg_class c on c.oid=i.indexrelid
+       where i.indisunique and i.indisvalid and i.indpred is null
+         and c.relname in ('purchase_bills_bill_code_key','sale_invoices_bill_code_key')
+         and pg_get_indexdef(i.indexrelid) like '%(shop_id, bill_code)')=2),
+   ((select count(*) from pg_trigger t where not t.tgisinternal and t.tgenabled='O'
+       and t.tgfoid=to_regprocedure('public.dsb_bill_code_guard()') and t.tgtype=23
+       and ((t.tgrelid=to_regclass('public.purchase_bills') and t.tgname='purchase_bills_bill_code')
+         or (t.tgrelid=to_regclass('public.sale_invoices') and t.tgname='sale_invoices_bill_code')))=2
+    and exists(select 1 from pg_proc where oid=to_regprocedure('public.dsb_new_bill_code(uuid,boolean)')
+       and position('DSB_BILL_CODE_EXHAUSTED' in prosrc)>0 and position('pg_advisory_xact_lock' in prosrc)>0)),
+   (case when to_regprocedure('public.dsb_bill_code_candidate()') is null or to_regprocedure('public.dsb_new_bill_code(uuid,boolean)') is null
+          or to_regprocedure('public.dsb_bill_code_guard()') is null or to_regprocedure('public.find_bills_by_code(uuid,text)') is null then false
+     else has_function_privilege('authenticated','public.find_bills_by_code(uuid,text)','execute')
+      and not has_function_privilege('anon','public.find_bills_by_code(uuid,text)','execute')
+      and not has_function_privilege('anon','public.dsb_bill_code_candidate()','execute')
+      and not has_function_privilege('authenticated','public.dsb_bill_code_candidate()','execute')
+      and not has_function_privilege('anon','public.dsb_new_bill_code(uuid,boolean)','execute')
+      and not has_function_privilege('authenticated','public.dsb_new_bill_code(uuid,boolean)','execute')
+      and not has_function_privilege('anon','public.dsb_bill_code_guard()','execute')
+      and not has_function_privilege('authenticated','public.dsb_bill_code_guard()','execute') end)
+ ) p(ok) where ok);
+SQL
+)
+read -r billcode_receipt billcode_anchors <<<"$(tail -n 1 <<<"$billcode_probe")"
+case "$billcode_receipt:$billcode_anchors" in
+ f:0) billcode=0; needs_billcode=true ;;
+ f:4) billcode=1; needs_billcode=true ;;
+ t:4) billcode=2; needs_billcode=false ;;
+ *) echo "Bill codes partial/drift state ($billcode_receipt/$billcode_anchors). Refusing migration." >&2; exit 1 ;;
+esac
+if [[ "$billcode" == '2' ]]; then
+ billcode_expected=$(sha256sum "$repo_root/supabase/migrations/0069_bill_codes.sql" | cut -d' ' -f1)
+ billcode_recorded=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -c "select checksum_sha256 from public.app_migration_receipts where version='0069'")
+ [[ "$billcode_expected" == "$billcode_recorded" ]] || { echo '0069 receipt checksum mismatch. Refusing migration.' >&2; exit 1; }
+fi
+if [[ "$billcode" != '0' && "$remarksfix" != '2' && ! ( "$billcode" == '1' && "$remarksfix" == '1' ) ]]; then
+ echo 'Bill codes appear ahead of completed remarks fixes. Refusing migration.' >&2; exit 1
+fi
+
 emit_state() {
   local needs_foundation=$1 needs_hardening=$2 needs_phase65=$3 needs_batcha=$4 needs_batchb=$5 needs_p1=$6 needs_p2=$7 needs_c0=$8 needs_c1=$9 needs_c2=${10} needs_c3=${11} needs_c3b=${12} needs_r0=${13} needs_d1=${14} needs_r0b=${15} needs_o1=${16} needs_o2=${17} needs_d2b=${18} needs_d3a=${19}
   local needs_upgrade=true
   if [[ "$needs_foundation:$needs_hardening:$needs_phase65:$needs_batcha:$needs_batchb:$needs_p1:$needs_p2:$needs_c0:$needs_c1:$needs_c2:$needs_c3:$needs_c3b:$needs_r0:$needs_d1:$needs_r0b:$needs_o1:$needs_o2:$needs_d2b:$needs_d3a" == "false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false" ]]; then
-    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" && "$needs_supplierschedule" == "false" && "$needs_partymerge" == "false" && "$needs_itemindex" == "false" && "$needs_billextras" == "false" && "$needs_salepricing" == "false" && "$needs_billedit" == "false" && "$needs_remarks" == "false" && "$needs_remarksfix" == "false" ]]; then needs_upgrade=false; fi
+    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" && "$needs_supplierschedule" == "false" && "$needs_partymerge" == "false" && "$needs_itemindex" == "false" && "$needs_billextras" == "false" && "$needs_salepricing" == "false" && "$needs_billedit" == "false" && "$needs_remarks" == "false" && "$needs_remarksfix" == "false" && "$needs_billcode" == "false" ]]; then needs_upgrade=false; fi
   fi
   printf 'observed_state=%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s\n' "$foundation" "$hardening" "$phase65" "$batcha" "$batchb" "$p1" "$p2" "$c0" "$c1" "$c2" "$c3" "$c3b" "$r0" "$d1" "$r0b" "$o1" "$o2" "$d2b" "$d3a"
   printf 'needs_upgrade=%s\n' "$needs_upgrade"
@@ -1120,6 +1175,8 @@ emit_state() {
   printf 'needs_remarks=%s\n' "$needs_remarks"
   printf 'remarksfix_state=%s\n' "$remarksfix"
   printf 'needs_remarksfix=%s\n' "$needs_remarksfix"
+  printf 'billcode_state=%s\n' "$billcode"
+  printf 'needs_billcode=%s\n' "$needs_billcode"
 }
 
 # Legacy (0030-0043) classification is unchanged from before Packet P1: the

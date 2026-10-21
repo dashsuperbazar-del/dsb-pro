@@ -1,6 +1,7 @@
 import { getSupabaseClient } from './client';
 import { classifyError, errorMessage } from './errors';
 import { definitiveCode } from './outcomes';
+import { relabelRawIds } from './billCodes';
 
 // C2 supplier-payment adapter. Writes return a three-way outcome instead of throwing, so the caller's
 // durable attempt store can tell a definitive rejection (rolled back) from an unknown outcome (the
@@ -305,7 +306,16 @@ export async function getSupplierLedger(
     !INT_TEXT.test(r.closingBalancePaise)
   )
     throw new Error('Malformed supplier ledger.');
-  return r;
+  // A bill with no supplier bill no. is named by its raw uuid in the ledger; show its bill code instead.
+  return {
+    ...r,
+    entries: await relabelRawIds(
+      r.entries,
+      (e) => (e && e.kind === 'PURCHASE' ? e.id : null),
+      (e) => e.document,
+      (e, code) => ({ ...e, document: code }),
+    ),
+  };
 }
 
 const saleAllocs = (list: SaleAllocation[]) =>

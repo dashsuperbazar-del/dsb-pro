@@ -1,5 +1,6 @@
 import { getSupabaseClient } from './client';
 import { classifyError, errorMessage } from './errors';
+import { withBillCode } from './billCodes';
 
 export type Customer = {
   id: string;
@@ -28,6 +29,8 @@ export type SaleInvoice = {
   id: string;
   customer_id: string | null;
   doc_no: string;
+  /** billcode (0069): server-made code for searching/quoting the invoice; absent on older rows and before the migration. */
+  bill_code?: string | null;
   business_date: string;
   status: 'DRAFT' | 'FINALIZED' | 'VOID';
   subtotal_paise: number;
@@ -202,16 +205,18 @@ export async function voidPayment(paymentId: string): Promise<string> {
 }
 
 export async function listRecentSales(shopId: string, limit = 50): Promise<SaleInvoice[]> {
-  const { data, error } = await getSupabaseClient()
-    .from('sale_invoices')
-    .select(
-      'id,customer_id,doc_no,business_date,status,subtotal_paise,discount_paise,extra_charges_paise,total_paise,notes,created_at',
-    )
-    .eq('shop_id', shopId)
-    .order('created_at', { ascending: false })
-    .limit(limit);
+  const { data, error } = await withBillCode((withCode) =>
+    getSupabaseClient()
+      .from('sale_invoices')
+      .select(
+        `id,customer_id,doc_no,business_date,status,subtotal_paise,discount_paise,extra_charges_paise,total_paise,notes,created_at${withCode ? ',bill_code' : ''}`,
+      )
+      .eq('shop_id', shopId)
+      .order('created_at', { ascending: false })
+      .limit(limit),
+  );
   if (error) throw new Error(friendly(error));
-  return (data ?? []) as SaleInvoice[];
+  return (data ?? []) as unknown as SaleInvoice[];
 }
 
 export async function listCustomerBalances(): Promise<CustomerBalance[]> {
@@ -295,13 +300,15 @@ export async function listOpenCustomerSales(customerId: string): Promise<SaleInv
 export async function getSaleReceipt(saleId: string): Promise<SaleReceipt> {
   const client = getSupabaseClient();
   const [invoiceResult, lineResult, paymentResult] = await Promise.all([
-    client
-      .from('sale_invoices')
-      .select(
-        'id,customer_id,doc_no,business_date,status,subtotal_paise,discount_paise,extra_charges_paise,round_off_paise,total_paise,notes,created_at,invoice_type,tax_paise',
-      )
-      .eq('id', saleId)
-      .single(),
+    withBillCode((withCode) =>
+      client
+        .from('sale_invoices')
+        .select(
+          `id,customer_id,doc_no,business_date,status,subtotal_paise,discount_paise,extra_charges_paise,round_off_paise,total_paise,notes,created_at,invoice_type,tax_paise${withCode ? ',bill_code' : ''}`,
+        )
+        .eq('id', saleId)
+        .single(),
+    ),
     client
       .from('sale_invoice_items')
       .select(
@@ -315,7 +322,7 @@ export async function getSaleReceipt(saleId: string): Promise<SaleReceipt> {
       .eq('source_sale_invoice_id', saleId)
       .order('created_at'),
   ]);
-  const invoice = must(invoiceResult.data, invoiceResult.error) as SaleInvoice;
+  const invoice = must(invoiceResult.data, invoiceResult.error) as unknown as SaleInvoice;
   if (lineResult.error) throw new Error(friendly(lineResult.error));
   if (paymentResult.error) throw new Error(friendly(paymentResult.error));
   return {

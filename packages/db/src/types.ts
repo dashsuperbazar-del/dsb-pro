@@ -1828,6 +1828,7 @@ export type Database = {
       }
       purchase_bills: {
         Row: {
+          bill_code: string
           bill_image_path: string | null
           bill_no: string | null
           business_date: string
@@ -1853,6 +1854,7 @@ export type Database = {
           voided_at: string | null
         }
         Insert: {
+          bill_code: string
           bill_image_path?: string | null
           bill_no?: string | null
           business_date: string
@@ -1878,6 +1880,7 @@ export type Database = {
           voided_at?: string | null
         }
         Update: {
+          bill_code?: string
           bill_image_path?: string | null
           bill_no?: string | null
           business_date?: string
@@ -2348,6 +2351,7 @@ export type Database = {
       }
       sale_invoices: {
         Row: {
+          bill_code: string
           business_date: string
           client_id: string
           created_at: string
@@ -2376,6 +2380,7 @@ export type Database = {
           voided_at: string | null
         }
         Insert: {
+          bill_code: string
           business_date: string
           client_id: string
           created_at?: string
@@ -2404,6 +2409,7 @@ export type Database = {
           voided_at?: string | null
         }
         Update: {
+          bill_code?: string
           business_date?: string
           client_id?: string
           created_at?: string
@@ -3735,6 +3741,7 @@ export type Database = {
         Args: { p_signed?: boolean; p_value: number }
         Returns: undefined
       }
+      dsb_bill_code_candidate: { Args: never; Returns: string }
       dsb_customer_has_history: {
         Args: { p_customer_id: string }
         Returns: boolean
@@ -3746,6 +3753,10 @@ export type Database = {
       dsb_lock_shop_finance: {
         Args: { p_shop: string; p_tenant: string }
         Returns: undefined
+      }
+      dsb_new_bill_code: {
+        Args: { p_lock: boolean; p_shop: string }
+        Returns: string
       }
       dsb_normalize_allocations: {
         Args: { p_allocations: Json; p_target_field: string }
@@ -3781,6 +3792,19 @@ export type Database = {
       edit_purchase_bill: {
         Args: { p_bill: Json; p_client_id: string; p_original_id: string }
         Returns: Json
+      }
+      find_bills_by_code: {
+        Args: { p_query: string; p_shop_id: string }
+        Returns: {
+          bill_code: string
+          business_date: string
+          doc_no: string
+          id: string
+          kind: string
+          party_id: string
+          status: string
+          total_paise: number
+        }[]
       }
       get_customer_aging_report: {
         Args: { p_as_of: string; p_shop_id: string }

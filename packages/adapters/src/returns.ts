@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseClient } from './client';
 import { classifyError, errorMessage } from './errors';
+import { relabelRawIds } from './billCodes';
 
 export type ReturnType = 'SALE' | 'PURCHASE';
 export type ReturnDisposition = 'RETURN_TO_SELLABLE' | 'DAMAGED' | 'EXPIRED' | 'SUPPLIER_RETURN';
@@ -100,13 +101,18 @@ export async function listReturnSources(type: ReturnType, shopId: string): Promi
     .order('created_at', { ascending: false })
     .limit(100);
   if (error) fail(error);
-  return ((data ?? []) as unknown as PurchaseSourceRow[]).map((row) => ({
-    id: row.id,
-    doc_no: row.bill_no || row.id,
-    business_date: row.business_date,
-    total_paise: row.total_paise,
-    party_name: row.party?.name ?? null,
-  }));
+  return relabelRawIds(
+    ((data ?? []) as unknown as PurchaseSourceRow[]).map((row) => ({
+      id: row.id,
+      doc_no: row.bill_no || row.id,
+      business_date: row.business_date,
+      total_paise: row.total_paise,
+      party_name: row.party?.name ?? null,
+    })),
+    (row) => row.id,
+    (row) => row.doc_no,
+    (row, code) => ({ ...row, doc_no: code }),
+  );
 }
 
 export async function listReturnableLines(

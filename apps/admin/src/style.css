@@ -1918,3 +1918,8 @@ kbd {
     display: none;
   }
 }
+
+.bill-code-copy {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.05em;
+}
