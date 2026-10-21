@@ -764,7 +764,10 @@ export function InventoryScreen({
         setBillDocuments([]);
         setDocumentBusy(false);
         setDocumentSaveError('');
-        setPurchaseClientId(crypto.randomUUID());
+        const nextClientId = crypto.randomUUID();
+        // A deliberate repeat legitimately has the same total: only its bill number is checked.
+        repeatedClientId.current = purchaseRepeatId ? nextClientId : null;
+        setPurchaseClientId(nextClientId);
         completed = true;
       } catch (e) {
         if (active) {
@@ -1494,6 +1497,7 @@ export function InventoryScreen({
       return;
     setPurchaseCards(cards);
     setDraftTouched(true);
+    repeatedClientId.current = purchaseClientId;
     setMessage('Items copied from the last bill. Check each quantity and rate.');
   }
   // Enter in a field moves to the next control instead of submitting: implicit form submission would post
@@ -1522,6 +1526,7 @@ export function InventoryScreen({
     if (next && next !== postButton.current) next.focus();
   }
   const duplicateCheckBusy = useRef(false);
+  const repeatedClientId = useRef<string | null>(null);
   async function addPurchase(ev: Event) {
     ev.preventDefault();
     // Only the Post button posts (never Enter in a field, never a script-driven submit without it).
@@ -1697,6 +1702,7 @@ export function InventoryScreen({
             totalPaise: payablePaise,
           },
           known,
+          { sameTotal: repeatedClientId.current !== fresh.clientId },
         );
       } finally {
         duplicateCheckBusy.current = false;

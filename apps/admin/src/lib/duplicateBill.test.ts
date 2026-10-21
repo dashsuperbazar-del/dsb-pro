@@ -38,6 +38,11 @@ describe('findDuplicateBill', () => {
     expect(findDuplicateBill({ ...c, totalPaise: 19451 }, [bill({})])).toBeNull();
     expect(findDuplicateBill({ ...c, totalPaise: null }, [bill({})])).toBeNull();
   });
+  it('a repeat skips the total check but still checks the bill number', () => {
+    const c = cand({ billNo: null, totalPaise: 19450 });
+    expect(findDuplicateBill(c, [bill({})], { sameTotal: false })).toBeNull();
+    expect(findDuplicateBill(cand(), [bill({})], { sameTotal: false })?.reason).toBe('bill_no');
+  });
   it('ignores other suppliers, void bills and bills without a supplier', () => {
     expect(findDuplicateBill(cand(), [bill({ partyId: 'p2' })])).toBeNull();
     expect(findDuplicateBill(cand(), [bill({ status: 'VOID' })])).toBeNull();

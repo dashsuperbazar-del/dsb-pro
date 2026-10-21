@@ -28,6 +28,8 @@ export function findDuplicateBill(
     totalPaise: number | null;
   },
   bills: KnownBill[],
+  /** sameTotal: false for a deliberate Repeat, which legitimately has the same total. */
+  opts: { sameTotal?: boolean } = {},
 ): DuplicateMatch | null {
   if (!candidate.partyId) return null;
   const no = normBillNo(candidate.billNo);
@@ -36,7 +38,8 @@ export function findDuplicateBill(
   for (const b of bills) {
     if (b.partyId !== candidate.partyId || b.status === 'VOID') continue;
     if (no && normBillNo(b.billNo) === no) return { bill: b, reason: 'bill_no' };
-    if (byTotal || candidate.totalPaise === null || day === null) continue;
+    if (opts.sameTotal === false || byTotal || candidate.totalPaise === null || day === null)
+      continue;
     const other = dayNumber(b.businessDate);
     if (
       other !== null &&
