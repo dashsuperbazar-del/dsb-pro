@@ -65,10 +65,17 @@ test('editing a posted bill replaces it: original void, corrected bill posted, s
   await expect(edit.locator('input[name="billNo"]')).toHaveValue('EDIT-1');
   await expect(edit.getByLabel('Item 1 quantity', { exact: true })).toHaveValue('5');
   await edit.getByLabel('Item 1 quantity', { exact: true }).fill('7');
+  // Same supplier and bill no. as the original it replaces: no duplicate-bill question.
+  const dialogs: string[] = [];
+  page.on('dialog', (d) => {
+    dialogs.push(d.message());
+    void d.dismiss();
+  });
   await edit.getByRole('button', { name: 'Save corrected bill', exact: true }).click();
   await expect(
     page.getByRole('status').filter({ hasText: 'Bill corrected (1 item)' }).first(),
   ).toBeVisible();
+  expect(dialogs).toEqual([]);
 
   // The list shows the corrected bill and the void original; each links to the other.
   await page.goto('/purchases');

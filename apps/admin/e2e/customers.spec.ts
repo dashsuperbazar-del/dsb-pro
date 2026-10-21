@@ -130,9 +130,9 @@ test('global search finds a customer by name and says plainly when nothing match
   await page.goto('/');
   await page.getByRole('link', { name: 'Search', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Search', exact: true })).toBeVisible();
-  await page.getByPlaceholder('Name, SKU or phone').fill('searchab');
+  await page.getByPlaceholder('Name, SKU, phone, bill no. or amount').fill('searchab');
   const group = page.getByLabel('Customers', { exact: true });
   await expect(group.getByRole('link', { name: 'Searchable Customer' })).toBeVisible();
-  await page.getByPlaceholder('Name, SKU or phone').fill('zzzzqq');
+  await page.getByPlaceholder('Name, SKU, phone, bill no. or amount').fill('zzzzqq');
   await expect(page.getByText('No matches.')).toBeVisible();
 });

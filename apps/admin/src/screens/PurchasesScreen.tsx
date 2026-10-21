@@ -37,6 +37,9 @@ import {
 } from '../lib/routeSnapshot';
 import { SnapshotNote } from '../components/SnapshotNote';
 import { createDetailCache } from '../lib/detailCache';
+import { ShareImageButton } from '../components/ShareImageButton';
+import { purchaseBillDoc } from '../lib/shareImage';
+import { loadShopProfile } from '../lib/shopProfile';
 
 type PurchaseListSnapshot = { rows: PurchaseRecord[]; parties: Party[] };
 type Detail = Awaited<ReturnType<typeof getPurchaseDetail>>;
@@ -248,6 +251,11 @@ export function PurchasesScreen({ url }: { url?: string }) {
     if (!shop || billCache.peek(billKey(shop, id))) return;
     billCache.fetch(billKey(shop, id)).catch(() => undefined);
   }
+  // Global search opens a bill directly: /purchases?bill=<id>.
+  const billParam = query.get('bill') ?? '';
+  useEffect(() => {
+    if (shop && billParam) void open(billParam);
+  }, [shop, billParam]);
   async function open(id: string, fresh = false) {
     if (!shop) {
       setError('Still loading this shop. Try again in a moment.');
@@ -543,7 +551,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
                 </button>
               </p>
             ) : (
-              detailLoading && <p role="status">Loading bill lines…</p>
+              detailLoading && <p role="status">Loading bill items…</p>
             )}
           </section>
         )}
@@ -564,6 +572,18 @@ export function PurchasesScreen({ url }: { url?: string }) {
             )}
             <div class="row">
               <h2>{detail.bill.bill_no || 'Purchase bill'}</h2>
+              <ShareImageButton
+                build={async () => {
+                  const party = parties.find((p) => p.id === detail.bill.party_id) ?? null;
+                  const prof = await loadShopProfile(shop);
+                  return purchaseBillDoc(
+                    detail,
+                    prof.profile,
+                    party ? { name: party.name, phone: party.phone } : null,
+                    extras?.lines ?? [],
+                  );
+                }}
+              />
               <button
                 type="button"
                 onClick={() => {

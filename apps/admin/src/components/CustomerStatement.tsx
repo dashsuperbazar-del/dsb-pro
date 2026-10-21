@@ -11,17 +11,22 @@ import {
   CUSTOMER_STATEMENT_NOTE as STATEMENT_NOTE,
   type CustomerStatement as Statement,
 } from '../lib/customerStatement';
+import { ShareImageButton } from './ShareImageButton';
+import { statementDoc } from '../lib/shareImage';
 
 export function CustomerStatement({
   shopId,
   customerId,
   customerName,
   businessDate,
+  phone = null,
 }: {
   shopId: string;
   customerId: string;
   customerName: string;
   businessDate: string;
+  /** For the WhatsApp fallback of "Share as image" (display only). */
+  phone?: string | null;
 }) {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState(businessDate);
@@ -196,6 +201,34 @@ export function CustomerStatement({
         <button disabled={!statement} onClick={print}>
           Print A4 / PDF
         </button>
+        <ShareImageButton
+          disabled={!statement}
+          build={() => {
+            if (!statement) throw new Error('Prepare the statement first.');
+            return statementDoc({
+              kind: 'Customer',
+              partyName: statement.customerName,
+              phone,
+              shop: {
+                name: statement.shopName,
+                address: statement.address,
+                gstin: statement.gstin,
+              },
+              from: statement.from,
+              to: statement.to,
+              openingBalancePaise: statement.openingBalancePaise,
+              closingBalancePaise: statement.closingBalancePaise,
+              entries: statement.entries.map((e) => ({
+                date: e.date,
+                label: statementKind(e.kind) ?? e.kind,
+                document: e.document,
+                amountPaise: e.amountPaise,
+                runningBalancePaise: e.runningBalancePaise,
+              })),
+              note: STATEMENT_NOTE,
+            });
+          }}
+        />
       </div>
       {statement && (
         <div aria-label="Prepared customer statement" class="mobile-records">

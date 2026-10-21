@@ -49,7 +49,7 @@ export function PriceHistory(props: {
         )}{' '}
         · range {rupees(summary.min)}–{rupees(summary.max)}
       </p>
-      <p class="muted">Line prices before any bill discount, extra charges or round-off.</p>
+      <p class="muted">Item prices before any bill discount, extra charges or round-off.</p>
       {pts.length > 1 && (
         <svg viewBox="0 0 320 100" role="img" aria-label="Purchase cost trend" class="price-chart">
           <polyline

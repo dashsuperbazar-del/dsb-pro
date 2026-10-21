@@ -704,3 +704,54 @@ test('voiding a credit bill needs a reason, reverses its stock and supplier bala
   await page.getByLabel('Item details').selectOption({ label: 'Void Rice' });
   await expect(page.getByLabel('item peek')).toContainText('Stock 3 piece');
 });
+
+test('a repeated supplier bill number asks before posting, and global search opens the bill', async ({
+  page,
+}) => {
+  test.setTimeout(90000);
+  await createOwnerShop(page);
+  await page.goto('/inventory');
+  await createItem(page, 'Dup Sugar');
+  const purchase = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Post purchase', exact: true }) })
+    .last();
+  const supplier = page
+    .getByRole('button', { name: 'Create & select supplier' })
+    .locator('xpath=..');
+  await page.goto('/purchases?new=1');
+  await expect(purchase.locator('input[name="date"]')).not.toHaveValue('');
+  await page.getByText('Add a supplier', { exact: true }).click();
+  await supplier.getByPlaceholder('New supplier name').fill('Dup Supplier');
+  await supplier.getByRole('button', { name: 'Create & select supplier' }).click();
+  await expect(purchase.locator('select[name="partyId"]')).toHaveValue(/.+/);
+  await purchase.locator('input[name="billNo"]').fill('DUP-7');
+  await fillBillItem(purchase, 1, 'Dup Sugar', '2', '10');
+  await purchase.getByRole('button', { name: 'Post purchase', exact: true }).click();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Purchase posted (1 item)' }).first(),
+  ).toBeVisible();
+
+  // Same supplier + same bill number: a confirm; Cancel posts nothing.
+  await page.goto('/purchases?new=1');
+  await expect(purchase.locator('input[name="date"]')).not.toHaveValue('');
+  await expect(purchase.locator('select[name="partyId"]')).toHaveValue(/.+/);
+  await purchase.locator('input[name="billNo"]').fill('dup-7');
+  await fillBillItem(purchase, 1, 'Dup Sugar', '1', '10');
+  let message = '';
+  page.once('dialog', (d) => {
+    message = d.message();
+    void d.dismiss();
+  });
+  await purchase.getByRole('button', { name: 'Post purchase', exact: true }).click();
+  await expect.poll(() => message).toMatch(/^Possible duplicate of bill #DUP-7 dated .*₹20\.00/);
+  await expect(page.getByRole('status').filter({ hasText: 'Purchase posted' })).toHaveCount(0);
+
+  await page.goto('/search');
+  await page.getByPlaceholder('Name, SKU, phone, bill no. or amount').fill('DUP-7');
+  const bills = page.getByLabel('Purchase bills', { exact: true });
+  await expect(bills).toContainText('Dup Supplier');
+  await bills.getByRole('link', { name: 'DUP-7' }).click();
+  await expect(page.getByLabel('Purchase detail')).toContainText('Dup Sugar');
+  await expect(page.getByRole('button', { name: 'Share as image' })).toBeVisible();
+});

@@ -26,7 +26,7 @@ export function deriveUnitCostFromTotal(qtyText: string, totalText: string): Der
   if (qtyMicros <= 0n) return { ok: false, message: 'Quantity must be greater than zero.' };
   const total = totalText.trim();
   if (!total || !RUPEES.test(total))
-    return { ok: false, message: 'Enter the line total in rupees with at most 2 decimals.' };
+    return { ok: false, message: 'Enter the item total in rupees with at most 2 decimals.' };
   const [rw, rf = ''] = total.split('.');
   const totalPaise = BigInt(rw) * 100n + BigInt(rf.padEnd(2, '0') || '0');
   // unit = round-half-up(total / qty), in paise per unit
@@ -34,7 +34,7 @@ export function deriveUnitCostFromTotal(qtyText: string, totalText: string): Der
   const unit = (2n * numerator + qtyMicros) / (2n * qtyMicros);
   const TOO_LARGE: DerivedCost = {
     ok: false,
-    message: 'That total is too large to store as a line. Check the quantity and amount.',
+    message: 'That total is too large to store as an item. Check the quantity and amount.',
   };
   const candidates = [unit, unit - 1n, unit + 1n].filter(
     (c) => c >= 0n && c <= BigInt(Number.MAX_SAFE_INTEGER),
