@@ -1103,6 +1103,7 @@ export function InventoryScreen({
     }
   }
   const postButton = useRef<HTMLButtonElement>(null);
+  const purchaseForm = useRef<HTMLFormElement>(null);
   // A refused post's reason, shown next to the Post button until the items change.
   const [barProblem, setBarProblem] = useState('');
   useEffect(() => setBarProblem(''), [purchaseCards]);
@@ -1601,6 +1602,23 @@ export function InventoryScreen({
     const next = controls[at + 1];
     if (next && next !== postButton.current) next.focus();
   }
+  // F2 adds an item row; F4 moves to the Post button. Neither posts: the bill is posted only by pressing that
+  // button (Enter/Space on it), which runs the normal confirms. Heard on the document because choosing an
+  // item removes the focused match button and focus falls to the page; only while the form is on screen.
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => {
+      if ((ev.key !== 'F2' && ev.key !== 'F4') || ev.altKey || ev.ctrlKey || ev.metaKey) return;
+      if (ev.shiftKey || ev.isComposing || ev.defaultPrevented) return;
+      const form = purchaseForm.current;
+      if (!form || form.closest('[hidden]') || !form.getClientRects().length) return;
+      ev.preventDefault();
+      if (ev.key === 'F2')
+        form.querySelector<HTMLButtonElement>('button.bill-bar-add:not(:disabled)')?.click();
+      else postButton.current?.focus();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
   const duplicateCheckBusy = useRef(false);
   const repeatedClientId = useRef<string | null>(null);
   async function addPurchase(ev: Event) {
@@ -2615,7 +2633,11 @@ export function InventoryScreen({
               ))}
           </details>
         )}
-        <form onSubmit={addPurchase} onKeyDown={purchaseFormKeyDown}>
+        <form ref={purchaseForm} onSubmit={addPurchase} onKeyDown={purchaseFormKeyDown}>
+          <p class="muted shortcut-hint no-print">
+            <kbd>Enter</kbd> next field · <kbd>↓</kbd> <kbd>↑</kbd> pick a match · <kbd>F2</kbd> add
+            item · <kbd>F4</kbd> go to Post (then <kbd>Enter</kbd>)
+          </p>
           {purchaseLocked && (
             <div class="alert" role="alert">
               <p>

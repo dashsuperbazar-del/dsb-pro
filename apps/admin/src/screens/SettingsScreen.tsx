@@ -8,6 +8,7 @@ import {
 } from '@dsb-pro/adapters';
 import { BuildVersion } from '../components/BuildVersion';
 import { appRoute } from '../lib/paths';
+import { useDirtyGuard } from '../lib/dirtyGuard';
 
 const MONTHS = [
   'January',
@@ -52,6 +53,22 @@ export function SettingsScreen() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  // What the server holds, so unsaved typing can be flagged (and guarded when leaving the page).
+  const [savedJson, setSavedJson] = useState('');
+  const currentJson = JSON.stringify([
+    name,
+    address,
+    gstin,
+    invoicePrefix,
+    timezone,
+    printerWidth,
+    allowNegativeStock,
+  ]);
+  const unsaved = loaded && currentJson !== savedJson;
+  useDirtyGuard(unsaved);
+  // Shown as a hint only: the server decides what it accepts (some valid IDs are not 15-character GSTINs).
+  const gstinOdd =
+    gstin.trim() !== '' && !/^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]$/i.test(gstin.trim());
 
   async function refresh() {
     const membership = await getCurrentMembership();
@@ -68,6 +85,17 @@ export function SettingsScreen() {
     setPrinterWidth(s.printerWidth);
     setFiscalYearStartMonth(s.fiscalYearStartMonth);
     setAllowNegativeStock(s.allowNegativeStock);
+    setSavedJson(
+      JSON.stringify([
+        s.name,
+        s.address ?? '',
+        s.gstin ?? '',
+        s.invoicePrefix ?? '',
+        s.timezone,
+        s.printerWidth,
+        s.allowNegativeStock,
+      ]),
+    );
     setLoaded(true);
   }
   useEffect(() => {
@@ -92,6 +120,7 @@ export function SettingsScreen() {
         fiscalYearStartMonth,
         allowNegativeStock,
       });
+      setSavedJson(currentJson);
       setMessage('Shop settings saved.');
     } catch (e) {
       setError(String(e));
@@ -143,8 +172,15 @@ export function SettingsScreen() {
               value={gstin}
               onInput={(e) => setGstin((e.currentTarget as HTMLInputElement).value)}
               placeholder="27ABCDE1234F1Z5"
+              aria-describedby="gstin-hint"
             />
           </label>
+          {gstinOdd && (
+            <small id="gstin-hint" class="muted">
+              {' '}
+              This does not look like a 15-character GSTIN. Check it before saving.
+            </small>
+          )}
           <br />
           <label>
             Invoice prefix{' '}
@@ -218,6 +254,7 @@ export function SettingsScreen() {
           </p>
           <p>
             <button disabled={busy}>{busy ? 'Saving…' : 'Save shop profile'}</button>
+            {unsaved && !busy && <span class="muted"> Unsaved changes</span>}
           </p>
         </form>
       </section>

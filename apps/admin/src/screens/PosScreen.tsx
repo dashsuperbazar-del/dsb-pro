@@ -12,6 +12,7 @@ import {
   type SaleInvoiceType,
 } from '@dsb-pro/core';
 import { route } from 'preact-router';
+import { isTypingField, posShortcut, stepIndex } from '../lib/shortcuts';
 import {
   createCustomer,
   findItemByBarcode,
@@ -195,6 +196,8 @@ export function PosScreen() {
   const [editingPrice, setEditingPrice] = useState<number | null>(null);
   const canTypePrice = role === 'owner' || role === 'manager';
   const scanBlocked = useRef(false);
+  const findRef = useRef<HTMLInputElement>(null);
+  const customerRef = useRef<HTMLSelectElement>(null);
   const resumeLock = useRef(false);
 
   // The business date loads asynchronously; a sale or payment submitted before it arrives
@@ -404,7 +407,7 @@ export function PosScreen() {
     rawQty: string | number,
     priceKind: 'retail' | 'wholesale',
     discountPaise = 0,
-  ) {
+  ): Promise<boolean> {
     const qty = canonicalQuantity(rawQty);
     const prices = await currentPrices(item.id);
     const matching = prices.filter((p) => p.kind === priceKind && p.unit_level === unitLevel);
@@ -416,7 +419,7 @@ export function PosScreen() {
         setPendingPrice({ item, unitLevel, qty, priceKind, discountPaise });
         setPendingPriceInput('');
         setPendingSave(false);
-        return;
+        return false;
       }
       throw new Error(
         `No ${priceKind} price for ${item.name} / ${unitName(item, unitLevel)}. Ask the owner or a manager to enter a price.`,
@@ -434,6 +437,7 @@ export function PosScreen() {
         listPricePaise: chosen.price_paise,
       },
     ]);
+    return true;
   }
   function confirmPendingPrice(ev: Event) {
     ev.preventDefault();
@@ -588,17 +592,27 @@ export function PosScreen() {
   async function addManual(ev: Event) {
     ev.preventDefault();
     setError('');
-    const f = new FormData(ev.currentTarget as HTMLFormElement);
+    const addForm = ev.currentTarget as HTMLFormElement;
+    const f = new FormData(addForm);
     const item = items.find((i) => i.id === String(f.get('itemId')));
     if (!item) return;
     try {
-      await addLine(
+      const added = await addLine(
         item,
         manualUnitLevel,
         String(f.get('qty')),
         String(f.get('priceKind')) as 'retail' | 'wholesale',
         paise(String(f.get('lineDiscount') || '0')),
       );
+      // Ready for the next product: back to the search box with its text selected (typing replaces it).
+      // Only when focus is still in this form: the price lookup is async and the cashier may have moved on.
+      const at = document.activeElement;
+      // The choice is cleared so a second Enter (or a held key) picks again instead of adding the item twice.
+      if (added) setManualItemId('');
+      if (added && (!at || at === document.body || addForm.contains(at))) {
+        findRef.current?.focus();
+        findRef.current?.select();
+      }
     } catch (e) {
       setError(String(e));
     }
@@ -759,10 +773,79 @@ export function PosScreen() {
     }
   }
 
+  // Shortcuts only move between views/fields. The one that acts, Ctrl+Enter, runs the Finalize button's own
+  // handler (same checks, same busy guard) and only from the payment view, where the payment is on screen.
   function handlePosKeyDown(ev: KeyboardEvent) {
-    if (ev.ctrlKey && ev.key === 'Enter') {
+    const action = posShortcut(ev);
+    if (!action) return;
+    if (action === 'finalize') {
+      // Not while a price is being asked for: Ctrl+Enter there must not post the sale behind the prompt.
+      if (!checkout || pendingPrice || busy) return;
       ev.preventDefault();
-      void finalizeSale();
+      if (!ev.repeat) void finalizeSale();
+      return;
+    }
+    if (action === 'cancel') {
+      const target = ev.target as HTMLElement;
+      if (isTypingField(target) || target.tagName === 'SELECT') {
+        // First Esc only leaves the field (never cancels what was typed).
+        target.blur();
+        ev.preventDefault();
+      } else if (pendingPrice) {
+        ev.preventDefault();
+        setPendingPrice(null);
+      } else if (checkout) {
+        ev.preventDefault();
+        setCheckout(false);
+      }
+      return;
+    }
+    ev.preventDefault();
+    if (action === 'payment') {
+      setCheckout(!checkout);
+      window.scrollTo(0, 0);
+    } else if (action === 'customer') {
+      setCheckout(true);
+      window.setTimeout(() => customerRef.current?.focus(), 0);
+    } else if (action === 'find') {
+      setCheckout(false);
+      window.setTimeout(() => findRef.current?.focus(), 0);
+    }
+  }
+  // Listen on the document: when a view switch hides the focused field, focus falls to the page body and a
+  // handler on <main> would no longer hear the keys. The ref keeps the handler current without re-binding.
+  const keyHandler = useRef(handlePosKeyDown);
+  keyHandler.current = handlePosKeyDown;
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => keyHandler.current(ev);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+  // Up/Down in the product search move the choice in the Item list; Enter picks the first match, and
+  // Enter again (with a choice) adds it. Adding is the form's own submit, never a sale post.
+  function findKeyDown(ev: KeyboardEvent) {
+    if (ev.isComposing || ev.ctrlKey || ev.altKey || ev.metaKey) return;
+    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+      if (!visibleItems.length) return;
+      ev.preventDefault();
+      const at = stepIndex(
+        visibleItems.findIndex((i) => i.id === manualItemId),
+        visibleItems.length,
+        ev.key,
+      );
+      const item = visibleItems[at]!;
+      setManualItemId(item.id);
+      setManualUnitLevel(item.unit3 ? 3 : item.unit2 ? 2 : 1);
+    } else if (ev.key === 'Enter') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (manualItemId && visibleItems.some((i) => i.id === manualItemId)) {
+        (ev.currentTarget as HTMLInputElement).form?.requestSubmit();
+      } else if (visibleItems.length) {
+        const item = visibleItems[0]!;
+        setManualItemId(item.id);
+        setManualUnitLevel(item.unit3 ? 3 : item.unit2 ? 2 : 1);
+      }
     }
   }
   function printLocalReceipt(sale: OfflineSaleRecord) {
@@ -808,7 +891,7 @@ export function PosScreen() {
   }
 
   return (
-    <main class="page wide pos-page" onKeyDown={handlePosKeyDown}>
+    <main class="page wide pos-page">
       <p>
         <a href={appRoute.home}>← Home</a> ·{' '}
         <a
@@ -833,6 +916,8 @@ export function PosScreen() {
         <button
           class="primary checkout-link"
           type="button"
+          title="Shortcut: F4"
+          aria-keyshortcuts="F4"
           onClick={() => {
             setCheckout(!checkout);
             window.scrollTo(0, 0);
@@ -841,13 +926,22 @@ export function PosScreen() {
           {checkout ? '← Back to items' : 'Review payment →'}
         </button>
       </div>
+      <p class="muted shortcut-hint no-print">
+        <kbd>F2</kbd> customer · <kbd>F3</kbd> find · <kbd>F4</kbd> items/payment · <kbd>Esc</kbd>{' '}
+        back · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> finalize
+      </p>
       <details class="keyboard-help">
         <summary>
           <strong>Keyboard map</strong>
         </summary>
         <p>
           <kbd>Enter</kbd> submits the focused scan/item form · <kbd>Tab</kbd> moves through billing
-          fields · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> finalizes the current sale.
+          fields · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> finalizes the current sale (payment view only).
+        </p>
+        <p>
+          <kbd>F2</kbd> customer · <kbd>F3</kbd> find product · <kbd>F4</kbd> items / payment ·{' '}
+          <kbd>Esc</kbd> leave the field, then go back. In the search box <kbd>↑</kbd>
+          <kbd>↓</kbd> choose an item, <kbd>Enter</kbd> pick, <kbd>Enter</kbd> add.
         </p>
       </details>
       {error && (
@@ -882,7 +976,9 @@ export function PosScreen() {
           <label>
             Find product{' '}
             <input
+              ref={findRef}
               value={itemQuery}
+              onKeyDown={findKeyDown}
               placeholder="Name or SKU"
               onInput={(e) => {
                 setItemQuery((e.currentTarget as HTMLInputElement).value);
@@ -912,7 +1008,10 @@ export function PosScreen() {
                 </option>
               ))}
             </select>
-            <small>Showing up to 50 matches from {items.length} items.</small>
+            <small>
+              Showing up to 50 matches from {items.length} items. In the search box: ↑ ↓ choose,
+              Enter to pick, Enter again to add.
+            </small>
           </label>
           <label>
             Unit{' '}
@@ -1272,6 +1371,7 @@ export function PosScreen() {
         <label>
           Customer{' '}
           <select
+            ref={customerRef}
             value={customerId}
             onChange={(e) => {
               setCustomerId((e.currentTarget as HTMLSelectElement).value);

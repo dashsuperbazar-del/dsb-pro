@@ -23,6 +23,7 @@ import { ExpensesScreen } from './screens/ExpensesScreen';
 import { StockAdjustScreen } from './screens/StockAdjustScreen';
 import { OpeningsScreen } from './screens/OpeningsScreen';
 import { SearchScreen } from './screens/SearchScreen';
+import { AuditLogScreen } from './screens/AuditLogScreen';
 import { DayBookTile } from './components/DayBookTile';
 import { AttentionTile } from './components/AttentionTile';
 import { OpenRemarksTile } from './components/OpenRemarksTile';
@@ -95,6 +96,7 @@ export function App() {
         <Route path={appRoute.stockAdjust} component={StockAdjustScreen} />
         <Route path={appRoute.openings} component={OpeningsScreen} />
         <Route path={appRoute.search} component={SearchScreen} />
+        <Route path={appRoute.auditLog} component={AuditLogScreen} />
         <Route default component={() => <Home session={session} />} />
       </Router>
       {session.status === 'active' && (
