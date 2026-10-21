@@ -3,7 +3,7 @@
 -- cross-tenant refusal, remarks follow bill edits (0066) without moving rows, export coverage.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(51);
+select plan(53);
 insert into auth.users(id) values
  ('e7000000-0000-0000-0000-000000000001'),  -- owner
  ('e7000000-0000-0000-0000-000000000002'),  -- manager
@@ -152,6 +152,12 @@ select throws_like($$select list_open_remarks(pg_temp.id('shop'))$$,'%not permit
 select pg_temp.act('1');
 select is(jsonb_array_length(phase6_export_tenant(pg_temp.id('shop'))->'documentRemarks'),4,'export carries the shop''s remarks');
 select is(jsonb_array_length(phase6_export_tenant(pg_temp.id('shop'))->'documentRemarkEvents'),7,'export carries every history step');
+
+-- Money neutrality: remarks never touch ledgers, stock or balances (the only bill/stock rows are the fixture's).
+select pg_temp.act('1');
+select is((select count(*) from stock_movements where source_id in (pg_temp.id('p1'),pg_temp.id('r1'),pg_temp.id('r2'))
+   or client_id like '%remark%'),0::bigint,'remarks wrote no stock movement');
+select is((select count(*) from payments)+(select count(*) from payment_allocations),0::bigint,'remarks wrote no payment or allocation');
 
 select * from finish();
 rollback;
