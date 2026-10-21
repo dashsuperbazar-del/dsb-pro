@@ -723,6 +723,7 @@ export function CustomersScreen() {
             customerId={selected}
             customerName={customer.name}
             businessDate={businessDate}
+            phone={customer.phone}
           />
         </section>
       )}

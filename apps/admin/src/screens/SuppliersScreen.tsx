@@ -850,6 +850,7 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
                 partyId={partyId}
                 supplierName={allParties.find((p) => p.id === partyId)?.name ?? ''}
                 businessDate={businessDate}
+                phone={allParties.find((p) => p.id === partyId)?.phone ?? null}
               />
             </section>
           )}

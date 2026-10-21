@@ -69,6 +69,7 @@ import {
   type Party,
   type StockRow,
   type BillDocument,
+  listSupplierBills,
 } from '@dsb-pro/adapters';
 import {
   buildLegacyDsbImportPlan,
@@ -109,6 +110,13 @@ import { BillAttachmentEditor } from '../components/BillAttachmentEditor';
 import { removeLocalDocument } from '../lib/billDocumentStore';
 import { TaskTabs } from '../components/TaskTabs';
 import { appRoute } from '../lib/paths';
+import {
+  duplicateMessage,
+  findDuplicateBill,
+  mergeKnownBills,
+  type DuplicateMatch,
+  type KnownBill,
+} from '../lib/duplicateBill';
 import { useDirtyGuard } from '../lib/dirtyGuard';
 import {
   ageText,
@@ -756,7 +764,10 @@ export function InventoryScreen({
         setBillDocuments([]);
         setDocumentBusy(false);
         setDocumentSaveError('');
-        setPurchaseClientId(crypto.randomUUID());
+        const nextClientId = crypto.randomUUID();
+        // A deliberate repeat legitimately has the same total: only its bill number is checked.
+        repeatedClientId.current = purchaseRepeatId ? nextClientId : null;
+        setPurchaseClientId(nextClientId);
         completed = true;
       } catch (e) {
         if (active) {
@@ -1193,7 +1204,10 @@ export function InventoryScreen({
     ? (lockedV2?.paymentType ?? 'credit')
     : purchasePaymentType;
   const notesTooLong = purchaseNotes.trim().length > NOTES_MAX;
-  const editLocked = purchaseLocked || contextBusy || documentBusy || !purchaseContextReady;
+  const [dupChecking, setDupChecking] = useState(false);
+  // The duplicate check freezes the form so the bill that posts is exactly the one that was checked.
+  const editLocked =
+    purchaseLocked || contextBusy || documentBusy || !purchaseContextReady || dupChecking;
   // Bill details (discount, charges, notes, photos) start closed; the summary names every value in it,
   // and a problem there opens it.
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -1483,6 +1497,7 @@ export function InventoryScreen({
       return;
     setPurchaseCards(cards);
     setDraftTouched(true);
+    repeatedClientId.current = purchaseClientId;
     setMessage('Items copied from the last bill. Check each quantity and rate.');
   }
   // Enter in a field moves to the next control instead of submitting: implicit form submission would post
@@ -1510,6 +1525,8 @@ export function InventoryScreen({
     const next = controls[at + 1];
     if (next && next !== postButton.current) next.focus();
   }
+  const duplicateCheckBusy = useRef(false);
+  const repeatedClientId = useRef<string | null>(null);
   async function addPurchase(ev: Event) {
     ev.preventDefault();
     // Only the Post button posts (never Enter in a field, never a script-driven submit without it).
@@ -1667,6 +1684,31 @@ export function InventoryScreen({
         )
       )
         return;
+    }
+    // Possible duplicate (same supplier + bill number, or same supplier + total within 3 days): a confirm,
+    // never a block. Reads this supplier's bills (short timeout) plus the bills already loaded here.
+    if (!purchaseLocked && fresh.partyId) {
+      if (duplicateCheckBusy.current) return;
+      duplicateCheckBusy.current = true;
+      setDupChecking(true);
+      let match: DuplicateMatch | null;
+      try {
+        const known = await knownSupplierBills(shopId, fresh.partyId, recentBills);
+        match = findDuplicateBill(
+          {
+            partyId: fresh.partyId,
+            billNo: fresh.billNo ?? null,
+            businessDate: fresh.businessDate ?? '',
+            totalPaise: payablePaise,
+          },
+          known,
+          { sameTotal: repeatedClientId.current !== fresh.clientId },
+        );
+      } finally {
+        duplicateCheckBusy.current = false;
+        setDupChecking(false);
+      }
+      if (match && !confirm(duplicateMessage(match))) return;
     }
     const isRetry = Boolean(purchaseLocked && lockedPurchase.current);
     // The sale price plan is stored before the bill (and never inside its request, which stays as it was),
@@ -2898,6 +2940,7 @@ export function InventoryScreen({
               class="primary"
               disabled={
                 purchaseBusy ||
+                dupChecking ||
                 contextBusy ||
                 (!purchaseLocked &&
                   (!purchaseContextReady ||
@@ -2921,4 +2964,55 @@ export function InventoryScreen({
       </section>
     </Container>
   );
+}
+
+const DUPLICATE_READ_TIMEOUT_MS = 4000;
+const fromRecord = (b: PurchaseRecord): KnownBill => ({
+  id: b.id,
+  partyId: b.party_id,
+  billNo: b.bill_no,
+  businessDate: b.business_date,
+  totalPaise: b.total_paise,
+  status: b.status,
+});
+// This supplier's posted bills from the server (bounded wait), merged with any bill list this device has
+// already loaded (this screen's recent bills, the Purchases list snapshot). A failed read is no match.
+async function knownSupplierBills(
+  shopId: string,
+  partyId: string,
+  loaded: PurchaseRecord[],
+): Promise<KnownBill[]> {
+  let server: KnownBill[] = [];
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const rows = await Promise.race([
+      listSupplierBills(shopId, partyId),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('timeout')), DUPLICATE_READ_TIMEOUT_MS);
+      }),
+    ]);
+    server = rows.map((b) => ({
+      id: b.purchase_bill_id,
+      partyId,
+      billNo: b.bill_no,
+      businessDate: b.business_date,
+      totalPaise: b.total_paise,
+    }));
+  } catch {
+    /* offline or refused: fall back to what is loaded */
+  } finally {
+    clearTimeout(timer);
+  }
+  let cached: KnownBill[] = [];
+  try {
+    const snap = peekSnapshot<{ rows: PurchaseRecord[] }>(
+      'purchases',
+      await snapshotUserId(),
+      shopId,
+    );
+    cached = (snap?.value.rows ?? []).map(fromRecord);
+  } catch {
+    /* no snapshot */
+  }
+  return mergeKnownBills(server, loaded.map(fromRecord), cached);
 }

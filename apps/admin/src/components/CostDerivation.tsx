@@ -19,7 +19,7 @@ export function CostDerivation({
   if (derived.exact)
     return (
       <p class="muted" data-testid="cost-derivation">
-        = {rupees(derived.unitPaise)} per unit · line {rupees(derived.lineTotalPaise)}
+        = {rupees(derived.unitPaise)} per unit · item total {rupees(derived.lineTotalPaise)}
       </p>
     );
   const diff = Math.abs(derived.diffPaise);

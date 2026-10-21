@@ -58,3 +58,44 @@ export function searchEverything(query: string, data: SearchData): SearchResult 
     suppliersTotal: suppliers.length,
   };
 }
+
+// Bills and invoices: matched on number, party name and amount. "1250", "1250.5" or "₹1,250.50" match
+// a total of ₹1,250.50 (whole rupees, then the typed paise digits), so a typed amount finds the bill.
+export type SearchBill = {
+  id: string;
+  number: string | null;
+  partyName: string;
+  date: string;
+  totalPaise: string | number;
+};
+function amountMatches(totalPaise: string | number, q: string): boolean {
+  const m = /^₹?\s*(\d[\d,]*)(?:\.(\d{1,2}))?$/.exec(q);
+  if (!m) return false;
+  const want = m[1]!.replace(/,/g, '').replace(/^0+(?=\d)/, '');
+  const s = String(totalPaise).replace(/^-/, '').padStart(3, '0');
+  const whole = s.slice(0, -2).replace(/^0+(?=\d)/, '');
+  return whole === want && (m[2] === undefined || s.slice(-2).startsWith(m[2]));
+}
+export function searchBills(
+  query: string,
+  bills: SearchBill[],
+): { rows: SearchBill[]; total: number } {
+  const q = query.trim().toLowerCase();
+  if (q.length < 2) return { rows: [], total: 0 };
+  const scored: Array<[number, SearchBill]> = [];
+  for (const b of bills) {
+    const no = (b.number ?? '').toLowerCase();
+    const party = b.partyName.toLowerCase();
+    let score = -1;
+    if (no && no === q) score = 0;
+    else if (amountMatches(b.totalPaise, q)) score = 1;
+    else if (no && no.includes(q)) score = 2;
+    else if (party.startsWith(q)) score = 3;
+    else if (party.includes(q)) score = 4;
+    if (score >= 0) scored.push([score, b]);
+  }
+  const rows = scored
+    .sort((a, b) => a[0] - b[0] || b[1].date.localeCompare(a[1].date))
+    .map(([, r]) => r);
+  return { rows: rows.slice(0, GLOBAL_SEARCH_LIMIT), total: rows.length };
+}

@@ -18,7 +18,7 @@ export function repeatPurchase(
   items: Item[],
 ): PurchaseDraftLine[] {
   if (bill.status !== 'POSTED') throw new Error('A void purchase cannot be repeated.');
-  if (!lines.length) throw new Error('This purchase has no item lines.');
+  if (!lines.length) throw new Error('This purchase has no items.');
   return lines.map((line) => {
     const item = items.find((i) => i.id === line.item_id);
     if (!item)
@@ -30,7 +30,7 @@ export function repeatPurchase(
       Number(item.conv1 ?? 1) !== Number(line.conv1_snapshot ?? 1) ||
       Number(item.conv2 ?? 1) !== Number(line.conv2_snapshot ?? 1)
     )
-      throw new Error(`${item.name}: units changed since that bill. Review a new line manually.`);
+      throw new Error(`${item.name}: units changed since that bill. Review a new item manually.`);
     const price = Number(line.unit_price_paise);
     if (!Number.isSafeInteger(price) || price < 0)
       throw new Error('Purchase cost is outside the supported range.');
