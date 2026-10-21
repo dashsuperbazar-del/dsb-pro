@@ -58,6 +58,7 @@ const GROUP_ORDER = [
   'billextras',
   'salepricing',
   'billedit',
+  'remarks',
 ];
 
 /**

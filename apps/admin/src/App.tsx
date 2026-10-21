@@ -25,6 +25,7 @@ import { OpeningsScreen } from './screens/OpeningsScreen';
 import { SearchScreen } from './screens/SearchScreen';
 import { DayBookTile } from './components/DayBookTile';
 import { AttentionTile } from './components/AttentionTile';
+import { OpenRemarksTile } from './components/OpenRemarksTile';
 import { QuickEntry } from './components/QuickEntry';
 import { BottomNav } from './components/BottomNav';
 import { t } from './lib/i18n';
@@ -141,6 +142,7 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
         )}
         {session.membership.role !== 'cashier' && <DayBookTile />}
         {session.membership.role !== 'cashier' && <AttentionTile />}
+        <OpenRemarksTile />
         <h2 class="section-label">Quick entry</h2>
         <QuickEntry role={session.membership.role} />
         <h2 class="section-label">Workspace</h2>

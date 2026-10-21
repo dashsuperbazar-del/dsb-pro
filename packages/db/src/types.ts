@@ -432,6 +432,179 @@ export type Database = {
           },
         ]
       }
+      document_remark_events: {
+        Row: {
+          action: string
+          actor: string | null
+          body: string
+          client_id: string
+          created_at: string
+          deleted_at: number | null
+          doc_kind: string
+          id: string
+          remark_id: string
+          shop_id: string
+          status: string
+          tenant_id: string
+          updated_at: number
+          version: number
+        }
+        Insert: {
+          action: string
+          actor?: string | null
+          body: string
+          client_id?: string
+          created_at?: string
+          deleted_at?: number | null
+          doc_kind: string
+          id?: string
+          remark_id: string
+          shop_id: string
+          status: string
+          tenant_id: string
+          updated_at?: number
+          version: number
+        }
+        Update: {
+          action?: string
+          actor?: string | null
+          body?: string
+          client_id?: string
+          created_at?: string
+          deleted_at?: number | null
+          doc_kind?: string
+          id?: string
+          remark_id?: string
+          shop_id?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: number
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_remark_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_remark_events_tenant_id_remark_id_fkey"
+            columns: ["tenant_id", "remark_id"]
+            isOneToOne: false
+            referencedRelation: "document_remarks"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "document_remark_events_tenant_id_shop_id_fkey"
+            columns: ["tenant_id", "shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["tenant_id", "id"]
+          },
+        ]
+      }
+      document_remarks: {
+        Row: {
+          body: string
+          client_id: string
+          created_at: string
+          created_by: string
+          deleted_at: number | null
+          doc_kind: string
+          id: string
+          purchase_bill_id: string | null
+          sale_invoice_id: string | null
+          settled_at: string | null
+          settled_by: string | null
+          shop_id: string
+          status: string
+          tenant_id: string
+          updated_at: number
+          version: number
+        }
+        Insert: {
+          body: string
+          client_id: string
+          created_at?: string
+          created_by?: string
+          deleted_at?: number | null
+          doc_kind: string
+          id?: string
+          purchase_bill_id?: string | null
+          sale_invoice_id?: string | null
+          settled_at?: string | null
+          settled_by?: string | null
+          shop_id: string
+          status?: string
+          tenant_id: string
+          updated_at?: number
+          version?: number
+        }
+        Update: {
+          body?: string
+          client_id?: string
+          created_at?: string
+          created_by?: string
+          deleted_at?: number | null
+          doc_kind?: string
+          id?: string
+          purchase_bill_id?: string | null
+          sale_invoice_id?: string | null
+          settled_at?: string | null
+          settled_by?: string | null
+          shop_id?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: number
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_remarks_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_remarks_tenant_id_purchase_bill_id_fkey"
+            columns: ["tenant_id", "purchase_bill_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_bill_outstanding"
+            referencedColumns: ["tenant_id", "purchase_bill_id"]
+          },
+          {
+            foreignKeyName: "document_remarks_tenant_id_purchase_bill_id_fkey"
+            columns: ["tenant_id", "purchase_bill_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_bills"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "document_remarks_tenant_id_sale_invoice_id_fkey"
+            columns: ["tenant_id", "sale_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "customer_invoice_outstanding"
+            referencedColumns: ["tenant_id", "sale_invoice_id"]
+          },
+          {
+            foreignKeyName: "document_remarks_tenant_id_sale_invoice_id_fkey"
+            columns: ["tenant_id", "sale_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "sale_invoices"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "document_remarks_tenant_id_shop_id_fkey"
+            columns: ["tenant_id", "shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["tenant_id", "id"]
+          },
+        ]
+      }
       expenses: {
         Row: {
           amount_paise: number
@@ -3331,6 +3504,16 @@ export type Database = {
         Args: { p_client_id: string; p_token: string }
         Returns: string
       }
+      add_document_remark: {
+        Args: {
+          p_body: string
+          p_client_id: string
+          p_doc_id: string
+          p_doc_kind: string
+          p_shop_id: string
+        }
+        Returns: string
+      }
       allocate_customer_payment_v2: {
         Args: { p_allocations: Json; p_client_id: string; p_payment_id: string }
         Returns: Json
@@ -3519,6 +3702,35 @@ export type Database = {
         Args: { p_as_of: string; p_shop_id: string }
         Returns: undefined
       }
+      dr_can_see: { Args: { p_kind: string; p_shop: string }; Returns: boolean }
+      dr_current_purchase: { Args: { p_bill: string }; Returns: string }
+      dr_lock_remark: {
+        Args: { p_remark_id: string }
+        Returns: {
+          body: string
+          client_id: string
+          created_at: string
+          created_by: string
+          deleted_at: number | null
+          doc_kind: string
+          id: string
+          purchase_bill_id: string | null
+          sale_invoice_id: string | null
+          settled_at: string | null
+          settled_by: string | null
+          shop_id: string
+          status: string
+          tenant_id: string
+          updated_at: number
+          version: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "document_remarks"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       dsb_assert_safe_paise: {
         Args: { p_signed?: boolean; p_value: number }
         Returns: undefined
@@ -3557,6 +3769,14 @@ export type Database = {
       dsb_supplier_has_history: {
         Args: { p_party_id: string }
         Returns: boolean
+      }
+      edit_document_remark: {
+        Args: {
+          p_body: string
+          p_expected_version: number
+          p_remark_id: string
+        }
+        Returns: number
       }
       edit_purchase_bill: {
         Args: { p_bill: Json; p_client_id: string; p_original_id: string }
@@ -3730,6 +3950,36 @@ export type Database = {
       import_legacy_dsb_master: {
         Args: { p_client_id: string; p_plan: Json; p_shop_id: string }
         Returns: Json
+      }
+      list_document_remarks: {
+        Args: { p_doc_id: string; p_doc_kind: string }
+        Returns: {
+          body: string
+          created_at: string
+          created_by: string
+          doc_id: string
+          from_earlier_bill: boolean
+          remark_id: string
+          settled_at: string
+          settled_by: string
+          status: string
+          version: number
+        }[]
+      }
+      list_open_remarks: {
+        Args: { p_shop_id: string }
+        Returns: {
+          body: string
+          business_date: string
+          created_at: string
+          doc_id: string
+          doc_kind: string
+          doc_no: string
+          doc_status: string
+          party_name: string
+          remark_id: string
+          version: number
+        }[]
       }
       list_tenant_users_admin: {
         Args: never
@@ -4101,6 +4351,7 @@ export type Database = {
         Returns: string
       }
       remove_tenant_user: { Args: { p_user_id: string }; Returns: undefined }
+      reopen_document_remark: { Args: { p_remark_id: string }; Returns: number }
       revoke_device: { Args: { p_id: string }; Returns: undefined }
       revoke_invite: { Args: { p_id: string }; Returns: undefined }
       set_device_label: {
@@ -4142,6 +4393,7 @@ export type Database = {
         Args: { p_status: string; p_user_id: string }
         Returns: undefined
       }
+      settle_document_remark: { Args: { p_remark_id: string }; Returns: number }
       settle_opening: {
         Args: {
           p_amount_paise: number

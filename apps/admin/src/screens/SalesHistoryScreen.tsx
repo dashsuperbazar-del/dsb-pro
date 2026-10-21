@@ -1,5 +1,5 @@
 import { formatQuantity } from '@dsb-pro/core';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { compareLegacyDsbDayToPro, splitGst, type LegacyDsbDayComparison } from '@dsb-pro/core';
 import {
   getDefaultShopId,
@@ -8,6 +8,7 @@ import {
   getShopDayReconciliation,
   listCustomers,
   listRecentSales,
+  listOpenRemarks,
   voidSale,
   type Customer,
   type SaleInvoice,
@@ -21,6 +22,9 @@ import { ReceiptHeader } from '../components/ReceiptHeader';
 import { loadShopProfile, type ProfileLoad } from '../lib/shopProfile';
 import { ShareImageButton } from '../components/ShareImageButton';
 import { saleInvoiceDoc } from '../lib/shareImage';
+import { RemarkBox } from '../components/RemarkBox';
+import { pendingDocIds } from '../lib/remarkQueue';
+import { shopContext } from '../lib/shopContext';
 
 const money = (paise: number) => `₹${(paise / 100).toFixed(2)}`;
 
@@ -43,6 +47,11 @@ export function SalesHistoryScreen() {
   const [, forceLocale] = useState(0);
   const [viewing, setViewing] = useState<SaleReceipt | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  // 0067: invoices with an open remark ("Pending" badge and filter); null = not known.
+  const [pending, setPending] = useState<Set<string> | null>(null);
+  const [onlyPending, setOnlyPending] = useState(false);
+  const pendingGen = useRef(0);
+  const [me, setMe] = useState<{ userId: string; role: string } | null>(null);
 
   async function loadReport(shop: string, date: string) {
     setReportBusy(true);
@@ -63,6 +72,11 @@ export function SalesHistoryScreen() {
     ]);
     setSales(recent);
     setReport(day);
+    const token = ++pendingGen.current;
+    void listOpenRemarks(shop).then(
+      (r) => token === pendingGen.current && setPending(pendingDocIds(r, 'sale')),
+      () => token === pendingGen.current && setPending(null),
+    );
   }
   useEffect(() => {
     // Global search opens an invoice directly: /sales-history?sale=<id>.
@@ -72,6 +86,10 @@ export function SalesHistoryScreen() {
       .catch((e) => setError(String(e)));
     void listCustomers()
       .then(setCustomers)
+      .catch(() => undefined);
+    void shopContext
+      .get()
+      .then((c) => setMe({ userId: c.session.user.id, role: c.membership.role }))
       .catch(() => undefined);
     const h = () => forceLocale((v) => v + 1);
     window.addEventListener('dsb-locale-change', h);
@@ -452,10 +470,38 @@ export function SalesHistoryScreen() {
           <p>
             <strong>Total {money(viewing.invoice.total_paise)}</strong>
           </p>
+          {me && shopId && (
+            <RemarkBox
+              shopId={shopId}
+              docKind="sale"
+              docId={viewing.invoice.id}
+              userId={me.userId}
+              role={me.role}
+              onLoaded={(list) => {
+                const id = viewing.invoice.id;
+                const has = list.some((r) => r.status === 'OPEN');
+                setPending((old) => {
+                  if (!old || old.has(id) === has) return old;
+                  const next = new Set(old);
+                  if (has) next.add(id);
+                  else next.delete(id);
+                  return next;
+                });
+              }}
+            />
+          )}
         </section>
       )}
 
       <section class="card no-print">
+        <label class="inline-check">
+          <input
+            type="checkbox"
+            checked={onlyPending}
+            onChange={(e) => setOnlyPending(e.currentTarget.checked)}
+          />{' '}
+          Only invoices with pending items
+        </label>
         <div class="table-wrap">
           <table>
             <thead>
@@ -468,32 +514,44 @@ export function SalesHistoryScreen() {
               </tr>
             </thead>
             <tbody>
-              {sales.map((s) => (
-                <tr>
-                  <td>{s.doc_no}</td>
-                  <td>{s.business_date}</td>
-                  <td>{s.status}</td>
-                  <td>{money(s.total_paise)}</td>
-                  <td>
-                    <div class="row">
-                      <button disabled={busy} onClick={() => void viewSale(s.id)}>
-                        View
-                      </button>
-                      <button disabled={busy} onClick={() => void openReceipt(s, 'thermal')}>
-                        {t('printThermal', locale)}
-                      </button>
-                      <button disabled={busy} onClick={() => void openReceipt(s, 'a4')}>
-                        {t('printA4', locale)}
-                      </button>
-                      {s.status === 'FINALIZED' && (
-                        <button disabled={busy} onClick={() => void doVoid(s)}>
-                          {t('voidSale', locale)}
-                        </button>
+              {sales
+                .filter((s) => !onlyPending || !!pending?.has(s.id))
+                .map((s) => (
+                  <tr>
+                    <td>{s.doc_no}</td>
+                    <td>{s.business_date}</td>
+                    <td>
+                      {s.status}
+                      {pending?.has(s.id) && (
+                        <>
+                          {' '}
+                          <span class="badge remark-open" data-testid="sale-pending">
+                            Pending
+                          </span>
+                        </>
                       )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td>{money(s.total_paise)}</td>
+                    <td>
+                      <div class="row">
+                        <button disabled={busy} onClick={() => void viewSale(s.id)}>
+                          View
+                        </button>
+                        <button disabled={busy} onClick={() => void openReceipt(s, 'thermal')}>
+                          {t('printThermal', locale)}
+                        </button>
+                        <button disabled={busy} onClick={() => void openReceipt(s, 'a4')}>
+                          {t('printA4', locale)}
+                        </button>
+                        {s.status === 'FINALIZED' && (
+                          <button disabled={busy} onClick={() => void doVoid(s)}>
+                            {t('voidSale', locale)}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
             </tbody>
           </table>
         </div>

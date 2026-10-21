@@ -48,6 +48,13 @@
       "scope": "shop",
       "optional": true
     },
+    { "key": "documentRemarks", "table": "document_remarks", "scope": "shop", "optional": true },
+    {
+      "key": "documentRemarkEvents",
+      "table": "document_remark_events",
+      "scope": "shop",
+      "optional": true
+    },
     { "key": "financialRequests", "table": "financial_requests", "scope": "shop" },
     { "key": "shopFinancialHistory", "table": "shop_financial_history", "scope": "shop" },
     { "key": "syncIdempotencyKeys", "table": "sync_idempotency_keys", "scope": "tenant" },
