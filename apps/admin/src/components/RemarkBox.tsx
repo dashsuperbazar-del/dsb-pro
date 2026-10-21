@@ -98,6 +98,8 @@ export function RemarkBox(props: {
     setEditing(null);
     setHistory(null);
     setNote('');
+    setText('');
+    setBusy(false);
     void load().then(flush);
     const online = () => void flush();
     window.addEventListener('online', online);
@@ -286,6 +288,15 @@ export function RemarkBox(props: {
           {queued.map((q) => (
             <li key={q.clientId} data-testid="remark-queued">
               <span class="badge remark-waiting">Waiting to send</span> {q.body}
+              {q.lastError && (
+                <small class="muted">
+                  {' '}
+                  · {plainRemarkRefusal(q.lastError) || 'No answer from the server yet.'}
+                </small>
+              )}{' '}
+              <button type="button" class="link" onClick={() => flushDrop(q.clientId)}>
+                Discard
+              </button>
             </li>
           ))}
         </ul>

@@ -77,12 +77,14 @@ export function PurchasesScreen({ url }: { url?: string }) {
   const [statusFilter, setStatusFilter] = useState<BillStatusFilter | 'pending'>('all');
   // 0067: bills with an open remark ("Pending" badge and filter); null = not known (no badge, filter empty).
   const [pending, setPending] = useState<Set<string> | null>(null);
+  const pendingGen = useRef(0);
   function loadPending(shopId: string) {
+    const token = ++pendingGen.current;
     void Promise.resolve()
       .then(() => listOpenRemarks(shopId))
       .then(
-        (r) => setPending(pendingDocIds(r, 'purchase')),
-        () => setPending(null),
+        (r) => token === pendingGen.current && setPending(pendingDocIds(r, 'purchase')),
+        () => token === pendingGen.current && setPending(null),
       );
   }
   // Ledger settlement per listed bill (Paid/Partial/Unpaid/Void badge); missing = not known, no badge.
@@ -676,7 +678,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
               <VoidReasonNote shopId={shop} billId={detail.bill.id} />
             )}
             {extras?.notes && <p data-testid="bill-notes">Notes: {extras.notes}</p>}
-            {shop && (
+            {shop && userRef.current && (
               <RemarkBox
                 shopId={shop}
                 docKind="purchase"

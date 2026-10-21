@@ -1,5 +1,5 @@
 import { formatQuantity } from '@dsb-pro/core';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { compareLegacyDsbDayToPro, splitGst, type LegacyDsbDayComparison } from '@dsb-pro/core';
 import {
   getDefaultShopId,
@@ -50,6 +50,7 @@ export function SalesHistoryScreen() {
   // 0067: invoices with an open remark ("Pending" badge and filter); null = not known.
   const [pending, setPending] = useState<Set<string> | null>(null);
   const [onlyPending, setOnlyPending] = useState(false);
+  const pendingGen = useRef(0);
   const [me, setMe] = useState<{ userId: string; role: string } | null>(null);
 
   async function loadReport(shop: string, date: string) {
@@ -71,9 +72,10 @@ export function SalesHistoryScreen() {
     ]);
     setSales(recent);
     setReport(day);
+    const token = ++pendingGen.current;
     void listOpenRemarks(shop).then(
-      (r) => setPending(pendingDocIds(r, 'sale')),
-      () => setPending(null),
+      (r) => token === pendingGen.current && setPending(pendingDocIds(r, 'sale')),
+      () => token === pendingGen.current && setPending(null),
     );
   }
   useEffect(() => {

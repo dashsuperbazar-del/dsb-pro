@@ -69,8 +69,8 @@ function markError(clientId: string, message: string) {
 }
 
 /**
- * Resends this user's queued adds (optionally only for one document). Committed and refused entries leave
- * the queue; unknown outcomes stay for the next try. Returns the refused ones so the screen can say why.
+ * Resends this user's queued adds (optionally only for one document). Committed entries and invalid text leave
+ * the queue; every other outcome stays (the user can discard it) for the next try. Returns the refused ones so the screen can say why.
  */
 export async function flushRemarkQueue(
   userId: string,
@@ -86,9 +86,14 @@ export async function flushRemarkQueue(
     if (out.kind === 'committed') {
       dropQueuedRemark(e.clientId);
       sent++;
-    } else if (out.kind === 'rejected') {
+    } else if (out.kind === 'rejected' && out.code === 'DSB_INVALID_REMARK') {
+      // The text itself is invalid: it can never be sent.
       dropQueuedRemark(e.clientId);
       refused.push({ ...e, lastError: out.message });
+    } else if (out.kind === 'rejected') {
+      // Session expired, bill not synced yet, permission change: keep the text, say why, let the user discard.
+      markError(e.clientId, out.message);
+      waiting++;
     } else {
       markError(e.clientId, out.message);
       waiting++;
