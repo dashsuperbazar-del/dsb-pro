@@ -36,6 +36,7 @@ import { CameraScanner } from './CameraScanner';
 import { VoiceEntryButton } from './VoiceEntryButton';
 import { CostDerivation } from './CostDerivation';
 import { PriceHistory } from './PriceHistory';
+import { stepIndex } from '../lib/shortcuts';
 
 const MATCH_LIMIT = 8;
 const UNIT_LIST_ID = 'bill-card-units';
@@ -342,6 +343,30 @@ export function PurchaseBillCards(props: {
     onChange([...now, added]);
     setFocusKey(`${added.key}|name`);
   }
+  // Arrow keys walk the match list; Esc returns to the name box. Enter on a match uses the button's own click.
+  function matchKeys(ev: KeyboardEvent, key: string) {
+    if (ev.isComposing) return;
+    const group = ev.currentTarget as HTMLElement;
+    if (ev.key === 'Escape') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      host.current
+        ?.querySelector<HTMLInputElement>(`[data-card="${key}"] [data-field="name"]`)
+        ?.focus();
+      return;
+    }
+    if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp') return;
+    const buttons = [...group.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+    const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    ev.preventDefault();
+    if (ev.key === 'ArrowUp' && at <= 0) {
+      host.current
+        ?.querySelector<HTMLInputElement>(`[data-card="${key}"] [data-field="name"]`)
+        ?.focus();
+      return;
+    }
+    buttons[stepIndex(at, buttons.length, ev.key)]?.focus();
+  }
   const enterKey = (ev: KeyboardEvent, then: () => void) => {
     if (ev.key !== 'Enter' || ev.isComposing) return;
     ev.preventDefault();
@@ -399,7 +424,19 @@ export function PurchaseBillCards(props: {
                 data-field="name"
                 value={card.search}
                 disabled={disabled || !!newForm?.busy}
-                onKeyDown={(e) => enterKey(e, () => nameEnter(card))}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowDown' && !e.isComposing) {
+                    const first = host.current?.querySelector<HTMLButtonElement>(
+                      `[data-card="${card.key}"] .bill-card-matches button:not(:disabled)`,
+                    );
+                    if (first) {
+                      e.preventDefault();
+                      first.focus();
+                      return;
+                    }
+                  }
+                  enterKey(e, () => nameEnter(card));
+                }}
                 onInput={(e) => {
                   const search = e.currentTarget.value;
                   // Typing over a chosen item drops it, with the quantity and cost entered for it.
@@ -499,7 +536,12 @@ export function PurchaseBillCards(props: {
               </button>
             </div>
             {picker && (
-              <div class="bill-card-matches" role="group" aria-label={`Matches for item ${n}`}>
+              <div
+                class="bill-card-matches"
+                role="group"
+                aria-label={`Matches for item ${n}`}
+                onKeyDown={(e) => matchKeys(e, card.key)}
+              >
                 {picker.options.map((m) => (
                   <button
                     type="button"

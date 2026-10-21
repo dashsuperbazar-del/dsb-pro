@@ -310,3 +310,11 @@ export type {
   RemarkDocKind,
   RemarkStatus,
 } from './remarks';
+export {
+  listAuditEvents,
+  auditFilter,
+  AUDIT_TYPES,
+  AUDIT_TYPE_LABEL,
+  AUDIT_PAGE_SIZE,
+} from './auditLog';
+export type { AuditEvent, AuditQuery, AuditType } from './auditLog';

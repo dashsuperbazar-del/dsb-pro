@@ -30,6 +30,7 @@ export function MoreScreen({ role }: { role: Role | null }) {
       ? ([
           [appRoute.openings, 'Opening balances', 'money'],
           [appRoute.team, 'Team', 'people'],
+          [appRoute.auditLog, 'Audit log', 'report'],
         ] as [string, string, IconName][])
       : []),
     [appRoute.devices, 'Devices', 'settings'],

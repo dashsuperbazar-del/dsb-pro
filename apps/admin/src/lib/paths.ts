@@ -26,4 +26,5 @@ export const appRoute = {
   stockAdjust: appPath('/stock-adjust'),
   openings: appPath('/openings'),
   search: appPath('/search'),
+  auditLog: appPath('/audit-log'),
 };

@@ -1899,3 +1899,22 @@ body {
     grid-template-columns: 120px 140px minmax(0, 1fr);
   }
 }
+kbd {
+  display: inline-block;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 11px;
+  background: var(--surface);
+}
+.shortcut-hint {
+  font-size: 12px;
+  margin: 4px 0;
+}
+@media (pointer: coarse) {
+  .shortcut-hint {
+    display: none;
+  }
+}
