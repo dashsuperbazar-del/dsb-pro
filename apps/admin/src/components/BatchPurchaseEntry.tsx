@@ -214,7 +214,7 @@ export function BatchPurchaseEntry({
                 }
               >
                 <option value="unit">Per unit</option>
-                <option value="total">Line total</option>
+                <option value="total">Item total</option>
               </select>
             </label>{' '}
             <label>

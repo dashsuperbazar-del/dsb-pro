@@ -153,12 +153,12 @@ export function ReturnsScreen() {
           ? [{ sourceLineId: row.sourceLineId, qty, disposition: row.disposition }]
           : [];
       });
-      if (!selected.length) throw new Error('Enter a return quantity for at least one line.');
+      if (!selected.length) throw new Error('Enter a return quantity for at least one item.');
       for (const row of selected) {
         const source = lines.find((line) => line.id === row.sourceLineId);
         if (!source || row.qty > source.remaining_qty)
           throw new Error(
-            `Return quantity exceeds the remaining quantity for ${source?.item_name_snapshot ?? 'a line'}.`,
+            `Return quantity exceeds the remaining quantity for ${source?.item_name_snapshot ?? 'an item'}.`,
           );
       }
       const result = await postReturnResilient({

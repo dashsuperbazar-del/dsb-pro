@@ -6,8 +6,10 @@ import {
   getSaleReceipt,
   getShopBusinessDate,
   getShopDayReconciliation,
+  listCustomers,
   listRecentSales,
   voidSale,
+  type Customer,
   type SaleInvoice,
   type SaleReceipt,
   type ShopDayReconciliation,
@@ -17,6 +19,8 @@ import { appRoute } from '../lib/paths';
 import { getLocale, t } from '../lib/i18n';
 import { ReceiptHeader } from '../components/ReceiptHeader';
 import { loadShopProfile, type ProfileLoad } from '../lib/shopProfile';
+import { ShareImageButton } from '../components/ShareImageButton';
+import { saleInvoiceDoc } from '../lib/shareImage';
 
 const money = (paise: number) => `₹${(paise / 100).toFixed(2)}`;
 
@@ -37,6 +41,8 @@ export function SalesHistoryScreen() {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [, forceLocale] = useState(0);
+  const [viewing, setViewing] = useState<SaleReceipt | null>(null);
+  const [customers, setCustomers] = useState<Customer[]>([]);
 
   async function loadReport(shop: string, date: string) {
     setReportBusy(true);
@@ -59,12 +65,31 @@ export function SalesHistoryScreen() {
     setReport(day);
   }
   useEffect(() => {
-    void refresh().catch((e) => setError(String(e)));
+    // Global search opens an invoice directly: /sales-history?sale=<id>.
+    const saleParam = new URLSearchParams(window.location.search).get('sale');
+    void refresh()
+      .then(() => (saleParam ? viewSale(saleParam) : undefined))
+      .catch((e) => setError(String(e)));
+    void listCustomers()
+      .then(setCustomers)
+      .catch(() => undefined);
     const h = () => forceLocale((v) => v + 1);
     window.addEventListener('dsb-locale-change', h);
     return () => window.removeEventListener('dsb-locale-change', h);
   }, []);
 
+  async function viewSale(id: string) {
+    setBusy(true);
+    setError('');
+    try {
+      setViewing(await getSaleReceipt(id));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  const customerOf = (id: string | null) => (id ? customers.find((c) => c.id === id) : undefined);
   async function openReceipt(sale: SaleInvoice, mode: PrintMode) {
     setBusy(true);
     setError('');
@@ -388,6 +413,48 @@ export function SalesHistoryScreen() {
         )}
       </section>
 
+      {viewing && (
+        <section class="card no-print" aria-label="Invoice detail">
+          <div class="row">
+            <h2>Invoice {viewing.invoice.doc_no}</h2>
+            <ShareImageButton
+              build={async () => {
+                const c = customerOf(viewing.invoice.customer_id);
+                const prof = await loadShopProfile(shopId);
+                return saleInvoiceDoc(
+                  viewing,
+                  prof.profile,
+                  c ? { name: c.name, phone: c.phone } : null,
+                );
+              }}
+            />
+            <button type="button" onClick={() => setViewing(null)}>
+              Close detail
+            </button>
+          </div>
+          <p>
+            {viewing.invoice.business_date} · {viewing.invoice.status} ·{' '}
+            {customerOf(viewing.invoice.customer_id)?.name ?? 'Walk-in customer'}
+          </p>
+          <div class="record-list">
+            {viewing.lines.map((l, i) => (
+              <div class="purchase-line" key={i}>
+                <span>
+                  <strong>{l.item_name_snapshot}</strong>
+                  <small>
+                    {formatQuantity(l.qty)} {l.unit_name_snapshot} × {money(l.unit_price_paise)}
+                  </small>
+                </span>
+                <strong>{money(l.line_total_paise)}</strong>
+              </div>
+            ))}
+          </div>
+          <p>
+            <strong>Total {money(viewing.invoice.total_paise)}</strong>
+          </p>
+        </section>
+      )}
+
       <section class="card no-print">
         <div class="table-wrap">
           <table>
@@ -409,6 +476,9 @@ export function SalesHistoryScreen() {
                   <td>{money(s.total_paise)}</td>
                   <td>
                     <div class="row">
+                      <button disabled={busy} onClick={() => void viewSale(s.id)}>
+                        View
+                      </button>
                       <button disabled={busy} onClick={() => void openReceipt(s, 'thermal')}>
                         {t('printThermal', locale)}
                       </button>
