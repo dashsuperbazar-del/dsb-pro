@@ -86,7 +86,7 @@ export function saleInvoiceDoc(
         left: `${p.direction === 'out' ? 'Refund' : 'Received'} (${p.mode.toUpperCase()})`,
         right: rupees(p.amount_paise),
       });
-  if (!receipt.payments.some((p) => p.status === 'POSTED'))
+  if (inv.status !== 'VOID' && !receipt.payments.some((p) => p.status === 'POSTED'))
     totals.push({ left: 'Credit / unpaid', right: rupees(inv.total_paise) });
   const shopName = shop?.name ?? 'Shop';
   return {
@@ -380,7 +380,7 @@ function toBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   );
 }
 
-export type ShareOutcome = 'shared' | 'downloaded' | 'cancelled';
+export type ShareOutcome = 'shared' | 'downloaded' | 'downloaded-no-popup' | 'cancelled';
 /**
  * Shares the receipt picture through the system share sheet when it accepts files; otherwise downloads
  * the PNG and opens WhatsApp with the one-line summary (to the party's number when known).
@@ -410,6 +410,10 @@ export async function shareReceiptImage(doc: ReceiptDoc): Promise<ShareOutcome> 
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  window.open(whatsappLink(doc.phone, doc.summary), '_blank', 'noopener');
+  // May be stopped by a popup blocker (no user gesture after the async render): the caller shows the link.
+  // ('noopener' would make window.open return null even when it opened, so the opener is cut by hand.)
+  const w = window.open(whatsappLink(doc.phone, doc.summary), '_blank');
+  if (!w) return 'downloaded-no-popup';
+  w.opener = null;
   return 'downloaded';
 }

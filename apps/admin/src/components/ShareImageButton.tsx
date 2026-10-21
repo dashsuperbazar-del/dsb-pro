@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks';
-import { shareReceiptImage, type ReceiptDoc } from '../lib/shareImage';
+import { shareReceiptImage, whatsappLink, type ReceiptDoc } from '../lib/shareImage';
 
 // One button for every "share as image" place. The document is built when clicked (display only).
 export function ShareImageButton({
@@ -14,14 +14,21 @@ export function ShareImageButton({
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
+  const [link, setLink] = useState('');
   async function run() {
     setBusy(true);
     setNote('');
     setError('');
+    setLink('');
     try {
-      const outcome = await shareReceiptImage(await build());
+      const doc = await build();
+      const outcome = await shareReceiptImage(doc);
       if (outcome === 'downloaded')
         setNote('Image downloaded. WhatsApp opened with a summary — attach the image there.');
+      if (outcome === 'downloaded-no-popup') {
+        setNote('Image downloaded. Open WhatsApp to send it:');
+        setLink(whatsappLink(doc.phone, doc.summary));
+      }
     } catch (e) {
       setError(`The image could not be shared: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -37,6 +44,14 @@ export function ShareImageButton({
         <span role="status" class="muted">
           {' '}
           {note}
+          {link && (
+            <>
+              {' '}
+              <a href={link} target="_blank" rel="noopener noreferrer">
+                Open WhatsApp
+              </a>
+            </>
+          )}
         </span>
       )}
       {error && (

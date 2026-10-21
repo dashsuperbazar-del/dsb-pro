@@ -1201,7 +1201,10 @@ export function InventoryScreen({
     ? (lockedV2?.paymentType ?? 'credit')
     : purchasePaymentType;
   const notesTooLong = purchaseNotes.trim().length > NOTES_MAX;
-  const editLocked = purchaseLocked || contextBusy || documentBusy || !purchaseContextReady;
+  const [dupChecking, setDupChecking] = useState(false);
+  // The duplicate check freezes the form so the bill that posts is exactly the one that was checked.
+  const editLocked =
+    purchaseLocked || contextBusy || documentBusy || !purchaseContextReady || dupChecking;
   // Bill details (discount, charges, notes, photos) start closed; the summary names every value in it,
   // and a problem there opens it.
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -1682,6 +1685,7 @@ export function InventoryScreen({
     if (!purchaseLocked && fresh.partyId) {
       if (duplicateCheckBusy.current) return;
       duplicateCheckBusy.current = true;
+      setDupChecking(true);
       let match: DuplicateMatch | null;
       try {
         const known = await knownSupplierBills(shopId, fresh.partyId, recentBills);
@@ -1696,6 +1700,7 @@ export function InventoryScreen({
         );
       } finally {
         duplicateCheckBusy.current = false;
+        setDupChecking(false);
       }
       if (match && !confirm(duplicateMessage(match))) return;
     }
@@ -2929,6 +2934,7 @@ export function InventoryScreen({
               class="primary"
               disabled={
                 purchaseBusy ||
+                dupChecking ||
                 contextBusy ||
                 (!purchaseLocked &&
                   (!purchaseContextReady ||

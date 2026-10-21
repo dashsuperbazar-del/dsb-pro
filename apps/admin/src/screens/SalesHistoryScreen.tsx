@@ -445,7 +445,7 @@ export function SalesHistoryScreen() {
                     {formatQuantity(l.qty)} {l.unit_name_snapshot} × {money(l.unit_price_paise)}
                   </small>
                 </span>
-                <strong>{money(l.line_total_paise)}</strong>
+                <strong>{money(l.line_total_paise - (l.tax_paise ?? 0))}</strong>
               </div>
             ))}
           </div>

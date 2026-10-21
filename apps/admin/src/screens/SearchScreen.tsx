@@ -84,7 +84,11 @@ export function SearchScreen() {
       if (sl.status === 'rejected') failed.push('sale invoices');
       const sales = sl.status === 'fulfilled' ? sl.value : (prev?.sales ?? []);
       setBills({
-        purchases: [...(prev?.purchases ?? []), ...purchasePage],
+        // Offset pages can shift when a bill is posted meanwhile: keep each bill once.
+        purchases: [
+          ...(prev?.purchases ?? []),
+          ...purchasePage.filter((b) => !prev?.purchases.some((x) => x.id === b.id)),
+        ],
         purchasesMore:
           canSeePurchases &&
           (p.status === 'rejected'
