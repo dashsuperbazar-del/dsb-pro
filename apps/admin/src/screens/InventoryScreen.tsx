@@ -156,6 +156,7 @@ import {
   restorePurchaseDraft,
   hasTypedPurchaseInput,
   draftDocuments,
+  unreferencedDocumentIds,
   type PurchaseDraft,
   type SavedPurchaseDraft,
 } from '../lib/purchaseDraft';
@@ -2527,6 +2528,8 @@ export function InventoryScreen({
             parties={parties}
             today={shopToday}
             draftPrefix={draftPrefix}
+            tenantId={tenantId}
+            shopId={shopId}
             disabled={
               purchaseLocked ||
               contextBusy ||
@@ -2595,8 +2598,11 @@ export function InventoryScreen({
                     {s.draft.expectedTotalPaise
                       ? `paper total ${rupees(s.draft.expectedTotalPaise)} · `
                       : ''}
-                    {s.draft.cart.length} item{s.draft.cart.length === 1 ? '' : 's'} · saved{' '}
-                    {new Date(s.draft.savedAt).toISOString().slice(0, 10)}
+                    {s.draft.cart.length} item{s.draft.cart.length === 1 ? '' : 's'}
+                    {draftDocuments(s.draft).length
+                      ? ` · ${draftDocuments(s.draft).length} photo${draftDocuments(s.draft).length === 1 ? '' : 's'}`
+                      : ''}{' '}
+                    · saved {new Date(s.draft.savedAt).toISOString().slice(0, 10)}
                   </span>
                   <button
                     type="button"
@@ -2621,6 +2627,12 @@ export function InventoryScreen({
                       if (!confirm('Discard this unposted draft snapshot?')) return;
                       try {
                         removePurchaseDraft(s.key);
+                        // Its pending photos go with it unless another snapshot of this bill still lists them.
+                        for (const id of unreferencedDocumentIds(
+                          [s.draft],
+                          savedDrafts.filter((o) => o.key !== s.key).map((o) => o.draft),
+                        ).filter((id) => !billDocuments.some((b) => b.id === id)))
+                          void removeLocalDocument(draftPrefix, id).catch(() => {});
                         refreshDrafts();
                       } catch (e) {
                         setDraftError(`Draft could not be discarded: ${String(e)}.`);
