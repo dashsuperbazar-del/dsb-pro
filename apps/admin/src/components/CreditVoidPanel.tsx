@@ -7,7 +7,8 @@ import {
 } from '@dsb-pro/adapters';
 
 // Void of a credit (or v1) purchase bill through void_purchase. Editing a bill is deliberately NOT here:
-// a correction must post the new bill and void the original in one server transaction (future RPC).
+// a correction posts the new bill and voids the original in one server transaction (0066
+// edit_purchase_bill, "Edit bill" on the bill view).
 
 /** Plain words for a server refusal of a bill void, saying what to do next. */
 export function plainVoidRefusal(message: string): string {

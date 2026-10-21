@@ -917,11 +917,64 @@ if [[ "$salepricing" != '0' && "$billextras" != '2' && ! ( "$salepricing" == '1'
  echo 'Sale pricing appears ahead of completed purchase bill extras. Refusing migration.' >&2; exit 1
 fi
 
+# Purchase bill edit (0066): additive classifier field. Four anchors, all or nothing. get_financial_request is
+# redefined and keeps the billextras anchor ('purchase.post.v2').
+billedit_probe=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -F' ' <<'SQL'
+do $$ begin
+ create temp table _billedit_receipt (present boolean);
+ if to_regclass('public.app_migration_receipts') is not null then
+   insert into _billedit_receipt select exists(select 1 from public.app_migration_receipts where version='0066');
+ else insert into _billedit_receipt values(false); end if;
+end $$;
+select (select present from _billedit_receipt),
+ (select count(*) from (values
+   ((select count(*) from information_schema.columns where table_schema='public' and table_name='purchase_bills'
+      and column_name in ('edited_from_id','replaced_by_id'))=2
+    and exists(select 1 from pg_constraint where conrelid=to_regclass('public.purchase_bills') and conname='purchase_bills_replaced_void_check'
+      and pg_get_constraintdef(oid)='CHECK (((replaced_by_id IS NULL) OR (status = ''VOID''::text)))')
+    and exists(select 1 from pg_constraint where conrelid=to_regclass('public.purchase_bills') and conname='purchase_bills_edited_from_fk')
+    and exists(select 1 from pg_constraint where conrelid=to_regclass('public.purchase_bills') and conname='purchase_bills_replaced_by_fk')
+    and to_regclass('public.purchase_bills_edited_from_key') is not null
+    and to_regclass('public.purchase_bills_replaced_by_key') is not null),
+   (exists(select 1 from pg_proc where oid=to_regprocedure('public.edit_purchase_bill(uuid,text,jsonb)')
+      and position('DSB_EDIT_STOCK_CONSUMED' in prosrc)>0 and position('post_purchase_v2(' in prosrc)>0
+      and position('void_purchase(' in prosrc)>0 and position('dsb_lock_shop_finance(' in prosrc)>0
+      and position('''owner'',''manager''' in prosrc)>0)
+    and exists(select 1 from pg_proc where oid=to_regprocedure('public.get_financial_request(uuid,text,text)')
+      and position('purchase.edit.v1' in prosrc)>0 and position('purchase.post.v2' in prosrc)>0)
+    and exists(select 1 from pg_constraint where conname='financial_requests_operation_check'
+      and position('purchase.edit.v1' in pg_get_constraintdef(oid))>0)),
+   (case when to_regprocedure('public.edit_purchase_bill(uuid,text,jsonb)') is null
+          or to_regprocedure('public.be_purchase_link_guard()') is null then false
+     else has_function_privilege('authenticated','public.edit_purchase_bill(uuid,text,jsonb)','execute')
+      and not has_function_privilege('anon','public.edit_purchase_bill(uuid,text,jsonb)','execute')
+      and not has_function_privilege('authenticated','public.be_purchase_link_guard()','execute') end),
+   (exists(select 1 from pg_trigger where not tgisinternal and tgname='purchase_bills_edit_link_guard'
+      and tgrelid=to_regclass('public.purchase_bills') and tgenabled='O'))
+ ) p(ok) where ok);
+SQL
+)
+read -r billedit_receipt billedit_anchors <<<"$(tail -n 1 <<<"$billedit_probe")"
+case "$billedit_receipt:$billedit_anchors" in
+ f:0) billedit=0; needs_billedit=true ;;
+ f:4) billedit=1; needs_billedit=true ;;
+ t:4) billedit=2; needs_billedit=false ;;
+ *) echo "Purchase bill edit partial/drift state ($billedit_receipt/$billedit_anchors). Refusing migration." >&2; exit 1 ;;
+esac
+if [[ "$billedit" == '2' ]]; then
+ billedit_expected=$(sha256sum "$repo_root/supabase/migrations/0066_purchase_bill_edit.sql" | cut -d' ' -f1)
+ billedit_recorded=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -c "select checksum_sha256 from public.app_migration_receipts where version='0066'")
+ [[ "$billedit_expected" == "$billedit_recorded" ]] || { echo '0066 receipt checksum mismatch. Refusing migration.' >&2; exit 1; }
+fi
+if [[ "$billedit" != '0' && "$salepricing" != '2' && ! ( "$billedit" == '1' && "$salepricing" == '1' ) ]]; then
+ echo 'Purchase bill edit appears ahead of completed sale pricing. Refusing migration.' >&2; exit 1
+fi
+
 emit_state() {
   local needs_foundation=$1 needs_hardening=$2 needs_phase65=$3 needs_batcha=$4 needs_batchb=$5 needs_p1=$6 needs_p2=$7 needs_c0=$8 needs_c1=$9 needs_c2=${10} needs_c3=${11} needs_c3b=${12} needs_r0=${13} needs_d1=${14} needs_r0b=${15} needs_o1=${16} needs_o2=${17} needs_d2b=${18} needs_d3a=${19}
   local needs_upgrade=true
   if [[ "$needs_foundation:$needs_hardening:$needs_phase65:$needs_batcha:$needs_batchb:$needs_p1:$needs_p2:$needs_c0:$needs_c1:$needs_c2:$needs_c3:$needs_c3b:$needs_r0:$needs_d1:$needs_r0b:$needs_o1:$needs_o2:$needs_d2b:$needs_d3a" == "false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false" ]]; then
-    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" && "$needs_supplierschedule" == "false" && "$needs_partymerge" == "false" && "$needs_itemindex" == "false" && "$needs_billextras" == "false" && "$needs_salepricing" == "false" ]]; then needs_upgrade=false; fi
+    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" && "$needs_supplierschedule" == "false" && "$needs_partymerge" == "false" && "$needs_itemindex" == "false" && "$needs_billextras" == "false" && "$needs_salepricing" == "false" && "$needs_billedit" == "false" ]]; then needs_upgrade=false; fi
   fi
   printf 'observed_state=%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s\n' "$foundation" "$hardening" "$phase65" "$batcha" "$batchb" "$p1" "$p2" "$c0" "$c1" "$c2" "$c3" "$c3b" "$r0" "$d1" "$r0b" "$o1" "$o2" "$d2b" "$d3a"
   printf 'needs_upgrade=%s\n' "$needs_upgrade"
@@ -960,6 +1013,8 @@ emit_state() {
   printf 'needs_billextras=%s\n' "$needs_billextras"
   printf 'salepricing_state=%s\n' "$salepricing"
   printf 'needs_salepricing=%s\n' "$needs_salepricing"
+  printf 'billedit_state=%s\n' "$billedit"
+  printf 'needs_billedit=%s\n' "$needs_billedit"
 }
 
 # Legacy (0030-0043) classification is unchanged from before Packet P1: the

@@ -59,6 +59,8 @@ import {
   listStock,
   postPurchaseOutcome,
   postPurchaseV2Outcome,
+  editPurchaseBillOutcome,
+  plainEditRefusal,
   getPurchaseExtras,
   replaceItemImage,
   setItemPrice,
@@ -177,12 +179,15 @@ export function InventoryScreen({
   purchaseContextActive = true,
   purchaseSupplierId = '',
   purchaseRepeatId = '',
+  purchaseEditId = '',
   onPurchasePosted,
 }: {
   purchaseOnly?: boolean;
   purchaseContextActive?: boolean;
   purchaseSupplierId?: string;
   purchaseRepeatId?: string;
+  /** 0066: open this posted bill in the entry card; saving corrects it (edit_purchase_bill). */
+  purchaseEditId?: string;
   onPurchasePosted?: () => void;
 } = {}) {
   type View = 'items' | 'purchase' | 'suppliers' | 'advanced';
@@ -316,15 +321,34 @@ export function InventoryScreen({
   // v1 entries (stored by the previous version) and v2 entries live under different names, so an older
   // app version never finds a v2 request and resends it through post_purchase without its charges, GST
   // and payment. This version reads both, v1 first.
-  const pendingKey = (shop: string, v2: boolean) =>
-    v2 ? `dsb-pending-purchase-v2:${shop}` : `dsb-pending-purchase:${shop}`;
+  // Bill edits (0066) live under a third name that older versions never read (they would post it as new).
+  const pendingKey = (shop: string, v2: boolean, edit = false) =>
+    edit
+      ? `dsb-pending-purchase-edit:${shop}`
+      : v2
+        ? `dsb-pending-purchase-v2:${shop}`
+        : `dsb-pending-purchase:${shop}`;
+  const isEditPending = (request: PendingPurchase) =>
+    isV2Pending(request) && Boolean(request.editOf);
   const pendingKeyFor = (request: PendingPurchase) =>
-    pendingKey(request.shopId, isV2Pending(request));
+    pendingKey(request.shopId, isV2Pending(request), isEditPending(request));
+  const allPendingKeys = (shop: string) => [
+    pendingKey(shop, false),
+    pendingKey(shop, true),
+    pendingKey(shop, true, true),
+  ];
   const loadPending = (shop: string): IntentLoad<PendingPurchase> => {
-    const v1 = loadPendingIntent<PendingPurchase>(pendingKey(shop, false));
-    if (!v1.ok || v1.value) return v1;
-    return loadPendingIntent<PendingPurchase>(pendingKey(shop, true));
+    let last: IntentLoad<PendingPurchase> = { ok: true, value: null };
+    for (const key of allPendingKeys(shop)) {
+      last = loadPendingIntent<PendingPurchase>(key);
+      if (!last.ok || last.value) return last;
+    }
+    return last;
   };
+  // The posted bill this form corrects ('' = a new bill). Never autosaved as a draft: a restored draft would
+  // post as a new bill next to the original.
+  const [purchaseEditOf, setPurchaseEditOf] = useState('');
+  const [purchaseEditLabel, setPurchaseEditLabel] = useState('');
   const [purchaseStorageBlocked, setPurchaseStorageBlocked] = useState('');
   useEffect(() => {
     if (!shopId) return;
@@ -343,19 +367,16 @@ export function InventoryScreen({
   // confirmation (its pending request id), so an unconfirmed bill's editable copy is never removed.
   function discardableDrafts() {
     const ids = shopId
-      ? [false, true].map((v2) => {
-          const p = loadPendingIntent<PendingPurchase>(pendingKey(shopId, v2));
+      ? allPendingKeys(shopId).map((key) => {
+          const p = loadPendingIntent<PendingPurchase>(key);
           return p.ok ? p.value?.clientId : undefined;
         })
       : [];
-    const pendingId = ids[0];
-    const pendingV2Id = ids[1];
     return staleDrafts(
       savedDrafts.filter(
         (s) =>
           s.draft.clientId !== purchaseClientId &&
-          s.draft.clientId !== pendingId &&
-          s.draft.clientId !== pendingV2Id &&
+          !ids.includes(s.draft.clientId) &&
           // A quick bill is the only record of a paper bill not yet entered; never swept with old drafts.
           !s.draft.expectedTotalPaise,
       ),
@@ -632,6 +653,8 @@ export function InventoryScreen({
       purchaseLocked ||
       purchaseSupplierId ||
       purchaseRepeatId ||
+      purchaseEditId ||
+      purchaseEditOf ||
       rememberedFor.current === purchaseClientId
     )
       return;
@@ -670,7 +693,7 @@ export function InventoryScreen({
     parties,
   ]);
   useEffect(() => {
-    const intent = purchaseSupplierId + ':' + purchaseRepeatId;
+    const intent = purchaseSupplierId + ':' + purchaseRepeatId + ':' + purchaseEditId;
     if (
       (!purchaseContextActive || intent !== contextApplied.current) &&
       contextNeedsReset.current
@@ -714,8 +737,19 @@ export function InventoryScreen({
       try {
         const newDate = await getShopBusinessDate(shopId);
         if (!active) return;
-        if (purchaseRepeatId) {
-          const d = await getPurchaseDetail(shopId, purchaseRepeatId);
+        // Edit (0066) opens the posted bill exactly as entered (supplier, bill no., date, payment type, notes
+        // too); Repeat copies only the items into a new bill dated today.
+        const sourceId = purchaseEditId || purchaseRepeatId;
+        let edit: {
+          id: string;
+          label: string;
+          billNo: string;
+          date: string;
+          type: PurchasePaymentType;
+          notes: string;
+        } | null = null;
+        if (sourceId) {
+          const d = await getPurchaseDetail(shopId, sourceId);
           const cart = repeatPurchase(d.bill, d.lines, itemsRef.current);
           if (!active) return;
           if (d.bill.party_id && !partiesRef.current.some((p) => p.id === d.bill.party_id))
@@ -726,7 +760,7 @@ export function InventoryScreen({
           let charges = chargeRowsFromExtra(
             Number(d.bill.extra_charges_paise) ? paiseToDecimal(d.bill.extra_charges_paise) : '',
           );
-          const extras = await getPurchaseExtras(shopId, purchaseRepeatId);
+          const extras = await getPurchaseExtras(shopId, sourceId);
           if (!active) return;
           if (extras.charges.length) charges = chargeRowsFromPaise(extras.charges);
           const cards = cart.map((line, i) => {
@@ -737,9 +771,24 @@ export function InventoryScreen({
           setPurchaseCards(cards);
           setPurchaseDiscount(paiseToDecimal(d.bill.discount_paise));
           setPurchaseCharges(charges);
-          setMessage(
-            `Draft repeated from ${d.bill.bill_no || d.bill.id.slice(0, 8)} (${d.bill.business_date}). Historical costs and adjustments copied — review them. This is a new purchase, not posted yet.`,
-          );
+          const label = d.bill.bill_no || d.bill.id.slice(0, 8);
+          if (purchaseEditId) {
+            edit = {
+              id: d.bill.id,
+              label,
+              billNo: d.bill.bill_no ?? '',
+              date: d.bill.business_date,
+              type: extras.paymentType,
+              notes: extras.notes ?? '',
+            };
+            setMessage(
+              `Editing bill ${label} (${d.bill.business_date}). Change the items and save: the corrected bill replaces the original in one step.`,
+            );
+          } else {
+            setMessage(
+              `Draft repeated from ${label} (${d.bill.business_date}). Historical costs and adjustments copied — review them. This is a new purchase, not posted yet.`,
+            );
+          }
         } else {
           if (purchaseSupplierId && !partiesRef.current.some((p) => p.id === purchaseSupplierId))
             throw new Error('Supplier is unavailable.');
@@ -748,14 +797,16 @@ export function InventoryScreen({
           setPurchaseDiscount('');
           setPurchaseCharges([]);
         }
-        setPurchasePaymentType('credit');
-        setPurchaseNotes('');
-        setBusinessDate(newDate);
+        setPurchasePaymentType(edit?.type ?? 'credit');
+        setPurchaseNotes(edit?.notes ?? '');
+        setBusinessDate(edit?.date ?? newDate);
         setPurchaseExpectedTotal(undefined);
-        setPurchaseBillNo('');
+        setPurchaseBillNo(edit?.billNo ?? '');
         setBillDocuments([]);
         setDocumentBusy(false);
         setDocumentSaveError('');
+        setPurchaseEditOf(edit?.id ?? '');
+        setPurchaseEditLabel(edit?.label ?? '');
         setPurchaseClientId(crypto.randomUUID());
         completed = true;
       } catch (e) {
@@ -780,6 +831,7 @@ export function InventoryScreen({
     catalogLoaded,
     purchaseSupplierId,
     purchaseRepeatId,
+    purchaseEditId,
     purchaseOnly,
     purchaseContextActive,
     purchaseLocked,
@@ -1069,7 +1121,15 @@ export function InventoryScreen({
   );
   // Layout effect runs after each committed edit, without a debounce that could lose picker/reload work.
   useLayoutEffect(() => {
-    if (accountChanged || !draftPrefix || !catalogLoaded || contextBusy || purchaseLocked) return;
+    if (
+      accountChanged ||
+      !draftPrefix ||
+      !catalogLoaded ||
+      contextBusy ||
+      purchaseLocked ||
+      purchaseEditOf
+    )
+      return;
     if (!(
       billDocuments.length ||
       draftTouched ||
@@ -1098,6 +1158,7 @@ export function InventoryScreen({
     draftPrefix,
     catalogLoaded,
     contextBusy,
+    purchaseEditOf,
     purchaseLocked,
     draftTouched,
     purchaseClientId,
@@ -1130,7 +1191,10 @@ export function InventoryScreen({
       return;
     try {
       const d = restorePurchaseDraft(saved.draft, items, parties);
-      contextApplied.current = purchaseSupplierId + ':' + purchaseRepeatId;
+      contextApplied.current = purchaseSupplierId + ':' + purchaseRepeatId + ':' + purchaseEditId;
+      // A restored draft is always a new bill.
+      setPurchaseEditOf('');
+      setPurchaseEditLabel('');
       contextNeedsReset.current = false;
       setPurchaseClientId(d.clientId);
       setBillDocuments(draftDocuments(d));
@@ -1647,7 +1711,8 @@ export function InventoryScreen({
         gstBp: l.gstBp,
       })),
       charges: chargesResult.charges,
-      images: billDocuments.map((d) => d.path),
+      images: purchaseEditOf ? [] : billDocuments.map((d) => d.path),
+      ...(purchaseEditOf ? { editOf: purchaseEditOf } : {}),
     };
     const request: PendingPurchase = (purchaseLocked && lockedPurchase.current) || fresh;
     if (purchaseStorageBlocked) {
@@ -1691,13 +1756,14 @@ export function InventoryScreen({
     try {
       // A new bill waits for an unconfirmed one stored under the other name too.
       if (!isRetry) {
-        const other = loadPendingIntent<PendingPurchase>(
-          pendingKey(request.shopId, !isV2Pending(request)),
-        );
-        if (!other.ok || other.value)
-          throw new Error(
-            'Another unconfirmed purchase is stored on this device. Nothing was sent; reload this page to finish it first.',
-          );
+        for (const key of allPendingKeys(request.shopId)) {
+          if (key === pendingKeyFor(request)) continue;
+          const other = loadPendingIntent<PendingPurchase>(key);
+          if (!other.ok || other.value)
+            throw new Error(
+              'Another unconfirmed purchase is stored on this device. Nothing was sent; reload this page to finish it first.',
+            );
+        }
       }
       savePendingIntent(pendingKeyFor(request), request, { retry: isRetry });
     } catch (e) {
@@ -1716,9 +1782,14 @@ export function InventoryScreen({
     try {
       // v2 replays a same-id request with its stored answer (same bill, same payment); a refused retry is
       // decided by the stored answer (lookupPurchaseRequest), and a payload mismatch is a final refusal.
-      const outcome = isV2Pending(request)
-        ? await postPurchaseV2Outcome(request, isRetry)
-        : await postPurchaseOutcome(request, isRetry);
+      // An edit request (it carries editOf, even after a reload) always goes to edit_purchase_bill.
+      const editOf = isV2Pending(request) ? (request.editOf ?? '') : '';
+      const outcome =
+        isV2Pending(request) && editOf
+          ? await editPurchaseBillOutcome({ ...request, originalId: editOf }, isRetry)
+          : isV2Pending(request)
+            ? await postPurchaseV2Outcome(request, isRetry)
+            : await postPurchaseOutcome(request, isRetry);
       if (outcome.kind === 'unknown') {
         // May have committed: the form stays frozen and a retry resends this exact request.
         setError(
@@ -1751,9 +1822,11 @@ export function InventoryScreen({
             if (plan.bill === request.clientId) removePricePlan(plan.key);
         ownPlans.current.delete(request.clientId);
         setError(
-          outcome.code === 'DSB_PAYLOAD_MISMATCH'
-            ? `Not posted, and it cannot be posted from this form: ${outcome.message}${anotherNote}`
-            : `Not posted: ${outcome.message}.${anotherNote}`,
+          editOf
+            ? `Not saved: ${plainEditRefusal(outcome.message)} The original bill is unchanged.${anotherNote}`
+            : outcome.code === 'DSB_PAYLOAD_MISMATCH'
+              ? `Not posted, and it cannot be posted from this form: ${outcome.message}${anotherNote}`
+              : `Not posted: ${outcome.message}.${anotherNote}`,
         );
         return;
       }
@@ -1787,6 +1860,8 @@ export function InventoryScreen({
         setPurchaseCharges([]);
         setPurchasePaymentType('credit');
         setPurchaseNotes('');
+        setPurchaseEditOf('');
+        setPurchaseEditLabel('');
         contextNeedsReset.current = true;
       }
       if (draftPrefix) {
@@ -1809,8 +1884,14 @@ export function InventoryScreen({
       // Refresh before announcing, as before: the screen is settled when the message appears.
       let refreshNote = '';
       await refresh(true).catch((e) => (refreshNote = ` (Refresh failed: ${String(e)})`));
+      const carried =
+        editOf && outcome.kind === 'committed'
+          ? ((outcome.value as { carriedPaise?: number }).carriedPaise ?? 0)
+          : 0;
       setMessage(
-        `Purchase posted (${lineCount} item${lineCount === 1 ? '' : 's'}) and stock updated.${paidNote}${priceNote}${refreshNote}`,
+        editOf
+          ? `Bill corrected (${lineCount} item${lineCount === 1 ? '' : 's'}). The original bill is void and replaced; stock and supplier balance updated.${carried ? ` Its payment of ${rupees(carried)} now counts against the corrected bill.` : ''}${priceNote}${refreshNote}`
+          : `Purchase posted (${lineCount} item${lineCount === 1 ? '' : 's'}) and stock updated.${paidNote}${priceNote}${refreshNote}`,
       );
     } finally {
       setPurchaseBusy(false);
@@ -2319,7 +2400,14 @@ export function InventoryScreen({
         onInput={() => setDraftTouched(true)}
         onChange={() => setDraftTouched(true)}
       >
-        <h2>Post purchase</h2>
+        <h2>{purchaseEditOf ? 'Edit bill' : 'Post purchase'}</h2>
+        {purchaseEditOf && !purchaseLocked && (
+          <p class="card" data-testid="editing-bill" role="status">
+            Editing bill {purchaseEditLabel}. Saving posts the corrected bill and voids the original
+            together; a payment on it moves to the corrected bill.{' '}
+            <a href={appRoute.purchases}>Cancel</a>
+          </p>
+        )}
         {draftError && <p role="alert">{draftError}</p>}
         {!purchaseLocked && draftStatus && (
           <p class="muted" aria-live="polite">
@@ -2731,7 +2819,12 @@ export function InventoryScreen({
                   </small>
                 </label>
               </fieldset>
-              {draftPrefix && (
+              {purchaseEditOf && (
+                <p class="muted" data-testid="edit-photos-note">
+                  Bill photos stay on the original bill.
+                </p>
+              )}
+              {draftPrefix && !purchaseEditOf && (
                 <BillAttachmentEditor
                   key={purchaseClientId}
                   scope={draftPrefix}
@@ -2914,7 +3007,9 @@ export function InventoryScreen({
                 ? 'Posting…'
                 : purchaseLocked
                   ? 'Retry same purchase'
-                  : postButtonText(shownType, totals.ok ? totals.totalPaise : null)}
+                  : purchaseEditOf
+                    ? 'Save corrected bill'
+                    : postButtonText(shownType, totals.ok ? totals.totalPaise : null)}
             </button>
           </div>
         </form>

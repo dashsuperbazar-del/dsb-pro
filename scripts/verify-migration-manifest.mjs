@@ -53,6 +53,7 @@ export const ALLOWED_GROUPS = Object.freeze([
   'itemindex',
   'billextras',
   'salepricing',
+  'billedit',
 ]);
 
 const VERSION_RE = /^[0-9]{4}$/;
@@ -229,6 +230,7 @@ const EXPECTED_IN_FLIGHT_GROUP_AND_PATH = Object.freeze({
   '0063': ['itemindex', 'supabase/migrations/0063_item_history_indexes.sql'],
   '0064': ['billextras', 'supabase/migrations/0064_purchase_bill_extras.sql'],
   '0065': ['salepricing', 'supabase/migrations/0065_sale_pricing.sql'],
+  '0066': ['billedit', 'supabase/migrations/0066_purchase_bill_edit.sql'],
 });
 
 /**

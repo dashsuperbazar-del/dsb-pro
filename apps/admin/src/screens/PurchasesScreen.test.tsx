@@ -21,6 +21,10 @@ const api = vi.hoisted(() => ({
     tag.reason !== undefined ? `purchase.void.v1:${id}:reason:${tag.reason.trim()}` : 'unused',
   listPurchaseSettlements: vi.fn().mockResolvedValue(new Map()),
   getPurchaseVoidInfo: vi.fn().mockResolvedValue(null),
+  getPurchaseEditLinks: vi.fn().mockResolvedValue({ editedFromId: null, replacedById: null } as {
+    editedFromId: string | null;
+    replacedById: string | null;
+  } | null),
 }));
 vi.mock('@dsb-pro/adapters', () => api);
 vi.mock('./InventoryScreen', () => ({
@@ -353,10 +357,12 @@ test('role gating: an accountant cannot void a credit bill; a manager can', asyn
   expect(host.querySelector('[data-testid="void-not-allowed"]')?.textContent).toContain(
     'Only the owner or a manager',
   );
+  expect(host.querySelector('[data-testid="edit-bill"]')).toBeNull();
   await act(async () => render(null, host));
   await openCash('manager', extras('unpaid', 'credit'), creditDetail());
   await vi.waitFor(() => expect(voidBtn().textContent).toBe('Void bill'));
-  expect(host.textContent).not.toContain('Edit bill');
+  // 0066: a manager may correct the bill (one server transaction); an accountant never sees it.
+  await vi.waitFor(() => expect(host.textContent).toContain('Edit bill'));
 });
 
 test('list shows Paid/Partial/Unpaid/Void from the ledger and filters by it', async () => {
@@ -441,4 +447,26 @@ test('a remount (sign-out, other user or shop) never shows a bill cached by the 
   });
   expect(host.textContent).not.toContain('Oil');
   await act(async () => hold(cashDetail));
+});
+
+test('"Edit bill" (0066): offered to owner/manager on a posted bill only when the edit links can be read', async () => {
+  const editLink = () => host.querySelector<HTMLAnchorElement>('[data-testid="edit-bill"]');
+  await openCash('manager', extras('unpaid', 'credit'), creditDetail());
+  await vi.waitFor(() => expect(editLink()).not.toBeNull());
+  expect(editLink()!.getAttribute('href')).toContain('?new=1&edit=cash1');
+  // A database without 0066 (links unreadable): no edit is offered.
+  await act(async () => render(null, host));
+  api.getPurchaseEditLinks.mockResolvedValueOnce(null);
+  await openCash('manager', extras('unpaid', 'credit'), creditDetail());
+  await vi.waitFor(() => expect(host.textContent).toContain('Void bill'));
+  expect(editLink()).toBeNull();
+  // A corrected bill names its original.
+  await act(async () => render(null, host));
+  api.getPurchaseEditLinks.mockResolvedValueOnce({ editedFromId: 'old1', replacedById: null });
+  await openCash('owner', extras('unpaid', 'credit'), creditDetail());
+  await vi.waitFor(() =>
+    expect(host.querySelector('[data-testid="bill-edited-from"]')?.textContent).toContain(
+      'Open the original',
+    ),
+  );
 });
