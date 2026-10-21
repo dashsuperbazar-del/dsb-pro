@@ -1,5 +1,6 @@
 import { formatQuantity } from '@dsb-pro/core';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { hiddenNote, hideVoided, loadShowVoided, saveShowVoided } from '../lib/voidedVisibility';
 import {
   listParties,
   listPurchaseHistory,
@@ -74,6 +75,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
   const [queryText, setQueryText] = useState('');
   const [supplier, setSupplier] = useState('');
   const [sort, setSort] = useState('date');
+  const [showVoided, setShowVoided] = useState(false);
   const [statusFilter, setStatusFilter] = useState<BillStatusFilter | 'pending'>('all');
   // 0067: bills with an open remark ("Pending" badge and filter); null = not known (no badge, filter empty).
   const [pending, setPending] = useState<Set<string> | null>(null);
@@ -218,6 +220,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
         }
         const { session: fresh, membership: m, shopId: s } = context;
         userRef.current = fresh.user.id;
+        setShowVoided(loadShowVoided('purchases', fresh.user.id));
         if (!['owner', 'manager', 'accountant'].includes(m.role)) {
           forgetSaved(active);
           throw new Error('Purchase history is restricted by your role.');
@@ -363,7 +366,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
   }
   const name = (id: string | null) =>
     parties.find((p) => p.id === id)?.name ?? (id ? 'Supplier unavailable' : 'No supplier');
-  const visible = filterBills(
+  const matching = filterBills(
     rows,
     { status: statusFilter === 'pending' ? 'all' : statusFilter, from: fromDate, to: toDate },
     settlements,
@@ -384,6 +387,13 @@ export function PurchasesScreen({ url }: { url?: string }) {
         b.created_at.localeCompare(a.created_at) ||
         a.id.localeCompare(b.id),
     );
+  // Display only. Choosing the Voided status filter is an explicit request to see them.
+  const voidedShown = showVoided || statusFilter === 'void';
+  const { shown: visible, hidden: hiddenVoided } = hideVoided(
+    matching,
+    (b) => b.status === 'VOID',
+    voidedShown,
+  );
   return (
     <main class="purchase-workspace">
       <div class="row">
@@ -466,6 +476,18 @@ export function PurchasesScreen({ url }: { url?: string }) {
                 <option value="pending">Pending items</option>
               </select>
             </label>
+            <label class="inline-check">
+              <input
+                type="checkbox"
+                checked={voidedShown}
+                disabled={statusFilter === 'void'}
+                onChange={(e) => {
+                  setShowVoided(e.currentTarget.checked);
+                  saveShowVoided('purchases', userRef.current, e.currentTarget.checked);
+                }}
+              />{' '}
+              Show voided
+            </label>
             <label>
               From
               <input
@@ -480,8 +502,8 @@ export function PurchasesScreen({ url }: { url?: string }) {
             </label>
           </div>
           <p class="muted">
-            Showing {visible.length} of {rows.length} loaded bills. Filters apply to loaded bills;
-            load older bills to search more history.
+            Showing {visible.length} of {rows.length} loaded bills.{hiddenNote(hiddenVoided)}{' '}
+            Filters apply to loaded bills; load older bills to search more history.
           </p>
           <div class="record-list">
             {visible.map((b) => (
@@ -521,7 +543,12 @@ export function PurchasesScreen({ url }: { url?: string }) {
               </button>
             ))}
           </div>
-          {!loading && !visible.length && <p>No purchases match.</p>}
+          {!loading && !visible.length && (
+            <p>
+              No purchases match.
+              {hiddenVoided > 0 && ' Voided bills are hidden; tick Show voided to see them.'}
+            </p>
+          )}
           {more && (
             <button
               disabled={loading}
