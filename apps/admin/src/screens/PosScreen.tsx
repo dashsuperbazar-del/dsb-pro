@@ -197,6 +197,9 @@ export function PosScreen() {
   const canTypePrice = role === 'owner' || role === 'manager';
   const scanBlocked = useRef(false);
   const findRef = useRef<HTMLInputElement>(null);
+  // The item whose manual add is in flight: Enter pressed again for the SAME item while its price lookup
+  // runs must not add it twice (another item may still be added meanwhile).
+  const addingManual = useRef<string | null>(null);
   const customerRef = useRef<HTMLSelectElement>(null);
   const resumeLock = useRef(false);
 
@@ -595,7 +598,8 @@ export function PosScreen() {
     const addForm = ev.currentTarget as HTMLFormElement;
     const f = new FormData(addForm);
     const item = items.find((i) => i.id === String(f.get('itemId')));
-    if (!item) return;
+    if (!item || addingManual.current === item.id) return;
+    addingManual.current = item.id;
     try {
       const added = await addLine(
         item,
@@ -615,6 +619,8 @@ export function PosScreen() {
       }
     } catch (e) {
       setError(String(e));
+    } finally {
+      if (addingManual.current === item.id) addingManual.current = null;
     }
   }
 
@@ -839,6 +845,8 @@ export function PosScreen() {
     } else if (ev.key === 'Enter') {
       ev.preventDefault();
       ev.stopPropagation();
+      // A held Enter auto-repeats: ignore the repeats (no pick, no add); each add needs its own key press.
+      if (ev.repeat) return;
       if (manualItemId && visibleItems.some((i) => i.id === manualItemId)) {
         (ev.currentTarget as HTMLInputElement).form?.requestSubmit();
       } else if (visibleItems.length) {

@@ -8,6 +8,7 @@ import {
   reopenRemarkOutcome,
   settleRemarkOutcome,
   REMARK_MAX_LENGTH,
+  savedRemarkClientIds,
   type DocumentRemark,
   type RemarkDocKind,
   type RemarkEvent,
@@ -70,9 +71,24 @@ export function RemarkBox(props: {
   async function load() {
     const token = ++generation.current;
     setQueued(queuedRemarks(userId, docKind, docId));
+    // A queued add whose answer was lost may already be saved: drop that copy BEFORE listing, so the list
+    // read next includes it and the remark is never shown twice ("Pending" and "Waiting to send").
+    const waiting = queuedRemarks(userId, docKind, docId);
+    if (waiting.length) {
+      try {
+        const saved = await savedRemarkClientIds(waiting.map((q) => q.clientId));
+        if (token !== generation.current) return;
+        for (const id of saved) dropQueuedRemark(id);
+      } catch {
+        /* unknown: keep the queued copy; the next send answers with the same remark */
+      }
+      if (token !== generation.current) return;
+      setQueued(queuedRemarks(userId, docKind, docId));
+    }
     try {
       const list = await listDocumentRemarks(docKind, docId);
       if (token !== generation.current) return;
+      setQueued(queuedRemarks(userId, docKind, docId));
       setRemarks(list);
       setLoadError('');
       props.onLoaded?.(list);

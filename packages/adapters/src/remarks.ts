@@ -120,6 +120,31 @@ export async function listDocumentRemarks(
   });
 }
 
+/** The server returns at most this many open remarks (the oldest). A full list means more may exist. */
+export const OPEN_REMARKS_CAP = 500;
+export function openRemarksCapped(list: readonly unknown[]): boolean {
+  return list.length >= OPEN_REMARKS_CAP;
+}
+
+/**
+ * Which of these client ids the server already holds (a queued add whose answer was lost). Used to drop a
+ * queued copy so one remark is never shown twice ("Pending" and "Waiting to send"). Reads through RLS.
+ */
+export async function savedRemarkClientIds(clientIds: string[]): Promise<Set<string>> {
+  if (!clientIds.length) return new Set();
+  const { data, error } = await getSupabaseClient()
+    .from('document_remarks')
+    .select('client_id')
+    .in('client_id', clientIds);
+  if (error) throw readError(error);
+  if (!Array.isArray(data)) throw fail();
+  return new Set(
+    data
+      .map((r: unknown) => (isRecord(r) && typeof r.client_id === 'string' ? r.client_id : null))
+      .filter((v): v is string => v !== null),
+  );
+}
+
 export async function listOpenRemarks(shopId: string): Promise<OpenRemark[]> {
   const { data, error } = await getSupabaseClient().rpc('list_open_remarks', {
     p_shop_id: shopId,

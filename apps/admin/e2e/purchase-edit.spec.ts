@@ -56,6 +56,11 @@ test('editing a posted bill replaces it: original void, corrected bill posted, s
   await page.goto('/purchases');
   await page.getByRole('button', { name: /Edit Supplier.*EDIT-1/ }).click();
   const detail = page.getByLabel('Purchase detail');
+  // A pending remark on the original travels to the corrected bill (read side only).
+  const box = detail.getByLabel('Pending remarks');
+  await box.getByLabel('New remark').fill('2 pieces still to come');
+  await box.getByRole('button', { name: 'Add remark' }).click();
+  await expect(box.getByTestId('remark')).toHaveCount(1);
   await detail.getByTestId('edit-bill').click();
   const edit = page
     .locator('section')
@@ -88,6 +93,9 @@ test('editing a posted bill replaces it: original void, corrected bill posted, s
   await expect(detail.getByTestId('bill-edited-from')).toBeVisible();
   await detail.getByRole('button', { name: 'Open the original' }).click();
   await expect(detail.getByTestId('bill-replaced')).toBeVisible();
+  // The void original shows its remark, but only the corrected bill carries the "Pending" badge.
+  await expect(detail.getByLabel('Pending remarks').getByTestId('remark')).toHaveCount(1);
+  await expect(page.getByTestId('list-pending')).toHaveCount(1);
   await expect(detail.getByTestId('edit-bill')).toHaveCount(0);
 
   await detail.getByRole('link', { name: 'Supplier ledger', exact: true }).click();

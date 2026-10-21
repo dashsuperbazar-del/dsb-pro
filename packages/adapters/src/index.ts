@@ -302,6 +302,9 @@ export {
   plainRemarkRefusal,
   normalizeRemark,
   REMARK_MAX_LENGTH,
+  OPEN_REMARKS_CAP,
+  openRemarksCapped,
+  savedRemarkClientIds,
 } from './remarks';
 export type {
   DocumentRemark,

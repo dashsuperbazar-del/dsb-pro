@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'preact/hooks';
-import { addRemarkOutcome, listOpenRemarks, type OpenRemark } from '@dsb-pro/adapters';
+import {
+  addRemarkOutcome,
+  listOpenRemarks,
+  OPEN_REMARKS_CAP,
+  openRemarksCapped,
+  type OpenRemark,
+} from '@dsb-pro/adapters';
 import { shopContext } from '../lib/shopContext';
 import { flushRemarkQueue, remarkAgeDays, remarkDocHref } from '../lib/remarkQueue';
 
@@ -66,6 +72,12 @@ export function OpenRemarksTile() {
             );
           })}
         </ul>
+      )}
+      {s.state === 'ok' && openRemarksCapped(s.value) && (
+        <p class="muted" data-testid="open-remarks-capped">
+          Showing the oldest {OPEN_REMARKS_CAP} pending items; there may be more. Settle some to see
+          the rest.
+        </p>
       )}
       {s.state === 'ok' && s.value.length > SHOWN && (
         <button type="button" class="link" onClick={() => setAll(!all)}>

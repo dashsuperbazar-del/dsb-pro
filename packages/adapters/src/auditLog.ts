@@ -18,7 +18,7 @@ export type AuditType =
 
 export const AUDIT_TYPE_LABEL: Record<AuditType, string> = {
   sale_void: 'Sale voids',
-  purchase_void: 'Purchase voids (a bill edit also lists its void)',
+  purchase_void: 'Purchase voids (including the void made by a bill edit)',
   bill_edit: 'Purchase bill edits',
   credit_override: 'Credit-limit overrides',
   payment_void: 'Payment voids',
@@ -63,6 +63,12 @@ export type AuditEvent = {
   after: Record<string, unknown> | null;
   /** Item names for item_prices rows on this page (item_id -> name). */
   itemNames: Record<string, string>;
+  /**
+   * For a purchase bill void: true when the bill was replaced by a corrected bill (0066), i.e. this void is the
+   * one a bill edit made, not a separate void. A bill voided on its own can never be edited afterwards, so a
+   * set replaced_by_id is exact. False when not a purchase void or when the link could not be read.
+   */
+  voidByEdit: boolean;
 };
 
 export type AuditQuery = {
@@ -126,6 +132,34 @@ export async function listAuditEvents(
     const named = await sb.from('items').select('id,name').in('id', itemIds);
     for (const r of (named.data ?? []) as { id: string; name: string }[]) itemNames[r.id] = r.name;
   }
+  // Purchase voids on this page that a bill edit made (the bill now has replaced_by_id). A failed or
+  // pre-0066 read leaves them as plain voids, never hides them.
+  const voidBillIds = [
+    ...new Set(
+      pageRows
+        .filter(
+          (r) =>
+            r.table_name === 'purchase_bills' &&
+            r.action === 'UPDATE' &&
+            r.after?.status === 'VOID' &&
+            r.before?.status !== 'VOID',
+        )
+        .map((r) => r.row_id),
+    ),
+  ];
+  const replaced = new Set<string>();
+  if (voidBillIds.length) {
+    try {
+      const links = await sb
+        .from('purchase_bills')
+        .select('id,replaced_by_id')
+        .in('id', voidBillIds);
+      for (const r of (links.data ?? []) as { id: string; replaced_by_id: string | null }[])
+        if (r.replaced_by_id) replaced.add(r.id);
+    } catch {
+      /* labels only */
+    }
+  }
   return {
     hasMore,
     rows: pageRows.map((r) => ({
@@ -138,6 +172,12 @@ export async function listAuditEvents(
       before: r.before,
       after: r.after,
       itemNames,
+      voidByEdit:
+        r.table_name === 'purchase_bills' &&
+        r.action === 'UPDATE' &&
+        r.after?.status === 'VOID' &&
+        r.before?.status !== 'VOID' &&
+        replaced.has(r.row_id),
     })),
   };
 }

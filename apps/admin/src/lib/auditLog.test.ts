@@ -12,6 +12,7 @@ const base: AuditEvent = {
   before: null,
   after: null,
   itemNames: {},
+  voidByEdit: false,
 };
 const who = (id: string | null) => (id === 'u1' ? 'Asha' : id ? 'someone' : 'the system');
 
@@ -55,6 +56,9 @@ test('a purchase bill edit is told apart from a plain void', () => {
   expect(describeAudit(edit, who)).toContain('replaced by a corrected bill');
   const plain = { ...edit, after: { ...edit.after, replaced_by_id: null } };
   expect(auditType(plain)).toBe('purchase_void');
+  expect(describeAudit(plain, who)).toBe('Purchase bill B7 voided (₹10.00).');
+  // The void row an edit writes (status first, link after) is labelled as part of the edit.
+  expect(describeAudit({ ...plain, voidByEdit: true }, who)).toContain('voided by a bill edit');
 });
 
 test('a price row shows the item name and the earlier price', () => {

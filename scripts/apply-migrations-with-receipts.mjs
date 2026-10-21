@@ -59,6 +59,7 @@ const GROUP_ORDER = [
   'salepricing',
   'billedit',
   'remarks',
+  'remarksfix',
 ];
 
 /**

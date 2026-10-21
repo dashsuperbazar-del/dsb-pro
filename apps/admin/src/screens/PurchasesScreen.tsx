@@ -688,6 +688,10 @@ export function PurchasesScreen({ url }: { url?: string }) {
                 onLoaded={(list) => {
                   const id = detail.bill.id;
                   const has = list.some((r) => r.status === 'OPEN');
+                  // A void bill is never ADDED to the badges from its own remark list: a bill replaced by an
+                  // edit shows its open remarks under the corrected bill (server list), so marking the void
+                  // original "Pending" would show them twice. Removing a badge is always safe.
+                  if (has && detail.bill.status !== 'POSTED') return;
                   setPending((old) => {
                     if (!old || old.has(id) === has) return old;
                     const next = new Set(old);

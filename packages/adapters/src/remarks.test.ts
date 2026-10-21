@@ -5,7 +5,10 @@ import {
   editRemarkOutcome,
   listDocumentRemarks,
   listOpenRemarks,
+  openRemarksCapped,
+  OPEN_REMARKS_CAP,
   plainRemarkRefusal,
+  savedRemarkClientIds,
   settleRemarkOutcome,
 } from './remarks';
 
@@ -105,5 +108,30 @@ describe('remarks adapter (0067)', () => {
     });
     rpcClient({ data: [{ remark_id: ID, doc_id: DOC, doc_kind: 'bad' }], error: null });
     await expect(listOpenRemarks('s')).rejects.toThrow(/unexpected/);
+  });
+});
+
+describe('remarks fixes (0068)', () => {
+  it('a full list of open remarks is flagged as capped', () => {
+    expect(openRemarksCapped(new Array(OPEN_REMARKS_CAP - 1))).toBe(false);
+    expect(openRemarksCapped(new Array(OPEN_REMARKS_CAP))).toBe(true);
+  });
+  it('finds which queued client ids the server already holds', async () => {
+    const inFn = vi.fn(async () => ({ data: [{ client_id: 'c1' }], error: null }));
+    const select = vi.fn(() => ({ in: inFn }));
+    const from = vi.fn(() => ({ select }));
+    __setSupabaseClientForTest({ from } as unknown as DsbSupabaseClient);
+    const saved = await savedRemarkClientIds(['c1', 'c2']);
+    expect(from).toHaveBeenCalledWith('document_remarks');
+    expect(inFn).toHaveBeenCalledWith('client_id', ['c1', 'c2']);
+    expect([...saved]).toEqual(['c1']);
+    expect((await savedRemarkClientIds([])).size).toBe(0);
+  });
+  it('a failed lookup throws (the queued copy is kept, never dropped on a guess)', async () => {
+    const select = vi.fn(() => ({
+      in: async () => ({ data: null, error: { message: 'offline' } }),
+    }));
+    __setSupabaseClientForTest({ from: () => ({ select }) } as unknown as DsbSupabaseClient);
+    await expect(savedRemarkClientIds(['c1'])).rejects.toThrow();
   });
 });
