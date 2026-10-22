@@ -314,6 +314,7 @@ export async function getSupplierLedger(
       (e) => (e && e.kind === 'PURCHASE' ? e.id : null),
       (e) => e.document,
       (e, code) => ({ ...e, document: code }),
+      ['purchase_bills'],
     ),
   };
 }

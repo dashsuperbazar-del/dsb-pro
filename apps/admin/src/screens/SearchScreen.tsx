@@ -55,7 +55,11 @@ export function SearchScreen() {
   const [billsBusy, setBillsBusy] = useState(false);
   const billsStarted = useRef(false);
   // Bills whose bill code contains the query, read from the server over the whole history (0069).
-  const [codeHits, setCodeHits] = useState<{ query: string; hits: BillCodeHit[] } | null>(null);
+  const [codeHits, setCodeHits] = useState<{
+    query: string;
+    hits: BillCodeHit[];
+    failed?: boolean;
+  } | null>(null);
   useEffect(() => {
     const t = setTimeout(() => setDebounced(q), DEBOUNCE_MS);
     return () => clearTimeout(t);
@@ -121,7 +125,7 @@ export function SearchScreen() {
     let live = true;
     findBillsByCode(shopId, query)
       .then((hits) => live && setCodeHits({ query, hits }))
-      .catch(() => live && setCodeHits(null));
+      .catch(() => live && setCodeHits({ query, hits: [], failed: true }));
     return () => {
       live = false;
     };
@@ -255,6 +259,11 @@ export function SearchScreen() {
       {notes.length > 0 && (
         <p role="alert" class="alert">
           Could not load {notes.join(', ')}. Results below leave those out.
+        </p>
+      )}
+      {codeHits?.failed && codeHits.query === debounced.trim() && (
+        <p role="alert" class="alert">
+          Could not search older bills by code. Results below leave them out.
         </p>
       )}
       {!searched && !loading && <p class="muted">Type at least two characters.</p>}

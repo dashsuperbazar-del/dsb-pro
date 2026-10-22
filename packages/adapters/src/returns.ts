@@ -112,6 +112,7 @@ export async function listReturnSources(type: ReturnType, shopId: string): Promi
     (row) => row.id,
     (row) => row.doc_no,
     (row, code) => ({ ...row, doc_no: code }),
+    ['purchase_bills'],
   );
 }
 

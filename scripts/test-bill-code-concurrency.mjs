@@ -205,8 +205,8 @@ try {
     (
       await admin.query(
         `select
-          (select md5(coalesce(string_agg((to_jsonb(p)-'bill_code'-'updated_at')::text,'|' order by p.id),'')) from purchase_bills p where shop_id=$1) as purchases,
-          (select md5(coalesce(string_agg((to_jsonb(s)-'bill_code'-'updated_at')::text,'|' order by s.id),'')) from sale_invoices s where shop_id=$1) as sales,
+          (select md5(coalesce(string_agg((to_jsonb(p)-'bill_code')::text,'|' order by p.id),'')) from purchase_bills p where shop_id=$1) as purchases,
+          (select md5(coalesce(string_agg((to_jsonb(s)-'bill_code')::text,'|' order by s.id),'')) from sale_invoices s where shop_id=$1) as sales,
           (select md5(coalesce(string_agg(to_jsonb(m)::text,'|' order by m.id),'')) from stock_movements m where shop_id=$1) as movements,
           (select md5(coalesce(string_agg(to_jsonb(p)::text,'|' order by p.id),'')) from payments p where shop_id=$1) as payments,
           (select md5(coalesce(string_agg(to_jsonb(l)::text,'|' order by l.id),'')) from purchase_bill_items l where tenant_id=$2) as lines,

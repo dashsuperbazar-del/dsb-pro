@@ -12,8 +12,10 @@
 --  * Immutable once set: an UPDATE that changes it is refused (DSB_BILL_CODE_IMMUTABLE). Clients have no
 --    INSERT/UPDATE grant on these tables anyway; RLS and grants are unchanged (the column inherits them).
 --  * Backfill: every existing row gets a code in created_at, id order. User triggers are switched off for
---    the backfill only (the finalized-sale guard would refuse the update); updated_at is bumped so devices
---    pull the new column; audit rows are not written; no money/ledger column is read or written.
+--    the backfill only (the finalized-sale guard would refuse the update), so updated_at and the audit log
+--    are not touched (devices do not pull bills; the app reads them from the server). Only bill_code is
+--    written; no money/ledger column is read or written. The unique indexes exist before the backfill so
+--    each free-code check is an index probe, not a scan.
 --  * find_bills_by_code(shop, text): read-only search over the whole history (partial code from 4 characters,
 --    case and dashes ignored), security invoker so row-level security still decides what is visible.
 --  * Export/restore: the business export is `select *` per table, so the column is exported; the JSON
@@ -21,6 +23,9 @@
 
 alter table purchase_bills add column bill_code text;
 alter table sale_invoices add column bill_code text;
+-- Before the backfill (NULLs are allowed in a unique index): every free-code check below is an index probe.
+create unique index purchase_bills_bill_code_key on purchase_bills(shop_id,bill_code);
+create unique index sale_invoices_bill_code_key on sale_invoices(shop_id,bill_code);
 
 -- One random candidate; replaceable in a test to force a collision.
 create function dsb_bill_code_candidate() returns text language plpgsql volatile set search_path=public as $$
@@ -71,20 +76,17 @@ revoke all on function dsb_bill_code_candidate() from public,anon,authenticated;
 revoke all on function dsb_new_bill_code(uuid,boolean) from public,anon,authenticated;
 revoke all on function dsb_bill_code_guard() from public,anon,authenticated;
 
--- Backfill (tables are locked by the ADD COLUMN above; no concurrent writer). Nothing but bill_code and
--- updated_at changes.
+-- Backfill (tables are locked by the ADD COLUMN above; no concurrent writer). Nothing but bill_code changes.
 alter table purchase_bills disable trigger user;
 alter table sale_invoices disable trigger user;
 do $$
 declare r record;
 begin
  for r in select id from purchase_bills order by created_at,id loop
-   update purchase_bills set bill_code=dsb_new_bill_code(shop_id,false),
-     updated_at=(extract(epoch from clock_timestamp())*1000)::bigint where id=r.id;
+   update purchase_bills set bill_code=dsb_new_bill_code(shop_id,false) where id=r.id;
  end loop;
  for r in select id from sale_invoices order by created_at,id loop
-   update sale_invoices set bill_code=dsb_new_bill_code(shop_id,false),
-     updated_at=(extract(epoch from clock_timestamp())*1000)::bigint where id=r.id;
+   update sale_invoices set bill_code=dsb_new_bill_code(shop_id,false) where id=r.id;
  end loop;
 end $$;
 alter table purchase_bills enable trigger user;
@@ -94,8 +96,6 @@ alter table purchase_bills alter column bill_code set not null,
  add constraint purchase_bills_bill_code_format check(bill_code ~ '^[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}$');
 alter table sale_invoices alter column bill_code set not null,
  add constraint sale_invoices_bill_code_format check(bill_code ~ '^[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}$');
-create unique index purchase_bills_bill_code_key on purchase_bills(shop_id,bill_code);
-create unique index sale_invoices_bill_code_key on sale_invoices(shop_id,bill_code);
 
 create trigger purchase_bills_bill_code before insert or update on purchase_bills
  for each row execute function dsb_bill_code_guard();

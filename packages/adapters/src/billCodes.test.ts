@@ -36,7 +36,19 @@ test('any other error is returned unchanged and not retried', async () => {
     .mockResolvedValue({ data: null, error: { code: '42501', message: 'permission denied' } });
   expect((await withBillCode(run)).error?.code).toBe('42501');
   expect(run).toHaveBeenCalledTimes(1);
-  expect(isMissingBillCodeColumn({ code: '42703' })).toBe(true);
+  expect(
+    isMissingBillCodeColumn({
+      code: '42703',
+      message: 'column purchase_bills.bill_code does not exist',
+    }),
+  ).toBe(true);
+  // Another missing column, or a message that is not about an undefined column, is not "no bill codes".
+  expect(isMissingBillCodeColumn({ code: '42703', message: 'column x.foo does not exist' })).toBe(
+    false,
+  );
+  expect(isMissingBillCodeColumn({ code: '42501', message: 'bill_code permission denied' })).toBe(
+    false,
+  );
   expect(isMissingBillCodeColumn(null)).toBe(false);
 });
 
