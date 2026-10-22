@@ -1,9 +1,9 @@
 # DSB Pro — STATE (read this instead of HANDOVER.md)
 
 Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/COMPLETE_REMAINING_BUILD_PLAN.md` v1.1.
-Always verify the SHA below with `git log origin/main -1` before trusting it.
-
+Always verify the SHA below with `git log origin/main -1` before trusting it. 
 ## Current
+
 - 21 Oct branch claude/unit-form (UI only, NO migration; DRAFT PR): new-item unit setup (presets, live example, folded piece unit; Inventory Add item form only, bill-card "+ Create" form unchanged) + bill rows still in new-item state are counted ("N not ready — not in this total", "Total so far", "Save all new items", empty rows ignored; F2/+ Add item reuse an empty last row).
 - 21 Oct branch claude/quickbill-photo (UI only, NO migration; DRAFT PR): Quick bill takes bill photos via the bill card's BillAttachmentEditor (bytes in IDB + metadata on the saved draft, bound to the draft clientId; upload deferred until the draft is resumed in the bill card, then the normal path; discarding a draft drops bytes no other snapshot lists). Unsaved-form photos are not persisted across reload (bytes only, form is not either).
 - 21 Oct branch claude/hide-voided (UI only, NO migration; base main `7b36c62` = #132; draft PR). Owner decision: voided bills/invoices hidden by default in the Purchases list and Sales history, never deleted. "Show voided" checkbox (default off, remembered per user+screen in localStorage, try/catch) and a note "N voided items hidden" in the count line (Sales history has its own count line). The Purchases Voided status filter shows voided bills regardless (checkbox ticked+disabled). Deep links (?bill=, ?sale=), global search and "Open the original" are unaffected (they open by id, not from the list). Display only: filterBills, totals, settlements and customer/supplier statements are unchanged. lib/voidedVisibility.ts (hideVoided/loadShowVoided/saveShowVoided/hiddenNote) is pure + tested; e2e purchases, purchase-edit and sales-history updated. Sales DRAFT rows are not hidden (only VOID).
