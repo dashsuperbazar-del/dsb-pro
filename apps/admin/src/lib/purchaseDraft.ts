@@ -303,3 +303,13 @@ export function restorePurchaseDraft(
       : {}),
   };
 }
+/** Local photo ids held only by the discarded drafts (another snapshot of the same bill may still use one). */
+export function unreferencedDocumentIds(
+  discarded: PurchaseDraft[],
+  remaining: PurchaseDraft[],
+): string[] {
+  const kept = new Set(remaining.flatMap((d) => draftDocuments(d).map((x) => x.id)));
+  return [...new Set(discarded.flatMap((d) => draftDocuments(d).map((x) => x.id)))].filter(
+    (id) => !kept.has(id),
+  );
+}

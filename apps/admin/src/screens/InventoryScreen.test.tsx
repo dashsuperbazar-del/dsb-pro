@@ -805,7 +805,11 @@ test('picker eviction preserves the document intent and requires a decision afte
   await vi.waitFor(() => expect(host.textContent).toContain('Draft repeated from PICKER-SOURCE'));
   await enter(host, 'billNo', 'PICKER-DRAFT');
   await act(async () => {
-    [...host.querySelectorAll('button')].find((b) => b.textContent === 'Gallery')!.click();
+    // The quick bill box above has a Gallery button too; the bill card's is the last one.
+    [...host.querySelectorAll('button')]
+      .filter((b) => b.textContent === 'Gallery')
+      .at(-1)!
+      .click();
   });
   await vi.waitFor(() => expect(host.textContent).toContain('Document selection needs review'));
   await act(async () => {
