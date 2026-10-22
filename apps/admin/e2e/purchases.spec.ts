@@ -153,6 +153,8 @@ test('a card-created three-unit item posted in its second unit is stocked in the
   await form.getByLabel('Item 1 big unit').fill('ctn');
   await form.getByLabel('Item 1 small unit', { exact: true }).fill('box');
   await form.getByLabel('Item 1 small units per big').fill('12');
+  // The piece unit sits behind "Add a piece unit" (collapsed by default).
+  await form.getByRole('button', { name: 'Add a piece unit' }).click();
   await form.getByLabel('Item 1 piece unit').fill('pc');
   await form.getByLabel('Item 1 pieces per small').fill('10');
   await form.getByRole('button', { name: 'Save item' }).click();
