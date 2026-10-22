@@ -60,6 +60,7 @@ const GROUP_ORDER = [
   'billedit',
   'remarks',
   'remarksfix',
+  'billcode',
 ];
 
 /**
