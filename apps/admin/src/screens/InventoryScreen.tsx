@@ -1621,6 +1621,67 @@ export function InventoryScreen({
     return () => document.removeEventListener('keydown', onKey);
   }, []);
   const duplicateCheckBusy = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  // Counts posts. The follow-up of a confirmed post (sale prices, list refresh, stock reload) runs after the
+  // form is free again; it may announce its result only while no newer post has started.
+  const postSeq = useRef(0);
+  async function settlePost(
+    seq: number,
+    shop: string,
+    bill: string,
+    interim: string,
+    finalMessage: (extra: string) => string,
+  ) {
+    let extra = '';
+    try {
+      onPurchasePosted?.();
+    } catch {
+      /* the parent's list refresh is display only */
+    }
+    try {
+      // Sale prices only after the bill is confirmed. A failed price write never undoes the bill.
+      extra += await writeSalePrices(shop, bill);
+    } catch (e) {
+      extra += ` (Sale prices could not be written: ${String(e)})`;
+    }
+    // Same sequence guard as every refresh: a newer refresh supersedes this one without overwriting state.
+    await refresh(true).catch((e) => (extra += ` (Refresh failed: ${String(e)})`));
+    if (!mounted.current) return;
+    if (seq === postSeq.current)
+      // Only our own "Updating stock…" is replaced, never a message another action has shown since.
+      setMessage((m) => (m === interim ? finalMessage(extra) : m));
+    else if (extra)
+      // A newer post has started: its message stays, but a problem with this bill's follow-up is not lost.
+      setMessage((m) => `${m ? `${m} ` : ''}Earlier bill saved.${extra}`);
+  }
+  // This supplier's bills, read ahead (when the supplier is chosen) so the duplicate check at Post time
+  // normally finds the answer ready. Dropped whenever a bill is posted from here.
+  const supplierBillsPrefetch = useRef<{
+    key: string;
+    at: number;
+    read: Promise<KnownBill[] | null>;
+  } | null>(null);
+  function supplierBillsRead(shop: string, party: string): Promise<KnownBill[] | null> {
+    const key = `${shop}:${party}`;
+    const cur = supplierBillsPrefetch.current;
+    if (cur && cur.key === key && Date.now() - cur.at < PREFETCH_FRESH_MS) return cur.read;
+    const read = readSupplierBills(shop, party, PREFETCH_READ_TIMEOUT_MS);
+    supplierBillsPrefetch.current = { key, at: Date.now(), read };
+    void read.then((rows) => {
+      if (rows === null && supplierBillsPrefetch.current?.read === read)
+        supplierBillsPrefetch.current = null;
+    });
+    return read;
+  }
+  useEffect(() => {
+    if (shopId && purchaseSupplier && online) void supplierBillsRead(shopId, purchaseSupplier);
+  }, [shopId, purchaseSupplier, online]);
   const repeatedClientId = useRef<string | null>(null);
   async function addPurchase(ev: Event) {
     ev.preventDefault();
@@ -1790,9 +1851,9 @@ export function InventoryScreen({
       let match: DuplicateMatch | null;
       try {
         // An edit replaces its own original (same supplier, bill no., often total): never a duplicate of it.
-        const known = (await knownSupplierBills(shopId, fresh.partyId, recentBills)).filter(
-          (b) => !fresh.editOf || b.id !== fresh.editOf,
-        );
+        const known = (
+          await knownSupplierBills(shopId, recentBills, supplierBillsRead(shopId, fresh.partyId))
+        ).filter((b) => !fresh.editOf || b.id !== fresh.editOf);
         match = findDuplicateBill(
           {
             partyId: fresh.partyId,
@@ -1855,6 +1916,9 @@ export function InventoryScreen({
     setPurchaseLocked(true);
     setPurchaseBusy(true);
     setMessage('');
+    // A newer post makes any earlier post's background follow-up (below) stay silent.
+    const seq = ++postSeq.current;
+    supplierBillsPrefetch.current = null;
     try {
       // v2 replays a same-id request with its stored answer (same bill, same payment); a refused retry is
       // decided by the stored answer (lookupPurchaseRequest), and a payload mismatch is a final refusal.
@@ -1954,20 +2018,27 @@ export function InventoryScreen({
         setDraftTouched(false);
         setDraftStatus('');
       }
-      // Sale prices only now, after the bill is confirmed. A failed price write never undoes the bill.
-      const priceNote = await writeSalePrices(request.shopId, request.clientId);
-      onPurchasePosted?.();
-      // Refresh before announcing, as before: the screen is settled when the message appears.
-      let refreshNote = '';
-      await refresh(true).catch((e) => (refreshNote = ` (Refresh failed: ${String(e)})`));
+      // The bill is confirmed: free the form now. Sale prices, the Purchases list refresh and the stock
+      // reload only update what is shown, so they finish in the background (see settlePost).
+      supplierBillsPrefetch.current = null;
+      if (request.partyId) void supplierBillsRead(request.shopId, request.partyId);
       const carried =
         editOf && outcome.kind === 'committed'
           ? ((outcome.value as { carriedPaise?: number }).carriedPaise ?? 0)
           : 0;
-      setMessage(
+      const itemsLabel = `${lineCount} item${lineCount === 1 ? '' : 's'}`;
+      const corrected = `Bill corrected (${itemsLabel}). The original bill is void and replaced;`;
+      const carriedNote = carried
+        ? ` Its payment of ${rupees(carried)} now counts against the corrected bill.`
+        : '';
+      const interim = editOf
+        ? `${corrected} supplier balance updated.${carriedNote} Updating stock…`
+        : `Purchase posted (${itemsLabel}).${paidNote} Updating stock…`;
+      setMessage(interim);
+      void settlePost(seq, request.shopId, request.clientId, interim, (extra) =>
         editOf
-          ? `Bill corrected (${lineCount} item${lineCount === 1 ? '' : 's'}). The original bill is void and replaced; stock and supplier balance updated.${carried ? ` Its payment of ${rupees(carried)} now counts against the corrected bill.` : ''}${priceNote}${refreshNote}`
-          : `Purchase posted (${lineCount} item${lineCount === 1 ? '' : 's'}) and stock updated.${paidNote}${priceNote}${refreshNote}`,
+          ? `${corrected} stock and supplier balance updated.${carriedNote}${extra}`
+          : `Purchase posted (${itemsLabel}) and stock updated.${paidNote}${extra}`,
       );
     } finally {
       setPurchaseBusy(false);
@@ -3118,7 +3189,12 @@ export function InventoryScreen({
   );
 }
 
-const DUPLICATE_READ_TIMEOUT_MS = 4000;
+// The form is frozen while the duplicate check decides what gets posted, so Post waits at most this long
+// for the supplier's bills (normally they were read ahead and are ready at once).
+const DUPLICATE_READ_TIMEOUT_MS = 1500;
+const PREFETCH_READ_TIMEOUT_MS = 10000;
+// Older than this, Post reads the supplier's bills again (another device may have posted since).
+const PREFETCH_FRESH_MS = 15000;
 const fromRecord = (b: PurchaseRecord): KnownBill => ({
   id: b.id,
   partyId: b.party_id,
@@ -3127,23 +3203,21 @@ const fromRecord = (b: PurchaseRecord): KnownBill => ({
   totalPaise: b.total_paise,
   status: b.status,
 });
-// This supplier's posted bills from the server (bounded wait), merged with any bill list this device has
-// already loaded (this screen's recent bills, the Purchases list snapshot). A failed read is no match.
-async function knownSupplierBills(
+// This supplier's posted bills from the server, or null when the read failed or timed out. Never rejects.
+async function readSupplierBills(
   shopId: string,
   partyId: string,
-  loaded: PurchaseRecord[],
-): Promise<KnownBill[]> {
-  let server: KnownBill[] = [];
+  timeoutMs: number,
+): Promise<KnownBill[] | null> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const rows = await Promise.race([
       listSupplierBills(shopId, partyId),
       new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error('timeout')), DUPLICATE_READ_TIMEOUT_MS);
+        timer = setTimeout(() => reject(new Error('timeout')), timeoutMs);
       }),
     ]);
-    server = rows.map((b) => ({
+    return rows.map((b) => ({
       id: b.purchase_bill_id,
       partyId,
       billNo: b.bill_no,
@@ -3151,10 +3225,27 @@ async function knownSupplierBills(
       totalPaise: b.total_paise,
     }));
   } catch {
-    /* offline or refused: fall back to what is loaded */
+    /* offline or refused: no server answer */
+    return null;
   } finally {
     clearTimeout(timer);
   }
+}
+// The server read (already running, bounded wait here) merged with any bill list this device has already
+// loaded (this screen's recent bills, the Purchases list snapshot). A failed or slow read is no match.
+async function knownSupplierBills(
+  shopId: string,
+  loaded: PurchaseRecord[],
+  serverRead: Promise<KnownBill[] | null>,
+): Promise<KnownBill[]> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const server =
+    (await Promise.race([
+      serverRead,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), DUPLICATE_READ_TIMEOUT_MS);
+      }),
+    ]).finally(() => clearTimeout(timer))) ?? [];
   let cached: KnownBill[] = [];
   try {
     const snap = peekSnapshot<{ rows: PurchaseRecord[] }>(
