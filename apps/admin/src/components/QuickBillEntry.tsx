@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'preact/hooks';
-import type { Party } from '@dsb-pro/adapters';
+import type { BillDocument, Party } from '@dsb-pro/adapters';
 import { buildQuickBillDraft } from '../lib/quickBill';
 import { savePurchaseDraft, scanPurchaseDrafts } from '../lib/purchaseDraft';
+import { BillAttachmentEditor } from './BillAttachmentEditor';
+import { removeLocalDocument } from '../lib/billDocumentStore';
 import { DISCARD_PROMPT, useDirtyGuard } from '../lib/dirtyGuard';
 
 // P06 quick bill: note a paper bill's supplier, number, date and total now; add its items later. It saves an
@@ -10,12 +12,16 @@ export function QuickBillEntry({
   parties,
   today,
   draftPrefix,
+  tenantId,
+  shopId,
   disabled,
   onSaved,
 }: {
   parties: Party[];
   today: string;
   draftPrefix: string;
+  tenantId: string;
+  shopId: string;
   disabled: boolean;
   onSaved: () => void;
 }) {
@@ -26,6 +32,10 @@ export function QuickBillEntry({
   const [errors, setErrors] = useState<string[]>([]);
   const [message, setMessage] = useState('');
   const [writer] = useState(() => crypto.randomUUID());
+  // The bill's request id is fixed now so each photo's private path is bound to the bill the draft becomes.
+  const [clientId, setClientId] = useState(() => crypto.randomUUID());
+  const [documents, setDocuments] = useState<BillDocument[]>([]);
+  const [photoBusy, setPhotoBusy] = useState(false);
   // The shop date can roll over while this page is open; a date still on the old default follows it.
   const [defaultDate, setDefaultDate] = useState(today);
   useEffect(() => {
@@ -34,7 +44,7 @@ export function QuickBillEntry({
   }, [today]);
 
   // N08: a typed bill number or total that is not yet saved as a draft.
-  const dirty = Boolean(billNo.trim() || total.trim());
+  const dirty = Boolean(billNo.trim() || total.trim() || documents.length);
   useDirtyGuard(dirty);
   function onToggle(e: Event) {
     const el = e.currentTarget as HTMLDetailsElement;
@@ -43,6 +53,10 @@ export function QuickBillEntry({
       el.open = true;
       return;
     }
+    // Unsaved photos are dropped from this device with the typed fields (nothing was uploaded or recorded).
+    for (const d of documents) void removeLocalDocument(draftPrefix, d.id).catch(() => {});
+    setDocuments([]);
+    setClientId(crypto.randomUUID());
     setBillNo('');
     setTotal('');
     setErrors([]);
@@ -51,6 +65,10 @@ export function QuickBillEntry({
 
   function save() {
     setMessage('');
+    if (photoBusy) {
+      setErrors(['A photo is still being kept on this device. Wait a moment, then save.']);
+      return;
+    }
     let existing: Array<{ supplier: string; billNo: string }>;
     try {
       existing = scanPurchaseDrafts(draftPrefix).drafts.map((d) => ({
@@ -63,9 +81,10 @@ export function QuickBillEntry({
     }
     const result = buildQuickBillDraft({ supplierId, billNo, date, total }, parties, {
       now: Date.now(),
-      newId: () => crypto.randomUUID(),
+      newId: () => clientId,
       today,
       existing,
+      documents,
     });
     if (!result.ok) {
       setErrors(result.errors);
@@ -80,6 +99,8 @@ export function QuickBillEntry({
     setErrors([]);
     setBillNo('');
     setTotal('');
+    setDocuments([]);
+    setClientId(crypto.randomUUID());
     setMessage(
       'Quick bill saved as a draft. Nothing is posted yet: open it from “Saved purchase drafts”, add its items, then post.',
     );
@@ -90,8 +111,8 @@ export function QuickBillEntry({
     <details class="card" aria-label="Quick bill" onToggle={onToggle}>
       <summary>Quick bill (total now, items later)</summary>
       <p class="muted">
-        Saves the paper bill as a draft. The supplier balance and stock change only when you add the
-        items and post it; posting warns if the items do not match this total.
+        Saves the paper bill, and any photo of it, as a draft. The supplier balance and stock change
+        only when you add the items and post it; posting warns if the items do not match this total.
       </p>
       <label>
         Supplier
@@ -134,8 +155,23 @@ export function QuickBillEntry({
           value={total}
           onInput={(e) => setTotal(e.currentTarget.value)}
         />
-      </label>{' '}
-      <button type="button" disabled={disabled} onClick={save}>
+      </label>
+      <BillAttachmentEditor
+        key={clientId}
+        scope={draftPrefix}
+        tenantId={tenantId}
+        shopId={shopId}
+        clientId={clientId}
+        documents={documents}
+        disabled={disabled}
+        deferUpload
+        labelSuffix=" (quick bill)"
+        beforePicker={() => true}
+        onChange={setDocuments}
+        onBusy={setPhotoBusy}
+        onProblem={(m) => setErrors(m ? [m] : [])}
+      />{' '}
+      <button type="button" disabled={disabled || photoBusy} onClick={save}>
         Save quick bill
       </button>
       {errors.map((m) => (

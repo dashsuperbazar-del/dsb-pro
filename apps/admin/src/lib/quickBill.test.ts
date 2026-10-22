@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { buildQuickBillDraft, paperTotalCheck } from './quickBill';
-import { restorePurchaseDraft } from './purchaseDraft';
+import { restorePurchaseDraft, unreferencedDocumentIds } from './purchaseDraft';
 
+const U1 = '11111111-1111-4111-8111-111111111111';
+const U2 = '22222222-2222-4222-8222-222222222222';
+const U3 = '33333333-3333-4333-8333-333333333333';
+const U4 = '44444444-4444-4444-8444-444444444444';
 const parties = [{ id: 'p1', name: 'Acme' }] as never;
-const ctx = { now: 1, newId: () => 'id1', today: '2026-10-17' };
+const ctx = { now: 1, newId: () => U3, today: '2026-10-17' };
 const ok = { supplierId: 'p1', billNo: ' B-7 ', date: '2026-10-16', total: '1250.50' };
 
 describe('buildQuickBillDraft', () => {
@@ -60,6 +64,28 @@ describe('purchase draft check', () => {
   });
 });
 
+describe('quick bill photos', () => {
+  const doc = {
+    id: U4,
+    name: 'b.webp',
+    mime: 'image/webp' as const,
+    size: 10,
+    sha256: 'a'.repeat(64),
+    path: `${U1}/${U2}/${U3}/${U4}.webp`,
+    uploaded: false,
+  };
+  it('carries the photos on the draft, bound to the draft bill id', () => {
+    const r = buildQuickBillDraft(ok, parties, { ...ctx, documents: [doc] });
+    expect(r.ok && r.draft.documents).toEqual([doc]);
+    expect(r.ok && r.draft.document).toEqual(doc);
+    if (r.ok) expect(restorePurchaseDraft(r.draft, [], parties).documents).toHaveLength(1);
+  });
+  it('refuses nothing extra and adds no photo fields without photos', () => {
+    const r = buildQuickBillDraft(ok, parties, ctx);
+    expect(r.ok && 'documents' in r.draft).toBe(false);
+  });
+});
+
 describe('paper total edges', () => {
   const total = (t: string) => {
     const r = buildQuickBillDraft({ ...ok, total: t }, parties, ctx);
@@ -77,5 +103,13 @@ describe('paper total edges', () => {
   it('refuses zero in any spelling', () => {
     expect(total('0.00')).toBeNull();
     expect(total('0')).toBeNull();
+  });
+});
+
+describe('discarded draft photos', () => {
+  const d = (ids: string[]) => ({ documents: ids.map((id) => ({ id })) }) as never;
+  it('keeps a photo another snapshot of the bill still lists', () => {
+    expect(unreferencedDocumentIds([d(['a', 'b'])], [d(['b'])])).toEqual(['a']);
+    expect(unreferencedDocumentIds([d(['a'])], [])).toEqual(['a']);
   });
 });

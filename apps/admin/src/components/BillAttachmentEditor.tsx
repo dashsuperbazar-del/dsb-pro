@@ -24,6 +24,8 @@ export function BillAttachmentEditor({
   documents,
   disabled,
   beforePicker,
+  deferUpload,
+  labelSuffix = '',
   onChange,
   onBusy,
   onProblem,
@@ -35,6 +37,10 @@ export function BillAttachmentEditor({
   documents: BillDocument[];
   disabled: boolean;
   beforePicker: () => boolean;
+  /** Quick bill: keep the bytes on the device and upload only after the draft that records them is saved. */
+  deferUpload?: boolean;
+  /** Added to the accessible names so two editors on one page stay distinguishable. */
+  labelSuffix?: string;
   /** Persist the new list (the draft) before it is shown; throw to refuse it. */
   onChange: (docs: BillDocument[]) => void;
   onBusy: (busy: boolean) => void;
@@ -115,10 +121,10 @@ export function BillAttachmentEditor({
       <summary>
         Bill photos or PDF
         {documents.length
-          ? ` · ${documents.length} ${uploaded === documents.length ? 'attached' : `added, ${documents.length - uploaded} upload pending`}`
+          ? ` · ${documents.length} ${uploaded === documents.length ? 'attached' : `added, ${documents.length - uploaded} ${deferUpload ? 'kept on this device, upload when the draft is opened' : 'upload pending'}`}`
           : ''}
       </summary>
-      <section aria-label="Bill attachment">
+      <section aria-label={labelSuffix ? 'Quick bill photo attachment' : 'Bill attachment'}>
         <p class="muted">
           Up to {MAX_BILL_PHOTOS} photos or PDFs per bill. Photos are compressed for readability;
           PDFs up to 5 MB. Each upload must be confirmed before posting.
@@ -139,7 +145,7 @@ export function BillAttachmentEditor({
           hidden
           ref={camera}
           type="file"
-          aria-label="Capture bill photo"
+          aria-label={`Capture bill photo${labelSuffix}`}
           accept="image/jpeg,image/png,image/webp"
           capture="environment"
           onChange={choose}
@@ -149,7 +155,7 @@ export function BillAttachmentEditor({
           hidden
           ref={gallery}
           type="file"
-          aria-label="Choose bill image"
+          aria-label={`Choose bill image${labelSuffix}`}
           accept="image/jpeg,image/png,image/webp"
           onChange={choose}
           onCancel={() => onProblem('')}
@@ -158,7 +164,7 @@ export function BillAttachmentEditor({
           hidden
           ref={pdf}
           type="file"
-          aria-label="Choose bill PDF"
+          aria-label={`Choose bill PDF${labelSuffix}`}
           accept="application/pdf,.pdf"
           onChange={choose}
           onCancel={() => onProblem('')}
@@ -172,6 +178,8 @@ export function BillAttachmentEditor({
             scope={scope}
             document={doc}
             disabled={disabled}
+            deferUpload={deferUpload}
+            labelSuffix={labelSuffix}
             onBusy={(on) =>
               setBusyIds((ids) =>
                 on
@@ -207,6 +215,8 @@ function AttachmentRow({
   scope,
   document,
   disabled,
+  deferUpload,
+  labelSuffix,
   onBusy,
   onProblem,
   onUploaded,
@@ -216,6 +226,8 @@ function AttachmentRow({
   scope: string;
   document: BillDocument;
   disabled: boolean;
+  deferUpload?: boolean;
+  labelSuffix: string;
   onBusy: (busy: boolean) => void;
   onProblem: (message: string) => void;
   onUploaded: () => void;
@@ -249,7 +261,7 @@ function AttachmentRow({
           );
         if (!active) return;
         setBlob(local);
-        if (!document.uploaded && !disabled) {
+        if (!document.uploaded && !disabled && !deferUpload) {
           await uploadBillDocument(document, local);
           if (active) props.current.onUploaded();
         }
@@ -268,24 +280,28 @@ function AttachmentRow({
     return () => {
       active = false;
     };
-  }, [scope, document.id, document.uploaded, retry, disabled]);
+  }, [scope, document.id, document.uploaded, retry, disabled, deferUpload]);
   return (
-    <div class="bill-attachment-row" data-testid={`bill-photo-${n}`}>
+    <div class="bill-attachment-row" data-testid={`bill-photo-${n}${labelSuffix ? '-quick' : ''}`}>
       <p>
         {n}. {document.name} · {Math.ceil(document.size / 1024)} KB ·{' '}
-        {document.uploaded ? 'Upload confirmed' : 'Upload not confirmed'}
+        {document.uploaded
+          ? 'Upload confirmed'
+          : deferUpload
+            ? 'Kept on this device; uploads when you open the saved draft'
+            : 'Upload not confirmed'}
       </p>
       {error && <p role="alert">{error}</p>}
       <div class="context-actions">
         {blob && <BillDocumentPreview blob={blob} name={document.name} />}
-        {!document.uploaded && (
+        {!document.uploaded && !deferUpload && (
           <button type="button" disabled={disabled || busy} onClick={() => setRetry((r) => r + 1)}>
             Retry document upload
           </button>
         )}
         <button
           type="button"
-          aria-label={`Remove file ${n}`}
+          aria-label={`Remove file ${n}${labelSuffix}`}
           disabled={disabled || busy}
           onClick={onRemove}
         >

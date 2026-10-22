@@ -1,4 +1,4 @@
-import type { Party } from '@dsb-pro/adapters';
+import type { BillDocument, Party } from '@dsb-pro/adapters';
 import { parseRupeesToPaise } from '@dsb-pro/core';
 import type { PurchaseDraft } from './purchaseDraft';
 import { validStatementDates } from './supplierStatement';
@@ -17,6 +17,8 @@ export function buildQuickBillDraft(
     newId: () => string;
     today: string;
     existing?: Array<{ supplier: string; billNo: string }>;
+    /** Bill photos already kept on the device (their paths are bound to `newId()`'s bill id). */
+    documents?: BillDocument[];
   },
 ): { ok: true; draft: PurchaseDraft } | { ok: false; errors: string[] } {
   const errors: string[] = [];
@@ -64,6 +66,9 @@ export function buildQuickBillDraft(
       price: '',
       editingLine: null,
       expectedTotalPaise: String(totalPaise),
+      ...(ctx.documents?.length
+        ? { document: ctx.documents[0] ?? null, documents: ctx.documents }
+        : {}),
     },
   };
 }
