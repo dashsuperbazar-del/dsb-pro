@@ -139,10 +139,16 @@ test('purchase entry: arrows pick a match, F2 adds an item, F4 only moves to Pos
   await purchase.getByLabel('Item 1 rate ₹', { exact: true }).fill('31');
   await purchase.getByLabel('Item 1 rate ₹', { exact: true }).press('Enter');
   await expect(purchase.getByLabel('Item 2 name', { exact: true })).toBeFocused();
-  // F2 adds a new empty item row and goes to its name.
+  // F2 goes to an empty last row instead of stacking another empty one (row 2 is still empty) ...
+  await page.keyboard.press('F2');
+  await expect(purchase.getByRole('region', { name: /^Item \d+$/ })).toHaveCount(2);
+  await expect(purchase.getByLabel('Item 2 name', { exact: true })).toBeFocused();
+  // ... and adds a new row once the last one has something in it.
+  await purchase.getByLabel('Item 2 name', { exact: true }).fill('x');
   await page.keyboard.press('F2');
   await expect(purchase.getByRole('region', { name: /^Item \d+$/ })).toHaveCount(3);
   await expect(purchase.getByLabel('Item 3 name', { exact: true })).toBeFocused();
+  await purchase.getByLabel('Item 2 name', { exact: true }).fill('');
   // F4 moves focus to Post; the bill is not posted.
   await purchase.getByLabel('Item 2 name', { exact: true }).focus();
   await page.keyboard.press('F4');

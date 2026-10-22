@@ -9,6 +9,7 @@ import {
   emptyCard,
   evaluateCard,
   isBlankCard,
+  summarizeBill,
   switchCostMode,
   unitChoices,
   withItem,
@@ -241,4 +242,30 @@ test('a different item drops discount and GST; a different unit keeps them; repe
   const t = switchCostMode(card({ item: A, qty: '2', price: '10', gst: '5' }), 'total');
   expect(t.price).toBe('20.00');
   expect(evaluateCard(t)).toMatchObject({ amountPaise: 2100 });
+});
+
+test('summarizeBill counts ready, not-ready (typed but not in the total) and empty rows', () => {
+  const cards = [
+    card({ item: A, qty: '2', price: '10' }), // ready
+    card({ search: 'New thing', qty: '1', price: '5' }), // name typed, never saved: not ready
+    emptyCard(), // empty
+    card({ item: A, qty: '1', price: '' }), // no cost: not ready
+    emptyCard(),
+    card({ item: A, qty: '3', price: '1' }), // ready
+  ];
+  const bill = billFromCards(cards);
+  expect(summarizeBill(bill, cards.length)).toEqual({
+    ready: 2,
+    notReady: 2,
+    blank: 2,
+    firstNotReady: 1,
+  });
+  // The total still holds exactly the ready rows.
+  expect(bill.itemsTotalPaise).toBe(2000 + 300);
+  expect(summarizeBill(billFromCards([emptyCard()]), 1)).toEqual({
+    ready: 0,
+    notReady: 0,
+    blank: 1,
+    firstNotReady: -1,
+  });
 });

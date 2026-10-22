@@ -403,6 +403,138 @@ test('Save creates the item with the typed fields, selects it with qty and cost 
   expect(host.textContent).not.toContain('+ Create');
 });
 
+test('rows in the new-item state say "Not added yet"; Save all new items appears from two such rows, keeps qty and cost, creates each once', async () => {
+  const create = vi.fn(async (f: NewItemFields) => ({ ...created(f), id: `id-${f.name}` }) as Item);
+  const messages: string[] = [];
+  await act(async () =>
+    render(
+      <Harness
+        start={[emptyCard(), emptyCard(), emptyCard()]}
+        onCreateItem={create}
+        onMessage={(m) => messages.push(m)}
+      />,
+      host,
+    ),
+  );
+  // Blank rows show a dash, not a number.
+  expect(host.querySelector('.bill-row-no')!.textContent).toBe('—');
+  const open = async (n: number, name: string, unit: string, qty: string, price: string) => {
+    await type(`Item ${n} name`, name);
+    await click(button(`+ Create “${name}”`));
+    if (unit) await type(`Item ${n} big unit`, unit);
+    await type(`Item ${n} quantity`, qty);
+    await type(`Item ${n} rate ₹`, price);
+  };
+  await open(1, 'Alpha', 'kg', '3', '10');
+  expect(host.textContent).toContain('Not added yet — tap Save item');
+  expect(host.textContent).not.toContain('Save all new items');
+  await open(2, 'Beta', '', '2', '5'); // no big unit: stays open with its error
+  await open(3, 'Gamma', 'box', '1', '7');
+  expect(host.querySelectorAll('[data-testid="not-added-badge"]').length).toBe(3);
+  expect(host.querySelector('.bill-card-pending')).toBeTruthy();
+  expect(button('Save all new items (3)')).toBeTruthy();
+  // Pressing it twice quickly still creates each valid item once.
+  await act(async () => {
+    button('Save all new items (3)').click();
+    await new Promise((r) => setTimeout(r, 0));
+  });
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 250));
+  });
+  expect(create.mock.calls.map((c) => c[0].name)).toEqual(['Alpha', 'Gamma']);
+  expect(current[0]).toMatchObject({ item: { id: 'id-Alpha' }, qty: '3', price: '10' });
+  expect(current[2]).toMatchObject({ item: { id: 'id-Gamma' }, qty: '1', price: '7' });
+  // The failed row stays open with its own error and its figures.
+  expect(current[1]).toMatchObject({ item: null, qty: '2', price: '5' });
+  expect(alertIn('New item for item 2')).toContain('Enter the big unit.');
+  expect(messages.at(-1)).toContain('2 new items saved; 1 needs a look');
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 0));
+  });
+  expect(host.textContent).not.toContain('Save all new items');
+  expect(create).toHaveBeenCalledTimes(2);
+});
+
+test('Save all uses an item that now has the same name instead of creating it', async () => {
+  const create = vi.fn(async (f: NewItemFields) => created(f));
+  await mount([emptyCard(), emptyCard()], create);
+  for (const n of [1, 2]) {
+    await type(`Item ${n} name`, 'Dup');
+    await click(button('+ Create “Dup”'));
+    await type(`Item ${n} big unit`, 'kg');
+    await type(`Item ${n} quantity`, String(n));
+    await type(`Item ${n} rate ₹`, '4');
+  }
+  await click(button('Save all new items (2)'));
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 250));
+  });
+  expect(create).toHaveBeenCalledTimes(1);
+  expect(current.map((c) => c.item?.name)).toEqual(['Dup', 'Dup']);
+  expect(current.map((c) => c.qty)).toEqual(['1', '2']);
+});
+
+test('the card new-item form has presets, a live example and a folded piece unit that keeps its values', async () => {
+  const create = vi.fn(async (f: NewItemFields) => created(f));
+  await mount([emptyCard()], create);
+  await type('Item 1 name', 'Sugar');
+  await click(button('+ Create “Sugar”'));
+  const form = byLabel<HTMLElement>('New item for item 1');
+  const piece = form.querySelector<HTMLElement>('[id^="piece-"]')!;
+  expect(piece.hidden).toBe(true);
+  expect(button('Add a piece unit', form)).toBeTruthy();
+  await click(button('Kg / Gms', form));
+  expect(byLabel('Item 1 big unit').value).toBe('Kg');
+  expect(byLabel('Item 1 small units per big').value).toBe('1000');
+  expect(form.querySelector('[data-testid="unit-example"]')!.textContent).toContain(
+    '1 Kg = 1000 Gms',
+  );
+  // typing a piece unit opens the fold; folding keeps the values and summarises them
+  await type('Item 1 piece unit', 'pcs');
+  expect(piece.hidden).toBe(false);
+  await type('Item 1 pieces per small', '4');
+  await click(button('Hide piece unit', form));
+  expect(piece.hidden).toBe(true);
+  expect(form.querySelector('[data-testid="piece-summary"]')!.textContent).toContain(
+    'pcs, 4 per Gms',
+  );
+  await click(button('Save item', form));
+  expect(create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      name: 'Sugar',
+      unit1: 'Kg',
+      unit2: 'Gms',
+      conv1: '1000',
+      unit3: 'pcs',
+      conv2: '4',
+    }),
+    expect.any(String),
+  );
+});
+
+test('Save all never adopts a same-named item that has other units', async () => {
+  const create = vi.fn(async (f: NewItemFields) => created(f));
+  await mount([emptyCard(), emptyCard()], create);
+  for (const [n, unit] of [
+    [1, 'kg'],
+    [2, 'bag'],
+  ] as const) {
+    await type(`Item ${n} name`, 'Dup');
+    await click(button('+ Create “Dup”'));
+    await type(`Item ${n} big unit`, unit);
+    await type(`Item ${n} quantity`, '1');
+    await type(`Item ${n} rate ₹`, '4');
+  }
+  await click(button('Save all new items (2)'));
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 250));
+  });
+  expect(create).toHaveBeenCalledTimes(1);
+  expect(current[0]!.item?.name).toBe('Dup');
+  expect(current[1]!.item).toBeNull();
+  expect(alertIn('New item for item 2')).toContain('already exists with other units');
+});
+
 test('offline, the card says the item was not created and keeps the form; nothing is sent', async () => {
   const create = vi.fn(async (f: NewItemFields) => created(f));
   await mount([emptyCard()], create);
