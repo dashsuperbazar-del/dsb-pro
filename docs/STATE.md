@@ -1,7 +1,7 @@
 # DSB Pro — STATE (read this instead of HANDOVER.md)
 
-Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/COMPLETE_REMAINING_BUILD_PLAN.md` v1.1.
-Always verify the SHA below with `git log origin/main -1` before trusting it. 
+Process + order: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/COMPLETE_REMAINING_BUILD_PLAN.md` v1.1. Always verify the SHA below with `git log origin/main -1` before trusting it.
+
 ## Current
 
 - 21 Oct branch claude/unit-form (UI only, NO migration; DRAFT PR): new-item unit setup (presets, live example, folded piece unit; Inventory Add item form only, bill-card "+ Create" form unchanged) + bill rows still in new-item state are counted ("N not ready — not in this total", "Total so far", "Save all new items", empty rows ignored; F2/+ Add item reuse an empty last row).
