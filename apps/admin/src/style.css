@@ -1919,6 +1919,78 @@ kbd {
   }
 }
 
+/* New-item unit fields: presets, grid that stacks on phones, live example. */
+.unit-fields {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 8px 0;
+}
+.unit-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.unit-presets .chip {
+  min-height: 36px;
+  border-radius: 999px;
+  padding: 4px 12px;
+}
+.unit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
+  gap: 10px;
+  align-items: end;
+}
+.unit-grid[hidden] {
+  display: none;
+}
+.unit-grid label {
+  overflow-wrap: anywhere;
+}
+.unit-fields input {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+.unit-help,
+.unit-example {
+  margin: 0;
+}
+.unit-piece .link-button {
+  background: none;
+  border: 0;
+  padding: 8px 0;
+  min-height: 36px;
+  color: inherit;
+  text-decoration: underline;
+}
+
+/* Rows still in the new-item state, and the summary of rows not in the bill total. */
+.bill-card-pending {
+  border-color: var(--warn, #b45309);
+  border-style: dashed;
+}
+.bill-card-pending-badge {
+  margin: 4px 0;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--warn, #b45309);
+}
+.bill-save-all {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0;
+}
+.bill-not-ready {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .bill-code-copy {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: 0.05em;
