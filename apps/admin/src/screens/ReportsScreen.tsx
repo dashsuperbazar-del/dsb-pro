@@ -15,6 +15,9 @@ import {
   getItemSalesReport,
   getPurchaseRegister,
   getAgingReportV2,
+  labelPartyLedger,
+  labelPurchaseRegister,
+  labelSupplierAging,
   getProfitReport,
   type ProfitReport,
   type DayBookRow,
@@ -105,15 +108,20 @@ export function ReportsScreen() {
         getAgingReportV2('customer', shop, to),
         getAgingReportV2('supplier', shop, to),
       ]);
+      // Bill codes in place of raw ids (display only; never throws, unlabelled on any failure).
+      const [prLabelled, saLabelled] = await Promise.all([
+        labelPurchaseRegister(pr),
+        labelSupplierAging(sa),
+      ]);
       setDay(d);
       setStock(s);
       setGst(g);
       setLowStock(ls);
       setItemSales(is);
-      setPurchaseRegister(pr);
+      setPurchaseRegister(prLabelled);
       setCustomerAging(ca);
-      setSupplierAging(sa);
-      if (partyId) setPartyLedger(await getPartyLedger(partyId, from, to));
+      setSupplierAging(saLabelled);
+      if (partyId) setPartyLedger(await labelPartyLedger(await getPartyLedger(partyId, from, to)));
       setMsg(i.ok ? 'Invariant check: PASS' : 'Invariant check: FAIL — stop and investigate');
     } catch (e) {
       setMsg(String(e));

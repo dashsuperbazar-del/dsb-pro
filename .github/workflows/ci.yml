@@ -117,6 +117,8 @@ jobs:
         run: node scripts/test-invite-concurrency.mjs
       - name: Prove sale stock locking and idempotency under concurrency
         run: node scripts/test-sale-concurrency.mjs
+      - name: Prove bill codes (parallel postings, same-candidate race, backfill on real rows)
+        run: node scripts/test-bill-code-concurrency.mjs
       - name: Prove negative-stock recovery serialization
         run: node scripts/test-stock-recovery-concurrency.mjs
       - name: Prove C0 finance lock (no double allocation across 5 sessions; per-shop serialization)
@@ -1095,8 +1097,42 @@ jobs:
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "grant execute on function list_open_remarks(uuid) to anon"
           if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Anonymous open remarks list accepted'; exit 1; fi
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "revoke execute on function list_open_remarks(uuid) from anon"
-          grep -Fx 'needs_upgrade=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          grep -Fx 'needs_remarksfix=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
           echo 'DISPOSABLE REMARKS FIXES UPGRADE: PASS'
+      - name: Prove bill codes upgrade (apply, no-op, tamper/partial refusal)
+        env:
+          PROOF_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          grep -Fx 'needs_billcode=true' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" billcode
+          grep -Fx 'needs_billcode=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          grep -Fx 'needs_remarksfix=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" billcode
+          expected_checksum=$(sha256sum supabase/migrations/0069_bill_codes.sql | cut -d' ' -f1)
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update app_migration_receipts set checksum_sha256=repeat('0',64) where version='0069'"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo '0069 tamper accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update app_migration_receipts set checksum_sha256='$expected_checksum' where version='0069'"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "grant execute on function dsb_new_bill_code(uuid,boolean) to authenticated"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Exposed bill code generator accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "revoke execute on function dsb_new_bill_code(uuid,boolean) from authenticated"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "grant execute on function find_bills_by_code(uuid,text) to anon"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Anonymous bill code search accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "revoke execute on function find_bills_by_code(uuid,text) from anon"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "alter table sale_invoices disable trigger sale_invoices_bill_code"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Disabled sale bill code trigger accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "alter table sale_invoices enable trigger sale_invoices_bill_code"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "alter table purchase_bills disable trigger purchase_bills_bill_code"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Disabled purchase bill code trigger accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "alter table purchase_bills enable trigger purchase_bills_bill_code"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "drop index purchase_bills_bill_code_key"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Missing bill code unique index accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "create unique index purchase_bills_bill_code_key on purchase_bills(shop_id,bill_code)"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "alter table sale_invoices drop constraint sale_invoices_bill_code_format"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Missing bill code format check accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "alter table sale_invoices add constraint sale_invoices_bill_code_format check(bill_code ~ '^[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}\$')"
+          grep -Fx 'needs_upgrade=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          echo 'DISPOSABLE BILL CODES UPGRADE: PASS'
       - name: Stop and erase the disposable target
         if: always()
         run: supabase stop --workdir "$PROOF_ROOT" --no-backup
@@ -1821,6 +1857,11 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" remarksfix
+      - name: Apply bill codes atomically
+        if: steps.preflight.outputs.needs_billcode == 'true'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" billcode
       - name: Verify live Batch B contract
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}

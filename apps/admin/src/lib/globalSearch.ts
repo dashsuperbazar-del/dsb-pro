@@ -1,3 +1,5 @@
+import { billCodeMatch } from './billCode';
+
 export const GLOBAL_SEARCH_LIMIT = 10;
 type Named = { id: string; name: string };
 export type SearchItem = Named & { sku?: string | null };
@@ -64,6 +66,8 @@ export function searchEverything(query: string, data: SearchData): SearchResult 
 export type SearchBill = {
   id: string;
   number: string | null;
+  /** Bill code (0069); absent on older rows. */
+  code?: string | null;
   partyName: string;
   date: string;
   totalPaise: string | number;
@@ -86,10 +90,11 @@ export function searchBills(
   for (const b of bills) {
     const no = (b.number ?? '').toLowerCase();
     const party = b.partyName.toLowerCase();
+    const byCode = billCodeMatch(b.code, q);
     let score = -1;
-    if (no && no === q) score = 0;
+    if ((no && no === q) || byCode === 'exact') score = 0;
     else if (amountMatches(b.totalPaise, q)) score = 1;
-    else if (no && no.includes(q)) score = 2;
+    else if ((no && no.includes(q)) || byCode === 'partial') score = 2;
     else if (party.startsWith(q)) score = 3;
     else if (party.includes(q)) score = 4;
     if (score >= 0) scored.push([score, b]);

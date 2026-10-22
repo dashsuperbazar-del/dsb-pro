@@ -94,6 +94,7 @@ export function saleInvoiceDoc(
     title: inv.status === 'VOID' ? 'Sale invoice (VOID)' : 'Sale invoice',
     meta: [
       `Invoice ${inv.doc_no}`,
+      ...(inv.bill_code ? [`Bill code ${inv.bill_code}`] : []),
       `Date ${inv.business_date}`,
       customer?.name ? `Customer ${customer.name}` : 'Walk-in customer',
     ],
@@ -149,6 +150,7 @@ export function purchaseBillDoc(
     title: b.status === 'VOID' ? 'Purchase bill (VOID)' : 'Purchase bill',
     meta: [
       `Bill ${billNo}`,
+      ...(b.bill_code ? [`Bill code ${b.bill_code}`] : []),
       `Date ${b.business_date}`,
       `Supplier ${supplier?.name || 'Unknown supplier'}`,
     ],
