@@ -543,3 +543,38 @@ test('remarks (0067): "Pending" badge and filter from open remarks; the bill vie
   api.listOpenRemarks.mockResolvedValue([]);
   api.listDocumentRemarks.mockResolvedValue([]);
 });
+
+test('bill codes: the list shows them, search finds a bill by its code (case, dashes, 4+ characters), old rows without one still work', async () => {
+  const { clearSnapshots } = await import('../lib/routeSnapshot');
+  clearSnapshots();
+  api.listPurchaseHistory.mockResolvedValue([
+    { ...bill('c1', 'SUP-1'), bill_code: 'K7M2-QX9P' },
+    { ...bill('c2', ''), bill_code: 'ZZ4W-HH8N' },
+    bill('c3', 'OLD-3'),
+  ]);
+  await act(async () => {
+    render(<PurchasesScreen url="/purchases" />, host);
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('OLD-3'));
+  // A bill with no supplier bill no. is named by its code, never by a raw id; both show when both exist.
+  expect(host.textContent).toContain('SUP-1 · K7M2-QX9P');
+  expect(host.textContent).toContain('ZZ4W-HH8N');
+  const search = host.querySelector<HTMLInputElement>('.search-field input')!;
+  const type = async (value: string) => {
+    await act(async () => {
+      search.value = value;
+      search.dispatchEvent(new Event('input'));
+    });
+  };
+  await type('k7m2qx');
+  expect(host.textContent).toContain('SUP-1');
+  expect(host.textContent).not.toContain('OLD-3');
+  expect(host.textContent).not.toContain('ZZ4W-HH8N');
+  await type('zz4w-hh');
+  expect(host.textContent).toContain('ZZ4W-HH8N');
+  expect(host.textContent).not.toContain('SUP-1');
+  await type('k7m');
+  expect(host.textContent).not.toContain('K7M2-QX9P');
+  await type('OLD-3');
+  expect(host.textContent).toContain('OLD-3');
+});

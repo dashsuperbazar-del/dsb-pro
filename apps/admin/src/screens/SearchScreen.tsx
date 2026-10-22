@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
+  findBillsByCode,
   listCustomers,
   listItems,
   listParties,
   listPurchaseHistory,
   listRecentSales,
+  type BillCodeHit,
   type PurchaseRecord,
   type SaleInvoice,
 } from '@dsb-pro/adapters';
@@ -52,6 +54,12 @@ export function SearchScreen() {
   const [bills, setBills] = useState<BillLists | null>(null);
   const [billsBusy, setBillsBusy] = useState(false);
   const billsStarted = useRef(false);
+  // Bills whose bill code contains the query, read from the server over the whole history (0069).
+  const [codeHits, setCodeHits] = useState<{
+    query: string;
+    hits: BillCodeHit[];
+    failed?: boolean;
+  } | null>(null);
   useEffect(() => {
     const t = setTimeout(() => setDebounced(q), DEBOUNCE_MS);
     return () => clearTimeout(t);
@@ -106,6 +114,22 @@ export function SearchScreen() {
       if (alive.current) setBillsBusy(false);
     }
   }
+  // A bill code (4+ characters) is looked up on the server so an old bill is found too. A failure only
+  // leaves the bills already loaded above; it never hides them.
+  useEffect(() => {
+    const query = debounced.trim();
+    if (!shopId || query.replace(/[^A-Za-z0-9]/g, '').length < 4) {
+      setCodeHits(null);
+      return;
+    }
+    let live = true;
+    findBillsByCode(shopId, query)
+      .then((hits) => live && setCodeHits({ query, hits }))
+      .catch(() => live && setCodeHits({ query, hits: [], failed: true }));
+    return () => {
+      live = false;
+    };
+  }, [debounced, shopId]);
   // Bills are read only once someone searches (debounced), never on every keystroke.
   useEffect(() => {
     if (debounced.trim().length >= 2 && shopId && !billsStarted.current) {
@@ -161,26 +185,46 @@ export function SearchScreen() {
   const r = searchEverything(debounced, data);
   const searched = debounced.trim().length >= 2;
   const customerNames = new Map(data.customers.map((c) => [c.id, c.name]));
-  const purchaseHits = searchBills(
-    debounced,
-    (bills?.purchases ?? []).map((b): SearchBill => ({
-      id: b.id,
-      number: b.bill_no,
-      partyName: (b.party_id && bills?.supplierNames.get(b.party_id)) || '',
-      date: b.business_date,
-      totalPaise: b.total_paise,
-    })),
-  );
-  const saleHits = searchBills(
-    debounced,
-    (bills?.sales ?? []).map((x): SearchBill => ({
-      id: x.id,
-      number: x.doc_no,
-      partyName: (x.customer_id && customerNames.get(x.customer_id)) || 'Walk-in',
-      date: x.business_date,
-      totalPaise: x.total_paise,
-    })),
-  );
+  const supplierNames = new Map(data.suppliers.map((x) => [x.id, x.name] as [string, string]));
+  const fromCode = codeHits && codeHits.query === debounced.trim() ? codeHits.hits : [];
+  const loadedPurchases = (bills?.purchases ?? []).map((b): SearchBill => ({
+    id: b.id,
+    number: b.bill_no,
+    code: b.bill_code,
+    partyName: (b.party_id && bills?.supplierNames.get(b.party_id)) || '',
+    date: b.business_date,
+    totalPaise: b.total_paise,
+  }));
+  const loadedSales = (bills?.sales ?? []).map((x): SearchBill => ({
+    id: x.id,
+    number: x.doc_no,
+    code: x.bill_code,
+    partyName: (x.customer_id && customerNames.get(x.customer_id)) || 'Walk-in',
+    date: x.business_date,
+    totalPaise: x.total_paise,
+  }));
+  // Older bills found only by the server's code search are added once each.
+  const extra = (kind: 'purchase' | 'sale', loaded: SearchBill[]): SearchBill[] =>
+    fromCode
+      .filter((h) => h.kind === kind && !loaded.some((b) => b.id === h.id))
+      .map((h) => ({
+        id: h.id,
+        number: h.doc_no,
+        code: h.bill_code,
+        partyName:
+          (h.party_id &&
+            (kind === 'purchase'
+              ? (bills?.supplierNames.get(h.party_id) ?? supplierNames.get(h.party_id))
+              : customerNames.get(h.party_id))) ||
+          (kind === 'sale' ? 'Walk-in' : ''),
+        date: h.business_date,
+        totalPaise: h.total_paise,
+      }));
+  const purchaseHits = searchBills(debounced, [
+    ...loadedPurchases,
+    ...extra('purchase', loadedPurchases),
+  ]);
+  const saleHits = searchBills(debounced, [...loadedSales, ...extra('sale', loadedSales)]);
   const total =
     r.items.length +
     r.customers.length +
@@ -203,6 +247,9 @@ export function SearchScreen() {
           onInput={(e) => setQ(e.currentTarget.value)}
         />
       </label>
+      <p class="muted">
+        A bill code (like K7M2-QX9P, 4 characters or more) finds a bill or invoice.
+      </p>
       {loading && <p class="muted">Loading…</p>}
       {error && (
         <p role="alert" class="alert">
@@ -212,6 +259,11 @@ export function SearchScreen() {
       {notes.length > 0 && (
         <p role="alert" class="alert">
           Could not load {notes.join(', ')}. Results below leave those out.
+        </p>
+      )}
+      {codeHits?.failed && codeHits.query === debounced.trim() && (
+        <p role="alert" class="alert">
+          Could not search older bills by code. Results below leave them out.
         </p>
       )}
       {!searched && !loading && <p class="muted">Type at least two characters.</p>}
@@ -300,10 +352,11 @@ function BillGroup({
       <ul>
         {rows.map((b) => (
           <li key={b.id}>
-            <a href={href(b.id)}>{b.number || 'No number'}</a>
+            <a href={href(b.id)}>{b.number || b.code || 'No number'}</a>
             <span class="muted">
               {' '}
-              · {b.partyName || 'Unknown'} · {b.date} · {rupees(b.totalPaise)}
+              {b.number && b.code ? `· ${b.code} ` : ''}· {b.partyName || 'Unknown'} · {b.date} ·{' '}
+              {rupees(b.totalPaise)}
             </span>
           </li>
         ))}

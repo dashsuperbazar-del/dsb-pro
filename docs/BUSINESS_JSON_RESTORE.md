@@ -34,6 +34,10 @@ privileged transaction to avoid duplicate stock/audit events; normal mode is res
 and invariant checks. Generated columns are omitted from inserts and still compared with the
 original row. Failure rolls back all business/global/stub inserts. Repeated import refuses.
 
+Schema changes that add a column (for example `bill_code`, migration 0069) make every export taken before the
+upgrade unrestorable into a current-schema target: the row columns must match exactly. Take a fresh export
+after such an upgrade; the restore replica mode keeps the exported codes (the code trigger does not fire).
+
 Verification includes six DB-free regressions that failed on the supplied patch: exact large signed
 integers and decimal tokens, imported-function target enforcement, and source/control URL guards.
 The disposable proof builds purchases, sales, receipts, supplier payments, returns, expenses,

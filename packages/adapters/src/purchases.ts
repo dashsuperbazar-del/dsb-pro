@@ -1,6 +1,7 @@
 import { getSupabaseClient } from './client';
 import { getCurrentMembership } from './tenancy';
 import { errorMessage, classifyError } from './errors';
+import { withBillCode } from './billCodes';
 
 export type PurchaseRecord = {
   id: string;
@@ -16,6 +17,8 @@ export type PurchaseRecord = {
   /** billextras (0064): signed rupee round-off; 0 for v1/old bills. Optional for older saved lists. */
   round_off_paise?: string;
   total_paise: string;
+  /** billcode (0069): server-made code for searching/quoting the bill; absent on older rows and before the migration. */
+  bill_code?: string | null;
 };
 export type PurchaseHistoryLine = {
   id: string;
@@ -46,15 +49,17 @@ async function authorize(shopId: string) {
 export async function listPurchaseHistory(shopId: string, offset = 0): Promise<PurchaseRecord[]> {
   await authorize(shopId);
   if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('Invalid purchase page.');
-  const { data, error } = await getSupabaseClient()
-    .from('purchase_bills')
-    .select(header)
-    .eq('shop_id', shopId)
-    .is('deleted_at', null)
-    .order('business_date', { ascending: false })
-    .order('created_at', { ascending: false })
-    .order('id')
-    .range(offset, offset + 49);
+  const { data, error } = await withBillCode((withCode) =>
+    getSupabaseClient()
+      .from('purchase_bills')
+      .select(withCode ? `${header},bill_code` : header)
+      .eq('shop_id', shopId)
+      .is('deleted_at', null)
+      .order('business_date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .order('id')
+      .range(offset, offset + 49),
+  );
   if (error) throw new Error(errorMessage(classifyError(error), error));
   return (data ?? []) as unknown as PurchaseRecord[];
 }
@@ -71,13 +76,15 @@ export async function getPurchaseDetail(
   // read; the results are discarded when the check fails).
   const [, result, lines, balance] = await Promise.all([
     authorize(shopId),
-    client
-      .from('purchase_bills')
-      .select(header)
-      .eq('shop_id', shopId)
-      .eq('id', id)
-      .is('deleted_at', null)
-      .single(),
+    withBillCode((withCode) =>
+      client
+        .from('purchase_bills')
+        .select(withCode ? `${header},bill_code` : header)
+        .eq('shop_id', shopId)
+        .eq('id', id)
+        .is('deleted_at', null)
+        .single(),
+    ),
     client
       .from('purchase_bill_items')
       .select(

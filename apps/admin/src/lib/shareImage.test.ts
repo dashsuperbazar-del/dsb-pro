@@ -211,3 +211,30 @@ describe('layout', () => {
     expect(texts.map((t) => t.text)).toContain('Rice <b>1kg</b>');
   });
 });
+
+describe('bill code on shared images', () => {
+  const bill = {
+    id: 'b1',
+    party_id: null,
+    bill_no: 'A/12',
+    bill_image_path: null,
+    business_date: '2026-10-19',
+    created_at: '',
+    status: 'POSTED' as const,
+    subtotal_paise: '100',
+    discount_paise: '0',
+    extra_charges_paise: '0',
+    total_paise: '100',
+  };
+  it('is shown on the purchase bill image when the bill has one, and left out when it does not', () => {
+    const withCode = purchaseBillDoc(
+      { bill: { ...bill, bill_code: 'K7M2-QX9P' }, lines: [], balance: null },
+      shop,
+      null,
+      [],
+    );
+    expect(withCode.meta).toContain('Bill code K7M2-QX9P');
+    const without = purchaseBillDoc({ bill, lines: [], balance: null }, shop, null, []);
+    expect(without.meta.some((m) => m.startsWith('Bill code'))).toBe(false);
+  });
+});

@@ -24,6 +24,8 @@ import { roundOffLabel, rupees } from '../lib/money';
 import { PAYMENT_LABEL, percentText } from '../lib/billExtras';
 import { settlementLabel, voidPaidAccess } from '../lib/purchaseSettlement';
 import { filterBills, listBadge, type BillStatusFilter } from '../lib/purchaseListFilter';
+import { billCodeMatch } from '../lib/billCode';
+import { BillCodeChip } from '../components/BillCodeChip';
 import {
   CreditVoidPanel,
   VoidReasonNote,
@@ -375,9 +377,10 @@ export function PurchasesScreen({ url }: { url?: string }) {
       (b) =>
         (statusFilter !== 'pending' || !!pending?.has(b.id)) &&
         (!supplier || b.party_id === supplier) &&
-        `${b.bill_no ?? ''} ${name(b.party_id)} ${b.business_date} ${rupees(b.total_paise)}`
+        (`${b.bill_no ?? ''} ${name(b.party_id)} ${b.business_date} ${rupees(b.total_paise)}`
           .toLowerCase()
-          .includes(queryText.toLowerCase()),
+          .includes(queryText.toLowerCase()) ||
+          billCodeMatch(b.bill_code, queryText) !== null),
     )
     .sort(
       (a, b) =>
@@ -438,7 +441,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
             Search loaded bills
             <input
               value={queryText}
-              placeholder="Bill, supplier, date or amount"
+              placeholder="Bill, bill code, supplier, date or amount"
               onInput={(e) => setQueryText(e.currentTarget.value)}
             />
           </label>
@@ -522,7 +525,8 @@ export function PurchasesScreen({ url }: { url?: string }) {
                 <span>
                   <strong>{name(b.party_id)}</strong>
                   <small>
-                    {b.bill_no || b.id.slice(0, 8)} · {b.business_date} ·{' '}
+                    {b.bill_no || b.bill_code || b.id.slice(0, 8)}
+                    {b.bill_no && b.bill_code ? ` · ${b.bill_code}` : ''} · {b.business_date} ·{' '}
                     {b.status === 'VOID' ? 'Voided' : 'Posted'}
                   </small>
                   {listBadge(settlements.get(b.id)) && (
@@ -651,6 +655,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
             <p>
               {name(detail.bill.party_id)} · {detail.bill.business_date}
             </p>
+            <BillCodeChip code={detail.bill.bill_code} />
             <p>
               <strong>{rupees(detail.bill.total_paise)}</strong>
               {extras && (
