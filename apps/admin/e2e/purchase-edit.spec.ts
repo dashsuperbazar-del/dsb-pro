@@ -84,6 +84,10 @@ test('editing a posted bill replaces it: original void, corrected bill posted, s
 
   // The list shows the corrected bill and the void original; each links to the other.
   await page.goto('/purchases');
+  // The replaced original is void, so it is hidden by default; "Show voided" lists it.
+  await expect(page.getByTestId('list-settlement')).toHaveCount(1);
+  await expect(page.getByText(/1 voided item hidden\./)).toBeVisible();
+  await page.getByLabel('Show voided').check();
   await expect(page.getByTestId('list-settlement')).toHaveCount(2);
   await expect(page.getByTestId('list-settlement')).toContainText(['Void']);
   await page
