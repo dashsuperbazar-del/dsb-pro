@@ -58,6 +58,17 @@ const COMMITTED_CREDIT = {
 const offline = vi.hoisted(() => ({
   getSyncedOfflineCatalog: vi.fn(),
   runSyncNow: vi.fn(),
+  // Offline purchases (docs/OFFLINE_PURCHASES_PLAN.md).
+  cacheOfflineSuppliers: vi.fn(async () => undefined),
+  listOfflinePurchases: vi.fn(async () => []),
+  queuePurchaseOffline: vi.fn(),
+  closeRejectedPurchase: vi.fn(),
+  getOfflineSuppliers: vi.fn(async () => null),
+  getOfflineStock: vi.fn(async () => []),
+  getOfflineItems: vi.fn(async () => []),
+  getOfflineBusinessDate: vi.fn(async () => null),
+  getOfflineRuntimeIdentity: vi.fn(() => null),
+  waitForOfflineRuntime: vi.fn(async () => undefined),
 }));
 vi.mock('../lib/offlineSync', () => offline);
 const host = document.createElement('div');

@@ -19,6 +19,7 @@ import {
 import { BillDocumentPreview } from '../components/BillDocumentPreview';
 import { InventoryScreen } from './InventoryScreen';
 import { shopContext } from '../lib/shopContext';
+import { getOfflineRuntimeIdentity, waitForOfflineRuntime } from '../lib/offlineSync';
 import { appRoute } from '../lib/paths';
 import { roundOffLabel, rupees } from '../lib/money';
 import { PAYMENT_LABEL, percentText } from '../lib/billExtras';
@@ -211,6 +212,20 @@ export function PurchasesScreen({ url }: { url?: string }) {
           setParties(snap.value.parties);
           setSnapshotAt(snap.at);
           setLoading(false);
+        }
+        // Offline (docs/OFFLINE_PURCHASES_PLAN.md): the device's signed-in identity opens bill entry, which
+        // saves bills on this device; the bill list shows the saved copy.
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+          await waitForOfflineRuntime(10000);
+          const identity = getOfflineRuntimeIdentity();
+          if (!identity) throw new Error('This device has no saved shop data yet. Connect once.');
+          if (!active) return;
+          setAllowed(['owner', 'manager', 'accountant'].includes(identity.role));
+          setCanPost(['owner', 'manager'].includes(identity.role));
+          setRole(identity.role);
+          setShop(identity.shopId);
+          setLoading(false);
+          return;
         }
         let context;
         try {

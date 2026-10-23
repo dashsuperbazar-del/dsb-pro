@@ -1,4 +1,4 @@
-import { formatQuantity } from '@dsb-pro/core';
+import { formatQuantity, purchaseBillTotals } from '@dsb-pro/core';
 import { CameraScanner } from '../components/CameraScanner';
 import { PriceHistory } from '../components/PriceHistory';
 import { UnitFields } from '../components/UnitFields';
@@ -106,7 +106,20 @@ import { BatchPurchaseEntry } from '../components/BatchPurchaseEntry';
 import { QuickBillEntry } from '../components/QuickBillEntry';
 import { paperTotalCheck } from '../lib/quickBill';
 import { shopContext } from '../lib/shopContext';
-import { findOfflineBarcode, getSyncedOfflineCatalog, runSyncNow } from '../lib/offlineSync';
+import {
+  cacheOfflineSuppliers,
+  findOfflineBarcode,
+  getOfflineBusinessDate,
+  getOfflineItems,
+  getOfflineRuntimeIdentity,
+  getOfflineStock,
+  getOfflineSuppliers,
+  getSyncedOfflineCatalog,
+  queuePurchaseOffline,
+  runSyncNow,
+  waitForOfflineRuntime,
+} from '../lib/offlineSync';
+import { OfflinePurchasesPanel, queuedKnownBills } from '../components/OfflinePurchasesPanel';
 import { paiseToDecimal, rupees } from '../lib/money';
 import { compressItemImage } from '../lib/compressImage';
 import { BillDocumentPreview } from '../components/BillDocumentPreview';
@@ -179,7 +192,14 @@ type PriceRetry = {
   message: string;
 };
 const OFFLINE_POST =
-  "You're offline. Purchases post only online; nothing was sent. Your bill is kept as a draft on this device.";
+  "You're offline. Post saves this bill on this device and it syncs when you're back online. New items, sale prices and bill corrections need a connection.";
+/** The device's local calendar date (YYYY-MM-DD): only when the shop's business date cannot be read. */
+function localToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+const NEW_ITEM_OFFLINE =
+  "You're offline. A new item can be created only online; pick an existing item, or post this bill when you're back online.";
 const RETRYABLE = new Set<PriceRetry['state']>(['failed', 'check', 'late']);
 const entryId = (key: string, clientId: string) => `${key}|${clientId}`;
 const sameEntry = (a: PriceRetry, b: PriceRetry) =>
@@ -431,6 +451,12 @@ export function InventoryScreen({
       markCatalogDirty();
       shopContext.invalidate();
     }
+    // Offline purchases: opened without a connection (e.g. after a restart), the bill form works from the
+    // device copy: catalog and stock from the sync cache, suppliers saved on the last online load.
+    if (purchaseOnly && !fresh && typeof navigator !== 'undefined' && navigator.onLine === false) {
+      await refreshFromDevice(generation);
+      return;
+    }
     const { membership, session, shopId: shop } = await shopContext.get();
     if (generation !== refreshGeneration.current) return;
     setTenantId(membership.tenantId);
@@ -467,6 +493,8 @@ export function InventoryScreen({
     if (catalog.source === 'server') serverAuthoritative.current = true;
     setItems(catalog.items);
     setParties(p);
+    if (purchaseOnly)
+      void cacheOfflineSuppliers(p.map((x) => ({ id: x.id, name: x.name }))).catch(() => undefined);
     setStock(s);
     setSnapshotAt(null);
     if (!purchaseOnly && session.user.id === userId)
@@ -478,6 +506,47 @@ export function InventoryScreen({
     setCatalogLoaded(true);
     setBusinessDate((value) => value || d);
     setShopToday(d);
+  }
+  async function refreshFromDevice(generation: number) {
+    await waitForOfflineRuntime(10000);
+    const identity = getOfflineRuntimeIdentity();
+    if (!identity)
+      throw new Error('This device has no saved shop data yet. Connect once to load it.');
+    if (generation !== refreshGeneration.current) return;
+    setTenantId(identity.tenantId);
+    setShopId(identity.shopId);
+    setCanSeePurchasePrices(['owner', 'manager', 'accountant'].includes(identity.role));
+    setCanReadSaleReturns(['owner', 'manager', 'accountant', 'cashier'].includes(identity.role));
+    setCanSetSalePrices(['owner', 'manager'].includes(identity.role));
+    setSaleUser(identity.userId);
+    if (['owner', 'manager'].includes(identity.role)) {
+      draftUser.current = identity.userId;
+      setDraftPrefix(purchaseDraftPrefix(identity.userId, identity.shopId));
+    }
+    const device = await getSyncedOfflineCatalog();
+    const catalogItems = (device?.items ?? (await getOfflineItems())) as unknown as Item[];
+    const suppliers = (await getOfflineSuppliers<{ id: string; name: string }>()) ?? [];
+    const stockRows = await getOfflineStock(identity.shopId);
+    const d = (await getOfflineBusinessDate()) ?? localToday();
+    if (generation !== refreshGeneration.current) return;
+    setItems(catalogItems);
+    setParties(suppliers.map((x) => ({ phone: null, gstin: null, ...x })));
+    setStock(
+      stockRows.map((r) => ({
+        tenant_id: r.tenant_id,
+        shop_id: r.shop_id,
+        item_id: r.item_id,
+        qty_base: r.qty_base,
+      })),
+    );
+    setSnapshotAt(null);
+    setCatalogLoaded(true);
+    setBusinessDate((value) => value || d);
+    setShopToday(d);
+    if (!suppliers.length)
+      setMessage(
+        'Offline: this device has no saved supplier list yet, so bills can be saved without a supplier only (Credit). Open Purchases once online to save it.',
+      );
   }
   const catalogKey = useRef('');
   useEffect(() => {
@@ -762,7 +831,10 @@ export function InventoryScreen({
     setContextBusy(true);
     void (async () => {
       try {
-        const newDate = await getShopBusinessDate(shopId);
+        const newDate =
+          typeof navigator !== 'undefined' && navigator.onLine === false
+            ? ((await getOfflineBusinessDate().catch(() => null)) ?? localToday())
+            : await getShopBusinessDate(shopId);
         if (!active) return;
         // Edit (0066) opens the posted bill exactly as entered (supplier, bill no., date, payment type, notes
         // too); Repeat copies only the items into a new bill dated today.
@@ -1428,6 +1500,9 @@ export function InventoryScreen({
   // failed re-read never turns the successful create into an error (that would invite a second create).
   async function createItemFromCard(fields: NewItemFields, clientId: string): Promise<Item> {
     if (!tenantId) throw new Error('Shop data is still loading.');
+    // Offline purchases reference only items the server already has (docs/OFFLINE_PURCHASES_PLAN.md).
+    if (typeof navigator !== 'undefined' && navigator.onLine === false)
+      throw new Error(NEW_ITEM_OFFLINE);
     let item: Item;
     try {
       item = await createItem({ tenantId, ...newItemInput(fields), clientId });
@@ -1712,12 +1787,25 @@ export function InventoryScreen({
     if (purchaseBusy || contextBusy || (!purchaseLocked && !purchaseContextReady) || accountChanged)
       return;
     setError('');
-    // Purchases are online-only: nothing is queued, so nothing is sent without a connection.
+    // Offline (docs/OFFLINE_PURCHASES_PLAN.md): a new bill is saved on this device and synced later. A
+    // bill awaiting a server answer, a bill correction and a cashier's bill stay online only.
     if (!online) {
-      setError(OFFLINE_POST);
-      return;
+      const refusal = purchaseLocked
+        ? 'This bill is waiting for a server answer. Reconnect to finish it; nothing else was sent.'
+        : purchaseEditOf
+          ? 'Correcting a posted bill needs a connection. Your changes stay in the form.'
+          : !draftPrefix
+            ? 'Only the owner or a manager can save purchases while offline.'
+            : documentBusy || documentSaveError
+              ? 'Wait until the bill photo is saved on this device, or remove it.'
+              : '';
+      if (refusal) {
+        setError(refusal);
+        return;
+      }
     }
     if (
+      online &&
       !purchaseLocked &&
       (documentBusy || documentSaveError || billDocuments.some((d) => !d.uploaded))
     ) {
@@ -1806,6 +1894,12 @@ export function InventoryScreen({
         return;
       }
       salePlan = plan.writes;
+      if (!online && salePlan.length) {
+        setError(
+          "Sale prices can be changed only online. Clear this bill's sale price boxes to save it offline, or post when you're back online.",
+        );
+        return;
+      }
     }
     if (!purchaseLocked) {
       try {
@@ -1873,8 +1967,14 @@ export function InventoryScreen({
       let match: DuplicateMatch | null;
       try {
         // An edit replaces its own original (same supplier, bill no., often total): never a duplicate of it.
-        const known = (
-          await knownSupplierBills(shopId, recentBills, supplierBillsRead(shopId, fresh.partyId))
+        const known = mergeKnownBills(
+          await knownSupplierBills(
+            shopId,
+            recentBills,
+            online ? supplierBillsRead(shopId, fresh.partyId) : Promise.resolve(null),
+          ),
+          // Bills saved on this device and not synced yet count too (offline or not).
+          await queuedKnownBills(shopId),
         ).filter((b) => !fresh.editOf || b.id !== fresh.editOf);
         match = findDuplicateBill(
           {
@@ -1891,6 +1991,10 @@ export function InventoryScreen({
         setDupChecking(false);
       }
       if (match && !confirm(duplicateMessage(match))) return;
+    }
+    if (!online) {
+      await saveOffline(fresh, lineCount);
+      return;
     }
     const isRetry = Boolean(purchaseLocked && lockedPurchase.current);
     // The sale price plan is stored before the bill (and never inside its request, which stays as it was),
@@ -2065,6 +2169,82 @@ export function InventoryScreen({
     } finally {
       setPurchaseBusy(false);
     }
+  }
+  // Saves a new bill on this device (one record + one outbox row) and clears the form as a post would. The
+  // photos stay in the device store until the bill syncs; the sync engine uploads them and posts the bill.
+  async function saveOffline(request: PendingPurchaseV2, lineCount: number) {
+    if (!draftPrefix) return;
+    setPurchaseBusy(true);
+    setMessage('');
+    try {
+      // The same core computation the adapter sends and the server checks (DSB_TOTAL_MISMATCH otherwise).
+      const totalPaise = purchaseBillTotals({
+        lines: request.lines,
+        discountPaise: request.discountPaise ?? 0,
+        charges: request.charges ?? [],
+      }).totalPaise;
+      const supplier = parties.find((p) => p.id === request.partyId);
+      await queuePurchaseOffline({
+        clientId: request.clientId,
+        shopId: request.shopId,
+        request,
+        draft: draftSnapshot,
+        documentScope: draftPrefix,
+        documents: billDocuments.map((d) => ({ ...d })),
+        supplierName: supplier?.name ?? null,
+        billNo: request.billNo ?? null,
+        businessDate: request.businessDate ?? businessDate,
+        paymentType: request.paymentType ?? 'credit',
+        totalPaise,
+        lines: purchaseBill.lines.map((l) => ({
+          itemId: l.item.id,
+          itemName: l.item.name,
+          qty: l.qty,
+          unitName:
+            (l.unitLevel === 1 ? l.item.unit1 : l.unitLevel === 2 ? l.item.unit2 : l.item.unit3) ??
+            l.item.unit1,
+        })),
+      });
+    } catch (e) {
+      setError(`Not saved on this device: ${e instanceof Error ? e.message : String(e)}`);
+      setPurchaseBusy(false);
+      return;
+    }
+    if (request.partyId && saleUser)
+      try {
+        localStorage.setItem(lastSupplierStorageKey(saleUser, request.shopId), request.partyId);
+      } catch {
+        // A convenience only.
+      }
+    try {
+      clearPurchaseDrafts(draftPrefix, request.clientId);
+      refreshDrafts();
+    } catch {
+      // The bill is queued; a leftover draft of it is listed and can be discarded.
+    }
+    // The photo bytes now belong to the queued bill: they are NOT removed here.
+    setPurchaseClientId(crypto.randomUUID());
+    setBillDocuments([]);
+    setDocumentBusy(false);
+    setDocumentSaveError('');
+    setPurchaseCards([emptyCard()]);
+    setPurchaseExpectedTotal(undefined);
+    setPurchaseBillNo('');
+    setPurchaseDiscount('');
+    setPurchaseCharges([]);
+    setPurchasePaymentType('credit');
+    setPurchaseNotes('');
+    setDraftTouched(false);
+    setDraftStatus('');
+    contextNeedsReset.current = true;
+    setPurchaseBusy(false);
+    const paid =
+      request.paymentType && request.paymentType !== 'credit'
+        ? ` Paid by ${PAYMENT_LABEL[request.paymentType]} — recorded with the bill when it syncs.`
+        : '';
+    setMessage(
+      `Saved on this device — will sync (${lineCount} item${lineCount === 1 ? '' : 's'}).${paid} Not synced yet: stock and the supplier balance update after it syncs.`,
+    );
   }
   async function changePrice(ev: Event) {
     ev.preventDefault();
@@ -2529,6 +2709,13 @@ export function InventoryScreen({
         onChange={() => setDraftTouched(true)}
       >
         <h2>{purchaseEditOf || lockedEditOf ? 'Edit bill' : 'Post purchase'}</h2>
+        {purchaseOnly && shopId && (
+          <OfflinePurchasesPanel
+            shopId={shopId}
+            draftPrefix={draftPrefix}
+            onDraftSaved={refreshDrafts}
+          />
+        )}
         {lockedEditOf && (
           <p class="card" data-testid="editing-bill-locked" role="status">
             An unconfirmed bill edit is locked in this form. Retry sends the same edit: it replaces
@@ -3003,6 +3190,8 @@ export function InventoryScreen({
                   shopId={shopId}
                   clientId={purchaseClientId}
                   documents={billDocuments}
+                  deferUpload={!online}
+                  deferNote="Kept on this device; uploads when the bill syncs"
                   disabled={
                     purchaseLocked || contextBusy || !purchaseContextReady || accountChanged
                   }
@@ -3168,8 +3357,8 @@ export function InventoryScreen({
                   (!purchaseContextReady ||
                     documentBusy ||
                     !!documentSaveError ||
-                    billDocuments.some((d) => !d.uploaded))) ||
-                !online ||
+                    (online && billDocuments.some((d) => !d.uploaded)))) ||
+                (!online && (purchaseLocked || !!purchaseEditOf || !draftPrefix)) ||
                 !shopId ||
                 !businessDate ||
                 (!purchaseBill.lines.length && !purchaseLocked)
@@ -3183,7 +3372,9 @@ export function InventoryScreen({
                     : 'Retry same purchase'
                   : purchaseEditOf
                     ? 'Save corrected bill'
-                    : postButtonText(shownType, totals.ok ? totals.totalPaise : null)}
+                    : !online
+                      ? 'Save on this device (syncs later)'
+                      : postButtonText(shownType, totals.ok ? totals.totalPaise : null)}
             </button>
           </div>
         </form>
