@@ -1126,11 +1126,64 @@ if [[ "$billcode" != '0' && "$remarksfix" != '2' && ! ( "$billcode" == '1' && "$
  echo 'Bill codes appear ahead of completed remarks fixes. Refusing migration.' >&2; exit 1
 fi
 
+# Backlog (0070): additive classifier field. Four anchors, all or nothing: the free-text line schema (nullable
+# item_id, line_kind, validated check), the enabled return guard trigger (server-only function), the redefined
+# sale body and void body (server-only), and the manager audit-feed permission with the narrow audit_feed view (raw audit_log owner-only).
+backlog_probe=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -F' ' <<'SQL'
+do $$ begin
+ create temp table _backlog_receipt (present boolean);
+ if to_regclass('public.app_migration_receipts') is not null then
+   insert into _backlog_receipt select exists(select 1 from public.app_migration_receipts where version='0070');
+ else insert into _backlog_receipt values(false); end if;
+end $$;
+select (select present from _backlog_receipt),
+ (select count(*) from (values
+   ((select count(*) from pg_attribute a where a.attrelid=to_regclass('public.sale_invoice_items') and a.attnum>0 and not a.attisdropped
+       and ((a.attname='item_id' and not a.attnotnull) or (a.attname='line_kind' and a.attnotnull and a.atttypid='text'::regtype)))=2
+    and exists(select 1 from pg_constraint c where c.conrelid=to_regclass('public.sale_invoice_items') and c.contype='c' and c.convalidated
+       and c.conname='sale_invoice_items_free_text_check')),
+   ((select count(*) from pg_trigger t where not t.tgisinternal and t.tgenabled='O' and t.tgname='sale_return_items_free_text_guard'
+       and t.tgrelid=to_regclass('public.sale_return_items') and t.tgfoid=to_regprocedure('public.ft_sale_return_guard()'))=1
+    and exists(select 1 from pg_proc where oid=to_regprocedure('public.ft_sale_return_guard()') and position('DSB_FREE_TEXT_NOT_RETURNABLE' in prosrc)>0)
+    and not has_function_privilege('authenticated','public.ft_sale_return_guard()','execute')
+    and not has_function_privilege('anon','public.ft_sale_return_guard()','execute')),
+   (exists(select 1 from pg_proc where oid=to_regprocedure('public.phase4_post_sale_unlocked(uuid,uuid,date,bigint,bigint,text,jsonb,jsonb,text)')
+      and position('DSB_FREE_TEXT_INVALID' in prosrc)>0 and position('''free_text''' in prosrc)>0)
+    and exists(select 1 from pg_proc where oid=to_regprocedure('public.c0_void_sale_body(uuid,text)')
+      and position('line_kind=''item''' in prosrc)>0)
+    and not has_function_privilege('authenticated','public.c0_void_sale_body(uuid,text)','execute')),
+   (exists(select 1 from public.role_permissions where role='manager' and code='VIEW_AUDIT_FEED')
+    and not exists(select 1 from public.role_permissions where role in ('manager','cashier','accountant') and code='VIEW_AUDIT_LOG')
+    and exists(select 1 from pg_class where oid=to_regclass('public.audit_feed') and relkind='v'
+      and not coalesce(reloptions,'{}') @> array['security_invoker=true']
+      and position('VIEW_AUDIT_FEED' in pg_get_viewdef(oid))>0 and position('current_tenant_id()' in pg_get_viewdef(oid))>0)
+    and has_table_privilege('authenticated','public.audit_feed','select')
+    and not has_table_privilege('anon','public.audit_feed','select')
+    and not has_table_privilege('authenticated','public.audit_feed','insert'))
+ ) p(ok) where ok);
+SQL
+)
+read -r backlog_receipt backlog_anchors <<<"$(tail -n 1 <<<"$backlog_probe")"
+case "$backlog_receipt:$backlog_anchors" in
+ f:0) backlog=0; needs_backlog=true ;;
+ f:4) backlog=1; needs_backlog=true ;;
+ t:4) backlog=2; needs_backlog=false ;;
+ *) echo "Backlog (0070) partial/drift state ($backlog_receipt/$backlog_anchors). Refusing migration." >&2; exit 1 ;;
+esac
+if [[ "$backlog" == '2' ]]; then
+ backlog_expected=$(sha256sum "$repo_root/supabase/migrations/0070_free_text_lines_audit.sql" | cut -d' ' -f1)
+ backlog_recorded=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -c "select checksum_sha256 from public.app_migration_receipts where version='0070'")
+ [[ "$backlog_expected" == "$backlog_recorded" ]] || { echo '0070 receipt checksum mismatch. Refusing migration.' >&2; exit 1; }
+fi
+if [[ "$backlog" != '0' && "$billcode" != '2' && ! ( "$backlog" == '1' && "$billcode" == '1' ) ]]; then
+ echo 'Backlog (0070) appears ahead of completed bill codes. Refusing migration.' >&2; exit 1
+fi
+
 emit_state() {
   local needs_foundation=$1 needs_hardening=$2 needs_phase65=$3 needs_batcha=$4 needs_batchb=$5 needs_p1=$6 needs_p2=$7 needs_c0=$8 needs_c1=$9 needs_c2=${10} needs_c3=${11} needs_c3b=${12} needs_r0=${13} needs_d1=${14} needs_r0b=${15} needs_o1=${16} needs_o2=${17} needs_d2b=${18} needs_d3a=${19}
   local needs_upgrade=true
   if [[ "$needs_foundation:$needs_hardening:$needs_phase65:$needs_batcha:$needs_batchb:$needs_p1:$needs_p2:$needs_c0:$needs_c1:$needs_c2:$needs_c3:$needs_c3b:$needs_r0:$needs_d1:$needs_r0b:$needs_o1:$needs_o2:$needs_d2b:$needs_d3a" == "false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false" ]]; then
-    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" && "$needs_supplierschedule" == "false" && "$needs_partymerge" == "false" && "$needs_itemindex" == "false" && "$needs_billextras" == "false" && "$needs_salepricing" == "false" && "$needs_billedit" == "false" && "$needs_remarks" == "false" && "$needs_remarksfix" == "false" && "$needs_billcode" == "false" ]]; then needs_upgrade=false; fi
+    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" && "$needs_supplierschedule" == "false" && "$needs_partymerge" == "false" && "$needs_itemindex" == "false" && "$needs_billextras" == "false" && "$needs_salepricing" == "false" && "$needs_billedit" == "false" && "$needs_remarks" == "false" && "$needs_remarksfix" == "false" && "$needs_billcode" == "false" && "$needs_backlog" == "false" ]]; then needs_upgrade=false; fi
   fi
   printf 'observed_state=%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s\n' "$foundation" "$hardening" "$phase65" "$batcha" "$batchb" "$p1" "$p2" "$c0" "$c1" "$c2" "$c3" "$c3b" "$r0" "$d1" "$r0b" "$o1" "$o2" "$d2b" "$d3a"
   printf 'needs_upgrade=%s\n' "$needs_upgrade"
@@ -1177,6 +1230,8 @@ emit_state() {
   printf 'needs_remarksfix=%s\n' "$needs_remarksfix"
   printf 'billcode_state=%s\n' "$billcode"
   printf 'needs_billcode=%s\n' "$needs_billcode"
+  printf 'backlog_state=%s\n' "$backlog"
+  printf 'needs_backlog=%s\n' "$needs_backlog"
 }
 
 # Legacy (0030-0043) classification is unchanged from before Packet P1: the

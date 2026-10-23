@@ -223,6 +223,33 @@ export async function getSupplierOutstanding(shopId: string): Promise<SupplierOu
   return rows as SupplierOutstandingRow[];
 }
 
+/**
+ * This supplier's purchase bills for the duplicate-bill warning, VOID ones included with their status, so a
+ * bill voided on another device overrides a stale "posted" copy cached on this one. Read-only.
+ */
+export type DuplicateCheckBill = {
+  id: string;
+  bill_no: string | null;
+  business_date: string;
+  total_paise: string | number;
+  status: string;
+};
+export async function listSupplierBillsForDuplicateCheck(
+  shopId: string,
+  partyId: string,
+): Promise<DuplicateCheckBill[]> {
+  const { data, error } = await getSupabaseClient()
+    .from('purchase_bills')
+    .select('id,bill_no,business_date,total_paise,status')
+    .eq('shop_id', shopId)
+    .eq('party_id', partyId)
+    .is('deleted_at', null)
+    .order('business_date', { ascending: false })
+    .limit(1000);
+  if (error) throw new Error(friendly(error));
+  return (data ?? []) as unknown as DuplicateCheckBill[];
+}
+
 export async function listSupplierBills(shopId: string, partyId: string): Promise<SupplierBill[]> {
   const { data, error } = await getSupabaseClient()
     .from('purchase_bill_outstanding' as never)

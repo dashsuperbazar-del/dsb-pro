@@ -26,6 +26,9 @@ export function MoreScreen({ role }: { role: Role | null }) {
     ...(role === 'owner' || role === 'manager'
       ? ([[appRoute.stockAdjust, 'Stock adjust', 'stock']] as [string, string, IconName][])
       : []),
+    ...(role === 'manager'
+      ? ([[appRoute.auditLog, 'Audit log', 'report']] as [string, string, IconName][])
+      : []),
     ...(role === 'owner'
       ? ([
           [appRoute.openings, 'Opening balances', 'money'],

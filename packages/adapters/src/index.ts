@@ -50,7 +50,7 @@ export {
   revokeDevice,
 } from './devices';
 export type { Item, Party, StockRow, PurchaseLine, ItemBarcode } from './masterData';
-export { getProfitReport } from './profit';
+export { getProfitReport, FREE_TEXT_REPORT_NAME } from './profit';
 export type { ProfitReport, ProfitSummary, ProfitItem } from './profit';
 export {
   normalizePartyDetails,
@@ -127,6 +127,7 @@ export type {
   SyncPullTable,
   SyncSaleResultWire,
   ServerSyncConflict,
+  SaleLineExtras,
 } from './sync';
 export {
   SYNC_SCHEMA_VERSION,
@@ -230,6 +231,7 @@ export {
   lookupSupplierRequest,
   getSupplierOutstanding,
   listSupplierBills,
+  listSupplierBillsForDuplicateCheck,
   listSupplierPayments,
   listSupplierAllocations,
   getSupplierLedger,

@@ -7,13 +7,12 @@
 export type Role = 'owner' | 'manager' | 'cashier' | 'accountant';
 
 export type PermissionCode =
-  | 'MANAGE_TENANT_USERS'
-  | 'MANAGE_INVITES'
-  | 'MANAGE_DEVICES'
-  | 'VIEW_AUDIT_LOG';
+  'MANAGE_TENANT_USERS' | 'MANAGE_INVITES' | 'MANAGE_DEVICES' | 'VIEW_AUDIT_LOG';
 
 const ROLE_PERMISSIONS: Record<Role, PermissionCode[]> = {
   owner: ['MANAGE_TENANT_USERS', 'MANAGE_INVITES', 'MANAGE_DEVICES', 'VIEW_AUDIT_LOG'],
+  // The manager reads the audit SCREEN through audit_feed (VIEW_AUDIT_FEED, migration 0070); the raw audit_log
+  // (invite tokens, cost rows) stays owner-only.
   manager: ['MANAGE_DEVICES'],
   cashier: [],
   accountant: [],

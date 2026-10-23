@@ -72,7 +72,29 @@ type CartLine = {
   listPricePaise?: number | null;
   /** "Save as this item's sale price" (default off): written only after the sale is confirmed. */
   savePrice?: boolean;
+  /**
+   * backlog (0070): a free-text line (not in the item list). `item` is then a stand-in carrying the typed name
+   * and GST % (id ''); the line has no stock and always a typed price.
+   */
+  freeText?: boolean;
 };
+/** Common GST rates for a free-text item (basis points). */
+const FREE_TEXT_GST_BP = [0, 500, 1200, 1800, 2800, 300, 25, 4000];
+function freeTextItem(name: string, taxRateBp: number): Item {
+  return {
+    id: '',
+    name,
+    sku: null,
+    unit1: 'unit',
+    unit2: null,
+    unit3: null,
+    conv1: null,
+    conv2: null,
+    tax_rate_bp: taxRateBp,
+    min_stock: 0,
+    image_path: null,
+  };
+}
 type PendingPrice = {
   item: Item;
   unitLevel: 1 | 2 | 3;
@@ -194,6 +216,10 @@ export function PosScreen() {
   const [pendingPriceInput, setPendingPriceInput] = useState('');
   const [pendingSave, setPendingSave] = useState(false);
   const [editingPrice, setEditingPrice] = useState<number | null>(null);
+  const [ftName, setFtName] = useState('');
+  const [ftQty, setFtQty] = useState('1');
+  const [ftPrice, setFtPrice] = useState('');
+  const [ftGst, setFtGst] = useState(0);
   const canTypePrice = role === 'owner' || role === 'manager';
   const scanBlocked = useRef(false);
   const findRef = useRef<HTMLInputElement>(null);
@@ -461,6 +487,46 @@ export function PosScreen() {
     setCart((v) => [...v, line]);
     setPendingPrice(null);
   }
+  // backlog (0070): an item that is not in the list. Owner/manager only (a typed price); no stock.
+  function addFreeTextLine(ev: Event) {
+    ev.preventDefault();
+    const name = ftName.trim();
+    if (!name || name.length > 120) {
+      setError('Enter a name for the item (1 to 120 characters).');
+      return;
+    }
+    let qty: string;
+    try {
+      qty = canonicalQuantity(ftQty);
+      if (!(Number(qty) > 0)) throw new Error('qty');
+    } catch {
+      setError('Enter a quantity above zero.');
+      return;
+    }
+    const price = typedPricePaise(ftPrice);
+    if (price === null) {
+      setError('Enter a price above zero in rupees, for example 120 or 120.50.');
+      return;
+    }
+    setError('');
+    setCart((v) => [
+      ...v,
+      {
+        item: freeTextItem(name, ftGst),
+        unitLevel: 1,
+        qty,
+        priceKind: 'retail',
+        unitPricePaise: price,
+        discountPaise: 0,
+        priceSource: 'manual',
+        listPricePaise: null,
+        freeText: true,
+      },
+    ]);
+    setFtName('');
+    setFtQty('1');
+    setFtPrice('');
+  }
   function typeLinePrice(n: number, value: string) {
     const price = typedPricePaise(value);
     if (price === null) {
@@ -684,7 +750,7 @@ export function PosScreen() {
     const needsV2 =
       invoiceType === 'gst_extra' || !!customerId || cart.some((l) => l.priceSource === 'manual');
     const plans: SalePricePlan[] = cart
-      .filter((l) => l.priceSource === 'manual' && l.savePrice)
+      .filter((l) => l.priceSource === 'manual' && l.savePrice && !l.freeText)
       .map((l) => ({
         saleClientId,
         itemId: l.item.id,
@@ -712,6 +778,7 @@ export function PosScreen() {
           priceKind: l.priceKind,
           discountPaise: l.discountPaise,
           ...(l.priceSource === 'manual' ? { manualUnitPricePaise: l.unitPricePaise } : {}),
+          ...(l.freeText ? { freeText: { name: l.item.name, taxRateBp: l.item.tax_rate_bp } } : {}),
         })),
         payments: tenders
           .filter((t) => paise(t.amount) > 0)
@@ -1072,6 +1139,59 @@ export function PosScreen() {
           </label>
           <button>Add item</button>
         </form>
+        {canTypePrice && (
+          <details class="optional-control">
+            <summary>Add an item that is not in the list</summary>
+            <form class="inline-form" aria-label="Other thing" onSubmit={addFreeTextLine}>
+              <label>
+                What is it{' '}
+                <input
+                  aria-label="Other thing name"
+                  maxLength={120}
+                  value={ftName}
+                  onInput={(e) => setFtName((e.currentTarget as HTMLInputElement).value)}
+                />
+              </label>
+              <label>
+                How many{' '}
+                <input
+                  aria-label="Other thing count"
+                  type="number"
+                  inputMode="decimal"
+                  min="0.000001"
+                  step="0.000001"
+                  value={ftQty}
+                  onInput={(e) => setFtQty((e.currentTarget as HTMLInputElement).value)}
+                />
+              </label>
+              <label>
+                Rate per unit ₹{' '}
+                <input
+                  aria-label="Other thing rate ₹"
+                  inputMode="decimal"
+                  value={ftPrice}
+                  onInput={(e) => setFtPrice((e.currentTarget as HTMLInputElement).value)}
+                />
+              </label>
+              <label>
+                Tax rate{' '}
+                <select
+                  aria-label="Other thing tax rate"
+                  value={String(ftGst)}
+                  onChange={(e) => setFtGst(Number((e.currentTarget as HTMLSelectElement).value))}
+                >
+                  {FREE_TEXT_GST_BP.map((bp) => (
+                    <option key={bp} value={String(bp)}>
+                      {bp / 100}%
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button>Add to bill</button>
+              <small>No stock is kept for it. It cannot be returned later.</small>
+            </form>
+          </details>
+        )}
         {pendingPrice && (
           <form class="price-prompt" aria-label="Enter a price" onSubmit={confirmPendingPrice}>
             <p>
@@ -1177,27 +1297,33 @@ export function PosScreen() {
                           )}
                         </>
                       )}
-                      {l.priceSource === 'manual' && (
+                      {l.freeText ? (
                         <small class="typed-price">
-                          Typed price
-                          {l.listPricePaise != null
-                            ? ` · list ${money(l.listPricePaise)}`
-                            : ' · no list price'}
-                          <label>
-                            <input
-                              type="checkbox"
-                              checked={!!l.savePrice}
-                              aria-label="Save as sale price"
-                              onChange={(e) => {
-                                const savePrice = (e.currentTarget as HTMLInputElement).checked;
-                                setCart((v) =>
-                                  v.map((x, i) => (i === n ? { ...x, savePrice } : x)),
-                                );
-                              }}
-                            />{' '}
-                            Save as this item's sale price
-                          </label>
+                          Not in the item list · GST {l.item.tax_rate_bp / 100}% · no stock
                         </small>
+                      ) : (
+                        l.priceSource === 'manual' && (
+                          <small class="typed-price">
+                            Typed price
+                            {l.listPricePaise != null
+                              ? ` · list ${money(l.listPricePaise)}`
+                              : ' · no list price'}
+                            <label>
+                              <input
+                                type="checkbox"
+                                checked={!!l.savePrice}
+                                aria-label="Save as sale price"
+                                onChange={(e) => {
+                                  const savePrice = (e.currentTarget as HTMLInputElement).checked;
+                                  setCart((v) =>
+                                    v.map((x, i) => (i === n ? { ...x, savePrice } : x)),
+                                  );
+                                }}
+                              />{' '}
+                              Save as this item's sale price
+                            </label>
+                          </small>
+                        )
                       )}
                     </td>
                     <td data-label="Discount ₹">
@@ -1292,16 +1418,24 @@ export function PosScreen() {
               ) ·{' '}
             </span>
           )}
-          {invoiceType === 'gst_extra' && cart.some((l) => !(l.item.tax_rate_bp ?? 0)) && (
-            <p role="alert" class="alert" data-testid="gst-zero-warning">
-              GST 0%:{' '}
-              {[
-                ...new Set(cart.filter((l) => !(l.item.tax_rate_bp ?? 0)).map((l) => l.item.name)),
-              ].join(', ')}{' '}
-              {cart.filter((l) => !(l.item.tax_rate_bp ?? 0)).length === 1 ? 'has' : 'have'} no GST
-              rate, so no GST is added. Set the item GST % in Stock → Items if this is wrong.
-            </p>
-          )}
+          {invoiceType === 'gst_extra' &&
+            cart.some((l) => !l.freeText && !(l.item.tax_rate_bp ?? 0)) && (
+              <p role="alert" class="alert" data-testid="gst-zero-warning">
+                GST 0%:{' '}
+                {[
+                  ...new Set(
+                    cart
+                      .filter((l) => !l.freeText && !(l.item.tax_rate_bp ?? 0))
+                      .map((l) => l.item.name),
+                  ),
+                ].join(', ')}{' '}
+                {cart.filter((l) => !l.freeText && !(l.item.tax_rate_bp ?? 0)).length === 1
+                  ? 'has'
+                  : 'have'}{' '}
+                no GST rate, so no GST is added. Set the item GST % in Stock → Items if this is
+                wrong.
+              </p>
+            )}
           {previewRoundOff !== 0 && (
             <span>
               Round off {previewRoundOff > 0 ? '+' : '−'}

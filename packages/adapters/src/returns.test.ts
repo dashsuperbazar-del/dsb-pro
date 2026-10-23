@@ -156,9 +156,29 @@ describe('return sync adapter', () => {
       { ...source, key: 'SALE:sale' },
     ]);
   });
+  it('drops free-text sale lines (no item, never returnable) and keeps the rest (backlog 0070)', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        sources: [
+          {
+            ...source,
+            lines: [
+              ...source.lines,
+              { ...source.lines[0], id: 'ft', item_id: null, item_name_snapshot: 'Wrap' },
+            ],
+          },
+        ],
+      },
+      error: null,
+    });
+    await expect(pullReturnSources({ deviceId: 'device', shopId: 'shop' })).resolves.toStrictEqual([
+      { ...source, key: 'SALE:sale' },
+    ]);
+  });
   it.each([
     { ...source, shop_id: 'other-shop' },
     { ...source, lines: [{ ...source.lines[0], qty: NaN }] },
+    { ...source, lines: [{ ...source.lines[0], item_id: undefined }] },
   ])('refuses malformed/cross-shop source replacement', async (row) => {
     rpc.mockResolvedValue({ data: { sources: [row] }, error: null });
     await expect(pullReturnSources({ deviceId: 'device', shopId: 'shop' })).rejects.toThrow(

@@ -79,6 +79,9 @@ export function auditType(
   if (t === 'items') return 'item_change';
   if (t === 'customers') return 'customer_change';
   if (t === 'tenant_users') return 'team_change';
+  if (t === 'sale_invoice_items')
+    return action === 'INSERT' && after?.price_source === 'manual' ? 'price_override' : null;
+  if (t === 'document_remark_events') return 'remark';
   return null;
 }
 
@@ -126,6 +129,32 @@ export function describeAudit(e: AuditEvent, who: (userId: string | null) => str
       if (e.action === 'DELETE') return `${member} removed from the team.`;
       const diff = changedFields(e.before, e.after);
       return `${member}${diff ? `: ${diff}` : ' changed'}.`;
+    }
+    case 'price_override': {
+      const doc = e.docLabels[String(a.sale_invoice_id)] ?? 'a sale';
+      const by = who(typeof a.overridden_by === 'string' ? a.overridden_by : null);
+      const each = `${text(a.qty)} × ${rupees(String(a.unit_price_paise ?? 0))}`;
+      if (a.line_kind === 'free_text')
+        return `Item not in the list "${text(a.item_name_snapshot)}" sold on ${doc}: ${each}, GST ${
+          Number(a.tax_rate_bp_snapshot ?? 0) / 100
+        }%, typed by ${by}.`;
+      const list =
+        a.list_price_snapshot_paise == null
+          ? 'no list price'
+          : `list ${rupees(String(a.list_price_snapshot_paise))}`;
+      return `${text(a.item_name_snapshot)} sold at a typed price on ${doc}: ${each} (${list}), typed by ${by}.`;
+    }
+    case 'remark': {
+      const doc =
+        e.docLabels[String(a.sale_invoice_id ?? a.purchase_bill_id)] ??
+        (a.doc_kind === 'purchase' ? 'a purchase bill' : 'a sale');
+      const did: Record<string, string> = {
+        ADD: 'added',
+        EDIT: 'edited',
+        SETTLE: 'settled',
+        REOPEN: 'reopened',
+      };
+      return `Remark ${did[String(a.remark_action)] ?? 'changed'} on ${doc}: "${text(a.body)}".`;
     }
     default:
       return `${e.tableName} ${e.action.toLowerCase()}.`;

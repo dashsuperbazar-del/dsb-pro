@@ -15,7 +15,9 @@ export type ReturnSource = {
 };
 export type ReturnableLine = {
   id: string;
-  item_id: string;
+  /** null for a free-text sale line (backlog 0070): never returnable, remaining_qty is 0. */
+  item_id: string | null;
+  free_text?: boolean;
   item_name_snapshot: string;
   unit_name_snapshot: string;
   qty: number;
@@ -53,7 +55,7 @@ type PurchaseSourceRow = {
 };
 type SourceLineRow = {
   id: string;
-  item_id: string;
+  item_id: string | null;
   item_name_snapshot: string;
   unit_name_snapshot: string;
   qty: number;
@@ -160,6 +162,18 @@ export async function listReturnableLines(
   }
   return ((lines ?? []) as SourceLineRow[]).map((row) => {
     const returnedQty = totals.get(row.id) ?? 0;
+    if (row.item_id === null)
+      return {
+        id: row.id,
+        item_id: null,
+        free_text: true,
+        item_name_snapshot: row.item_name_snapshot,
+        unit_name_snapshot: row.unit_name_snapshot,
+        qty: Number(row.qty),
+        base_qty: Number(row.base_qty),
+        returned_qty: returnedQty,
+        remaining_qty: 0,
+      };
     return {
       id: row.id,
       item_id: row.item_id,
@@ -277,7 +291,7 @@ type CachedReturnSource = {
   party_name: string | null;
   customer_name: string | null;
   posted_return_client_ids: string[];
-  lines: Omit<ReturnableLine, 'remaining_qty'>[];
+  lines: (Omit<ReturnableLine, 'remaining_qty' | 'item_id' | 'free_text'> & { item_id: string })[];
 };
 type OfflineReturnPayload = {
   type: ReturnType;
@@ -320,9 +334,22 @@ export async function pullReturnSources(input: {
     p_schema_version: 1,
   });
   if (error) throw new Error(error.message);
-  const result = data as { sources: CachedReturnSource[] };
-  if (!result || !Array.isArray(result.sources))
-    throw new Error('Invalid return source sync response.');
+  const raw = data as { sources: CachedReturnSource[] };
+  if (!raw || !Array.isArray(raw.sources)) throw new Error('Invalid return source sync response.');
+  // backlog (0070): free-text sale lines (item_id null) can never be returned, so they are not cached. Any other
+  // missing item id still rejects the whole response below.
+  const result: { sources: CachedReturnSource[] } = {
+    sources: raw.sources.map((source) =>
+      source && Array.isArray(source.lines)
+        ? {
+            ...source,
+            lines: source.lines.filter(
+              (line) => !(source.return_type === 'SALE' && line && line.item_id === null),
+            ),
+          }
+        : source,
+    ),
+  };
   if (
     result.sources.some(
       (source) =>

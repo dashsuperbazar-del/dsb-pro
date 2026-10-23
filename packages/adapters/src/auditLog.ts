@@ -1,7 +1,8 @@
 import { getSupabaseClient } from './client';
 
-// Read-only view of the append-only audit_log (migration 0009; written only by the audit_row_change trigger).
-// RLS lets only a member with VIEW_AUDIT_LOG (the owner) read it. Nothing here writes.
+// Read-only view of the append-only audit_log (migration 0009; written only by the audit_row_change trigger),
+// read through audit_feed (0070), which adds the pending-remark history (document_remark_events). RLS lets only
+// a member with VIEW_AUDIT_LOG (the owner, and the manager from 0070) read either. Nothing here writes.
 // Only the events below are listed: the table also holds every stock movement and bill item insert, which
 // would bury what an owner looks for.
 
@@ -14,7 +15,9 @@ export type AuditType =
   | 'price_change'
   | 'item_change'
   | 'customer_change'
-  | 'team_change';
+  | 'team_change'
+  | 'price_override'
+  | 'remark';
 
 export const AUDIT_TYPE_LABEL: Record<AuditType, string> = {
   sale_void: 'Sale voids',
@@ -26,6 +29,8 @@ export const AUDIT_TYPE_LABEL: Record<AuditType, string> = {
   item_change: 'Item changes (tax, name, archive)',
   customer_change: 'Customer changes (credit limit)',
   team_change: 'Team changes',
+  price_override: 'Typed sale prices (including items not in the list)',
+  remark: 'Pending remarks (added, edited, settled, reopened)',
 };
 export const AUDIT_TYPES = Object.keys(AUDIT_TYPE_LABEL) as AuditType[];
 
@@ -46,7 +51,12 @@ const CLAUSE: Record<AuditType, string> = {
   item_change: 'and(table_name.eq.items,action.eq.UPDATE)',
   customer_change: 'and(table_name.eq.customers,action.eq.UPDATE)',
   team_change: 'table_name.eq.tenant_users',
+  price_override:
+    'and(table_name.eq.sale_invoice_items,action.eq.INSERT,after->>price_source.eq.manual)',
+  remark: 'table_name.eq.document_remark_events',
 };
+/** Types that exist only in audit_feed (0070); before it is live they are left out. */
+const FEED_ONLY: AuditType[] = ['remark'];
 
 export function auditFilter(types: AuditType[]): string {
   return (types.length ? types : AUDIT_TYPES).map((t) => CLAUSE[t]).join(',');
@@ -63,6 +73,11 @@ export type AuditEvent = {
   after: Record<string, unknown> | null;
   /** Item names for item_prices rows on this page (item_id -> name). */
   itemNames: Record<string, string>;
+  /**
+   * Document labels for typed-price lines and remarks on this page: sale invoice id -> doc no, purchase bill
+   * id -> "bill no." (a convenience; a failed lookup leaves the plain wording).
+   */
+  docLabels: Record<string, string>;
   /**
    * For a purchase bill void: true when the bill was replaced by a corrected bill (0066), i.e. this void is the
    * one a bill edit made, not a separate void. A bill voided on its own can never be edited afterwards, so a
@@ -94,17 +109,30 @@ export async function listAuditEvents(
   const size = q.pageSize ?? AUDIT_PAGE_SIZE;
   const page = Math.max(0, q.page ?? 0);
   const sb = getSupabaseClient();
-  let query = sb
-    .from('audit_log')
-    .select('id,created_at,user_id,table_name,row_id,action,before,after')
-    .or(auditFilter(q.type ? [q.type] : []))
-    .order('created_at', { ascending: false })
-    .order('id', { ascending: false });
-  if (q.userId) query = query.eq('user_id', q.userId);
-  if (q.from) query = query.gte('created_at', localDayStart(q.from));
-  if (q.to) query = query.lt('created_at', localDayStart(q.to, 1));
-  // One extra row tells whether another page exists.
-  const { data, error } = await query.range(page * size, page * size + size);
+  const run = (source: 'audit_feed' | 'audit_log') => {
+    const types = q.type
+      ? [q.type]
+      : source === 'audit_feed'
+        ? AUDIT_TYPES
+        : AUDIT_TYPES.filter((t) => !FEED_ONLY.includes(t));
+    let query = sb
+      .from(source as 'audit_log') // same columns; the view is typed separately
+      .select('id,created_at,user_id,table_name,row_id,action,before,after')
+      .or(auditFilter(types))
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false });
+    if (q.userId) query = query.eq('user_id', q.userId);
+    if (q.from) query = query.gte('created_at', localDayStart(q.from));
+    if (q.to) query = query.lt('created_at', localDayStart(q.to, 1));
+    // One extra row tells whether another page exists.
+    return query.range(page * size, page * size + size);
+  };
+  let { data, error } = await run('audit_feed');
+  // Before 0070 is live the feed does not exist: the plain audit log still answers (no remark history).
+  if (error && (error.code === 'PGRST205' || error.code === '42P01')) {
+    if (q.type && FEED_ONLY.includes(q.type)) return { hasMore: false, rows: [] };
+    ({ data, error } = await run('audit_log'));
+  }
   if (error) throw error;
   const all = (data ?? []) as unknown as {
     id: string;
@@ -147,6 +175,35 @@ export async function listAuditEvents(
         .map((r) => r.row_id),
     ),
   ];
+  // Invoice / bill labels for typed-price lines and remarks (names only; a failed read hides nothing).
+  const saleIds = new Set<string>();
+  const billIds = new Set<string>();
+  for (const r of pageRows) {
+    const a = r.after ?? {};
+    if (typeof a.sale_invoice_id === 'string') saleIds.add(a.sale_invoice_id);
+    if (typeof a.purchase_bill_id === 'string') billIds.add(a.purchase_bill_id);
+  }
+  const docLabels: Record<string, string> = {};
+  try {
+    if (saleIds.size) {
+      const got = await sb
+        .from('sale_invoices')
+        .select('id,doc_no')
+        .in('id', [...saleIds]);
+      for (const r of (got.data ?? []) as { id: string; doc_no: string }[])
+        docLabels[r.id] = `sale ${r.doc_no}`;
+    }
+    if (billIds.size) {
+      const got = await sb
+        .from('purchase_bills')
+        .select('id,bill_no')
+        .in('id', [...billIds]);
+      for (const r of (got.data ?? []) as { id: string; bill_no: string | null }[])
+        docLabels[r.id] = r.bill_no ? `purchase bill ${r.bill_no}` : 'a purchase bill';
+    }
+  } catch {
+    /* labels only */
+  }
   const replaced = new Set<string>();
   if (voidBillIds.length) {
     try {
@@ -172,6 +229,7 @@ export async function listAuditEvents(
       before: r.before,
       after: r.after,
       itemNames,
+      docLabels,
       voidByEdit:
         r.table_name === 'purchase_bills' &&
         r.action === 'UPDATE' &&

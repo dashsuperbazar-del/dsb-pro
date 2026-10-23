@@ -324,7 +324,12 @@ export function ReturnsScreen() {
                     const row = draft.find((x) => x.sourceLineId === line.id);
                     return (
                       <tr key={line.id}>
-                        <td>{line.item_name_snapshot}</td>
+                        <td>
+                          {line.item_name_snapshot}
+                          {line.free_text && (
+                            <small class="muted"> · not in the item list, cannot be returned</small>
+                          )}
+                        </td>
                         <td>
                           {formatQuantity(line.qty)} {line.unit_name_snapshot}
                         </td>

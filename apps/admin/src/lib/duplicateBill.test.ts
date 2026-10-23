@@ -63,3 +63,33 @@ describe('findDuplicateBill', () => {
     expect(merged.map((b) => `${b.id}:${b.totalPaise}`)).toEqual(['b1:1', 'b2:19450']);
   });
 });
+
+describe('a bill voided on another device (backlog 0070)', () => {
+  const posted = {
+    id: 'b1',
+    partyId: 'p1',
+    billNo: 'A-7',
+    businessDate: '2026-10-20',
+    totalPaise: '5000',
+    status: 'POSTED',
+  };
+  const candidate = { partyId: 'p1', billNo: 'A-7', businessDate: '2026-10-20', totalPaise: 5000 };
+
+  it('the server VOID outranks a stale cached POSTED copy: no warning', () => {
+    const merged = mergeKnownBills([{ ...posted, status: 'VOID' }], [posted], [posted]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]!.status).toBe('VOID');
+    expect(findDuplicateBill(candidate, merged)).toBeNull();
+  });
+
+  it('a VOID copy in a later list still wins over an earlier POSTED one', () => {
+    const merged = mergeKnownBills([posted], [{ ...posted, status: 'VOID' }]);
+    expect(merged[0]!.status).toBe('VOID');
+    expect(findDuplicateBill(candidate, merged)).toBeNull();
+  });
+
+  it('a failed server read (no list) keeps warning from what the device has, never blocks', () => {
+    const match = findDuplicateBill(candidate, mergeKnownBills([], [posted]));
+    expect(match?.reason).toBe('bill_no');
+  });
+});
