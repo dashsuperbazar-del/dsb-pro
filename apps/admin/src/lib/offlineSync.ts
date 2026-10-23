@@ -20,7 +20,12 @@ import {
   type SaleLineInput,
   type SalePaymentInput,
   type SyncPullTable,
+  lookupPurchaseRequest,
+  postPurchaseV2Outcome,
+  uploadBillDocument,
 } from '@dsb-pro/adapters';
+import { readLocalDocument, removeLocalDocument } from './billDocumentStore';
+import { syncQueuedPurchase } from './offlinePurchaseSync';
 import {
   applySyncPull,
   completeOfflineSale,
@@ -89,6 +94,12 @@ import {
   type SyncIdentity,
   type SyncPullPayload,
   type SyncedSaleResult,
+  PURCHASE_OUTBOX_TARGET,
+  queueOfflinePurchase,
+  listOfflinePurchaseRecords,
+  closeRejectedOfflinePurchase,
+  type OfflinePurchaseRecord,
+  type QueueOfflinePurchaseInput,
 } from '@dsb-pro/sync';
 
 type Runtime = {
@@ -285,6 +296,40 @@ async function processOutbox(rt: Runtime) {
           throw error;
         }
       }
+      continue;
+    }
+    if (sending.kind === 'financial-rpc' && sending.target === PURCHASE_OUTBOX_TARGET) {
+      // Offline purchase (docs/OFFLINE_PURCHASES_PLAN.md): synced or visibly rejected, else retried.
+      try {
+        const done = await syncQueuedPurchase(rt.db, sending, {
+          post: postPurchaseV2Outcome,
+          lookup: (shopId, clientId) => lookupPurchaseRequest(shopId, 'purchase.post.v2', clientId),
+          upload: uploadBillDocument,
+          readLocal: readLocalDocument,
+          removeLocal: removeLocalDocument,
+        });
+        if (done === 'rejected') {
+          const rec = await rt.db.offlinePurchases.get(sending.clientId);
+          void recordServerSyncConflict({
+            deviceId: rt.identity.deviceId,
+            opClientId: sending.clientId,
+            kind: 'financial-rejection',
+            target: sending.target,
+            reason: rec?.rejectionReason ?? 'Purchase refused.',
+            payload: sending.payload,
+            serverRef: null,
+            clientId: crypto.randomUUID(),
+          }).catch(() => undefined);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await rt.db.outbox.put(
+          markOutboxRetry(sending, message, Date.now() + retryDelayMs(sending.attempts + 1)),
+        );
+        throw error;
+      }
+      if (typeof window !== 'undefined')
+        window.dispatchEvent(new CustomEvent('dsb-offline-purchases'));
       continue;
     }
     if (sending.kind !== 'financial-rpc' || sending.target !== 'post_sale') {
@@ -885,4 +930,37 @@ export async function listFinancialDrafts(shopId: string, accountId: string) {
   return (
     await requireRuntime().db.financialAttempts.where('state').equals('DRAFT').toArray()
   ).filter((a) => a.shopId === shopId && a.accountId === accountId);
+}
+
+// Offline purchases (docs/OFFLINE_PURCHASES_PLAN.md).
+export type { OfflinePurchaseRecord, QueueOfflinePurchaseInput };
+export async function queuePurchaseOffline(
+  input: QueueOfflinePurchaseInput,
+): Promise<OfflinePurchaseRecord> {
+  const record = await queueOfflinePurchase(requireRuntime().db, input);
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('dsb-offline-purchases'));
+  void runSyncNow().catch(() => undefined);
+  return record;
+}
+export async function listOfflinePurchases(shopId: string): Promise<OfflinePurchaseRecord[]> {
+  return listOfflinePurchaseRecords(requireRuntime().db, shopId);
+}
+export async function closeRejectedPurchase(clientId: string): Promise<OfflinePurchaseRecord> {
+  const record = await closeRejectedOfflinePurchase(requireRuntime().db, clientId);
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('dsb-offline-purchases'));
+  return record;
+}
+/** Suppliers seen on the last online load, for opening Purchases offline. Display/selection only. */
+export async function cacheOfflineSuppliers(
+  rows: ReadonlyArray<{ id: string; name: string }>,
+): Promise<void> {
+  const db = runtime?.db;
+  if (!db) return;
+  await db.meta.put({ key: 'purchaseSuppliers', value: rows.map((r) => ({ ...r })) });
+}
+export async function getOfflineSuppliers<T>(): Promise<T[] | null> {
+  return getMeta<T[]>(requireRuntime().db, 'purchaseSuppliers');
+}
+export async function getOfflineStock(shopId: string) {
+  return requireRuntime().db.stock.where('shop_id').equals(shopId).toArray();
 }
