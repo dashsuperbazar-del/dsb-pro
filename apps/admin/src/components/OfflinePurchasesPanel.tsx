@@ -8,6 +8,7 @@ import {
 import { savePurchaseDraft, type PurchaseDraft } from '../lib/purchaseDraft';
 import type { KnownBill } from '../lib/duplicateBill';
 import { rupees } from '../lib/money';
+import { removeLocalDocument } from '../lib/billDocumentStore';
 
 // Purchases saved on this device while offline (docs/OFFLINE_PURCHASES_PLAN.md). Queued bills are shown as
 // "not synced" with what they will add; a refused bill stays here with its reason until the user turns it
@@ -113,6 +114,9 @@ export function OfflinePurchasesPanel({
       return;
     try {
       await closeRejectedPurchase(r.clientId);
+      // Nothing was posted and the bill is dismissed: free its photo bytes.
+      for (const d of r.documents)
+        await removeLocalDocument(r.documentScope, d.id).catch(() => undefined);
     } catch (e) {
       setNote(e instanceof Error ? e.message : String(e));
     }
@@ -155,6 +159,7 @@ export function OfflinePurchasesPanel({
                 )
                 .join(', ')}
             </small>
+            {r.reconciliationWarning && <p role="alert">{r.reconciliationWarning}</p>}
             {r.status === 'REJECTED' && (
               <>
                 <p role="alert">{r.rejectionReason}</p>

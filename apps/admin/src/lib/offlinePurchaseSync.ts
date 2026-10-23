@@ -39,6 +39,9 @@ export async function syncQueuedPurchase(
   if (!record) throw new Error('Queued purchase record is missing on this device.');
   if (record.status === 'SYNCED') {
     await db.outbox.where('clientId').equals(sending.clientId).delete();
+    // A crash may have come after the commit but before the device copies were freed.
+    for (const doc of record.documents)
+      await deps.removeLocal(record.documentScope, doc.id).catch(() => undefined);
     return 'synced';
   }
   const request = sending.payload as PurchaseV2Request;

@@ -98,19 +98,16 @@ describe('offline purchases', () => {
     expect(await db.outbox.count()).toBe(0);
   });
 
-  it('completes once (idempotent) and refuses an acknowledgement with another total', async () => {
+  it('completes once (idempotent); a different server total is kept with a warning, never blocks', async () => {
     const db = await newDb();
     await queueOfflinePurchase(db, input());
-    await expect(
-      completeOfflinePurchase(db, CLIENT, { billId: 'b', paymentId: 'p', totalPaise: 1 }),
-    ).rejects.toThrow(/total/);
-    expect(await db.outbox.count()).toBe(1);
     const done = await completeOfflinePurchase(db, CLIENT, {
       billId: 'b',
       paymentId: 'p',
       totalPaise: 1500,
     });
     expect(done).toMatchObject({ status: 'SYNCED', billId: 'b', paymentId: 'p' });
+    expect(done.reconciliationWarning).toBeNull();
     expect(done.documents[0]!.uploaded).toBe(true);
     const again = await completeOfflinePurchase(db, CLIENT, {
       billId: 'b',
@@ -118,6 +115,24 @@ describe('offline purchases', () => {
       totalPaise: 1500,
     });
     expect(again.syncedAt).toBe(done.syncedAt);
+    expect(await db.outbox.count()).toBe(0);
+
+    const other = CLIENT.replace('1111', '2222');
+    await queueOfflinePurchase(
+      db,
+      input({
+        clientId: other,
+        request: { shopId: 'shop', clientId: other, lines: [] },
+        documents: [],
+      }),
+    );
+    const diff = await completeOfflinePurchase(db, other, {
+      billId: 'b2',
+      paymentId: null,
+      totalPaise: 1600,
+    });
+    expect(diff).toMatchObject({ status: 'SYNCED', totalPaise: 1600 });
+    expect(diff.reconciliationWarning).toContain('₹16.00');
     expect(await db.outbox.count()).toBe(0);
   });
 

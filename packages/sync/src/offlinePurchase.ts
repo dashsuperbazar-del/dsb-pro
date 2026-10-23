@@ -48,6 +48,8 @@ export type OfflinePurchaseRecord = Readonly<{
   paymentId: string | null;
   rejectionCode: string | null;
   rejectionReason: string | null;
+  /** Set when the server's total differs from the one saved on this device (the server figure is kept). */
+  reconciliationWarning?: string | null;
   /** Set when the user turned a refused bill into a draft or dismissed it. */
   closedAt: number | null;
 }>;
@@ -137,8 +139,9 @@ export async function completeOfflinePurchase(
   return db.transaction('rw', [db.outbox, db.offlinePurchases], async () => {
     const record = await db.offlinePurchases.get(clientId);
     if (!record) throw new Error('Offline purchase record is missing.');
-    if (result.totalPaise !== record.totalPaise)
-      throw new Error('Synced purchase total does not match the saved bill.');
+    // The server already committed this bill: never block the queue or leave it "not synced" over a total
+    // difference. The server figure replaces the local one and the difference is shown for review.
+    const mismatch = result.totalPaise !== record.totalPaise;
     const next: OfflinePurchaseRecord =
       record.status === 'SYNCED'
         ? record
@@ -148,6 +151,10 @@ export async function completeOfflinePurchase(
             syncedAt: now,
             billId: result.billId,
             paymentId: result.paymentId,
+            totalPaise: result.totalPaise,
+            reconciliationWarning: mismatch
+              ? `The server recorded ₹${(result.totalPaise / 100).toFixed(2)} for this bill; this device had saved ₹${(record.totalPaise / 100).toFixed(2)}. Check the bill.`
+              : null,
             rejectionCode: null,
             rejectionReason: null,
             documents: record.documents.map((d) => ({ ...d, uploaded: true })),

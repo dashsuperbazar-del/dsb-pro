@@ -152,7 +152,7 @@ describe('syncQueuedPurchase', () => {
     expect((await db.offlinePurchases.get(CLIENT))?.status).toBe('QUEUED');
   });
 
-  it('an acknowledgement for another total keeps the bill queued (retry), never SYNCED', async () => {
+  it('an acknowledgement for another total still ends SYNCED (the server committed) with a warning', async () => {
     const db = await setup(0);
     const d = deps({
       post: vi.fn(async () => ({
@@ -166,7 +166,10 @@ describe('syncQueuedPurchase', () => {
         },
       })),
     });
-    await expect(syncQueuedPurchase(db, await sendingRow(db), d)).rejects.toThrow(/total/);
-    expect((await db.offlinePurchases.get(CLIENT))?.status).toBe('QUEUED');
+    expect(await syncQueuedPurchase(db, await sendingRow(db), d)).toBe('synced');
+    const rec = await db.offlinePurchases.get(CLIENT);
+    expect(rec?.status).toBe('SYNCED');
+    expect(rec?.reconciliationWarning).toBeTruthy();
+    expect(await db.outbox.count()).toBe(0);
   });
 });
