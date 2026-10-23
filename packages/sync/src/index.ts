@@ -11,3 +11,4 @@ export * from './offlineReturn';
 export * from './heldCarts';
 export * from './financialAttempts';
 export * from './routeSnapshotDb';
+export * from './offlinePurchase';

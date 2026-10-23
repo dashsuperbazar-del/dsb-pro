@@ -46,6 +46,17 @@ vi.mock('@dsb-pro/adapters', () => api);
 const offline = vi.hoisted(() => ({
   getSyncedOfflineCatalog: vi.fn(),
   runSyncNow: vi.fn(),
+  // Offline purchases (docs/OFFLINE_PURCHASES_PLAN.md).
+  cacheOfflineSuppliers: vi.fn(async () => undefined),
+  listOfflinePurchases: vi.fn(async () => []),
+  queuePurchaseOffline: vi.fn(),
+  closeRejectedPurchase: vi.fn(),
+  getOfflineSuppliers: vi.fn(async () => null),
+  getOfflineStock: vi.fn(async () => []),
+  getOfflineItems: vi.fn(async () => []),
+  getOfflineBusinessDate: vi.fn(async () => null),
+  getOfflineRuntimeIdentity: vi.fn(() => null),
+  waitForOfflineRuntime: vi.fn(async () => undefined),
 }));
 vi.mock('../lib/offlineSync', () => offline);
 const host = document.createElement('div');
@@ -259,30 +270,103 @@ test('notes are kept to 500 characters with a counter and sent trimmed', async (
   expect(api.postPurchaseV2Outcome.mock.calls[0][0].notes).toBe('Rate agreed on phone');
 });
 
-test('offline: Post is disabled with a clear message and nothing is sent; the draft keeps the new fields', async () => {
+test('offline: Post saves the bill on this device (outbox), sends nothing now and clears the form', async () => {
   await mountEditor();
+  await setField('select[name="partyId"]', 'p1', 'change');
   await item(1, '2', '10', { disc: '5', gst: '' });
-  await pay('UPI');
+  await pay('Cash');
   await act(async () => {
     onLine = false;
     window.dispatchEvent(new Event('offline'));
   });
-  expect(postButton().disabled).toBe(true);
-  expect(text('offline-post')).toContain('Purchases post only online; nothing was sent');
+  expect(text('offline-post')).toContain('syncs when you');
+  expect(postButton().disabled).toBe(false);
+  expect(postButton().textContent).toBe('Save on this device (syncs later)');
   await act(async () => {
     postButton().form!.requestSubmit(postButton());
   });
+  await vi.waitFor(() => expect(offline.queuePurchaseOffline).toHaveBeenCalledTimes(1));
   expect(api.postPurchaseV2Outcome).not.toHaveBeenCalled();
-  const key = Object.keys(localStorage).find((k) => k.startsWith('dsb-purchase-draft:'))!;
-  expect(JSON.parse(localStorage.getItem(key)!)).toMatchObject({
-    paymentType: 'upi',
-    cards: [{ discount: '5' }],
+  const queued = offline.queuePurchaseOffline.mock.calls[0]![0] as {
+    clientId: string;
+    request: Record<string, unknown>;
+    totalPaise: number;
+    paymentType: string;
+    documents: unknown[];
+    draft: { clientId: string; paymentType: string };
+  };
+  // One frozen v2 request; the payment is part of it (no separate payment write).
+  expect(queued.request).toMatchObject({
+    api: 'v2',
+    clientId: queued.clientId,
+    paymentType: 'cash',
+    partyId: 'p1',
+    lines: [{ itemId: 'a', qty: '2', unitPricePaise: 1000, discountBp: 500, gstBp: null }],
   });
+  expect(queued.totalPaise).toBe(1900);
+  expect(queued.draft).toMatchObject({ clientId: queued.clientId, paymentType: 'cash' });
+  await vi.waitFor(() => expect(host.textContent).toContain('Saved on this device — will sync'));
+  // The form is free for the next bill under a new id; nothing is locked or stored as an online intent.
+  expect(Object.keys(localStorage).some((k) => k.startsWith('dsb-pending-purchase'))).toBe(false);
   await act(async () => {
     onLine = true;
     window.dispatchEvent(new Event('online'));
   });
   expect(host.querySelector('[data-testid="offline-post"]')).toBeNull();
+});
+
+test('offline: a bill correction and an unconfirmed online bill are never queued', async () => {
+  await mountEditor();
+  await item(1, '1', '10');
+  api.postPurchaseV2Outcome.mockResolvedValueOnce({ kind: 'unknown', message: 'answer lost' });
+  await click(postButton());
+  await vi.waitFor(() => expect(host.textContent).toContain('Not confirmed: answer lost'));
+  await act(async () => {
+    onLine = false;
+    window.dispatchEvent(new Event('offline'));
+  });
+  expect(postButton().disabled).toBe(true);
+  await act(async () => {
+    postButton().form!.requestSubmit(postButton());
+  });
+  expect(offline.queuePurchaseOffline).not.toHaveBeenCalled();
+  expect(api.postPurchaseV2Outcome).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    onLine = true;
+    window.dispatchEvent(new Event('online'));
+  });
+});
+
+test('offline after a restart: the bill form opens from the device copy (catalog, suppliers, date)', async () => {
+  onLine = false;
+  offline.getOfflineRuntimeIdentity.mockReturnValue({
+    userId: 'user',
+    tenantId: TENANT,
+    shopId: SHOP,
+    deviceId: 'dev',
+    role: 'owner',
+  } as never);
+  offline.getSyncedOfflineCatalog.mockResolvedValue({ items: [itemA] });
+  offline.getOfflineSuppliers.mockResolvedValue([{ id: 'p9', name: 'Saved Supplier' }] as never);
+  offline.getOfflineBusinessDate.mockResolvedValue('2026-10-20' as never);
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly />, host);
+  });
+  await vi.waitFor(() =>
+    expect(host.querySelector('select[name="partyId"] option[value="p9"]')).not.toBeNull(),
+  );
+  await vi.waitFor(() =>
+    expect(host.querySelector<HTMLInputElement>('input[name="date"]')!.value).toBe('2026-10-20'),
+  );
+  // No server read was needed to open the form.
+  expect(api.listParties).not.toHaveBeenCalled();
+  expect(api.listItems).not.toHaveBeenCalled();
+  await item(1, '1', '10');
+  await act(async () => {
+    postButton().form!.requestSubmit(postButton());
+  });
+  await vi.waitFor(() => expect(offline.queuePurchaseOffline).toHaveBeenCalledTimes(1));
+  expect(api.postPurchaseV2Outcome).not.toHaveBeenCalled();
 });
 
 test('a lost reply is retried as the same v2 request (same id, same payload), even after a reload', async () => {

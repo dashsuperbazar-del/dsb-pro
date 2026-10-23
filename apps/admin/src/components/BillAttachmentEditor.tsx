@@ -25,6 +25,7 @@ export function BillAttachmentEditor({
   disabled,
   beforePicker,
   deferUpload,
+  deferNote,
   labelSuffix = '',
   onChange,
   onBusy,
@@ -39,6 +40,8 @@ export function BillAttachmentEditor({
   beforePicker: () => boolean;
   /** Quick bill: keep the bytes on the device and upload only after the draft that records them is saved. */
   deferUpload?: boolean;
+  /** Shown instead of the quick-bill wording while uploads are deferred (offline purchases). */
+  deferNote?: string;
   /** Added to the accessible names so two editors on one page stay distinguishable. */
   labelSuffix?: string;
   /** Persist the new list (the draft) before it is shown; throw to refuse it. */
@@ -121,7 +124,7 @@ export function BillAttachmentEditor({
       <summary>
         Bill photos or PDF
         {documents.length
-          ? ` · ${documents.length} ${uploaded === documents.length ? 'attached' : `added, ${documents.length - uploaded} ${deferUpload ? 'kept on this device, upload when the draft is opened' : 'upload pending'}`}`
+          ? ` · ${documents.length} ${uploaded === documents.length ? 'attached' : `added, ${documents.length - uploaded} ${deferUpload ? (deferNote ? 'kept on this device, upload when the bill syncs' : 'kept on this device, upload when the draft is opened') : 'upload pending'}`}`
           : ''}
       </summary>
       <section aria-label={labelSuffix ? 'Quick bill photo attachment' : 'Bill attachment'}>
@@ -179,6 +182,7 @@ export function BillAttachmentEditor({
             document={doc}
             disabled={disabled}
             deferUpload={deferUpload}
+            deferNote={deferNote}
             labelSuffix={labelSuffix}
             onBusy={(on) =>
               setBusyIds((ids) =>
@@ -216,6 +220,7 @@ function AttachmentRow({
   document,
   disabled,
   deferUpload,
+  deferNote,
   labelSuffix,
   onBusy,
   onProblem,
@@ -227,6 +232,7 @@ function AttachmentRow({
   document: BillDocument;
   disabled: boolean;
   deferUpload?: boolean;
+  deferNote?: string;
   labelSuffix: string;
   onBusy: (busy: boolean) => void;
   onProblem: (message: string) => void;
@@ -288,7 +294,7 @@ function AttachmentRow({
         {document.uploaded
           ? 'Upload confirmed'
           : deferUpload
-            ? 'Kept on this device; uploads when you open the saved draft'
+            ? (deferNote ?? 'Kept on this device; uploads when you open the saved draft')
             : 'Upload not confirmed'}
       </p>
       {error && <p role="alert">{error}</p>}
