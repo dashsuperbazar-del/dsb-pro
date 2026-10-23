@@ -25,6 +25,19 @@ describe('synced-sale authoritative acknowledgement',()=>{
     }));
   });
 
+  it('sends a free-text line with its name and GST and no item; accepts the item-less answer (0070)',async()=>{
+    const ft={itemId:'',unitLevel:1 as const,qty:'1',priceKind:'retail' as const,discountPaise:0,
+      manualUnitPricePaise:1000,freeText:{name:'Gift wrap',taxRateBp:500}};
+    const ack={...acknowledgement,lines:[{...acknowledgement.lines[0],itemId:null}]};
+    rpc.mockResolvedValue({data:ack,error:null});
+    await expect(pushSyncedSale({...input,lines:[ft],saleV2:{invoiceType:'gst_included',creditOverride:false,expectedTotalPaise:1000}}))
+      .resolves.toEqual(ack);
+    const sent=rpc.mock.calls[0]![1].p_lines[0];
+    expect(rpc.mock.calls[0]![0]).toBe('sp_sync_post_sale');
+    expect(sent).toMatchObject({free_text_name:'Gift wrap',free_text_tax_rate_bp:500,manual_unit_price_paise:1000});
+    expect(sent).not.toHaveProperty('item_id');
+  });
+
   it('refuses a shallow or malformed acknowledgement before local reconciliation',async()=>{
     rpc.mockResolvedValue({data:{...acknowledgement,lines:[{itemId:'item',lineTotalPaise:15}]},error:null});
     await expect(pushSyncedSale(input)).rejects.toThrow(/invalid synced-sale result/);

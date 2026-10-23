@@ -9,6 +9,7 @@ import {
 import { rebuildReservations } from './projections';
 import { saleIntentFingerprint } from './saleIntent';
 import { getMeta, setMeta, stockKey, type DsbSyncDb } from './db';
+import { FREE_TEXT_ITEM_ID } from './types';
 import type {
   LocalSyncConflict,
   OfflineRole,
@@ -143,6 +144,50 @@ export async function queueOfflineSale(
         const qty = canonicalQuantity(line.qty);
         parseQuantityMicros(qty);
         nonNegativeMoney(line.discountPaise, 'line discount');
+        if (line.freeText) {
+          // backlog (0070): a free-text line has no item, no stock and always a typed price.
+          if (!input.saleV2) throw new Error('A free-text item needs the new sale format.');
+          if (context.role !== 'owner' && context.role !== 'manager')
+            throw new Error('Only the owner or a manager can add an item that is not in the list.');
+          const name = line.freeText.name.trim();
+          const rate = line.freeText.taxRateBp;
+          if (!name || name.length > 120) throw new Error('Enter a name of 1 to 120 characters.');
+          if (!Number.isSafeInteger(rate) || rate < 0 || rate > 10000)
+            throw new Error('Enter a GST % from 0 to 100.');
+          if (
+            line.itemId !== FREE_TEXT_ITEM_ID ||
+            line.unitLevel !== 1 ||
+            line.priceKind !== 'retail'
+          )
+            throw new Error('Invalid free-text item.');
+          const typed = line.manualUnitPricePaise;
+          if (typed === undefined || !Number.isSafeInteger(typed) || typed <= 0)
+            throw new Error(`Enter a price above zero for ${name}.`);
+          const ftGross = quantityTimesPaise(qty, typed);
+          if (line.discountPaise > ftGross) throw new Error(`Item discount exceeds ${name} value.`);
+          const ftTax =
+            input.invoiceType === 'gst_extra'
+              ? saleGstExtraTax(ftGross - line.discountPaise, rate)
+              : 0;
+          subtotal = addMoney(subtotal, ftGross + ftTax, 'subtotal');
+          lineDiscounts = addMoney(lineDiscounts, line.discountPaise, 'line discounts');
+          taxTotal = addMoney(taxTotal, ftTax, 'tax');
+          snapshots.push({
+            ...line,
+            freeText: { name, taxRateBp: rate },
+            qty,
+            itemName: name,
+            unitName: 'unit',
+            unitPricePaise: typed,
+            baseQty: Number(qty),
+            lineTotalPaise: ftGross - line.discountPaise + ftTax,
+            taxPaise: ftTax,
+            taxRateBp: rate,
+            priceSource: 'manual' as const,
+            listPricePaise: null,
+          });
+          continue;
+        }
         const item = await db.items.get(line.itemId);
         if (!item || item.deleted_at !== null || !item.is_active)
           throw new Error('Item is unavailable offline.');
@@ -243,6 +288,7 @@ export async function queueOfflineSale(
               qty: line.qty,
               priceKind: line.priceKind,
               discountPaise: line.discountPaise,
+              ...(line.freeText ? { freeText: line.freeText } : {}),
               ...(line.priceSource === 'manual'
                 ? {
                     manualUnitPricePaise: line.unitPricePaise,
@@ -349,7 +395,7 @@ export async function completeOfflineSale(
       const authoritativeLines = sale.lines.map((line, index) => {
         const server = result.lines[index];
         if (
-          server.itemId !== line.itemId ||
+          (server.itemId ?? FREE_TEXT_ITEM_ID) !== line.itemId ||
           server.unitLevel !== line.unitLevel ||
           canonicalQuantity(server.qty) !== canonicalQuantity(line.qty)
         ) {

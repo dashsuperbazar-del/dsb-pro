@@ -1,4 +1,5 @@
 import { getSupabaseClient } from './client';
+import { FREE_TEXT_REPORT_NAME } from './profit';
 import { classifyError, errorMessage } from './errors';
 function fail(error:unknown){ throw new Error(errorMessage(classifyError(error),error)); }
 export type DayBookRow={business_date:string;sales_paise:number;purchases_paise:number;receipts_paise:number;payments_paise:number;expenses_paise:number;net_cashflow_paise:number};
@@ -22,7 +23,9 @@ export type LowStockRow={item_id:string;item_name:string;unit_name:string;on_han
 export async function getLowStockReport(shopId:string){const {data,error}=await getSupabaseClient().rpc('get_low_stock_report',{p_shop_id:shopId});if(error)fail(error);return (data??[]) as LowStockRow[];}
 
 export type ItemSalesRow={item_id:string;item_name:string;qty_sold:number;qty_returned:number;net_qty:number;gross_sales_paise:number;net_sales_paise:number};
-export async function getItemSalesReport(shopId:string,from:string,to:string){const {data,error}=await getSupabaseClient().rpc('get_item_sales_report',{p_shop_id:shopId,p_from:from,p_to:to});if(error)fail(error);return (data??[]) as ItemSalesRow[];}
+export async function getItemSalesReport(shopId:string,from:string,to:string){const {data,error}=await getSupabaseClient().rpc('get_item_sales_report',{p_shop_id:shopId,p_from:from,p_to:to});if(error)fail(error);
+  // backlog (0070): every free-text sale line (no item) is one row with item_id null.
+  return ((data??[]) as unknown as (Omit<ItemSalesRow,'item_id'>&{item_id:string|null})[]).map(r=>r.item_id===null?{...r,item_id:'',item_name:FREE_TEXT_REPORT_NAME}:{...r,item_id:r.item_id}) as ItemSalesRow[];}
 
 export type PurchaseRegisterRow={bill_id:string;doc_no:string;business_date:string;party_name:string|null;subtotal_paise:number;discount_paise:number;extra_charges_paise:number;total_paise:number;status:'POSTED'|'VOID'};
 export async function getPurchaseRegister(shopId:string,from:string,to:string){const {data,error}=await getSupabaseClient().rpc('get_purchase_register',{p_shop_id:shopId,p_from:from,p_to:to});if(error)fail(error);return (data??[]) as PurchaseRegisterRow[];}

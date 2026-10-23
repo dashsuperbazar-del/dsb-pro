@@ -12,6 +12,7 @@ const base: AuditEvent = {
   before: null,
   after: null,
   itemNames: {},
+  docLabels: {},
   voidByEdit: false,
 };
 const who = (id: string | null) => (id === 'u1' ? 'Asha' : id ? 'someone' : 'the system');
@@ -92,4 +93,61 @@ test('markup in stored text is returned as plain text (the screen escapes at ren
     after: { name: '<img src=x onerror=alert(1)>' },
   };
   expect(describeAudit(e, who)).toContain('<img src=x onerror=alert(1)>');
+});
+
+test('a typed sale price and a free-text item read plainly with their invoice and who typed them', () => {
+  const line = (after: Record<string, unknown>) => ({
+    ...base,
+    tableName: 'sale_invoice_items',
+    action: 'INSERT' as const,
+    after: {
+      sale_invoice_id: 's1',
+      price_source: 'manual',
+      overridden_by: 'u1',
+      qty: '2',
+      ...after,
+    },
+    docLabels: { s1: 'sale INV-000007' },
+  });
+  const typed = line({
+    item_name_snapshot: 'Soap',
+    unit_price_paise: 900,
+    list_price_snapshot_paise: 1000,
+  });
+  expect(auditType(typed)).toBe('price_override');
+  expect(describeAudit(typed, who)).toBe(
+    'Soap sold at a typed price on sale INV-000007: 2 × ₹9.00 (list ₹10.00), typed by Asha.',
+  );
+  const free = line({
+    item_name_snapshot: 'Gift wrap',
+    unit_price_paise: 1000,
+    line_kind: 'free_text',
+    tax_rate_bp_snapshot: 500,
+  });
+  expect(describeAudit(free, who)).toBe(
+    'Item not in the list "Gift wrap" sold on sale INV-000007: 2 × ₹10.00, GST 5%, typed by Asha.',
+  );
+  expect(auditType({ ...typed, after: { ...typed.after, price_source: 'list' } })).toBeNull();
+});
+
+test('remark history rows read as added / settled on their document', () => {
+  const remark = {
+    ...base,
+    tableName: 'document_remark_events',
+    action: 'INSERT' as const,
+    after: {
+      remark_action: 'SETTLE',
+      body: 'Two boxes short',
+      doc_kind: 'purchase',
+      purchase_bill_id: 'b1',
+    },
+    docLabels: { b1: 'purchase bill A-12' },
+  };
+  expect(auditType(remark)).toBe('remark');
+  expect(describeAudit(remark, who)).toBe(
+    'Remark settled on purchase bill A-12: "Two boxes short".',
+  );
+  expect(describeAudit({ ...remark, docLabels: {} }, who)).toBe(
+    'Remark settled on a purchase bill: "Two boxes short".',
+  );
 });

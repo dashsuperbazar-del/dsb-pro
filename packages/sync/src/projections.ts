@@ -10,7 +10,7 @@ export async function rebuildReservations(db:DsbSyncDb):Promise<void>{
     byKey.set(key,{key,shop_id:shopId,item_id:itemId,qty:(prev?.qty??0)+qty});
   };
   for(const sale of await db.offlineSales.where('status').equals('QUEUED').toArray())
-    for(const line of sale.lines)add(sale.shopId,line.itemId,line.baseQty);
+    for(const line of sale.lines)if(!line.freeText)add(sale.shopId,line.itemId,line.baseQty); // free-text: no stock
   for(const ret of await db.offlineReturns.where('status').equals('QUEUED').toArray())
     for(const line of ret.lines)add(ret.shopId,line.itemId,-line.stockDelta);
   await db.reservations.clear();

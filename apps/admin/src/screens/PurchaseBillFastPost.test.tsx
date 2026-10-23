@@ -34,7 +34,7 @@ const api = vi.hoisted(() => ({
   listPurchaseHistory: vi.fn().mockResolvedValue([]),
   getPurchaseDetail: vi.fn(),
   listSupplierPurchaseLines: vi.fn().mockResolvedValue([]),
-  listSupplierBills: vi.fn().mockResolvedValue([]),
+  listSupplierBillsForDuplicateCheck: vi.fn().mockResolvedValue([]),
   getPurchaseExtras: vi.fn(),
   postPurchaseOutcome: vi.fn(),
   postPurchaseV2Outcome: vi.fn(),
@@ -199,7 +199,7 @@ test('a reload that ends after the screen is gone does not touch it', async () =
 });
 
 test('a slow supplier-bill read delays Post by at most about a second and a half, and never blocks it', async () => {
-  api.listSupplierBills.mockImplementation(() => new Promise(() => {}));
+  api.listSupplierBillsForDuplicateCheck.mockImplementation(() => new Promise(() => {}));
   await mountEditor();
   await setField('select[name="partyId"]', 'p1', 'change');
   await item(1, '1', '10');
@@ -216,9 +216,10 @@ test('a slow supplier-bill read delays Post by at most about a second and a half
 });
 
 test('the supplier bills are read when the supplier is chosen, so Post does not wait for them', async () => {
-  api.listSupplierBills.mockResolvedValue([
+  api.listSupplierBillsForDuplicateCheck.mockResolvedValue([
     {
-      purchase_bill_id: 'old-1',
+      id: 'old-1',
+      status: 'POSTED',
       bill_no: 'INV-9',
       business_date: '2026-10-10',
       total_paise: 1000,
@@ -226,13 +227,13 @@ test('the supplier bills are read when the supplier is chosen, so Post does not 
   ]);
   await mountEditor();
   await setField('select[name="partyId"]', 'p1', 'change');
-  await vi.waitFor(() => expect(api.listSupplierBills).toHaveBeenCalledTimes(1));
+  await vi.waitFor(() => expect(api.listSupplierBillsForDuplicateCheck).toHaveBeenCalledTimes(1));
   await item(1, '1', '10');
   await setField('input[name="billNo"]', 'inv-9');
   api.postPurchaseV2Outcome.mockResolvedValue(committed());
   let readsAtCheck = -1;
   vi.mocked(window.confirm).mockImplementation(() => {
-    readsAtCheck = api.listSupplierBills.mock.calls.length;
+    readsAtCheck = api.listSupplierBillsForDuplicateCheck.mock.calls.length;
     return true;
   });
   await click(postButton());
@@ -241,4 +242,25 @@ test('the supplier bills are read when the supplier is chosen, so Post does not 
   await vi.waitFor(() => expect(api.postPurchaseV2Outcome).toHaveBeenCalledTimes(1));
   // The read was reused for the check (not repeated at Post time).
   expect(readsAtCheck).toBe(1);
+});
+
+test('a bill voided on another device does not raise the duplicate warning (backlog 0070)', async () => {
+  api.listSupplierBillsForDuplicateCheck.mockResolvedValue([
+    {
+      id: 'old-1',
+      status: 'VOID',
+      bill_no: 'INV-9',
+      business_date: '2026-10-10',
+      total_paise: 1000,
+    },
+  ]);
+  await mountEditor();
+  await setField('select[name="partyId"]', 'p1', 'change');
+  await vi.waitFor(() => expect(api.listSupplierBillsForDuplicateCheck).toHaveBeenCalledTimes(1));
+  await item(1, '1', '10');
+  await setField('input[name="billNo"]', 'inv-9');
+  api.postPurchaseV2Outcome.mockResolvedValue(committed());
+  await click(postButton());
+  await vi.waitFor(() => expect(api.postPurchaseV2Outcome).toHaveBeenCalledTimes(1));
+  expect(window.confirm).not.toHaveBeenCalled();
 });

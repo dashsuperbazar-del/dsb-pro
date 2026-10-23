@@ -1131,8 +1131,45 @@ jobs:
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "alter table sale_invoices drop constraint sale_invoices_bill_code_format"
           if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Missing bill code format check accepted'; exit 1; fi
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "alter table sale_invoices add constraint sale_invoices_bill_code_format check(bill_code ~ '^[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}\$')"
-          grep -Fx 'needs_upgrade=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          grep -Fx 'needs_billcode=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
           echo 'DISPOSABLE BILL CODES UPGRADE: PASS'
+      - name: Prove backlog upgrade (free-text lines, manager audit; apply, no-op, tamper/partial refusal)
+        env:
+          PROOF_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          grep -Fx 'needs_backlog=true' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" backlog
+          grep -Fx 'needs_backlog=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          grep -Fx 'needs_billcode=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" backlog
+          expected_checksum=$(sha256sum supabase/migrations/0070_free_text_lines_audit.sql | cut -d' ' -f1)
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update app_migration_receipts set checksum_sha256=repeat('0',64) where version='0070'"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo '0070 tamper accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update app_migration_receipts set checksum_sha256='$expected_checksum' where version='0070'"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "alter table sale_return_items disable trigger sale_return_items_free_text_guard"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Disabled free-text return guard accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "alter table sale_return_items enable trigger sale_return_items_free_text_guard"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "alter table sale_invoice_items drop constraint sale_invoice_items_free_text_check"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Missing free-text check accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "alter table sale_invoice_items add constraint sale_invoice_items_free_text_check check ((line_kind='item' and item_id is not null) or (line_kind='free_text' and item_id is null and price_source='manual' and unit_level=1 and hsn_snapshot is null and char_length(btrim(item_name_snapshot)) between 1 and 120 and tax_rate_bp_snapshot between 0 and 10000))"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "grant insert on audit_feed to authenticated"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Writable audit feed accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "revoke insert on audit_feed from authenticated"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "grant select on audit_feed to anon"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Anonymous audit feed accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "revoke select on audit_feed from anon"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "delete from role_permissions where role='manager' and code='VIEW_AUDIT_FEED'"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Missing manager audit permission accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "insert into role_permissions(role,code) values('manager','VIEW_AUDIT_FEED')"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "insert into role_permissions(role,code) values('manager','VIEW_AUDIT_LOG')"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Manager on the raw audit log accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "delete from role_permissions where role='manager' and code='VIEW_AUDIT_LOG'"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "grant execute on function c0_void_sale_body(uuid,text) to authenticated"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Exposed void body accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "revoke execute on function c0_void_sale_body(uuid,text) from authenticated"
+          grep -Fx 'needs_upgrade=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          echo 'DISPOSABLE BACKLOG UPGRADE: PASS'
       - name: Stop and erase the disposable target
         if: always()
         run: supabase stop --workdir "$PROOF_ROOT" --no-backup
@@ -1862,6 +1899,11 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" billcode
+      - name: Apply backlog (free-text lines, manager audit) atomically
+        if: steps.preflight.outputs.needs_backlog == 'true'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" backlog
       - name: Verify live Batch B contract
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}

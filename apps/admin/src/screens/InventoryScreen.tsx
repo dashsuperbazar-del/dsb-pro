@@ -73,7 +73,7 @@ import {
   type Party,
   type StockRow,
   type BillDocument,
-  listSupplierBills,
+  listSupplierBillsForDuplicateCheck,
 } from '@dsb-pro/adapters';
 import {
   buildLegacyDsbImportPlan,
@@ -3215,17 +3215,19 @@ async function readSupplierBills(
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const rows = await Promise.race([
-      listSupplierBills(shopId, partyId),
+      listSupplierBillsForDuplicateCheck(shopId, partyId),
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => reject(new Error('timeout')), timeoutMs);
       }),
     ]);
+    // Status included: a bill voided on another device comes back VOID and outranks a stale cached copy.
     return rows.map((b) => ({
-      id: b.purchase_bill_id,
+      id: b.id,
       partyId,
       billNo: b.bill_no,
       businessDate: b.business_date,
       totalPaise: b.total_paise,
+      status: b.status,
     }));
   } catch {
     /* offline or refused: no server answer */

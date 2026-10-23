@@ -56,6 +56,14 @@ describe('getProfitReport', () => {
     expect(typeof out.summary.grossProfitPaise).toBe('string');
     expect(out.items[0]!.name).toBe('Item A');
   });
+  it('names the one row that gathers free-text sale lines (itemId null, backlog 0070)', async () => {
+    fake({
+      data: { ...good, items: [{ ...good.items[0], itemId: null, name: 'Gift wrap' }] },
+      error: null,
+    });
+    const out = await getProfitReport('s', '2026-09-01', '2026-09-30');
+    expect(out.items[0]).toMatchObject({ itemId: '', name: 'Items not in the list (free text)' });
+  });
   it('refuses a response that is not the FIFO shape instead of showing wrong figures', async () => {
     fake({ data: { ...good, method: 'AVERAGE' }, error: null });
     await expect(getProfitReport('s', '2026-09-01', '2026-09-30')).rejects.toThrow(/unexpected/i);
