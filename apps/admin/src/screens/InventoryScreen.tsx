@@ -2911,7 +2911,12 @@ export function InventoryScreen({
           </p>
         )}
         {purchaseEditOf && !purchaseLocked && (
-          <p class="card" data-testid="editing-bill" role="status">
+          <p
+            class="card"
+            data-testid="editing-bill"
+            role="status"
+            data-offline={editVersion.current ? 'ready' : 'unavailable'}
+          >
             Editing bill {purchaseEditLabel}. Saving posts the corrected bill and voids the original
             together; a payment on it moves to the corrected bill.{' '}
             <a href={appRoute.purchases}>Cancel</a>

@@ -50,8 +50,8 @@ async function openEdit(page: Page, billNo: string) {
   await detail.getByTestId('edit-bill').click();
   const edit = section(page, 'Edit bill');
   await expect(edit.getByLabel('Item 1 quantity', { exact: true })).not.toHaveValue('');
-  // The version is read with the bill; give it a moment before the connection drops.
-  await page.waitForLoadState('networkidle');
+  // Explicit ready signal: the bill's version was read, so the edit can be saved offline.
+  await expect(edit.getByTestId('editing-bill')).toHaveAttribute('data-offline', 'ready');
   return edit;
 }
 async function syncAll(page: Page) {
@@ -117,7 +117,8 @@ test('offline bill edit and void: applied on reconnect when unchanged; a bill ch
 
   // 2. Void opened online, saved offline, applied on reconnect.
   const detail = await openBill(page, 'VO-1');
-  await page.waitForLoadState('networkidle');
+  // Explicit ready signal: the void panel has the bill's version, so it can be voided offline.
+  await expect(detail.getByTestId('void-offline-ready')).toHaveAttribute('data-state', 'ready');
   await context.setOffline(true);
   await detail.getByLabel('Reason for voiding').fill('entered twice');
   await detail.getByRole('button', { name: 'Void bill', exact: true }).click();
