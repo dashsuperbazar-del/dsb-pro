@@ -39,6 +39,10 @@ test('owner sees price changes in the read-only audit log, filtered, with markup
   const priceForm = page.getByRole('button', { name: 'Set price' }).locator('xpath=..');
   await priceForm.locator('input[name="price"]').fill('42');
   await page.getByRole('button', { name: 'Set price' }).click();
+  // Wait for the write to finish: navigating away mid-request aborts it (the CI flake).
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Price history updated' }).first(),
+  ).toBeVisible();
 
   await page.goto('/more');
   await page.getByRole('link', { name: 'Audit log' }).click();
