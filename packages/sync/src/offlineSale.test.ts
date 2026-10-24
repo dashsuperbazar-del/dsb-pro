@@ -597,3 +597,129 @@ describe('salepricing (0065): typed prices, GST-extra and credit override on the
     ).rejects.toThrow(/new sale format/);
   });
 });
+
+describe('backlog (0070): free-text lines on the device', () => {
+  async function shopDb() {
+    const db = new DsbSyncDb(`free-text-${crypto.randomUUID()}`);
+    open.push(db);
+    await db.open();
+    return db;
+  }
+  const ctx = (role: 'owner' | 'manager' | 'cashier') => ({
+    deviceId: 'device',
+    role,
+    policy: {
+      allowCashierOfflineFinalization: true,
+      allowNegativeStock: false,
+      canViewCostPrices: true,
+    },
+    onlineInitiated: true,
+  });
+  const ftLine = (over: Record<string, unknown> = {}) => ({
+    itemId: '',
+    unitLevel: 1 as const,
+    qty: '2',
+    priceKind: 'retail' as const,
+    discountPaise: 100,
+    manualUnitPricePaise: 1000,
+    freeText: { name: ' Gift wrap ', taxRateBp: 500 },
+    ...over,
+  });
+  const input = (lines: unknown[], over: Record<string, unknown> = {}) =>
+    ({
+      shopId: 'shop',
+      businessDate: '2026-09-20',
+      discountPaise: 0,
+      extraChargesPaise: 0,
+      saleV2: true,
+      invoiceType: 'gst_extra',
+      clientId: `ft-${crypto.randomUUID()}`,
+      lines,
+      payments: [{ amountPaise: 2000, mode: 'cash' }],
+      ...over,
+    }) as never;
+
+  it('queues with no item and no stock, GST at the typed rate, and accepts an item-less server line', async () => {
+    const db = await shopDb();
+    const sale = await queueOfflineSale(db, input([ftLine()]), ctx('owner'));
+    // 2 x 10.00 - 1.00 = 19.00, 5% on top = 0.95 -> 19.95, rounded bill 20.00
+    expect(sale.lines[0]).toMatchObject({
+      itemId: '',
+      itemName: 'Gift wrap',
+      taxRateBp: 500,
+      taxPaise: 95,
+      lineTotalPaise: 1995,
+      priceSource: 'manual',
+    });
+    expect(sale.totalPaise).toBe(2000);
+    expect(await db.reservations.count()).toBe(0);
+    const out = (await db.outbox.toArray())[0].payload as { lines: Array<Record<string, unknown>> };
+    expect(out.lines[0]).toMatchObject({
+      itemId: '',
+      manualUnitPricePaise: 1000,
+      freeText: { name: 'Gift wrap', taxRateBp: 500 },
+    });
+    await completeOfflineSale(db, sale.clientId, {
+      saleId: 'sale-ft',
+      docNo: 'INV-000009',
+      clientId: sale.clientId,
+      intentFingerprint: sale.intentFingerprint!,
+      stock: [],
+      subtotalPaise: sale.subtotalPaise,
+      discountPaise: sale.discountPaise,
+      extraChargesPaise: 0,
+      totalPaise: sale.totalPaise,
+      roundOffPaise: sale.roundOffPaise,
+      lines: [
+        {
+          itemId: null,
+          unitLevel: 1,
+          qty: '2',
+          priceKind: 'retail',
+          unitPricePaise: 1000,
+          discountPaise: 100,
+          lineTotalPaise: 1995,
+          taxPaise: 95,
+          priceSource: 'manual',
+        },
+      ],
+      payments: [{ amountPaise: 2000, mode: 'cash' }],
+      invoiceType: 'gst_extra',
+      taxPaise: 95,
+    });
+    const done = await db.offlineSales.get(sale.clientId);
+    expect(done?.status).toBe('SYNCED');
+    expect(done?.reconciliationWarning).toBeNull();
+  });
+
+  it('refuses a cashier, an old-format sale, a missing price and a bad name, GST or item', async () => {
+    const db = await shopDb();
+    await expect(queueOfflineSale(db, input([ftLine()]), ctx('cashier'))).rejects.toThrow(
+      /owner or a manager/,
+    );
+    await expect(
+      queueOfflineSale(db, input([ftLine()], { saleV2: undefined }), ctx('owner')),
+    ).rejects.toThrow(/new sale format/);
+    await expect(
+      queueOfflineSale(db, input([ftLine({ manualUnitPricePaise: undefined })]), ctx('owner')),
+    ).rejects.toThrow(/price above zero/);
+    await expect(
+      queueOfflineSale(
+        db,
+        input([ftLine({ freeText: { name: '  ', taxRateBp: 0 } })]),
+        ctx('owner'),
+      ),
+    ).rejects.toThrow(/name/);
+    await expect(
+      queueOfflineSale(
+        db,
+        input([ftLine({ freeText: { name: 'X', taxRateBp: 10001 } })]),
+        ctx('owner'),
+      ),
+    ).rejects.toThrow(/GST/);
+    await expect(
+      queueOfflineSale(db, input([ftLine({ itemId: 'some-item' })]), ctx('owner')),
+    ).rejects.toThrow(/Invalid free-text/);
+    expect(await db.outbox.count()).toBe(0);
+  });
+});

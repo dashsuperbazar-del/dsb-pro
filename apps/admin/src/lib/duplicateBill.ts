@@ -60,9 +60,19 @@ export function duplicateMessage(m: DuplicateMatch): string {
   return `Possible duplicate of ${label} dated ${m.bill.businessDate}, ${rupees(m.bill.totalPaise)} (${why}). Post anyway?`;
 }
 
-/** Merges bill lists from several sources (server read, cached list), first source wins per id. */
+/**
+ * Merges bill lists from several sources (server read, cached list), first source wins per id, except that a
+ * bill any source has as VOID stays VOID: a bill only ever goes POSTED -> VOID, so a "posted" copy elsewhere is
+ * stale (voided on another device) and must not raise a warning.
+ */
 export function mergeKnownBills(...lists: KnownBill[][]): KnownBill[] {
   const seen = new Map<string, KnownBill>();
-  for (const list of lists) for (const b of list) if (!seen.has(b.id)) seen.set(b.id, b);
+  for (const list of lists)
+    for (const b of list) {
+      const prev = seen.get(b.id);
+      if (!prev) seen.set(b.id, b);
+      else if (b.status === 'VOID' && prev.status !== 'VOID')
+        seen.set(b.id, { ...prev, status: 'VOID' });
+    }
   return [...seen.values()];
 }

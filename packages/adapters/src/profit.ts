@@ -17,6 +17,8 @@ export type ProfitSummary = {
   unknownCostItemCount: number;
   estimatedCostItemCount: number;
 };
+/** Report label for the one row that gathers every free-text sale line (backlog 0070). */
+export const FREE_TEXT_REPORT_NAME = 'Items not in the list (free text)';
 export type ProfitItem = {
   itemId: string;
   name: string;
@@ -72,6 +74,11 @@ function requireReport(data: unknown): ProfitReport {
   for (const key of ['itemCount', 'unknownCostItemCount', 'estimatedCostItemCount'])
     if (typeof s[key] !== 'number') throw fail();
   for (const item of data.items) {
+    // backlog (0070): all free-text sale lines (no item) come back as one row with itemId null.
+    if (isRecord(item) && item.itemId === null) {
+      item.itemId = '';
+      item.name = FREE_TEXT_REPORT_NAME;
+    }
     if (!isRecord(item) || typeof item.itemId !== 'string' || typeof item.name !== 'string')
       throw fail();
     for (const key of [

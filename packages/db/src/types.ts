@@ -2221,8 +2221,9 @@ export type Database = {
           hsn_snapshot: string | null
           id: string
           is_big_unit: boolean
-          item_id: string
+          item_id: string | null
           item_name_snapshot: string
+          line_kind: string
           line_no: number
           line_total_paise: number
           list_price_snapshot_paise: number | null
@@ -2253,8 +2254,9 @@ export type Database = {
           hsn_snapshot?: string | null
           id?: string
           is_big_unit: boolean
-          item_id: string
+          item_id?: string | null
           item_name_snapshot: string
+          line_kind?: string
           line_no: number
           line_total_paise: number
           list_price_snapshot_paise?: number | null
@@ -2285,8 +2287,9 @@ export type Database = {
           hsn_snapshot?: string | null
           id?: string
           is_big_unit?: boolean
-          item_id?: string
+          item_id?: string | null
           item_name_snapshot?: string
+          line_kind?: string
           line_no?: number
           line_total_paise?: number
           list_price_snapshot_paise?: number | null
@@ -3395,6 +3398,20 @@ export type Database = {
       }
     }
     Views: {
+      audit_feed: {
+        Row: {
+          action: string | null
+          after: Json | null
+          before: Json | null
+          created_at: string | null
+          id: string | null
+          row_id: string | null
+          table_name: string | null
+          tenant_id: string | null
+          user_id: string | null
+        }
+        Relationships: []
+      }
       customer_balances: {
         Row: {
           balance_paise: number | null

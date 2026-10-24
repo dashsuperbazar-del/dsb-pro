@@ -17,6 +17,7 @@ import {
   pushSyncedReturn,
   pushSyncedReturnVoid,
   type Membership,
+  type SaleLineExtras,
   type SaleLineInput,
   type SalePaymentInput,
   type SyncPullTable,
@@ -94,6 +95,7 @@ import {
   type SyncIdentity,
   type SyncPullPayload,
   type SyncedSaleResult,
+  type FreeTextLine,
   PURCHASE_OUTBOX_TARGET,
   queueOfflinePurchase,
   listOfflinePurchaseRecords,
@@ -358,9 +360,7 @@ async function processOutbox(rt: Runtime) {
                 expectedTotalPaise: payload.expectedTotalPaise ?? -1,
               }
             : undefined,
-        lines: payload.lines as Array<
-          SaleLineInput & { expectedUnitPricePaise?: number; manualUnitPricePaise?: number }
-        >,
+        lines: payload.lines as Array<SaleLineInput & SaleLineExtras>,
         payments: payload.payments as SalePaymentInput[],
         notes: payload.notes,
       });
@@ -481,7 +481,7 @@ export async function finalizeSaleResilient(input: {
   discountPaise: number;
   extraChargesPaise: number;
   clientId: string;
-  lines: Array<SaleLineInput & { manualUnitPricePaise?: number }>;
+  lines: Array<SaleLineInput & { manualUnitPricePaise?: number; freeText?: FreeTextLine }>;
   payments: SalePaymentInput[];
   notes?: string;
   /** salepricing (0065): typed prices / invoice type / credit limit go through sp_sync_post_sale. */

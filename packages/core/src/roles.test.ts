@@ -9,8 +9,10 @@ describe('hasPerm', () => {
     expect(hasPerm('owner', 'VIEW_AUDIT_LOG')).toBe(true);
   });
 
-  it('manager only has MANAGE_DEVICES', () => {
+  it('manager only has MANAGE_DEVICES (the audit screen uses the narrow feed, not the raw log)', () => {
     expect(hasPerm('manager', 'MANAGE_DEVICES')).toBe(true);
+    expect(hasPerm('manager', 'VIEW_AUDIT_LOG')).toBe(false);
+    expect(hasPerm('manager', 'MANAGE_TENANT_USERS')).toBe(false);
     expect(hasPerm('manager', 'MANAGE_INVITES')).toBe(false);
   });
 

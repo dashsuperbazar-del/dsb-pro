@@ -61,6 +61,7 @@ const GROUP_ORDER = [
   'remarks',
   'remarksfix',
   'billcode',
+  'backlog',
 ];
 
 /**

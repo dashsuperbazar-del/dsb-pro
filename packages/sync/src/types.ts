@@ -134,7 +134,15 @@ export type OfflineSaleLineInput = Readonly<{
   expectedUnitPricePaise?: number;
   /** salepricing (0065): a price typed at the counter by an owner/manager (sale v2 only). */
   manualUnitPricePaise?: number;
+  /**
+   * backlog (0070): a free-text line (not in the item list): typed name and GST %, typed price, level 1, retail,
+   * no stock. Sale v2 only, owner/manager only. itemId is '' for such a line.
+   */
+  freeText?: FreeTextLine;
 }>;
+export type FreeTextLine = Readonly<{ name: string; taxRateBp: number }>;
+/** The itemId a free-text line carries on the device (the server stores no item). */
+export const FREE_TEXT_ITEM_ID = '';
 export type SaleInvoiceTypeWire = 'gst_included' | 'gst_extra';
 export type OfflineSalePaymentInput = Readonly<{
   amountPaise: number;
@@ -256,7 +264,8 @@ export type SyncedSaleResult = Readonly<{
   roundOffPaise?: number;
   lines: ReadonlyArray<
     Readonly<{
-      itemId: string;
+      /** null for a free-text line (backlog 0070). */
+      itemId: string | null;
       unitLevel: 1 | 2 | 3;
       qty: string;
       priceKind: 'retail' | 'wholesale';

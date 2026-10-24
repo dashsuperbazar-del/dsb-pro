@@ -41,7 +41,7 @@ describe('audit log adapter', () => {
     const items = {
       select: () => ({ in: () => Promise.resolve({ data: [{ id: 'i1', name: 'Sugar' }] }) }),
     };
-    const from = vi.fn((t: string) => (t === 'audit_log' ? audit.q : items));
+    const from = vi.fn((t: string) => (t === 'audit_feed' ? audit.q : items));
     __setSupabaseClientForTest({ from } as never);
     const out = await listAuditEvents({
       type: 'price_change',
@@ -87,7 +87,7 @@ describe('audit log adapter', () => {
       }),
     };
     __setSupabaseClientForTest({
-      from: (t: string) => (t === 'audit_log' ? audit.q : bills),
+      from: (t: string) => (t === 'audit_feed' ? audit.q : bills),
     } as never);
     const out = await listAuditEvents({ type: 'purchase_void' });
     expect(asked).toEqual([['b-edited', 'b-plain']]);
@@ -112,11 +112,84 @@ describe('audit log adapter', () => {
     });
     const bills = { select: () => ({ in: () => Promise.reject(new Error('offline')) }) };
     __setSupabaseClientForTest({
-      from: (t: string) => (t === 'audit_log' ? audit.q : bills),
+      from: (t: string) => (t === 'audit_feed' ? audit.q : bills),
     } as never);
     const out = await listAuditEvents();
     expect(out.rows).toHaveLength(1);
     expect(out.rows[0]!.voidByEdit).toBe(false);
+  });
+
+  it('reads the feed; before 0070 is live it falls back to audit_log without remark history', async () => {
+    const missing = chain({
+      data: null,
+      error: { code: 'PGRST205', message: "Could not find the table 'public.audit_feed'" },
+    });
+    const plain = chain({ data: [], error: null });
+    const from = vi.fn((t: string) => (t === 'audit_feed' ? missing.q : plain.q));
+    __setSupabaseClientForTest({ from } as never);
+    const out = await listAuditEvents();
+    expect(out.rows).toEqual([]);
+    expect(from.mock.calls.map((c) => c[0])).toEqual(['audit_feed', 'audit_log']);
+    const filter = String(plain.calls.find((c) => c[0] === 'or')![1][0]);
+    expect(filter).not.toContain('document_remark_events');
+    expect(filter).toContain('price_source.eq.manual');
+    // Remark history alone has nothing to show before the feed exists (no error, no rows).
+    __setSupabaseClientForTest({
+      from: vi.fn(
+        () => chain({ data: null, error: { code: '42P01', message: 'relation does not exist' } }).q,
+      ),
+    } as never);
+    expect(await listAuditEvents({ type: 'remark' })).toEqual({ hasMore: false, rows: [] });
+  });
+
+  it('does not fall back on a permission error: it is shown, never a silently smaller log', async () => {
+    const denied = chain({
+      data: null,
+      error: { code: '42501', message: 'permission denied for view audit_feed' },
+    });
+    __setSupabaseClientForTest({ from: () => denied.q } as never);
+    await expect(listAuditEvents()).rejects.toMatchObject({ code: '42501' });
+  });
+
+  it('labels typed-price lines and remarks with their invoice or bill', async () => {
+    const feed = chain({
+      data: [
+        {
+          id: 'e1',
+          created_at: '2026-10-22T10:00:00Z',
+          user_id: 'u1',
+          table_name: 'sale_invoice_items',
+          row_id: 'l1',
+          action: 'INSERT',
+          before: null,
+          after: { sale_invoice_id: 's1', price_source: 'manual', line_kind: 'free_text' },
+        },
+        {
+          id: 'e2',
+          created_at: '2026-10-22T10:00:00Z',
+          user_id: 'u1',
+          table_name: 'document_remark_events',
+          row_id: 'm1',
+          action: 'INSERT',
+          before: null,
+          after: { purchase_bill_id: 'b1', remark_action: 'ADD', body: 'x' },
+        },
+      ],
+      error: null,
+    });
+    const lookup = (rows: unknown[]) => ({
+      select: () => ({ in: () => Promise.resolve({ data: rows }) }),
+    });
+    __setSupabaseClientForTest({
+      from: (t: string) =>
+        t === 'audit_feed'
+          ? feed.q
+          : t === 'sale_invoices'
+            ? lookup([{ id: 's1', doc_no: 'INV-000007' }])
+            : lookup([{ id: 'b1', bill_no: 'A-12', replaced_by_id: null }]),
+    } as never);
+    const out = await listAuditEvents();
+    expect(out.rows[0]!.docLabels).toEqual({ s1: 'sale INV-000007', b1: 'purchase bill A-12' });
   });
 
   it('throws a read error instead of showing an empty log', async () => {

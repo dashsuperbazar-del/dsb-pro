@@ -94,7 +94,7 @@ function requireSale(value: unknown): SyncSaleResultWire {
     const line = object(value);
     return Boolean(
       line &&
-      typeof line.itemId === 'string' &&
+      (typeof line.itemId === 'string' || line.itemId === null) &&
       (line.unitLevel === 1 || line.unitLevel === 2 || line.unitLevel === 3) &&
       typeof line.qty === 'string' &&
       (line.priceKind === 'retail' || line.priceKind === 'wholesale') &&
@@ -197,6 +197,12 @@ export async function ackSync(input: {
   });
   if (error) throw new Error(friendly(error));
 }
+/** Extra fields a synced sale line may carry (0065 typed price, 0070 free-text line). */
+export type SaleLineExtras = {
+  expectedUnitPricePaise?: number;
+  manualUnitPricePaise?: number;
+  freeText?: { name: string; taxRateBp: number };
+};
 export async function pushSyncedSale(input: {
   deviceId: string;
   shopId: string;
@@ -205,7 +211,7 @@ export async function pushSyncedSale(input: {
   discountPaise: number;
   extraChargesPaise: number;
   clientId: string;
-  lines: Array<SaleLineInput & { expectedUnitPricePaise?: number; manualUnitPricePaise?: number }>;
+  lines: Array<SaleLineInput & SaleLineExtras>;
   payments: SalePaymentInput[];
   notes?: string;
   intentFingerprint: string;
@@ -219,7 +225,14 @@ export async function pushSyncedSale(input: {
   };
 }): Promise<SyncSaleResultWire> {
   const lines = input.lines.map((l) => ({
-    item_id: l.itemId,
+    // backlog (0070): a free-text line sends its name and GST % and no item (sale v2 only; the server refuses
+    // one on any other path).
+    ...(l.freeText
+      ? {
+          free_text_name: l.freeText.name,
+          free_text_tax_rate_bp: l.freeText.taxRateBp,
+        }
+      : { item_id: l.itemId }),
     unit_level: l.unitLevel,
     qty: l.qty,
     price_kind: l.priceKind,

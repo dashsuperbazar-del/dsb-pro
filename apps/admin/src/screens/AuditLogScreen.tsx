@@ -15,14 +15,14 @@ import { useSession } from '../lib/useSession';
 import { appRoute } from '../lib/paths';
 import { auditType, describeAudit } from '../lib/auditLog';
 
-// Read-only list of the events in audit_log that matter for money and access. Only the owner holds
-// VIEW_AUDIT_LOG, so RLS (not this screen) is what keeps everyone else out.
+// Read-only list of the events in audit_log (and remark history) that matter for money and access. Only the
+// owner and the manager hold VIEW_AUDIT_LOG (0070), so RLS (not this screen) is what keeps everyone else out.
 export function AuditLogScreen() {
   const session = useSession();
   if (session.status === 'loading') return <p>Loading…</p>;
   if (session.status !== 'active') return <p>Sign in to view the audit log.</p>;
-  if (session.membership.role !== 'owner')
-    return <p role="alert">Only the owner can view the audit log.</p>;
+  if (session.membership.role !== 'owner' && session.membership.role !== 'manager')
+    return <p role="alert">Only the owner or a manager can view the audit log.</p>;
   return <AuditList />;
 }
 
