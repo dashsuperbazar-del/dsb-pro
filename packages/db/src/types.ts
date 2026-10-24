@@ -3814,6 +3814,15 @@ export type Database = {
         Args: { p_bill: Json; p_client_id: string; p_original_id: string }
         Returns: Json
       }
+      edit_purchase_bill_if_unchanged: {
+        Args: {
+          p_base_version: string
+          p_bill: Json
+          p_client_id: string
+          p_original_id: string
+        }
+        Returns: Json
+      }
       find_bills_by_code: {
         Args: { p_query: string; p_shop_id: string }
         Returns: {
@@ -3939,6 +3948,10 @@ export type Database = {
         Args: { p_from: string; p_shop_id: string; p_to: string }
         Returns: Json
       }
+      get_purchase_bill_version: {
+        Args: { p_bill_id: string }
+        Returns: string
+      }
       get_purchase_register: {
         Args: { p_from: string; p_shop_id: string; p_to: string }
         Returns: {
@@ -4051,6 +4064,10 @@ export type Database = {
       o2_payment_assigned: {
         Args: { p_payment: string; p_tenant: string }
         Returns: number
+      }
+      obc_bill_version: {
+        Args: { p_bill: string; p_tenant: string }
+        Returns: string
       }
       phase3_assert_shop: { Args: { p_shop_id: string }; Returns: string }
       phase4_current_price: {
@@ -4513,6 +4530,15 @@ export type Database = {
       void_purchase: {
         Args: { p_client_id: string; p_purchase_id: string }
         Returns: string
+      }
+      void_purchase_if_unchanged: {
+        Args: {
+          p_base_version: string
+          p_client_id: string
+          p_purchase_id: string
+          p_reason: string
+        }
+        Returns: Json
       }
       void_return: {
         Args: {

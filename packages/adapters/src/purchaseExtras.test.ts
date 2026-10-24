@@ -305,6 +305,19 @@ describe('edit_purchase_bill outcome (0066)', () => {
       ).resolves.toMatchObject({ kind: 'unknown' });
     }
   });
+  it('offline edit (0072) sends the base version to the guarded RPC; a stale refusal is rejected', async () => {
+    const V = '0123456789abcdef0123456789abcdef';
+    rpc
+      .mockResolvedValueOnce({
+        data: null,
+        error: { code: 'P0001', message: 'DSB_BILL_CHANGED: changed' },
+      })
+      .mockResolvedValueOnce({ data: { state: 'NOT_FOUND' }, error: null });
+    const out = await editPurchaseBillOutcome({ ...request(), originalId: ORIG }, true, V);
+    expect(rpc.mock.calls[0]![0]).toBe('edit_purchase_bill_if_unchanged');
+    expect(rpc.mock.calls[0]![1]).toMatchObject({ p_base_version: V, p_original_id: ORIG });
+    expect(out).toMatchObject({ kind: 'rejected', code: 'DSB_BILL_CHANGED' });
+  });
   it('refuses without sending when the original is missing', async () => {
     await expect(editPurchaseBillOutcome({ ...request(), originalId: '' })).resolves.toMatchObject({
       kind: 'rejected',

@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'preact/hooks';
 import {
   closeRejectedPurchase,
+  closeRejectedBillChange,
+  listOfflineBillChanges,
   listOfflineItems,
   listOfflinePurchases,
   runSyncNow,
+  type OfflineBillChangeRecord,
   type OfflineItemRecord,
   type OfflinePurchaseRecord,
 } from '../lib/offlineSync';
+import { appRoute } from '../lib/paths';
 import { savePurchaseDraft, type PurchaseDraft } from '../lib/purchaseDraft';
 import type { KnownBill } from '../lib/duplicateBill';
 import { rupees } from '../lib/money';
@@ -67,12 +71,14 @@ export function OfflinePurchasesPanel({
 }) {
   const [rows, setRows] = useState<OfflinePurchaseRecord[]>([]);
   const [itemRows, setItemRows] = useState<OfflineItemRecord[]>([]);
+  const [changeRows, setChangeRows] = useState<OfflineBillChangeRecord[]>([]);
   const [note, setNote] = useState('');
   async function load() {
     if (!shopId) return;
     try {
       setRows(await listOfflinePurchases(shopId));
       setItemRows(await listOfflineItems());
+      setChangeRows(await listOfflineBillChanges(shopId));
     } catch {
       // The device store is not ready yet: the next sync event reloads.
     }
@@ -103,7 +109,14 @@ export function OfflinePurchasesPanel({
       (r.status === 'REJECTED' && now - r.createdAt < 7 * DAY_MS) ||
       (r.status === 'SYNCED' && r.syncedAt !== null && now - r.syncedAt < DAY_MS),
   );
-  if (!shown.length && !items.length && !note) return null;
+  // Offline bill edits/voids: waiting, refused (kept until dismissed, with the full form), synced today.
+  const changes = changeRows.filter(
+    (r) =>
+      r.status === 'QUEUED' ||
+      (r.status === 'REJECTED' && r.closedAt === null) ||
+      (r.status === 'SYNCED' && r.syncedAt !== null && now - r.syncedAt < DAY_MS),
+  );
+  if (!shown.length && !items.length && !changes.length && !note) return null;
   const queued = shown.filter((r) => r.status === 'QUEUED').length;
   async function correct(r: OfflinePurchaseRecord) {
     setNote('');
@@ -150,6 +163,47 @@ export function OfflinePurchasesPanel({
         </p>
       )}
       {note && <p role="status">{note}</p>}
+      {changes.length > 0 && (
+        <ul aria-label="Bill changes saved on this device">
+          {changes.map((r) => (
+            <li key={r.clientId} data-testid="offline-bill-change" data-status={r.status}>
+              <strong>
+                {r.status === 'QUEUED'
+                  ? `${r.kind === 'edit' ? 'Edit' : 'Void'} saved on this device — will sync`
+                  : r.status === 'SYNCED'
+                    ? `${r.kind === 'edit' ? 'Edit' : 'Void'} synced`
+                    : `${r.kind === 'edit' ? 'Edit' : 'Void'} refused by the server — bill unchanged`}
+              </strong>{' '}
+              · bill {r.billLabel}
+              <BillChangeForm record={r} />
+              {r.status === 'REJECTED' && (
+                <>
+                  <p role="alert">{r.rejectionReason}</p>
+                  <div class="context-actions">
+                    {r.kind === 'edit' && (
+                      <a href={appRoute.purchases + '?new=1&edit=' + encodeURIComponent(r.billId)}>
+                        Redo this edit
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void closeRejectedBillChange(r.clientId)
+                          .then(load)
+                          .catch((e: unknown) =>
+                            setNote(e instanceof Error ? e.message : String(e)),
+                          )
+                      }
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
       {items.length > 0 && (
         <ul aria-label="New items saved on this device">
           {items.map((r) => (
@@ -216,5 +270,57 @@ export function OfflinePurchasesPanel({
         ))}
       </ul>
     </section>
+  );
+}
+
+type ChangeForm = {
+  reason?: string;
+  supplierName?: string | null;
+  billNo?: string | null;
+  businessDate?: string;
+  paymentType?: string;
+  notes?: string | null;
+  discountPaise?: number;
+  charges?: { label: string; amountPaise: number }[];
+  lines?: {
+    itemName: string;
+    qty: string;
+    unitName: string;
+    unitPricePaise: number;
+    discountBp?: number;
+    gstBp?: number | null;
+  }[];
+};
+/** The full form of a queued/refused bill change, so a refused edit can be redone exactly. */
+function BillChangeForm({ record }: { record: OfflineBillChangeRecord }) {
+  const f = (record.form ?? {}) as ChangeForm;
+  if (record.kind === 'void')
+    return (
+      <>
+        <br />
+        <small class="muted">Reason: {f.reason ?? ''}</small>
+      </>
+    );
+  return (
+    <div class="muted" data-testid="offline-bill-change-form">
+      <small>
+        {f.supplierName ?? 'No supplier'}
+        {f.billNo ? ` · bill ${f.billNo}` : ''} · {f.businessDate ?? ''} · {f.paymentType ?? ''}
+        {f.discountPaise ? ` · discount ${rupees(f.discountPaise)}` : ''}
+        {(f.charges ?? []).map((c) => ` · ${c.label} ${rupees(c.amountPaise)}`).join('')}
+      </small>
+      <ul>
+        {(f.lines ?? []).map((l, i) => (
+          <li key={i}>
+            <small>
+              {l.qty} {l.unitName} {l.itemName} @ {rupees(l.unitPricePaise)}
+              {l.discountBp ? ` · ${l.discountBp / 100}% off` : ''}
+              {l.gstBp !== null && l.gstBp !== undefined ? ` · GST ${l.gstBp / 100}%` : ''}
+            </small>
+          </li>
+        ))}
+      </ul>
+      {f.notes && <small>Notes: {f.notes}</small>}
+    </div>
   );
 }

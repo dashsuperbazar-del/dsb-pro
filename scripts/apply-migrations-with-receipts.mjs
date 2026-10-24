@@ -63,6 +63,7 @@ const GROUP_ORDER = [
   'billcode',
   'backlog',
   'offlineitems',
+  'offlinebillchange',
 ];
 
 /**

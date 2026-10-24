@@ -16,6 +16,7 @@ const api = vi.hoisted(() => ({
   getPurchaseExtras: vi.fn().mockRejectedValue(new Error('not mocked')),
   voidPaidPurchaseOutcome: vi.fn(),
   voidPurchaseOutcome: vi.fn(),
+  getPurchaseBillVersion: vi.fn(async () => null),
   VOID_REASON_MAX: 200,
   purchaseVoidRequestId: (id: string, tag: { reason?: string; correctedBy?: string }) =>
     tag.reason !== undefined ? `purchase.void.v1:${id}:reason:${tag.reason.trim()}` : 'unused',

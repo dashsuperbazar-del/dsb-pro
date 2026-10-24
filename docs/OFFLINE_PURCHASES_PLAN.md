@@ -45,7 +45,10 @@ reads that answer, which is all an outbox needs.
    the same units is matched (queued, never-sent bills re-pointed in one transaction); any other same name is
    REJECTED and every queued bill using the item is refused locally (visible, "Correct this bill") — it can
    never post against a wrong or missing item. Queued items never enter the synced catalog or stock.
-7. **Bill edit / void / supplier payment posting twice or out of order**. Guard: online only.
+7. **Bill edit / void posting twice, out of order, or over a newer change** (24 Oct, mig 0072). Guard: the
+   request carries the bill's version token read with the bill; the server replays an exact same-id
+   request first, then refuses any changed bill (DSB_BILL_CHANGED) and a void with a payment assigned;
+   one queued change per bill; nothing local changes until SYNCED. Supplier payments: online only.
 8. **Corrected bill posted twice**. Guard: a correction of a plain refusal keeps the same client id (nothing
    was committed under it); after `DSB_PAYLOAD_MISMATCH` (id belongs to another bill) it gets a new id and
    drops the photos (their paths belong to the old id). The duplicate-bill warning runs again on post.
@@ -56,7 +59,8 @@ reads that answer, which is all an outbox needs.
   request), with existing items, named charges, discounts/GST, notes, bill photos.
 - New items offline (owner/manager, 24 Oct): see risk 6. A bill that uses a still-queued item is saved on
   the device even when online (it must sync after its item).
-- Online only (clear message): bill edit, void, supplier payments, sale-price box
+- Offline bill edit / credit-bill void (owner/manager, opened while online): see risk 7.
+- Online only (clear message): paid-bill void, supplier payments, sale-price box
   (writes happen after the bill confirms; kept online), retrying an unconfirmed online post.
 - Offline saving is for owner/manager (the roles that post purchases and keep drafts/photos).
 - Queue: the same outbox (`target post_purchase_v2`) ordered with offline sales; new Dexie table

@@ -1187,8 +1187,30 @@ jobs:
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "grant execute on function create_item_v2(uuid,text,jsonb) to anon"
           if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Anonymous item create accepted'; exit 1; fi
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "revoke execute on function create_item_v2(uuid,text,jsonb) from anon"
-          grep -Fx 'needs_upgrade=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          grep -Fx 'needs_offlineitems=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
           echo 'DISPOSABLE OFFLINE ITEMS UPGRADE: PASS'
+      - name: Prove offlinebillchange upgrade (Offline bill edit and void; apply, no-op, tamper/partial refusal)
+        env:
+          PROOF_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          grep -Fx 'needs_offlinebillchange=true' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" offlinebillchange
+          grep -Fx 'needs_offlinebillchange=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          grep -Fx 'needs_offlineitems=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" offlinebillchange
+          expected_checksum=$(sha256sum supabase/migrations/0072_offline_bill_changes.sql | cut -d' ' -f1)
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update app_migration_receipts set checksum_sha256=repeat('0',64) where version='0072'"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo '0072 tamper accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update app_migration_receipts set checksum_sha256='$expected_checksum' where version='0072'"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "grant execute on function obc_bill_version(uuid,uuid) to authenticated"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Exposed bill version body accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "revoke execute on function obc_bill_version(uuid,uuid) from authenticated"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "grant execute on function void_purchase_if_unchanged(uuid,text,text,text) to anon"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Anonymous offline void accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "revoke execute on function void_purchase_if_unchanged(uuid,text,text,text) from anon"
+          grep -Fx 'needs_upgrade=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          echo 'DISPOSABLE OFFLINE BILL CHANGES UPGRADE: PASS'
       - name: Stop and erase the disposable target
         if: always()
         run: supabase stop --workdir "$PROOF_ROOT" --no-backup
@@ -1928,6 +1950,11 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" offlineitems
+      - name: Apply offlinebillchange (Offline bill edit and void) atomically
+        if: steps.preflight.outputs.needs_offlinebillchange == 'true'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" offlinebillchange
       - name: Verify live Batch B contract
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}

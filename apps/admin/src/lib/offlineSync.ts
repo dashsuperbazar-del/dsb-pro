@@ -26,10 +26,15 @@ import {
   uploadBillDocument,
   createItemV2Outcome,
   plainItemRefusal,
+  editPurchaseBillOutcome,
+  plainEditRefusal,
+  voidPurchaseIfUnchangedOutcome,
+  plainOfflineVoidRefusal,
 } from '@dsb-pro/adapters';
 import { readLocalDocument, removeLocalDocument } from './billDocumentStore';
 import { syncQueuedPurchase } from './offlinePurchaseSync';
 import { syncQueuedItem } from './offlineItemSync';
+import { syncQueuedBillChange } from './offlineBillChangeSync';
 import {
   applySyncPull,
   completeOfflineSale,
@@ -110,6 +115,12 @@ import {
   listOfflineItemRecords,
   type OfflineItemFields,
   type OfflineItemRecord,
+  BILL_CHANGE_OUTBOX_TARGET,
+  queueOfflineBillChange,
+  listOfflineBillChangeRecords,
+  closeRejectedOfflineBillChange,
+  type OfflineBillChangeRecord,
+  type QueueOfflineBillChangeInput,
 } from '@dsb-pro/sync';
 
 type Runtime = {
@@ -306,6 +317,37 @@ async function processOutbox(rt: Runtime) {
           throw error;
         }
       }
+      continue;
+    }
+    if (sending.kind === 'financial-rpc' && sending.target === BILL_CHANGE_OUTBOX_TARGET) {
+      // Offline bill edit/void: applied only if the bill is unchanged since the device read it.
+      try {
+        const done = await syncQueuedBillChange(rt.db, sending, {
+          edit: (request, baseVersion) => editPurchaseBillOutcome(request, true, baseVersion),
+          void: voidPurchaseIfUnchangedOutcome,
+          plainEdit: plainEditRefusal,
+          plainVoid: plainOfflineVoidRefusal,
+        });
+        if (done.kind === 'rejected')
+          void recordServerSyncConflict({
+            deviceId: rt.identity.deviceId,
+            opClientId: sending.clientId,
+            kind: 'financial-rejection',
+            target: sending.target,
+            reason: done.reason,
+            payload: sending.payload,
+            serverRef: null,
+            clientId: crypto.randomUUID(),
+          }).catch(() => undefined);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await rt.db.outbox.put(
+          markOutboxRetry(sending, message, Date.now() + retryDelayMs(sending.attempts + 1)),
+        );
+        throw error;
+      }
+      if (typeof window !== 'undefined')
+        window.dispatchEvent(new CustomEvent('dsb-offline-purchases'));
       continue;
     }
     if (sending.kind === 'financial-rpc' && sending.target === ITEM_OUTBOX_TARGET) {
@@ -1023,4 +1065,24 @@ export async function listOfflineItems(): Promise<OfflineItemRecord[]> {
   const rt = runtime;
   if (!rt) return [];
   return listOfflineItemRecords(rt.db, rt.identity.tenantId);
+}
+
+// Offline bill edit/void (mig 0072): one queued change per bill, applied only if the bill is unchanged.
+export type { OfflineBillChangeRecord, QueueOfflineBillChangeInput };
+export async function queueBillChangeOffline(
+  input: QueueOfflineBillChangeInput,
+): Promise<OfflineBillChangeRecord> {
+  const record = await queueOfflineBillChange(requireRuntime().db, input);
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('dsb-offline-purchases'));
+  void runSyncNow().catch(() => undefined);
+  return record;
+}
+export async function listOfflineBillChanges(shopId: string): Promise<OfflineBillChangeRecord[]> {
+  const rt = runtime;
+  if (!rt) return [];
+  return listOfflineBillChangeRecords(rt.db, shopId);
+}
+export async function closeRejectedBillChange(clientId: string): Promise<void> {
+  await closeRejectedOfflineBillChange(requireRuntime().db, clientId);
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('dsb-offline-purchases'));
 }
