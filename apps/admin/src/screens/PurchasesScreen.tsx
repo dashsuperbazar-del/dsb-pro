@@ -292,9 +292,20 @@ export function PurchasesScreen({ url }: { url?: string }) {
   useEffect(() => {
     if (shop && billParam) void open(billParam);
   }, [shop, billParam]);
+  // A bill tapped in the saved list before the shop is known opens as soon as it is (never dropped).
+  const pendingOpen = useRef<string | null>(null);
+  useEffect(() => {
+    const id = pendingOpen.current;
+    if (shop && id) {
+      pendingOpen.current = null;
+      void open(id);
+    }
+  }, [shop]);
   async function open(id: string, fresh = false) {
     if (!shop) {
-      setError('Still loading this shop. Try again in a moment.');
+      pendingOpen.current = id;
+      setOpenRow(rows.find((r) => r.id === id) ?? null);
+      setDetailLoading(true);
       return;
     }
     const token = ++generation.current;

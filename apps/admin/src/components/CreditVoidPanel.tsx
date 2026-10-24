@@ -92,13 +92,22 @@ export function CreditVoidPanel({
   );
   // The bill's version, read while online, is what an offline void is checked against (mig 0072).
   const [version, setVersion] = useState<string | null>(null);
+  const [versionState, setVersionState] = useState<'loading' | 'ready' | 'unavailable'>(
+    'unavailable',
+  );
   const [queuedOffline, setQueuedOffline] = useState(false);
   useEffect(() => {
     let live = true;
     setVersion(null);
     setQueuedOffline(false);
-    if (offlineCapable && (typeof navigator === 'undefined' || navigator.onLine !== false))
-      void getPurchaseBillVersion(billId).then((v) => live && setVersion(v));
+    if (offlineCapable && (typeof navigator === 'undefined' || navigator.onLine !== false)) {
+      setVersionState('loading');
+      void getPurchaseBillVersion(billId).then((v) => {
+        if (!live) return;
+        setVersion(v);
+        setVersionState(v ? 'ready' : 'unavailable');
+      });
+    } else setVersionState('unavailable');
     return () => {
       live = false;
     };
@@ -239,6 +248,15 @@ export function CreditVoidPanel({
           </button>
           <small class="muted">Reverses this bill's stock and the supplier balance.</small>
         </>
+      )}
+      {offlineCapable && !pending && !queuedOffline && (
+        <small class="muted" data-testid="void-offline-ready" data-state={versionState}>
+          {versionState === 'loading'
+            ? 'Reading the bill version (needed to void it offline)…'
+            : versionState === 'ready'
+              ? 'Can be voided offline too: the void is applied only if the bill is unchanged.'
+              : 'Open this bill while online to be able to void it offline.'}
+        </small>
       )}
       {note && <p role="status">{note}</p>}
     </section>
