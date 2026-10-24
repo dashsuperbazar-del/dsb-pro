@@ -1,5 +1,6 @@
 import { getMeta, setMeta, type DsbSyncDb } from './db';
 import { PURCHASE_OUTBOX_TARGET, rejectOfflinePurchase } from './offlinePurchase';
+import { BILL_CHANGE_OUTBOX_TARGET, rejectOfflineBillChange } from './offlineBillChange';
 import type { LocalSyncConflict, OutboxEntry } from './types';
 
 // Offline new items (owner/manager). The device generates the item id; the item create goes into the SAME
@@ -138,6 +139,16 @@ async function queuedPurchasesUsing(db: DsbSyncDb, itemId: string) {
   );
 }
 
+/** Queued offline bill EDITS whose corrected bill uses this item (payload.request.lines). */
+async function queuedEditsUsing(db: DsbSyncDb, itemId: string) {
+  return (await db.outbox.where('target').equals(BILL_CHANGE_OUTBOX_TARGET).toArray()).filter(
+    (row) =>
+      linesOf((row.payload as { request?: unknown } | null)?.request).some(
+        (l) => l.itemId === itemId,
+      ),
+  );
+}
+
 /** The server confirmed the item (created, replayed or matched). Idempotent. */
 export async function completeOfflineItem(
   db: DsbSyncDb,
@@ -145,7 +156,8 @@ export async function completeOfflineItem(
   result: { itemId: string; mapped: boolean },
   now = Date.now(),
 ): Promise<OfflineItemRecord> {
-  return db.transaction('rw', [db.outbox, db.offlineItems, db.offlinePurchases], async () => {
+  const tables = [db.outbox, db.offlineItems, db.offlinePurchases, db.offlineBillChanges];
+  return db.transaction('rw', tables, async () => {
     const record = await db.offlineItems.get(clientId);
     if (!record) throw new Error('Offline item record is missing.');
     if (record.status === 'SYNCED') {
@@ -175,6 +187,21 @@ export async function completeOfflineItem(
               l.itemId === record.itemId ? { ...l, itemId: result.itemId } : l,
             ),
           });
+      }
+      // Never-sent queued bill edits that use the device item: their corrected bill names the server item.
+      for (const row of await queuedEditsUsing(db, record.itemId)) {
+        if (row.attempts > 0 || row.state !== 'pending') continue;
+        const payload = row.payload as { request: Record<string, unknown> };
+        const request = {
+          ...payload.request,
+          lines: linesOf(payload.request).map((l) =>
+            l.itemId === record.itemId ? { ...l, itemId: result.itemId } : l,
+          ),
+        };
+        await db.outbox.put({ ...row, payload: { ...payload, request } });
+        const change = await db.offlineBillChanges.get(row.clientId);
+        if (change && change.status === 'QUEUED')
+          await db.offlineBillChanges.put({ ...change, request });
       }
     }
     const next: OfflineItemRecord = {
@@ -254,6 +281,16 @@ export async function holdBillsOfRejectedItem(
   const held: string[] = [];
   for (const row of await queuedPurchasesUsing(db, record.itemId)) {
     await rejectOfflinePurchase(
+      db,
+      row.clientId,
+      ITEM_REJECTED_CODE,
+      itemRejectedReason(record.fields.name, record.rejectionReason ?? 'refused'),
+      now,
+    );
+    held.push(row.clientId);
+  }
+  for (const row of await queuedEditsUsing(db, record.itemId)) {
+    await rejectOfflineBillChange(
       db,
       row.clientId,
       ITEM_REJECTED_CODE,

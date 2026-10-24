@@ -1,5 +1,5 @@
 // Bundle ceiling for apps/admin (plan §12: "admin bundle < 250KB gz"; raised to 260 KiB on 24 Oct 2026 for
-// offline items + offline bill edit/void, decision recorded in docs/STATE.md, to be ratified by the user).
+// offline items + offline bill edit/void, decision recorded in docs/STATE.md, ratified by builder lead 24 Oct).
 //
 // The shop runs on throttled mobile data, so this is a real constraint rather
 // than hygiene. Measured as the gzipped total of every emitted JS and CSS

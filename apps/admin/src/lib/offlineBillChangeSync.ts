@@ -1,4 +1,9 @@
 import {
+  ITEM_REJECTED_CODE,
+  ITEM_REMAPPED_CODE,
+  itemRejectedReason,
+  itemRemappedReason,
+  purchaseItemGate,
   completeOfflineBillChange,
   rejectOfflineBillChange,
   type DsbSyncDb,
@@ -51,6 +56,20 @@ export async function syncQueuedBillChange(
     const request = p.request as unknown as PurchaseEditRequest;
     if (request.clientId !== record.clientId || request.originalId !== record.billId)
       throw new Error('Queued bill edit does not match its record.');
+    // A device-created item on the corrected bill must be confirmed first; a refused or matched-away
+    // device id is never sent (the edit is refused on the device, visible, nothing changed).
+    const gate = await purchaseItemGate(db, request);
+    if (gate.kind === 'wait')
+      throw new Error(`Waiting for the new item "${gate.name}" to sync before this edit.`);
+    if (gate.kind !== 'ok') {
+      const name = gate.record.fields.name;
+      const [code, reason] =
+        gate.kind === 'rejected'
+          ? [ITEM_REJECTED_CODE, itemRejectedReason(name, gate.record.rejectionReason ?? 'refused')]
+          : [ITEM_REMAPPED_CODE, itemRemappedReason(name)];
+      await rejectOfflineBillChange(db, record.clientId, code, reason);
+      return { kind: 'rejected', reason };
+    }
     const outcome = await deps.edit(request, p.baseVersion);
     if (outcome.kind === 'unknown') throw new Error(outcome.message);
     if (outcome.kind === 'rejected') {

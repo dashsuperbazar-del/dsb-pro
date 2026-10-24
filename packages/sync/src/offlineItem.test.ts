@@ -12,6 +12,7 @@ import {
   rejectOfflineItem,
 } from './offlineItem';
 import { PURCHASE_OUTBOX_TARGET, queueOfflinePurchase } from './offlinePurchase';
+import { queueOfflineBillChange } from './offlineBillChange';
 
 const open: DsbSyncDb[] = [];
 afterEach(async () => {
@@ -159,5 +160,53 @@ describe('offline new items', () => {
     await completeOfflineItem(db, REQ, { itemId: SERVER, mapped: true });
     expect((await purchaseItemGate(db, bill().request)).kind).toBe('remapped');
     expect(await purchaseItemGate(db, bill(SERVER).request)).toEqual({ kind: 'ok' });
+  });
+
+  describe('queued bill edits that use a device item', () => {
+    const EDIT = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+    const ORIG = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+    const queueEdit = (db: DsbSyncDb) =>
+      queueOfflineBillChange(db, {
+        clientId: EDIT,
+        shopId: 'shop',
+        kind: 'edit',
+        billId: ORIG,
+        billLabel: 'B-1',
+        baseVersion: '0123456789abcdef0123456789abcdef',
+        request: {
+          shopId: 'shop',
+          clientId: EDIT,
+          originalId: ORIG,
+          lines: [{ itemId: ITEM, qty: '1' }],
+        },
+        form: {},
+      });
+    const editLines = async (db: DsbSyncDb) => {
+      const row = await db.outbox.where('clientId').equals(EDIT).first();
+      return (row!.payload as { request: { lines: { itemId: string }[] } }).request.lines;
+    };
+
+    it('a match re-points the never-sent edit (outbox and record)', async () => {
+      const db = await newDb();
+      await queueOfflineItem(db, item());
+      await queueEdit(db);
+      await completeOfflineItem(db, REQ, { itemId: SERVER, mapped: true });
+      expect((await editLines(db))[0]!.itemId).toBe(SERVER);
+      const rec = await db.offlineBillChanges.get(EDIT);
+      expect((rec!.request.lines as { itemId: string }[])[0]!.itemId).toBe(SERVER);
+    });
+
+    it('a refused item refuses the queued edit (visible, never sent)', async () => {
+      const db = await newDb();
+      await queueOfflineItem(db, item());
+      await queueEdit(db);
+      const held = await rejectOfflineItem(db, REQ, 'DSB_ITEM_NAME_TAKEN', 'name taken');
+      expect(held).toEqual([EDIT]);
+      expect(await db.outbox.count()).toBe(0);
+      expect(await db.offlineBillChanges.get(EDIT)).toMatchObject({
+        status: 'REJECTED',
+        rejectionCode: ITEM_REJECTED_CODE,
+      });
+    });
   });
 });

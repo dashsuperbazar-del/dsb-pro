@@ -2,8 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import 'fake-indexeddb/auto';
 import {
   DsbSyncDb,
+  completeOfflineItem,
   markOutboxSending,
   queueOfflineBillChange,
+  queueOfflineItem,
+  rejectOfflineItem,
   type OutboxEntry,
 } from '@dsb-pro/sync';
 import { syncQueuedBillChange, type BillChangeSyncDeps } from './offlineBillChangeSync';
@@ -108,5 +111,70 @@ describe('syncQueuedBillChange', () => {
     expect(await db.outbox.count()).toBe(1);
     expect((await db.offlineBillChanges.get(REQ))!.status).toBe('QUEUED');
     expect(await syncQueuedBillChange(db, await row(db), deps())).toEqual({ kind: 'synced' });
+  });
+
+  describe('an edit naming a device-created item', () => {
+    const ITEM = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+    const IREQ = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+    async function setupWithItem() {
+      const db = new DsbSyncDb(`bill-change-item-${crypto.randomUUID()}`);
+      open.push(db);
+      await db.open();
+      await queueOfflineItem(db, {
+        clientId: IREQ,
+        itemId: ITEM,
+        tenantId: 't',
+        fields: { name: 'Atta', unit1: 'bag' },
+      });
+      await queueOfflineBillChange(db, {
+        clientId: REQ,
+        shopId: 'shop',
+        kind: 'edit',
+        billId: BILL,
+        billLabel: 'B-1',
+        baseVersion: V,
+        request: { shopId: 'shop', clientId: REQ, originalId: BILL, lines: [{ itemId: ITEM }] },
+        form: {},
+      });
+      return db;
+    }
+    const editRow = async (db: DsbSyncDb) =>
+      markOutboxSending((await db.outbox.where('clientId').equals(REQ).first())!);
+
+    it('waits while the item is queued; never sends the device id', async () => {
+      const db = await setupWithItem();
+      const d = deps();
+      await expect(syncQueuedBillChange(db, await editRow(db), d)).rejects.toThrow(
+        /Waiting for the new item/,
+      );
+      expect(d.edit).not.toHaveBeenCalled();
+    });
+
+    it('sends the server id after a match', async () => {
+      const db = await setupWithItem();
+      await completeOfflineItem(db, IREQ, { itemId: NEW, mapped: true });
+      const d = deps();
+      expect(await syncQueuedBillChange(db, await editRow(db), d)).toEqual({ kind: 'synced' });
+      expect((d.edit as ReturnType<typeof vi.fn>).mock.calls[0]![0].lines[0].itemId).toBe(NEW);
+    });
+
+    it('a still-remapped device id (edit already attempted) is refused on the device, not sent', async () => {
+      const db = await setupWithItem();
+      const row = await db.outbox.where('clientId').equals(REQ).first();
+      await db.outbox.put({ ...row!, attempts: 1 });
+      await completeOfflineItem(db, IREQ, { itemId: NEW, mapped: true });
+      const d = deps();
+      const done = await syncQueuedBillChange(db, await editRow(db), d);
+      expect(done.kind).toBe('rejected');
+      expect(d.edit).not.toHaveBeenCalled();
+      expect((await db.offlineBillChanges.get(REQ))!.rejectionCode).toBe('DSB_ITEM_REMAPPED');
+    });
+
+    it('a refused item refuses the edit before it is sent', async () => {
+      const db = await setupWithItem();
+      await rejectOfflineItem(db, IREQ, 'DSB_ITEM_NAME_TAKEN', 'taken');
+      expect((await db.offlineBillChanges.get(REQ))!.status).toBe('REJECTED');
+      expect(await db.outbox.count()).toBe(0);
+    });
   });
 });

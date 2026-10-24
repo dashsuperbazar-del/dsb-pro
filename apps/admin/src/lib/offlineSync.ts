@@ -364,7 +364,12 @@ async function processOutbox(rt: Runtime) {
               deviceId: rt.identity.deviceId,
               opClientId,
               kind: 'financial-rejection',
-              target: opClientId === sending.clientId ? sending.target : PURCHASE_OUTBOX_TARGET,
+              target:
+                opClientId === sending.clientId
+                  ? sending.target
+                  : (await rt.db.offlineBillChanges.get(opClientId))
+                    ? BILL_CHANGE_OUTBOX_TARGET
+                    : PURCHASE_OUTBOX_TARGET,
               reason: done.reason,
               payload: opClientId === sending.clientId ? sending.payload : null,
               serverRef: null,

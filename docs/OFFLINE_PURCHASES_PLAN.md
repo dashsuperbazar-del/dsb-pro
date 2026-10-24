@@ -49,6 +49,8 @@ reads that answer, which is all an outbox needs.
    request carries the bill's version token read with the bill; the server replays an exact same-id
    request first, then refuses any changed bill (DSB_BILL_CHANGED) and a void with a payment assigned;
    one queued change per bill; nothing local changes until SYNCED. Supplier payments: online only.
+   Void replay is keyed by {purchaseId, reason}; the base version is fixed per client id by the device.
+   A queued edit naming a device-created item is re-pointed on a match and refused if the item is refused.
 8. **Corrected bill posted twice**. Guard: a correction of a plain refusal keeps the same client id (nothing
    was committed under it); after `DSB_PAYLOAD_MISMATCH` (id belongs to another bill) it gets a new id and
    drops the photos (their paths belong to the old id). The duplicate-bill warning runs again on post.
