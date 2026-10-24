@@ -24,9 +24,12 @@ import {
   lookupPurchaseRequest,
   postPurchaseV2Outcome,
   uploadBillDocument,
+  createItemV2Outcome,
+  plainItemRefusal,
 } from '@dsb-pro/adapters';
 import { readLocalDocument, removeLocalDocument } from './billDocumentStore';
 import { syncQueuedPurchase } from './offlinePurchaseSync';
+import { syncQueuedItem } from './offlineItemSync';
 import {
   applySyncPull,
   completeOfflineSale,
@@ -102,6 +105,11 @@ import {
   closeRejectedOfflinePurchase,
   type OfflinePurchaseRecord,
   type QueueOfflinePurchaseInput,
+  ITEM_OUTBOX_TARGET,
+  queueOfflineItem,
+  listOfflineItemRecords,
+  type OfflineItemFields,
+  type OfflineItemRecord,
 } from '@dsb-pro/sync';
 
 type Runtime = {
@@ -297,6 +305,39 @@ async function processOutbox(rt: Runtime) {
           );
           throw error;
         }
+      }
+      continue;
+    }
+    if (sending.kind === 'financial-rpc' && sending.target === ITEM_OUTBOX_TARGET) {
+      // Offline new item: created (or matched) before any bill queued after it; refused → visible, and
+      // the bills that use it are refused locally.
+      try {
+        const done = await syncQueuedItem(rt.db, sending, {
+          create: createItemV2Outcome,
+          plain: plainItemRefusal,
+        });
+        if (done.kind === 'rejected')
+          for (const opClientId of [sending.clientId, ...done.heldBills])
+            void recordServerSyncConflict({
+              deviceId: rt.identity.deviceId,
+              opClientId,
+              kind: 'financial-rejection',
+              target: opClientId === sending.clientId ? sending.target : PURCHASE_OUTBOX_TARGET,
+              reason: done.reason,
+              payload: opClientId === sending.clientId ? sending.payload : null,
+              serverRef: null,
+              clientId: crypto.randomUUID(),
+            }).catch(() => undefined);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await rt.db.outbox.put(
+          markOutboxRetry(sending, message, Date.now() + retryDelayMs(sending.attempts + 1)),
+        );
+        throw error;
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('dsb-offline-items'));
+        window.dispatchEvent(new CustomEvent('dsb-offline-purchases'));
       }
       continue;
     }
@@ -963,4 +1004,23 @@ export async function getOfflineSuppliers<T>(): Promise<T[] | null> {
 }
 export async function getOfflineStock(shopId: string) {
   return requireRuntime().db.stock.where('shop_id').equals(shopId).toArray();
+}
+
+// Offline new items (device-generated id, queued before the bills that use it).
+export type { OfflineItemFields, OfflineItemRecord };
+export async function queueItemOffline(input: {
+  clientId: string;
+  itemId: string;
+  fields: OfflineItemFields;
+}): Promise<OfflineItemRecord> {
+  const rt = requireRuntime();
+  const record = await queueOfflineItem(rt.db, { ...input, tenantId: rt.identity.tenantId });
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('dsb-offline-items'));
+  void runSyncNow().catch(() => undefined);
+  return record;
+}
+export async function listOfflineItems(): Promise<OfflineItemRecord[]> {
+  const rt = runtime;
+  if (!rt) return [];
+  return listOfflineItemRecords(rt.db, rt.identity.tenantId);
 }

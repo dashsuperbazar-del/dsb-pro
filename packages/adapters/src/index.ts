@@ -332,3 +332,5 @@ export {
 } from './billCodes';
 export type { BillCodeHit } from './billCodes';
 export { labelPartyLedger, labelPurchaseRegister, labelSupplierAging } from './reportLabels';
+export { createItemV2Outcome, plainItemRefusal } from './offlineItems';
+export type { CreateItemV2Input, CreateItemV2Result } from './offlineItems';

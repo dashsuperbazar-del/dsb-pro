@@ -115,8 +115,11 @@ import {
   getOfflineStock,
   getOfflineSuppliers,
   getSyncedOfflineCatalog,
+  listOfflineItems,
+  queueItemOffline,
   queuePurchaseOffline,
   runSyncNow,
+  type OfflineItemRecord,
   waitForOfflineRuntime,
 } from '../lib/offlineSync';
 import { OfflinePurchasesPanel, queuedKnownBills } from '../components/OfflinePurchasesPanel';
@@ -192,14 +195,30 @@ type PriceRetry = {
   message: string;
 };
 const OFFLINE_POST =
-  "You're offline. Post saves this bill on this device and it syncs when you're back online. New items, sale prices and bill corrections need a connection.";
+  "You're offline. Post saves this bill on this device and it syncs when you're back online. A new item is saved on this device and syncs before the bill. Sale prices and bill corrections need a connection.";
 /** The device's local calendar date (YYYY-MM-DD): only when the shop's business date cannot be read. */
 function localToday() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 const NEW_ITEM_OFFLINE =
-  "You're offline. A new item can be created only online; pick an existing item, or post this bill when you're back online.";
+  "You're offline. Only the owner or a manager can create a new item while offline; pick an existing item, or post this bill when you're back online.";
+/** A new item saved on this device (not synced): usable on a bill, never in stock until it syncs. */
+function queuedItemAsItem(r: OfflineItemRecord): Item {
+  return {
+    id: r.itemId,
+    name: r.fields.name,
+    sku: r.fields.sku ?? null,
+    unit1: r.fields.unit1,
+    unit2: r.fields.unit2 ?? null,
+    unit3: r.fields.unit3 ?? null,
+    conv1: r.fields.conv1 ?? null,
+    conv2: r.fields.conv2 ?? null,
+    tax_rate_bp: r.fields.taxRateBp ?? 0,
+    min_stock: 0,
+    image_path: null,
+  };
+}
 const RETRYABLE = new Set<PriceRetry['state']>(['failed', 'check', 'late']);
 const entryId = (key: string, clientId: string) => `${key}|${clientId}`;
 const sameEntry = (a: PriceRetry, b: PriceRetry) =>
@@ -326,6 +345,59 @@ export function InventoryScreen({
   const contextApplied = useRef('');
   const contextNeedsReset = useRef(false);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
+  // New items made on this device (offline). QUEUED ones join the bill-card list (not stock); a refused or
+  // matched device item leaves it. A bill that uses a QUEUED item is always saved on the device (it syncs
+  // after its item), even when online; a matched item is sent under the server's id.
+  const [offlineItems, setOfflineItems] = useState<OfflineItemRecord[]>([]);
+  useEffect(() => {
+    if (!purchaseOnly) return;
+    let live = true;
+    const load = () =>
+      void listOfflineItems()
+        .then((rows) => {
+          if (live) setOfflineItems(rows);
+        })
+        .catch(() => undefined);
+    load();
+    window.addEventListener('dsb-offline-items', load);
+    window.addEventListener('dsb-sync-state', load);
+    return () => {
+      live = false;
+      window.removeEventListener('dsb-offline-items', load);
+      window.removeEventListener('dsb-sync-state', load);
+    };
+  }, [purchaseOnly, tenantId]);
+  const queuedItemIds = useMemo(
+    () => new Set(offlineItems.filter((r) => r.status === 'QUEUED').map((r) => r.itemId)),
+    [offlineItems],
+  );
+  const mappedItemIds = useMemo(
+    () =>
+      new Map(
+        offlineItems
+          .filter((r) => r.status === 'SYNCED' && r.serverItemId && r.serverItemId !== r.itemId)
+          .map((r) => [r.itemId, r.serverItemId!] as const),
+      ),
+    [offlineItems],
+  );
+  useEffect(() => {
+    if (!purchaseOnly || !catalogLoaded) return;
+    const gone = new Set(
+      offlineItems
+        .filter(
+          (r) => r.status === 'REJECTED' || (r.status === 'SYNCED' && r.serverItemId !== r.itemId),
+        )
+        .map((r) => r.itemId),
+    );
+    setItems((now) => {
+      const missing = offlineItems
+        .filter((r) => r.status === 'QUEUED' && !now.some((i) => i.id === r.itemId))
+        .map(queuedItemAsItem);
+      const kept = now.filter((i) => !gone.has(i.id));
+      if (!missing.length && kept.length === now.length) return now;
+      return [...kept, ...missing].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    });
+  }, [purchaseOnly, catalogLoaded, offlineItems, items]);
   const [snapshotAt, setSnapshotAt] = useState<number | null>(null);
   const [snapshotFailed, setSnapshotFailed] = useState(false);
   const itemsRef = useRef(items);
@@ -1500,9 +1572,26 @@ export function InventoryScreen({
   // failed re-read never turns the successful create into an error (that would invite a second create).
   async function createItemFromCard(fields: NewItemFields, clientId: string): Promise<Item> {
     if (!tenantId) throw new Error('Shop data is still loading.');
-    // Offline purchases reference only items the server already has (docs/OFFLINE_PURCHASES_PLAN.md).
-    if (typeof navigator !== 'undefined' && navigator.onLine === false)
-      throw new Error(NEW_ITEM_OFFLINE);
+    // Offline (owner/manager): the item is saved on this device under a device id and synced BEFORE any
+    // bill that uses it (same ordered outbox). It is never added to the synced catalog or stock.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      if (!draftPrefix) throw new Error(NEW_ITEM_OFFLINE);
+      const record = await queueItemOffline({
+        clientId,
+        itemId: crypto.randomUUID(),
+        fields: newItemInput(fields),
+      });
+      const queued = queuedItemAsItem(record);
+      setOfflineItems((now) =>
+        now.some((r) => r.clientId === record.clientId) ? now : [record, ...now],
+      );
+      setItems((now) =>
+        now.some((i) => i.id === queued.id)
+          ? now
+          : [...now, queued].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)),
+      );
+      return queued;
+    }
     let item: Item;
     try {
       item = await createItem({ tenantId, ...newItemInput(fields), clientId });
@@ -1787,13 +1876,20 @@ export function InventoryScreen({
     if (purchaseBusy || contextBusy || (!purchaseLocked && !purchaseContextReady) || accountChanged)
       return;
     setError('');
+    // A bill that uses a new item still waiting on this device is saved on the device too (even online):
+    // the outbox sends the item first, then the bill.
+    const usesQueuedItem =
+      !purchaseLocked && purchaseBill.lines.some((l) => queuedItemIds.has(l.item.id));
+    const saveLocally = !online || usesQueuedItem;
     // Offline (docs/OFFLINE_PURCHASES_PLAN.md): a new bill is saved on this device and synced later. A
     // bill awaiting a server answer, a bill correction and a cashier's bill stay online only.
-    if (!online) {
+    if (saveLocally) {
       const refusal = purchaseLocked
         ? 'This bill is waiting for a server answer. Reconnect to finish it; nothing else was sent.'
         : purchaseEditOf
-          ? 'Correcting a posted bill needs a connection. Your changes stay in the form.'
+          ? online
+            ? 'A new item on this bill is still waiting to sync. Correct the bill after it syncs. Your changes stay in the form.'
+            : 'Correcting a posted bill needs a connection. Your changes stay in the form.'
           : !draftPrefix
             ? 'Only the owner or a manager can save purchases while offline.'
             : documentBusy || documentSaveError
@@ -1805,7 +1901,7 @@ export function InventoryScreen({
       }
     }
     if (
-      online &&
+      !saveLocally &&
       !purchaseLocked &&
       (documentBusy || documentSaveError || billDocuments.some((d) => !d.uploaded))
     ) {
@@ -1894,9 +1990,11 @@ export function InventoryScreen({
         return;
       }
       salePlan = plan.writes;
-      if (!online && salePlan.length) {
+      if (saveLocally && salePlan.length) {
         setError(
-          "Sale prices can be changed only online. Clear this bill's sale price boxes to save it offline, or post when you're back online.",
+          usesQueuedItem && online
+            ? 'A new item on this bill is still waiting to sync, so the bill is saved on this device. Clear the sale price boxes, or post after the item syncs.'
+            : "Sale prices can be changed only online. Clear this bill's sale price boxes to save it offline, or post when you're back online.",
         );
         return;
       }
@@ -1927,7 +2025,8 @@ export function InventoryScreen({
       paymentType: purchasePaymentType,
       notes: purchaseNotes.trim() || null,
       lines: purchaseBill.lines.map((l) => ({
-        itemId: l.item.id,
+        // A device item the server matched to an existing item is sent under the server's id.
+        itemId: mappedItemIds.get(l.item.id) ?? l.item.id,
         unitLevel: l.unitLevel,
         qty: l.qty,
         unitPricePaise: l.unitPricePaise,
@@ -1992,7 +2091,7 @@ export function InventoryScreen({
       }
       if (match && !confirm(duplicateMessage(match))) return;
     }
-    if (!online) {
+    if (saveLocally) {
       await saveOffline(fresh, lineCount);
       return;
     }
@@ -2995,6 +3094,7 @@ export function InventoryScreen({
               onMessage={setMessage}
               findBarcode={findBarcodeForCard}
               onCreateItem={tenantId ? createItemFromCard : undefined}
+              createsOffline={!!draftPrefix}
               showAdd={false}
               focusCard={focusCard}
               lastUnit={lastUnit}

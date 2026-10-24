@@ -17,6 +17,7 @@ import type {
 } from './types';
 import type { FinancialAttempt } from './financialAttempts';
 import type { OfflinePurchaseRecord } from './offlinePurchase';
+import type { OfflineItemRecord } from './offlineItem';
 
 function safePart(value: string) {
   return value.replace(/[^A-Za-z0-9_-]/g, '_');
@@ -44,6 +45,7 @@ export class DsbSyncDb extends Dexie {
   heldCarts!: Table<HeldCartRecord, string>;
   financialAttempts!: Table<FinancialAttempt, string>;
   offlinePurchases!: Table<OfflinePurchaseRecord, string>;
+  offlineItems!: Table<OfflineItemRecord, string>;
 
   constructor(name: string) {
     super(name);
@@ -71,6 +73,8 @@ export class DsbSyncDb extends Dexie {
     this.version(5).stores({ financialAttempts: '&id,[shopId+operation],state,createdAt' });
     // Offline purchases (docs/OFFLINE_PURCHASES_PLAN.md). Additive.
     this.version(6).stores({ offlinePurchases: '&clientId,status,shopId,createdAt' });
+    // Offline new items (device-generated item id, queued before the bills that use it). Additive.
+    this.version(7).stores({ offlineItems: '&clientId,&itemId,status,tenantId,createdAt' });
   }
 }
 

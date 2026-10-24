@@ -78,6 +78,36 @@ function assertIdentity(input: QueueOfflinePurchaseInput) {
       throw new Error('A bill photo belongs to another bill. Remove it and attach it again.');
 }
 
+async function resolveOfflineItems(
+  db: DsbSyncDb,
+  input: QueueOfflinePurchaseInput,
+): Promise<QueueOfflinePurchaseInput> {
+  const lines = Array.isArray(input.request.lines)
+    ? (input.request.lines as Array<{ itemId?: unknown }>)
+    : [];
+  const ids = [
+    ...new Set(lines.map((l) => l.itemId).filter((v): v is string => typeof v === 'string')),
+  ];
+  if (!ids.length) return input;
+  const map = new Map<string, string>();
+  for (const r of await db.offlineItems.where('itemId').anyOf(ids).toArray()) {
+    if (r.status === 'REJECTED')
+      throw new Error(
+        `The new item "${r.fields.name}" was refused (${r.rejectionReason ?? 'refused'}). Pick an existing item instead.`,
+      );
+    if (r.status === 'SYNCED' && r.serverItemId && r.serverItemId !== r.itemId)
+      map.set(r.itemId, r.serverItemId);
+  }
+  if (!map.size) return input;
+  const swap = <T extends { itemId?: unknown }>(l: T): T =>
+    typeof l.itemId === 'string' && map.has(l.itemId) ? { ...l, itemId: map.get(l.itemId) } : l;
+  return {
+    ...input,
+    request: { ...input.request, lines: lines.map(swap) },
+    lines: input.lines.map(swap),
+  };
+}
+
 /** Saves the bill and its outbox row atomically. The same client id returns the record already saved. */
 export async function queueOfflinePurchase(
   db: DsbSyncDb,
@@ -85,48 +115,55 @@ export async function queueOfflinePurchase(
   now = Date.now(),
 ): Promise<OfflinePurchaseRecord> {
   assertIdentity(input);
-  return db.transaction('rw', [db.outbox, db.meta, db.offlinePurchases], async () => {
-    const existing = await db.offlinePurchases.get(input.clientId);
-    // A refused bill that the user turned into a draft (closed) keeps its id — nothing was posted under
-    // it — and may be saved again; any other existing record is returned unchanged (never a second bill).
-    if (existing && !(existing.status === 'REJECTED' && existing.closedAt !== null)) {
-      if (existing.status === 'REJECTED')
-        throw new Error(
-          'This bill was refused. Use "Correct this bill" in the pending list first.',
-        );
-      return existing;
-    }
-    if (await db.outbox.where('clientId').equals(input.clientId).count())
-      throw new Error('This bill id is already queued for another operation.');
-    const sequence = ((await getMeta<number>(db, 'outboxSeq')) ?? 0) + 1;
-    await setMeta(db, 'outboxSeq', sequence);
-    const record: OfflinePurchaseRecord = {
-      ...input,
-      status: 'QUEUED',
-      createdAt: now,
-      syncedAt: null,
-      billId: null,
-      paymentId: null,
-      rejectionCode: null,
-      rejectionReason: null,
-      closedAt: null,
-    };
-    const entry: OutboxEntry = {
-      sequence,
-      clientId: input.clientId,
-      kind: 'financial-rpc',
-      target: PURCHASE_OUTBOX_TARGET,
-      payload: input.request,
-      createdAt: now,
-      attempts: 0,
-      state: 'pending',
-      nextAttemptAt: 0,
-      lastError: null,
-    };
-    await db.offlinePurchases.put(record);
-    await db.outbox.put(entry);
-    return record;
-  });
+  return db.transaction(
+    'rw',
+    [db.outbox, db.meta, db.offlinePurchases, db.offlineItems],
+    async () => {
+      const existing = await db.offlinePurchases.get(input.clientId);
+      // A refused bill that the user turned into a draft (closed) keeps its id — nothing was posted under
+      // it — and may be saved again; any other existing record is returned unchanged (never a second bill).
+      if (existing && !(existing.status === 'REJECTED' && existing.closedAt !== null)) {
+        if (existing.status === 'REJECTED')
+          throw new Error(
+            'This bill was refused. Use "Correct this bill" in the pending list first.',
+          );
+        return existing;
+      }
+      if (await db.outbox.where('clientId').equals(input.clientId).count())
+        throw new Error('This bill id is already queued for another operation.');
+      // Items created on this device (docs/OFFLINE_PURCHASES_PLAN.md, offline new items): a refused item
+      // cannot be used; an item the server matched to an existing one is referenced by the server's id.
+      const resolved = await resolveOfflineItems(db, input);
+      const sequence = ((await getMeta<number>(db, 'outboxSeq')) ?? 0) + 1;
+      await setMeta(db, 'outboxSeq', sequence);
+      const record: OfflinePurchaseRecord = {
+        ...resolved,
+        status: 'QUEUED',
+        createdAt: now,
+        syncedAt: null,
+        billId: null,
+        paymentId: null,
+        rejectionCode: null,
+        rejectionReason: null,
+        closedAt: null,
+      };
+      const entry: OutboxEntry = {
+        sequence,
+        clientId: input.clientId,
+        kind: 'financial-rpc',
+        target: PURCHASE_OUTBOX_TARGET,
+        payload: resolved.request,
+        createdAt: now,
+        attempts: 0,
+        state: 'pending',
+        nextAttemptAt: 0,
+        lastError: null,
+      };
+      await db.offlinePurchases.put(record);
+      await db.outbox.put(entry);
+      return record;
+    },
+  );
 }
 
 /** The server confirmed the bill (first answer or replay). Idempotent. */

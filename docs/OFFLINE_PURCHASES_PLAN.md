@@ -39,8 +39,12 @@ reads that answer, which is all an outbox needs.
    unsynced purchase does NOT add to the device's sellable stock; it shows as "+qty — not synced" in the
    pending list. Offline sales keep the existing stock policy; server order follows the outbox sequence,
    so a purchase queued before a sale is posted before it.
-6. **Unknown item at sync** (item created offline). Guard: new items cannot be created offline (refused
-   with a message); every line references an item already on the server.
+6. **Unknown or wrong item at sync** (item created offline). Guard (24 Oct, mig 0071 `create_item_v2`): the
+   device generates the item id and queues the create in the same ordered outbox BEFORE any bill that uses
+   it; a bill is never sent while its item is unconfirmed. Same request = same item; a same-name item with
+   the same units is matched (queued, never-sent bills re-pointed in one transaction); any other same name is
+   REJECTED and every queued bill using the item is refused locally (visible, "Correct this bill") — it can
+   never post against a wrong or missing item. Queued items never enter the synced catalog or stock.
 7. **Bill edit / void / supplier payment posting twice or out of order**. Guard: online only.
 8. **Corrected bill posted twice**. Guard: a correction of a plain refusal keeps the same client id (nothing
    was committed under it); after `DSB_PAYLOAD_MISMATCH` (id belongs to another bill) it gets a new id and
@@ -50,7 +54,9 @@ reads that answer, which is all an outbox needs.
 
 - Allowed offline: new purchase bills, Credit, and Cash/UPI paid in full (payment in the same idempotent
   request), with existing items, named charges, discounts/GST, notes, bill photos.
-- Online only (clear message): bill edit, void, supplier payments, creating a new item, sale-price box
+- New items offline (owner/manager, 24 Oct): see risk 6. A bill that uses a still-queued item is saved on
+  the device even when online (it must sync after its item).
+- Online only (clear message): bill edit, void, supplier payments, sale-price box
   (writes happen after the bill confirms; kept online), retrying an unconfirmed online post.
 - Offline saving is for owner/manager (the roles that post purchases and keep drafts/photos).
 - Queue: the same outbox (`target post_purchase_v2`) ordered with offline sales; new Dexie table
