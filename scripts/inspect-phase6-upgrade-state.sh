@@ -1190,7 +1190,7 @@ end $$;
 select (select present from _offlineitems_receipt),
  (select count(*) from (values
    (exists(select 1 from pg_proc where oid=to_regprocedure('public.create_item_v2(uuid,text,jsonb)') and prosecdef and position('DSB_ITEM_NAME_TAKEN' in prosrc)>0 and position('dsb:item-name:' in prosrc)>0 and position('DSB_PAYLOAD_MISMATCH' in prosrc)>0)),
-   (has_function_privilege('authenticated','public.create_item_v2(uuid,text,jsonb)','execute') and not has_function_privilege('anon','public.create_item_v2(uuid,text,jsonb)','execute'))
+   (coalesce(has_function_privilege('authenticated',to_regprocedure('public.create_item_v2(uuid,text,jsonb)'),'execute'),false) and not coalesce(has_function_privilege('anon',to_regprocedure('public.create_item_v2(uuid,text,jsonb)'),'execute'),false))
  ) p(ok) where ok);
 SQL
 )
