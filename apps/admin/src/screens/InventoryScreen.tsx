@@ -62,6 +62,7 @@ import {
   postPurchaseOutcome,
   postPurchaseV2Outcome,
   editPurchaseBillOutcome,
+  getPurchaseBillVersion,
   plainEditRefusal,
   getPurchaseExtras,
   replaceItemImage,
@@ -117,6 +118,7 @@ import {
   getSyncedOfflineCatalog,
   listOfflineItems,
   queueItemOffline,
+  queueBillChangeOffline,
   queuePurchaseOffline,
   runSyncNow,
   type OfflineItemRecord,
@@ -195,7 +197,7 @@ type PriceRetry = {
   message: string;
 };
 const OFFLINE_POST =
-  "You're offline. Post saves this bill on this device and it syncs when you're back online. A new item is saved on this device and syncs before the bill. Sale prices and bill corrections need a connection.";
+  "You're offline. Post saves this bill on this device and it syncs when you're back online. A new item is saved on this device and syncs before the bill. A bill edit opened while online is saved on this device and applied only if the bill is unchanged. Sale prices need a connection.";
 /** The device's local calendar date (YYYY-MM-DD): only when the shop's business date cannot be read. */
 function localToday() {
   const d = new Date();
@@ -944,6 +946,12 @@ export function InventoryScreen({
           setPurchaseCharges(charges);
           const label = d.bill.bill_no || d.bill.id.slice(0, 8);
           if (purchaseEditId) {
+            // The version the offline edit is checked against (mig 0072); null when it cannot be read.
+            editVersion.current =
+              typeof navigator !== 'undefined' && navigator.onLine === false
+                ? null
+                : await getPurchaseBillVersion(d.bill.id);
+            if (!active) return;
             edit = {
               id: d.bill.id,
               label,
@@ -1869,6 +1877,7 @@ export function InventoryScreen({
     if (shopId && purchaseSupplier && online) void supplierBillsRead(shopId, purchaseSupplier);
   }, [shopId, purchaseSupplier, online]);
   const repeatedClientId = useRef<string | null>(null);
+  const editVersion = useRef<string | null>(null);
   async function addPurchase(ev: Event) {
     ev.preventDefault();
     // Only the Post button posts (never Enter in a field, never a script-driven submit without it).
@@ -1886,15 +1895,17 @@ export function InventoryScreen({
     if (saveLocally) {
       const refusal = purchaseLocked
         ? 'This bill is waiting for a server answer. Reconnect to finish it; nothing else was sent.'
-        : purchaseEditOf
-          ? online
-            ? 'A new item on this bill is still waiting to sync. Correct the bill after it syncs. Your changes stay in the form.'
-            : 'Correcting a posted bill needs a connection. Your changes stay in the form.'
-          : !draftPrefix
-            ? 'Only the owner or a manager can save purchases while offline.'
-            : documentBusy || documentSaveError
-              ? 'Wait until the bill photo is saved on this device, or remove it.'
-              : '';
+        : purchaseEditOf && usesQueuedItem
+          ? 'A new item on this bill is still waiting to sync. Correct the bill after it syncs. Your changes stay in the form.'
+          : purchaseEditOf && !draftPrefix
+            ? 'Only the owner or a manager can save a bill edit while offline.'
+            : purchaseEditOf && !editVersion.current
+              ? "This bill's version could not be read when it was opened, so the edit cannot be saved offline. Your changes stay in the form; save when you're back online."
+              : !draftPrefix
+                ? 'Only the owner or a manager can save purchases while offline.'
+                : documentBusy || documentSaveError
+                  ? 'Wait until the bill photo is saved on this device, or remove it.'
+                  : '';
       if (refusal) {
         setError(refusal);
         return;
@@ -2091,6 +2102,10 @@ export function InventoryScreen({
       }
       if (match && !confirm(duplicateMessage(match))) return;
     }
+    if (saveLocally && purchaseEditOf) {
+      await saveEditOffline(fresh);
+      return;
+    }
     if (saveLocally) {
       await saveOffline(fresh, lineCount);
       return;
@@ -2268,6 +2283,80 @@ export function InventoryScreen({
     } finally {
       setPurchaseBusy(false);
     }
+  }
+  // Offline edit of a posted bill (mig 0072): queued with the bill's version read when the edit was opened.
+  // Nothing changes locally (stock, balances, the bill list) until the server confirms; a changed bill is
+  // refused and shown with the full form ("Redo this edit").
+  async function saveEditOffline(request: PendingPurchaseV2) {
+    const version = editVersion.current;
+    if (!version || !purchaseEditOf) return;
+    setPurchaseBusy(true);
+    setMessage('');
+    try {
+      const supplier = parties.find((p) => p.id === request.partyId);
+      await queueBillChangeOffline({
+        clientId: request.clientId,
+        shopId: request.shopId,
+        kind: 'edit',
+        billId: purchaseEditOf,
+        billLabel: purchaseEditLabel || purchaseEditOf.slice(0, 8),
+        baseVersion: version,
+        request: { ...request, originalId: purchaseEditOf },
+        form: {
+          supplierName: supplier?.name ?? null,
+          billNo: request.billNo ?? null,
+          businessDate: request.businessDate ?? businessDate,
+          paymentType: request.paymentType ?? 'credit',
+          notes: request.notes ?? null,
+          discountPaise: request.discountPaise ?? 0,
+          charges: request.charges ?? [],
+          lines: purchaseBill.lines.map((l) => ({
+            itemName: l.item.name,
+            qty: l.qty,
+            unitName:
+              (l.unitLevel === 1
+                ? l.item.unit1
+                : l.unitLevel === 2
+                  ? l.item.unit2
+                  : l.item.unit3) ?? l.item.unit1,
+            unitPricePaise: l.unitPricePaise,
+            discountBp: l.discountBp,
+            gstBp: l.gstBp,
+          })),
+        },
+      });
+    } catch (e) {
+      setError(`Not saved on this device: ${e instanceof Error ? e.message : String(e)}`);
+      setPurchaseBusy(false);
+      return;
+    }
+    try {
+      if (draftPrefix) {
+        clearPurchaseDrafts(draftPrefix, request.clientId);
+        refreshDrafts();
+      }
+    } catch {
+      // The edit is queued; a leftover draft of it is listed and can be discarded.
+    }
+    const label = purchaseEditLabel;
+    editVersion.current = null;
+    setPurchaseClientId(crypto.randomUUID());
+    setPurchaseCards([emptyCard()]);
+    setPurchaseExpectedTotal(undefined);
+    setPurchaseBillNo('');
+    setPurchaseDiscount('');
+    setPurchaseCharges([]);
+    setPurchasePaymentType('credit');
+    setPurchaseNotes('');
+    setPurchaseEditOf('');
+    setPurchaseEditLabel('');
+    setDraftTouched(false);
+    setDraftStatus('');
+    contextNeedsReset.current = true;
+    setPurchaseBusy(false);
+    setMessage(
+      `Edit saved on this device — will sync (bill ${label}). The bill, stock and supplier balance change only after it syncs, and only if the bill was not changed elsewhere meanwhile.`,
+    );
   }
   // Saves a new bill on this device (one record + one outbox row) and clears the form as a post would. The
   // photos stay in the device store until the bill syncs; the sync engine uploads them and posts the bill.
@@ -3458,7 +3547,7 @@ export function InventoryScreen({
                     documentBusy ||
                     !!documentSaveError ||
                     (online && billDocuments.some((d) => !d.uploaded)))) ||
-                (!online && (purchaseLocked || !!purchaseEditOf || !draftPrefix)) ||
+                (!online && (purchaseLocked || !draftPrefix)) ||
                 !shopId ||
                 !businessDate ||
                 (!purchaseBill.lines.length && !purchaseLocked)
@@ -3471,7 +3560,9 @@ export function InventoryScreen({
                     ? 'Retry same edit'
                     : 'Retry same purchase'
                   : purchaseEditOf
-                    ? 'Save corrected bill'
+                    ? online
+                      ? 'Save corrected bill'
+                      : 'Save edit on this device (syncs later)'
                     : !online
                       ? 'Save on this device (syncs later)'
                       : postButtonText(shownType, totals.ok ? totals.totalPaise : null)}

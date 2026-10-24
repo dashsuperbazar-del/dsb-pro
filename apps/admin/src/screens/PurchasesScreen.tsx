@@ -841,6 +841,8 @@ export function PurchasesScreen({ url }: { url?: string }) {
               <>
                 {canPost ? (
                   <CreditVoidPanel
+                    shopId={shop}
+                    offlineCapable={canPost}
                     billId={detail.bill.id}
                     label={detail.bill.bill_no || 'this bill'}
                     scope={`${userRef.current}:${shop}`}

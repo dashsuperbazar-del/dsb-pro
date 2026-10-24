@@ -104,7 +104,8 @@ export type PurchaseRequestLookup =
 /** Reads the stored answer of a purchase request (post or paid void) by its request id. */
 export async function lookupPurchaseRequest(
   shopId: string,
-  operation: 'purchase.post.v2' | 'purchase.void_paid.v1' | 'purchase.edit.v1',
+  operation:
+    'purchase.post.v2' | 'purchase.void_paid.v1' | 'purchase.edit.v1' | 'purchase.void.offline.v1',
   clientId: string,
 ): Promise<PurchaseRequestLookup> {
   try {
@@ -211,6 +212,8 @@ export type PurchaseEditResult = PurchaseV2Result & {
 export async function editPurchaseBillOutcome(
   input: PurchaseEditRequest,
   isRetry = false,
+  /** Offline edit (mig 0072): applied only if the bill still has this version (else DSB_BILL_CHANGED). */
+  baseVersion?: string,
 ): Promise<WriteOutcome<PurchaseEditResult>> {
   let payload: ReturnType<typeof buildPurchaseV2Payload>;
   try {
@@ -241,8 +244,13 @@ export async function editPurchaseBillOutcome(
     };
   };
   const outcome = await rpcOutcome(
-    'edit_purchase_bill',
-    { p_original_id: input.originalId, p_client_id: input.clientId, p_bill: payload.bill },
+    baseVersion === undefined ? 'edit_purchase_bill' : 'edit_purchase_bill_if_unchanged',
+    {
+      p_original_id: input.originalId,
+      p_client_id: input.clientId,
+      p_bill: payload.bill,
+      ...(baseVersion === undefined ? {} : { p_base_version: baseVersion }),
+    },
     ack,
   );
   if (outcome.kind === 'committed') return outcome;
@@ -271,6 +279,8 @@ export async function editPurchaseBillOutcome(
 
 /** Plain words for a refused bill edit, saying what to do next. */
 export function plainEditRefusal(message: string): string {
+  if (/DSB_BILL_CHANGED/.test(message))
+    return 'This bill changed after the edit was saved on this device (edited, voided, paid or returned elsewhere). Nothing was changed. Open the bill and redo the edit.';
   if (/DSB_EDIT_BILL_VOID/.test(message))
     return 'This bill is void or was already corrected. Open the current bill and edit that.';
   if (/DSB_EDIT_BILL_HAS_RETURNS/.test(message))

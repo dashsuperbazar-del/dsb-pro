@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'preact/hooks';
 import {
   VOID_REASON_MAX,
+  getPurchaseBillVersion,
   getPurchaseVoidInfo,
   purchaseVoidRequestId,
   voidPurchaseOutcome,
 } from '@dsb-pro/adapters';
+import { queueBillChangeOffline } from '../lib/offlineSync';
 
 // Void of a credit (or v1) purchase bill through void_purchase. Editing a bill is deliberately NOT here:
 // a correction posts the new bill and voids the original in one server transaction (0066
@@ -66,7 +68,12 @@ export function CreditVoidPanel({
   label,
   blocked,
   onVoided,
+  shopId = '',
+  offlineCapable = false,
 }: {
+  /** Shop of the bill; with offlineCapable (owner/manager) a void can be saved offline (mig 0072). */
+  shopId?: string;
+  offlineCapable?: boolean;
   /** "<user>:<shop>" */
   scope: string;
   /** The bill detail is refreshing or could not be refreshed: no void on a possibly stale bill. */
@@ -83,6 +90,56 @@ export function CreditVoidPanel({
   const [note, setNote] = useState(
     pending ? 'An earlier void of this bill was not confirmed. Retry sends the same request.' : '',
   );
+  // The bill's version, read while online, is what an offline void is checked against (mig 0072).
+  const [version, setVersion] = useState<string | null>(null);
+  const [queuedOffline, setQueuedOffline] = useState(false);
+  useEffect(() => {
+    let live = true;
+    setVersion(null);
+    setQueuedOffline(false);
+    if (offlineCapable && (typeof navigator === 'undefined' || navigator.onLine !== false))
+      void getPurchaseBillVersion(billId).then((v) => live && setVersion(v));
+    return () => {
+      live = false;
+    };
+  }, [billId, offlineCapable]);
+  async function saveOffline() {
+    const text = reason.trim().replace(/\s+/g, ' ');
+    if (!text || text.length > VOID_REASON_MAX || text.includes(':')) {
+      setNote(`Reason required (1-${VOID_REASON_MAX} characters, no colon).`);
+      return;
+    }
+    if (!offlineCapable || !version || !shopId) {
+      setNote(
+        "You're offline. This bill's version was not read while online, so the void cannot be saved on this device. Void it when you're back online.",
+      );
+      return;
+    }
+    if (
+      !confirm(
+        `Save a void of ${label} on this device? It is applied when you're back online, only if the bill was not changed meanwhile.`,
+      )
+    )
+      return;
+    try {
+      await queueBillChangeOffline({
+        clientId: crypto.randomUUID(),
+        shopId,
+        kind: 'void',
+        billId,
+        billLabel: label,
+        baseVersion: version,
+        request: { purchaseId: billId, reason: text },
+        form: { reason: text },
+      });
+      setQueuedOffline(true);
+      setNote(
+        'Void saved on this device — will sync. The bill, stock and supplier balance change only after it syncs.',
+      );
+    } catch (e) {
+      setNote(`Not saved on this device: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
   useEffect(() => {
     const p = loadPendingVoid(scope, billId);
     setPending(p);
@@ -92,7 +149,13 @@ export function CreditVoidPanel({
     );
   }, [scope, billId]);
   async function run() {
-    if (busy || disabled) return;
+    if (busy || queuedOffline) return;
+    // Offline (no earlier online attempt waiting): save the void on this device with the bill's version.
+    if (!pending && typeof navigator !== 'undefined' && navigator.onLine === false) {
+      await saveOffline();
+      return;
+    }
+    if (disabled) return;
     let req = pending;
     if (!req) {
       let clientId: string;
@@ -164,7 +227,12 @@ export function CreditVoidPanel({
           <button
             type="button"
             class="danger"
-            disabled={busy || disabled || !reason.trim()}
+            disabled={
+              busy ||
+              queuedOffline ||
+              (disabled && !(typeof navigator !== 'undefined' && navigator.onLine === false)) ||
+              !reason.trim()
+            }
             onClick={() => void run()}
           >
             {busy ? 'Voiding…' : pending ? 'Retry void (same request)' : 'Void bill'}

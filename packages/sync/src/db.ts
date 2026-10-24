@@ -18,6 +18,7 @@ import type {
 import type { FinancialAttempt } from './financialAttempts';
 import type { OfflinePurchaseRecord } from './offlinePurchase';
 import type { OfflineItemRecord } from './offlineItem';
+import type { OfflineBillChangeRecord } from './offlineBillChange';
 
 function safePart(value: string) {
   return value.replace(/[^A-Za-z0-9_-]/g, '_');
@@ -46,6 +47,7 @@ export class DsbSyncDb extends Dexie {
   financialAttempts!: Table<FinancialAttempt, string>;
   offlinePurchases!: Table<OfflinePurchaseRecord, string>;
   offlineItems!: Table<OfflineItemRecord, string>;
+  offlineBillChanges!: Table<OfflineBillChangeRecord, string>;
 
   constructor(name: string) {
     super(name);
@@ -75,6 +77,8 @@ export class DsbSyncDb extends Dexie {
     this.version(6).stores({ offlinePurchases: '&clientId,status,shopId,createdAt' });
     // Offline new items (device-generated item id, queued before the bills that use it). Additive.
     this.version(7).stores({ offlineItems: '&clientId,&itemId,status,tenantId,createdAt' });
+    // Offline bill edit/void requests carrying the bill's version (mig 0072). Additive.
+    this.version(8).stores({ offlineBillChanges: '&clientId,billId,status,shopId,createdAt' });
   }
 }
 
