@@ -47,9 +47,13 @@ export function ExpensesScreen() {
   const [storageBlocked, setStorageBlocked] = useState(false);
 
   const pendingKey = (s: string) => `dsb-pending-expense:${s}`;
+  // Only the newest request may set the tile: a slow first load must not overwrite a later refresh.
+  const loadSeq = useRef(0);
   async function load(shopId = shop, d = date) {
     if (!shopId || !d) return;
+    const seq = ++loadSeq.current;
     const rows = await getDayBook(shopId, d, d);
+    if (seq !== loadSeq.current) return;
     setToday(rows[0] ?? null);
   }
   useEffect(() => {
