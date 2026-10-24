@@ -53,7 +53,7 @@ where i.tenant_id=:'perf_tenant'::uuid and i.sku like 'PERF-%';
 insert into public.sale_invoices(
   tenant_id,shop_id,doc_no,doc_seq,business_date,status,
   subtotal_paise,discount_paise,extra_charges_paise,total_paise,finalized_at,
-  created_by,client_id,updated_at
+  created_by,client_id,updated_at,bill_code
 )
 select
   :'perf_tenant'::uuid,:'perf_shop'::uuid,
@@ -61,7 +61,11 @@ select
   date '2025-01-01'+((g-1)%365),
   'FINALIZED',1000,0,0,1000,
   timestamptz '2025-01-01 00:00:00+00'+((g-1)%365)*interval '1 day',
-  :'perf_user'::uuid,'perf-sale-'||g,5000000+g
+  :'perf_user'::uuid,'perf-sale-'||g,5000000+g,
+  -- replica mode skips the 0069 BEFORE INSERT trigger, so set bill_code here: 'PERF-' + g in base 31
+  -- over the 0069 alphabet (unique per shop for g < 31^4, matches the bill_code_format CHECK).
+  'PERF-'||(select string_agg(substr('ABCDEFGHJKMNPQRSTUVWXYZ23456789',(g/(31^k)::int)%31+1,1),'' order by k desc)
+            from generate_series(0,3) k)
 from generate_series(1,100000) g;
 
 set session_replication_role = origin;
