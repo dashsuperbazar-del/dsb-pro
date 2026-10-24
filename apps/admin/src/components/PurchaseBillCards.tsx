@@ -100,6 +100,8 @@ export function PurchaseBillCards(props: {
   lastUnit?: (item: Item) => 1 | 2 | 3 | undefined;
   /** Creates an item with the Add item adapter and refreshes the item list; absent = no "+ Create". */
   onCreateItem?: (fields: NewItemFields, clientId: string) => Promise<Item>;
+  /** onCreateItem also works offline (saves the item on this device; it syncs before the bill). */
+  createsOffline?: boolean;
   /** Current sale prices per item id. Absent = the user's role cannot set prices: no sale price box. */
   saleLoads?: Record<string, PriceLoad>;
 }) {
@@ -215,7 +217,8 @@ export function PurchaseBillCards(props: {
       return updateForm(key, {
         error: `“${existing.name}” already exists. Choose it from the matches.`,
       });
-    if (typeof navigator !== 'undefined' && navigator.onLine === false)
+    const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+    if (offline && !latest.current.createsOffline)
       return updateForm(key, { error: OFFLINE_NOT_CREATED + keep });
     creating.current.add(key);
     creatingNames.current.add(nameKey);
@@ -259,7 +262,7 @@ export function PurchaseBillCards(props: {
         busy: false,
         attempted: true,
         error:
-          (typeof navigator !== 'undefined' && navigator.onLine === false
+          (offline && !latest.current.createsOffline
             ? OFFLINE_NOT_CREATED
             : e instanceof Error
               ? e.message

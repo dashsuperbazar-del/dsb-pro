@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'preact/hooks';
 import {
   closeRejectedPurchase,
+  listOfflineItems,
   listOfflinePurchases,
   runSyncNow,
+  type OfflineItemRecord,
   type OfflinePurchaseRecord,
 } from '../lib/offlineSync';
 import { savePurchaseDraft, type PurchaseDraft } from '../lib/purchaseDraft';
@@ -64,11 +66,13 @@ export function OfflinePurchasesPanel({
   onDraftSaved: () => void;
 }) {
   const [rows, setRows] = useState<OfflinePurchaseRecord[]>([]);
+  const [itemRows, setItemRows] = useState<OfflineItemRecord[]>([]);
   const [note, setNote] = useState('');
   async function load() {
     if (!shopId) return;
     try {
       setRows(await listOfflinePurchases(shopId));
+      setItemRows(await listOfflineItems());
     } catch {
       // The device store is not ready yet: the next sync event reloads.
     }
@@ -77,9 +81,11 @@ export function OfflinePurchasesPanel({
     void load();
     const on = () => void load();
     window.addEventListener('dsb-offline-purchases', on);
+    window.addEventListener('dsb-offline-items', on);
     window.addEventListener('dsb-sync-state', on);
     return () => {
       window.removeEventListener('dsb-offline-purchases', on);
+      window.removeEventListener('dsb-offline-items', on);
       window.removeEventListener('dsb-sync-state', on);
     };
   }, [shopId]);
@@ -90,7 +96,14 @@ export function OfflinePurchasesPanel({
       (r.status === 'REJECTED' && r.closedAt === null) ||
       (r.status === 'SYNCED' && r.syncedAt !== null && now - r.syncedAt < DAY_MS),
   );
-  if (!shown.length && !note) return null;
+  // New items made on this device: waiting, refused (kept a week with the reason), or matched/synced today.
+  const items = itemRows.filter(
+    (r) =>
+      r.status === 'QUEUED' ||
+      (r.status === 'REJECTED' && now - r.createdAt < 7 * DAY_MS) ||
+      (r.status === 'SYNCED' && r.syncedAt !== null && now - r.syncedAt < DAY_MS),
+  );
+  if (!shown.length && !items.length && !note) return null;
   const queued = shown.filter((r) => r.status === 'QUEUED').length;
   async function correct(r: OfflinePurchaseRecord) {
     setNote('');
@@ -137,6 +150,32 @@ export function OfflinePurchasesPanel({
         </p>
       )}
       {note && <p role="status">{note}</p>}
+      {items.length > 0 && (
+        <ul aria-label="New items saved on this device">
+          {items.map((r) => (
+            <li key={r.clientId} data-testid="offline-item" data-status={r.status}>
+              <strong>
+                {r.status === 'QUEUED'
+                  ? 'New item saved on this device — will sync'
+                  : r.status === 'SYNCED'
+                    ? r.mapped
+                      ? 'New item matched an existing item'
+                      : 'New item synced'
+                    : 'New item refused by the server — not created'}
+              </strong>{' '}
+              · {r.fields.name} · {r.fields.unit1}
+              {r.fields.unit2 ? ` / ${r.fields.conv1} ${r.fields.unit2}` : ''}
+              {r.fields.unit3 ? ` / ${r.fields.conv2} ${r.fields.unit3}` : ''}
+              {r.status === 'REJECTED' && (
+                <p role="alert">
+                  {r.rejectionReason} Bills that use it were not posted: use "Correct this bill" on
+                  each and pick the existing item.
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
       <ul>
         {shown.map((r) => (
           <li key={r.clientId} data-testid="offline-purchase" data-status={r.status}>

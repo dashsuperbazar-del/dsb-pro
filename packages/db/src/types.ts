@@ -3681,6 +3681,10 @@ export type Database = {
           token: string
         }[]
       }
+      create_item_v2: {
+        Args: { p_client_id: string; p_item: Json; p_item_id: string }
+        Returns: Json
+      }
       create_stock_count: {
         Args: {
           p_business_date: string

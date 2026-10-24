@@ -45,6 +45,8 @@ const offline = vi.hoisted(() => ({
   // Offline purchases (docs/OFFLINE_PURCHASES_PLAN.md).
   cacheOfflineSuppliers: vi.fn(async () => undefined),
   listOfflinePurchases: vi.fn(async () => []),
+  listOfflineItems: vi.fn(async () => []),
+  queueItemOffline: vi.fn(),
   queuePurchaseOffline: vi.fn(),
   closeRejectedPurchase: vi.fn(),
   getOfflineSuppliers: vi.fn(async () => null),

@@ -1,5 +1,9 @@
 import {
   completeOfflinePurchase,
+  holdBillsOfRejectedItem,
+  ITEM_REMAPPED_CODE,
+  itemRemappedReason,
+  purchaseItemGate,
   markOfflinePurchaseDocumentUploaded,
   rejectOfflinePurchase,
   type DsbSyncDb,
@@ -47,6 +51,25 @@ export async function syncQueuedPurchase(
   const request = sending.payload as PurchaseV2Request;
   if (request.clientId !== record.clientId || request.shopId !== record.shopId)
     throw new Error('Queued purchase request does not match its record.');
+  // A new item made on this device must be confirmed first; a refused one refuses this bill (visible), so
+  // it can never post against a wrong or missing item.
+  const gate = await purchaseItemGate(db, request);
+  if (gate.kind === 'rejected') {
+    await holdBillsOfRejectedItem(db, gate.record);
+    return 'rejected';
+  }
+  if (gate.kind === 'remapped') {
+    // The device id was never created on the server (a match writes nothing): nothing can have posted.
+    await rejectOfflinePurchase(
+      db,
+      record.clientId,
+      ITEM_REMAPPED_CODE,
+      itemRemappedReason(gate.record.fields.name),
+    );
+    return 'rejected';
+  }
+  if (gate.kind === 'wait')
+    throw new Error(`Waiting for the new item "${gate.name}" to sync before this bill.`);
   // A retry may follow a committed first send: the server's stored answer decides any refusal.
   // Always treated as a possible retry: a send interrupted by a crash or restart leaves attempts at 1 with the
   // outcome unknown, so any refusal is checked against the server's stored answer before it is believed.
