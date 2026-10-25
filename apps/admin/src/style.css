@@ -7,6 +7,14 @@
 }
 html {
   -webkit-text-size-adjust: 100%;
+  /* Focus/scroll-into-view never leaves a control under the sticky header or the fixed bottom nav. */
+  scroll-padding: calc(var(--app-bar-h) + var(--space-2)) 0
+    calc(var(--bottom-nav-h) + var(--space-2) + env(safe-area-inset-bottom));
+}
+@media (min-width: 1000px) {
+  html {
+    scroll-padding-bottom: var(--space-2);
+  }
 }
 body {
   margin: 0;
