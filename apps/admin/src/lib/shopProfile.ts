@@ -26,6 +26,15 @@ function readCache(key: string): ShopProfile | null {
   }
 }
 
+/** Header (D1): the shop name from the receipt-profile cache only — no network read. */
+export function readCachedShopName(userId: string, shopIds: string[]): string | null {
+  for (const shop of shopIds) {
+    const p = readCache(cacheKey(userId, shop));
+    if (p?.name) return p.name;
+  }
+  return null;
+}
+
 export async function loadShopProfile(shopId: string): Promise<ProfileLoad> {
   let key: string | null = null;
   try {

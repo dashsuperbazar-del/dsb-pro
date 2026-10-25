@@ -83,6 +83,8 @@ test('remarks on a purchase bill and a sale invoice: add, settle, reopen, badges
   await page.goto('/');
   const tile = page.getByLabel('Pending items');
   await expect(tile.getByTestId('open-remark')).toContainText('REM-1');
+  // D1: the Home tile is a collapsed row; expand it first (layout only).
+  await tile.getByRole('button', { name: /^Pending items/ }).click();
   await tile.getByRole('link', { name: /REM-1/ }).click();
   await expect(page.getByLabel('Purchase detail')).toBeVisible();
 

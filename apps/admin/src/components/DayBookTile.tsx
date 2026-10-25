@@ -62,7 +62,7 @@ export function DayBookTile() {
         </div>
       </dl>
       <a class="daybook-link" href={appRoute.reports}>
-        Full day book →
+        Full day book
       </a>
     </section>
   );
