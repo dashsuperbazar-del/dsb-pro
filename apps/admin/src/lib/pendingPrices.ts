@@ -11,6 +11,8 @@ import type { ItemPrice } from '@dsb-pro/adapters';
 export type PendingPrice = {
   clientId: string;
   tenantId: string;
+  /** The signed-in user who tapped Set price: another user of a shared device never sees the record. */
+  userId: string;
   itemId: string;
   itemName: string;
   shopId: string;
@@ -19,6 +21,8 @@ export type PendingPrice = {
   unitName: string;
   pricePaise: number;
   at: number;
+  /** The current price for this kind/unit/shop when Set price was tapped (null = none; absent = unknown). */
+  beforePaise?: number | null;
   /** Set when the server refused or the request failed while no screen was showing it. */
   failure?: string;
 };
@@ -45,8 +49,8 @@ function write(list: PendingPrice[]) {
   }
 }
 
-export function listPendingPrices(tenantId: string): PendingPrice[] {
-  return read().filter((p) => p.tenantId === tenantId);
+export function listPendingPrices(tenantId: string, userId: string): PendingPrice[] {
+  return read().filter((p) => p.tenantId === tenantId && p.userId === userId);
 }
 export function isPriceInFlight(clientId: string) {
   return inFlight.has(clientId);
@@ -88,13 +92,32 @@ export async function sendPendingPrice<T>(
   }
 }
 
+/** The item's current price for the record's kind/unit/shop (null = none). */
+export function currentPriceFor(p: PendingPrice, current: ItemPrice[]): number | null {
+  const c = current.find(
+    (x) =>
+      x.kind === p.kind &&
+      x.unit_level === p.unitLevel &&
+      (x.shop_id ?? null) === (p.shopId || null),
+  );
+  return c ? c.price_paise : null;
+}
 /** A recorded write is known to be applied when the item's current price for that kind/unit/shop equals it. */
 export function priceIsApplied(p: PendingPrice, current: ItemPrice[]) {
-  return current.some(
-    (c) =>
-      c.kind === p.kind &&
-      c.unit_level === p.unitLevel &&
-      (c.shop_id ?? null) === (p.shopId || null) &&
-      c.price_paise === p.pricePaise,
-  );
+  return currentPriceFor(p, current) === p.pricePaise;
+}
+/**
+ * What the server holds now for an unsure write. applied: it already has the user's price (forget it).
+ * changed: the price is no longer the one the user saw before the change (set elsewhere, or the record
+ * has no "before"), so Retry must not overwrite it without an explicit confirm. unchanged: safe to Retry.
+ */
+export function unsureStatus(
+  p: PendingPrice,
+  current: ItemPrice[],
+): { state: 'applied' | 'changed' | 'unchanged'; nowPaise: number | null } {
+  const nowPaise = currentPriceFor(p, current);
+  if (nowPaise === p.pricePaise) return { state: 'applied', nowPaise };
+  if (p.beforePaise === undefined || nowPaise !== p.beforePaise)
+    return { state: 'changed', nowPaise };
+  return { state: 'unchanged', nowPaise };
 }
