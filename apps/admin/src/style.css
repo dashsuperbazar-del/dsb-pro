@@ -1059,8 +1059,12 @@ body {
 .health-summary > summary {
   min-height: var(--touch);
   padding: 12px 0;
-  font-size: var(--text-sm);
-  color: var(--text-muted);
+  font-size: var(--text-base);
+  color: var(--text);
+}
+.health-summary > summary .health-title {
+  font-weight: var(--weight-semibold);
+  margin-right: var(--space-1);
 }
 .health-container p,
 .health-details {
