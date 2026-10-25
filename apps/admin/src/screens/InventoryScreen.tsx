@@ -126,6 +126,14 @@ import {
 } from '../lib/offlineSync';
 import { OfflinePurchasesPanel, queuedKnownBills } from '../components/OfflinePurchasesPanel';
 import { paiseToDecimal, rupees } from '../lib/money';
+import {
+  forgetPendingPrice,
+  listPendingPrices,
+  priceIsApplied,
+  sendPendingPrice,
+  waitForPrice,
+  type PendingPrice,
+} from '../lib/pendingPrices';
 import { compressItemImage } from '../lib/compressImage';
 import { BillDocumentPreview } from '../components/BillDocumentPreview';
 import { BillAttachmentEditor } from '../components/BillAttachmentEditor';
@@ -499,6 +507,9 @@ export function InventoryScreen({
   const [legacyClientId, setLegacyClientId] = useState(() => crypto.randomUUID());
   const [legacyBusy, setLegacyBusy] = useState(false);
   const [message, setMessage] = useState('');
+  // "Set price" writes recorded on this device whose answer this screen never saw (left mid-request).
+  const [unsurePrices, setUnsurePrices] = useState<PendingPrice[]>([]);
+  const [priceSaving, setPriceSaving] = useState(false);
   const [error, setError] = useState('');
   const refreshGeneration = useRef(0);
   // After any server read (first load fallback, or a read that follows our own write) the screen's list is
@@ -1422,6 +1433,33 @@ export function InventoryScreen({
   }
   const unitSuggestions = useMemo(() => learnedUnits(items), [items]);
   const selectedItem = items.find((i) => i.id === selected);
+  // A "Set price" whose answer an earlier visit never saw: settle it against the item's current prices.
+  useEffect(() => {
+    if (!tenantId || purchaseOnly) return;
+    let live = true;
+    void (async () => {
+      const found: PendingPrice[] = [];
+      for (const p of listPendingPrices(tenantId)) {
+        const running = waitForPrice(p.clientId);
+        if (running) {
+          // Still running from before this screen was left: its outcome is recorded when it ends.
+          await running.catch(() => undefined);
+        }
+        const still = listPendingPrices(tenantId).find((x) => x.clientId === p.clientId);
+        if (!still) continue;
+        const current = await listCurrentPrices(still.itemId).catch(() => null);
+        if (current && priceIsApplied(still, current)) {
+          forgetPendingPrice(still.clientId);
+          continue;
+        }
+        found.push(still);
+      }
+      if (live) setUnsurePrices(found);
+    })();
+    return () => {
+      live = false;
+    };
+  }, [tenantId, purchaseOnly]);
   const detailPicker = boundedItemOptions(items, itemSearch, selected);
   const selectedStock = useMemo(
     () => stock.find((s) => s.item_id === selected)?.qty_base ?? 0,
@@ -2440,24 +2478,68 @@ export function InventoryScreen({
       setError('Shop data is still loading.');
       return;
     }
-    if (!selected) return;
+    if (!selected || !selectedItem) return;
     const f = new FormData(ev.currentTarget as HTMLFormElement);
+    const unitLevel = Number(f.get('unitLevel')) as 1 | 2 | 3;
+    const entry: PendingPrice = {
+      clientId: crypto.randomUUID(),
+      tenantId,
+      itemId: selected,
+      itemName: selectedItem.name,
+      shopId,
+      kind: String(f.get('kind')) as ItemPrice['kind'],
+      unitLevel,
+      unitName:
+        (unitLevel === 3 ? selectedItem.unit3 : unitLevel === 2 ? selectedItem.unit2 : null) ||
+        selectedItem.unit1,
+      pricePaise: paise(String(f.get('price'))),
+      at: Date.now(),
+    };
+    setPriceSaving(true);
+    setMessage('Saving price…');
     try {
-      await setItemPrice({
-        itemId: selected,
-        shopId,
-        kind: String(f.get('kind')) as ItemPrice['kind'],
-        unitLevel: Number(f.get('unitLevel')) as 1 | 2 | 3,
-        pricePaise: paise(String(f.get('price'))),
-        clientId: crypto.randomUUID(),
-      });
-      const updatedPrices = await listCurrentPrices(selected);
-      if (selectedRef.current === selected) setPrices(updatedPrices);
-      reloadSalePrices();
+      await sendPriceEntry(entry);
       setMessage('Price history updated atomically.');
     } catch (e) {
+      setMessage('');
       setError(String(e));
+    } finally {
+      setPriceSaving(false);
     }
+  }
+  async function sendPriceEntry(entry: PendingPrice) {
+    await sendPendingPrice(entry, (p) =>
+      setItemPrice({
+        itemId: p.itemId,
+        shopId: p.shopId,
+        kind: p.kind,
+        unitLevel: p.unitLevel,
+        pricePaise: p.pricePaise,
+        clientId: p.clientId,
+      }),
+    );
+    forgetPendingPrice(entry.clientId);
+    setUnsurePrices((v) => v.filter((u) => u.clientId !== entry.clientId));
+    if (selectedRef.current === entry.itemId) {
+      const updatedPrices = await listCurrentPrices(entry.itemId).catch(() => null);
+      if (updatedPrices && selectedRef.current === entry.itemId) setPrices(updatedPrices);
+    }
+    reloadSalePrices();
+  }
+  async function retryUnsurePrice(p: PendingPrice) {
+    setError('');
+    try {
+      await sendPriceEntry(p);
+      setMessage(`Price saved: ${p.itemName} ${p.kind} ${rupees(p.pricePaise)} per ${p.unitName}.`);
+    } catch (e) {
+      setUnsurePrices((v) =>
+        v.map((u) => (u.clientId === p.clientId ? { ...u, failure: String(e) } : u)),
+      );
+    }
+  }
+  function dismissUnsurePrice(p: PendingPrice) {
+    forgetPendingPrice(p.clientId);
+    setUnsurePrices((v) => v.filter((u) => u.clientId !== p.clientId));
   }
   async function changeImage(ev: Event) {
     const file = (ev.currentTarget as HTMLInputElement).files?.[0];
@@ -2590,6 +2672,19 @@ export function InventoryScreen({
       {error && <p role="alert">{error}</p>}
       {!purchaseOnly && <SnapshotNote at={snapshotAt} failed={snapshotFailed} />}
       {message && <p role="status">{message}</p>}
+      {priceSaving && <p class="muted">Saving price… it finishes even if you leave this screen.</p>}
+      {unsurePrices.map((p) => (
+        <p role="alert" key={p.clientId}>
+          {p.failure ? 'Price not saved' : 'Price may not be saved'}: {p.itemName} ({p.kind}{' '}
+          {rupees(p.pricePaise)} per {p.unitName}).{p.failure ? ` ${p.failure}` : ''}{' '}
+          <button type="button" onClick={() => void retryUnsurePrice(p)}>
+            Retry price
+          </button>{' '}
+          <button type="button" onClick={() => dismissUnsurePrice(p)}>
+            Dismiss
+          </button>
+        </p>
+      ))}
       {priceRetries.map((r) => {
         const w = r.write;
         const what = `${w.itemName} (${w.kind} ${rupees(w.pricePaise)} per ${w.unitName})`;
@@ -2842,7 +2937,7 @@ export function InventoryScreen({
                 required
               />
             </label>{' '}
-            <button disabled={!shopId}>Set price</button>
+            <button disabled={!shopId || priceSaving}>Set price</button>
           </form>
         )}
       </section>
