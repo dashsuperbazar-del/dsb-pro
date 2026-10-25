@@ -549,12 +549,27 @@ dialog::backdrop {
 .app-brand > span:last-child {
   min-width: 0;
 }
-.brand-logo {
-  width: 36px;
-  height: 36px;
-  flex: none;
-  --logo-tile: var(--header-text);
-  --logo-mark: var(--header-bg);
+/* Lockup: awning over the "DSB Pro" wordmark, shop name underneath. */
+.brand-lockup {
+  display: inline-grid;
+  justify-items: start;
+  min-width: 0;
+}
+.brand-awning {
+  display: block;
+  width: 92px;
+  height: 14px;
+  margin: 2px 0 1px;
+  color: var(--header-text);
+}
+.brand-word {
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  line-height: 1.05;
+}
+.brand-pro {
+  font-weight: var(--weight-regular);
 }
 .app-brand small {
   display: block;

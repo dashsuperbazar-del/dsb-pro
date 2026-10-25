@@ -36,7 +36,7 @@ import { Icon } from './components/Icon';
 import { applyTheme, readTheme } from './components/ThemeToggle';
 import { SyncRuntime } from './components/SyncRuntime';
 import { SyncIndicator } from './components/SyncIndicator';
-import { Logo } from './components/Logo';
+import { Awning } from './components/Logo';
 import { readCachedShopName } from './lib/shopProfile';
 import { appRoute } from './lib/paths';
 
@@ -52,9 +52,11 @@ export function App() {
       <SyncRuntime session={session} />
       <header class="app-bar no-print">
         <a href={appRoute.home} class="app-brand" aria-label="DSB Pro home">
-          <Logo />
-          <span>
-            DSB Pro
+          <span class="brand-lockup">
+            <Awning />
+            <span class="brand-word">
+              DSB <span class="brand-pro">Pro</span>
+            </span>
             <small>
               {(session.status === 'active' &&
                 readCachedShopName(session.session.user.id, session.membership.shopIds)) ||

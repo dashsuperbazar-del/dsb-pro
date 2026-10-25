@@ -65,3 +65,12 @@ const maskable = await sharp({
   .toBuffer();
 writeFileSync(join(publicDir, 'icon-maskable-512.png'), maskable);
 console.log(`wrote icon-maskable-512.png (${maskable.length} bytes)`);
+
+// iOS home-screen icon: opaque 180px (iOS rounds the corners itself).
+const apple = await sharp(svg, { density: 384 })
+  .resize(180, 180)
+  .flatten({ background: '#0f6b4f' })
+  .png({ compressionLevel: 9 })
+  .toBuffer();
+writeFileSync(join(publicDir, 'apple-touch-icon.png'), apple);
+console.log(`wrote apple-touch-icon.png (${apple.length} bytes)`);

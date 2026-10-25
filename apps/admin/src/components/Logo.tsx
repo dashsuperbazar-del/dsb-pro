@@ -1,26 +1,13 @@
-// DSB Pro mark: a shop basket on a rounded tile. Same geometry as public/favicon.svg (the app icons are
-// rasterised from that file by scripts/gen-icons.mjs). Colours come from --logo-tile / --logo-mark so the
-// header can show it inverted (white tile, green basket).
-export function Logo({ class: className = 'brand-logo' }: { class?: string }) {
+// DSB Pro mark (owner pick, option 2): a shop awning over the "DSB Pro" wordmark. The awning is drawn
+// here in currentColor so the header (green bar) and any light/dark surface can use it; the app icons use
+// the compact version in public/favicon.svg (awning + "DSB"), rasterised by scripts/gen-icons.mjs.
+export function Awning({ class: className = 'brand-awning' }: { class?: string }) {
   return (
-    <svg class={className} viewBox="0 0 64 64" aria-hidden="true" focusable="false">
-      <rect width="64" height="64" rx="15" style="fill: var(--logo-tile, #0f6b4f)" />
+    <svg class={className} viewBox="0 0 152 22" aria-hidden="true" focusable="false">
+      <path d="M6 0h140l5 12H1z" fill="currentColor" />
       <path
-        d="M21 27c0-9 4.5-14 11-14s11 5 11 14"
-        fill="none"
-        style="stroke: var(--logo-mark, #fff)"
-        stroke-width="4.5"
-        stroke-linecap="round"
-      />
-      <path
-        d="M11 26.5h42a2 2 0 0 1 1.9 2.6l-6 20.2a4 4 0 0 1-3.8 2.9H18.9a4 4 0 0 1-3.8-2.9l-6-20.2A2 2 0 0 1 11 26.5z"
-        style="fill: var(--logo-mark, #fff)"
-      />
-      <path
-        d="M24 34v11M32 34v11M40 34v11"
-        style="stroke: var(--logo-tile, #0f6b4f)"
-        stroke-width="3.5"
-        stroke-linecap="round"
+        d="M1 12a9.5 9.5 0 0 0 19 0zM20 12a9.5 9.5 0 0 0 19 0zM39 12a9.5 9.5 0 0 0 19 0zM58 12a9.5 9.5 0 0 0 19 0zM77 12a9.5 9.5 0 0 0 19 0zM96 12a9.5 9.5 0 0 0 19 0zM115 12a9.5 9.5 0 0 0 19 0zM134 12a9 9 0 0 0 17 0z"
+        fill="currentColor"
       />
     </svg>
   );
