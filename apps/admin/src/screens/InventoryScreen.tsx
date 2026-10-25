@@ -347,6 +347,10 @@ export function InventoryScreen({
   const contextApplied = useRef('');
   const contextNeedsReset = useRef(false);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
+  // Where the bill form's supplier list came from: the server, or the copy saved on this device.
+  const [suppliersFrom, setSuppliersFrom] = useState<'' | 'server' | 'device'>('');
+  // The online supplier list has been saved on this device (what an offline bill form will use).
+  const [suppliersSaved, setSuppliersSaved] = useState(false);
   // New items made on this device (offline). QUEUED ones join the bill-card list (not stock); a refused or
   // matched device item leaves it. A bill that uses a QUEUED item is always saved on the device (it syncs
   // after its item), even when online; a matched item is sent under the server's id.
@@ -567,8 +571,13 @@ export function InventoryScreen({
     if (catalog.source === 'server') serverAuthoritative.current = true;
     setItems(catalog.items);
     setParties(p);
+    setSuppliersFrom('server');
     if (purchaseOnly)
-      void cacheOfflineSuppliers(p.map((x) => ({ id: x.id, name: x.name }))).catch(() => undefined);
+      void cacheOfflineSuppliers(p.map((x) => ({ id: x.id, name: x.name })))
+        .then((saved) => {
+          if (saved && generation === refreshGeneration.current) setSuppliersSaved(true);
+        })
+        .catch(() => undefined);
     setStock(s);
     setSnapshotAt(null);
     if (!purchaseOnly && session.user.id === userId)
@@ -605,6 +614,7 @@ export function InventoryScreen({
     if (generation !== refreshGeneration.current) return;
     setItems(catalogItems);
     setParties(suppliers.map((x) => ({ phone: null, gstin: null, ...x })));
+    setSuppliersFrom('device');
     setStock(
       stockRows.map((r) => ({
         tenant_id: r.tenant_id,
@@ -623,6 +633,16 @@ export function InventoryScreen({
       );
   }
   const catalogKey = useRef('');
+  // Purchases: the connection dropped before the online load finished (it may fail or simply never
+  // answer). Load the device copy (saved suppliers, catalog, stock) instead of leaving the bill form
+  // disabled; the newer refresh generation makes any late online answer be ignored.
+  const wasOnline = useRef(online);
+  useEffect(() => {
+    const dropped = wasOnline.current && !online;
+    wasOnline.current = online;
+    if (!dropped || !purchaseOnly || catalogLoaded) return;
+    void refresh().catch((e) => setError(String(e)));
+  }, [online, purchaseOnly, catalogLoaded]);
   useEffect(() => {
     let stopped = false;
     void refresh()
@@ -638,6 +658,8 @@ export function InventoryScreen({
         setItems(device.items as unknown as Item[]);
       })
       .catch((e) => {
+        // Purchases lost the connection mid-load: the device copy is being loaded instead (below).
+        if (purchaseOnly && typeof navigator !== 'undefined' && navigator.onLine === false) return;
         snapshotRefreshFailed('inventory', e);
         setSnapshotFailed(true);
         setError(String(e));
@@ -2893,6 +2915,8 @@ export function InventoryScreen({
       )}
       <section
         hidden={view !== 'purchase'}
+        data-purchase-ready={purchaseOnly && catalogLoaded && !editLocked ? 'true' : 'false'}
+        data-suppliers-saved={suppliersSaved ? 'true' : 'false'}
         onInput={() => setDraftTouched(true)}
         onChange={() => setDraftTouched(true)}
       >
@@ -3099,6 +3123,13 @@ export function InventoryScreen({
                   <BillDocumentPreview key={path} path={path} />
                 ))}
             </div>
+          )}
+          {purchaseOnly && (!catalogLoaded || suppliersFrom === 'device') && (
+            <p class="muted" role="status" data-testid="supplier-source">
+              {!catalogLoaded
+                ? 'Loading suppliers and items…'
+                : `Offline: using the supplier list saved on this device (${parties.length} supplier${parties.length === 1 ? '' : 's'}).`}
+            </p>
           )}
           <fieldset disabled={editLocked} class="plain bill-head">
             <label class="bill-supplier">
