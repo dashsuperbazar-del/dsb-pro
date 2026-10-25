@@ -74,6 +74,12 @@ export async function listParties(): Promise<Party[]> {
   if (error) throw new Error(friendly(error));
   return (data ?? []) as Party[];
 }
+/**
+ * Online item create (0073): through create_item_v2, the same locked RPC the offline sync uses, so online
+ * and offline creates of one name are serialised and follow one rule: exactly one same-name item with the
+ * same units is returned (mapped=true, nothing written); any other same-name item is DSB_ITEM_NAME_TAKEN.
+ * The client id doubles as the item id, so retrying the same create is an exact replay (same item).
+ */
 export async function createItem(input: {
   tenantId: string;
   name: string;
@@ -85,11 +91,12 @@ export async function createItem(input: {
   conv2?: number;
   taxRateBp?: number;
   clientId: string;
-}): Promise<Item> {
-  const { data, error } = await getSupabaseClient()
-    .from('items')
-    .insert({
-      tenant_id: input.tenantId,
+}): Promise<Item & { mapped: boolean }> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb.rpc('create_item_v2', {
+    p_item_id: input.clientId,
+    p_client_id: input.clientId,
+    p_item: {
       name: input.name,
       sku: input.sku ?? null,
       unit1: input.unit1,
@@ -98,11 +105,21 @@ export async function createItem(input: {
       conv1: input.conv1 ?? null,
       conv2: input.conv2 ?? null,
       tax_rate_bp: input.taxRateBp ?? 0,
-      client_id: input.clientId,
-    })
-    .select()
-    .single();
-  return must(data, error) as Item;
+    },
+  });
+  if (error) throw new Error(friendly(error));
+  const r = data as Record<string, unknown> | null;
+  const itemId = typeof r?.itemId === 'string' ? r.itemId : '';
+  const mapped = r?.mapped === true;
+  if (
+    !r ||
+    !itemId ||
+    r.requestedItemId !== input.clientId ||
+    (!mapped && itemId !== input.clientId)
+  )
+    throw new Error('Item create returned an unexpected answer. Check Stock before trying again.');
+  const read = await sb.from('items').select().eq('id', itemId).single();
+  return { ...(must(read.data, read.error) as Item), mapped };
 }
 /** The item this tenant saved under a create's client id (the plain RLS items read), or null. Used to
  * confirm a create whose answer was lost: the retry is refused by unique(tenant_id, client_id). */

@@ -1242,11 +1242,44 @@ if [[ "$offlinebillchange" != '0' && "$offlineitems" != '2' && ! ( "$offlinebill
  echo 'Offline bill edit and void (0072) appears ahead of completed offlineitems. Refusing migration.' >&2; exit 1
 fi
 
+# Item name lock (0073): additive classifier field. 2 anchors, all or nothing.
+itemnamelock_probe=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -F' ' <<'SQL'
+do $$ begin
+ create temp table _itemnamelock_receipt (present boolean);
+ if to_regclass('public.app_migration_receipts') is not null then
+   insert into _itemnamelock_receipt select exists(select 1 from public.app_migration_receipts where version='0073');
+ else insert into _itemnamelock_receipt values(false); end if;
+end $$;
+select (select present from _itemnamelock_receipt),
+ (select count(*) from (values
+   (exists(select 1 from pg_proc where oid=to_regprocedure('public.items_name_guard()') and not prosecdef and position('dsb:item-name:' in prosrc)>0 and position('DSB_ITEM_NAME_TAKEN' in prosrc)>0 and position('authenticated' in prosrc)>0)
+    and not coalesce(has_function_privilege('authenticated',to_regprocedure('public.items_name_guard()'),'execute'),false)
+    and not coalesce(has_function_privilege('anon',to_regprocedure('public.items_name_guard()'),'execute'),false)),
+   (exists(select 1 from pg_trigger where tgrelid=to_regclass('public.items') and tgname='items_name_guard' and not tgisinternal and tgenabled='O' and tgfoid=to_regprocedure('public.items_name_guard()')))
+ ) p(ok) where ok);
+SQL
+)
+read -r itemnamelock_receipt itemnamelock_anchors <<<"$(tail -n 1 <<<"$itemnamelock_probe")"
+case "$itemnamelock_receipt:$itemnamelock_anchors" in
+ f:0) itemnamelock=0; needs_itemnamelock=true ;;
+ f:2) itemnamelock=1; needs_itemnamelock=true ;;
+ t:2) itemnamelock=2; needs_itemnamelock=false ;;
+ *) echo "Item name lock (0073) partial/drift state ($itemnamelock_receipt/$itemnamelock_anchors). Refusing migration." >&2; exit 1 ;;
+esac
+if [[ "$itemnamelock" == '2' ]]; then
+ itemnamelock_expected=$(sha256sum "$repo_root/supabase/migrations/0073_item_name_lock.sql" | cut -d' ' -f1)
+ itemnamelock_recorded=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -c "select checksum_sha256 from public.app_migration_receipts where version='0073'")
+ [[ "$itemnamelock_expected" == "$itemnamelock_recorded" ]] || { echo '0073 receipt checksum mismatch. Refusing migration.' >&2; exit 1; }
+fi
+if [[ "$itemnamelock" != '0' && "$offlinebillchange" != '2' && ! ( "$itemnamelock" == '1' && "$offlinebillchange" == '1' ) ]]; then
+ echo 'Item name lock (0073) appears ahead of completed offlinebillchange. Refusing migration.' >&2; exit 1
+fi
+
 emit_state() {
   local needs_foundation=$1 needs_hardening=$2 needs_phase65=$3 needs_batcha=$4 needs_batchb=$5 needs_p1=$6 needs_p2=$7 needs_c0=$8 needs_c1=$9 needs_c2=${10} needs_c3=${11} needs_c3b=${12} needs_r0=${13} needs_d1=${14} needs_r0b=${15} needs_o1=${16} needs_o2=${17} needs_d2b=${18} needs_d3a=${19}
   local needs_upgrade=true
   if [[ "$needs_foundation:$needs_hardening:$needs_phase65:$needs_batcha:$needs_batchb:$needs_p1:$needs_p2:$needs_c0:$needs_c1:$needs_c2:$needs_c3:$needs_c3b:$needs_r0:$needs_d1:$needs_r0b:$needs_o1:$needs_o2:$needs_d2b:$needs_d3a" == "false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false" ]]; then
-    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" && "$needs_supplierschedule" == "false" && "$needs_partymerge" == "false" && "$needs_itemindex" == "false" && "$needs_billextras" == "false" && "$needs_salepricing" == "false" && "$needs_billedit" == "false" && "$needs_remarks" == "false" && "$needs_remarksfix" == "false" && "$needs_billcode" == "false" && "$needs_backlog" == "false" && "$needs_offlineitems" == "false" && "$needs_offlinebillchange" == "false" ]]; then needs_upgrade=false; fi
+    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" && "$needs_supplierschedule" == "false" && "$needs_partymerge" == "false" && "$needs_itemindex" == "false" && "$needs_billextras" == "false" && "$needs_salepricing" == "false" && "$needs_billedit" == "false" && "$needs_remarks" == "false" && "$needs_remarksfix" == "false" && "$needs_billcode" == "false" && "$needs_backlog" == "false" && "$needs_offlineitems" == "false" && "$needs_offlinebillchange" == "false" && "$needs_itemnamelock" == "false" ]]; then needs_upgrade=false; fi
   fi
   printf 'observed_state=%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s\n' "$foundation" "$hardening" "$phase65" "$batcha" "$batchb" "$p1" "$p2" "$c0" "$c1" "$c2" "$c3" "$c3b" "$r0" "$d1" "$r0b" "$o1" "$o2" "$d2b" "$d3a"
   printf 'needs_upgrade=%s\n' "$needs_upgrade"
@@ -1299,6 +1332,8 @@ emit_state() {
   printf 'needs_offlineitems=%s\n' "$needs_offlineitems"
   printf 'offlinebillchange_state=%s\n' "$offlinebillchange"
   printf 'needs_offlinebillchange=%s\n' "$needs_offlinebillchange"
+  printf 'itemnamelock_state=%s\n' "$itemnamelock"
+  printf 'needs_itemnamelock=%s\n' "$needs_itemnamelock"
 }
 
 # Legacy (0030-0043) classification is unchanged from before Packet P1: the

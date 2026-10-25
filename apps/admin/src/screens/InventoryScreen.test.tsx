@@ -1402,6 +1402,27 @@ test('P03: the Add item form uses the same labels, trimming and unit rules as th
   api.createItem.mockReset();
 });
 
+test('0073: Add item for a name that exists with the same units says so instead of "Created"', async () => {
+  api.createItem.mockResolvedValue({ id: 'old', name: 'Tea', mapped: true });
+  await act(async () => {
+    render(<InventoryScreen />, host);
+  });
+  const form = host.querySelector<HTMLFormElement>('#stock-add-item form')!;
+  form.querySelector<HTMLInputElement>('input[name="name"]')!.value = 'tea';
+  form.querySelector<HTMLInputElement>('input[name="unit1"]')!.value = 'box';
+  await vi.waitFor(() => expect(createButton(form).disabled).toBe(false));
+  await act(async () => {
+    form.requestSubmit();
+  });
+  await vi.waitFor(() =>
+    expect(host.textContent).toContain(
+      'Tea already exists with these units — no new item was created (its GST is unchanged).',
+    ),
+  );
+  expect(host.textContent).not.toContain('Created Tea');
+  api.createItem.mockReset();
+});
+
 test('unit form: preset fills units, live example, piece unit folded but kept, saved through the same path', async () => {
   api.createItem.mockResolvedValue({ id: 'z', name: 'Atta' });
   await act(async () => {

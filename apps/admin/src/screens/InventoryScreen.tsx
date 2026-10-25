@@ -1570,7 +1570,11 @@ export function InventoryScreen({
       });
       form.reset();
       await refresh(true);
-      setMessage(`Created ${item.name}.`);
+      setMessage(
+        item.mapped
+          ? `${item.name} already exists with these units — no new item was created (its GST is unchanged).`
+          : `Created ${item.name}.`,
+      );
     } catch (e) {
       setError(String(e));
     }
