@@ -103,12 +103,20 @@ test('offline purchases: saved without a connection, kept over a restart, posted
   await page.getByRole('button', { name: 'Sync now' }).click();
   await expect(page.getByTestId('sync-outbox-count')).toHaveText('0');
   await page.goto('/purchases?new=1');
-  await expect(purchaseSection(page).locator('input[name="date"]')).not.toHaveValue('');
+  // Explicit ready signal (catalog, suppliers and the bill form loaded), not just a filled date.
+  await expect(purchaseSection(page)).toHaveAttribute('data-purchase-ready', 'true');
 
-  let uploads = 0;
-  await page.route('**/storage/v1/object/bill-documents/**', (route) => {
-    if (route.request().method() === 'POST') uploads++;
-    return route.continue();
+  // Stored photo objects (path of each upload the server accepted). An attempt cut off by the network and
+  // retried to the same path is still one object; two paths would be a second copy.
+  let attempts = 0;
+  const stored = new Set<string>();
+  await page.route('**/storage/v1/object/bill-documents/**', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    attempts++;
+    const response = await route.fetch().catch(() => null);
+    if (!response) return route.abort().catch(() => undefined); // cut off: the app retries it
+    if (response.ok()) stored.add(new URL(route.request().url()).pathname);
+    return route.fulfill({ response }).catch(() => undefined);
   });
   // A refusal from the server for one bill (deterministic stand-in for e.g. a supplier archived elsewhere).
   await page.route('**/rest/v1/rpc/post_purchase_v2', (route) => {
@@ -160,7 +168,7 @@ test('offline purchases: saved without a connection, kept over a restart, posted
   await saveOfflineBill(page, 'OFF-C1', '3', '5', 'Credit');
   await saveOfflineBill(page, 'OFF-K1', '2', '10', 'Cash');
   await saveOfflineBill(page, 'OFF-R1', '1', '7', 'Credit');
-  expect(uploads).toBe(0);
+  expect(attempts).toBe(0);
   await expect(pending(page).getByTestId('offline-purchase')).toHaveCount(3);
 
   // Restart while offline: the bills are still on the device, nothing was sent.
@@ -179,7 +187,7 @@ test('offline purchases: saved without a connection, kept over a restart, posted
   // Sync again: a second cycle sends nothing more.
   await page.getByRole('button', { name: 'Sync now' }).click();
   await expect(page.getByTestId('sync-outbox-count')).toHaveText('0');
-  expect(uploads).toBe(1);
+  expect(stored.size).toBe(1);
 
   await page.goto('/purchases?new=1');
   await expect(pending(page).locator('[data-status="SYNCED"]')).toHaveCount(2);
@@ -219,4 +227,46 @@ test('offline purchases: saved without a connection, kept over a restart, posted
   await expect(credit.locator('td').nth(5)).toHaveText('₹15.00');
   await expect(cash.locator('td').nth(4)).toHaveText('₹20.00');
   await expect(cash.locator('td').nth(5)).toHaveText('₹0.00');
+});
+
+test('offline purchases: a connection lost while Purchases is loading falls back to the saved supplier list', async ({
+  page,
+  context,
+}) => {
+  test.setTimeout(90000);
+  await createOwnerShop(page);
+  await page.goto('/inventory');
+  await stockTask(page, 'Suppliers');
+  await page.getByPlaceholder('Supplier name').fill('Offline Supplier');
+  await page.getByRole('button', { name: 'Create supplier' }).click();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Created supplier Offline Supplier' }).first(),
+  ).toBeVisible();
+  // One online visit saves the supplier list and the catalog on this device.
+  await page.goto('/purchases?new=1');
+  await waitForServiceWorker(page);
+  await expect(purchaseSection(page)).toHaveAttribute('data-purchase-ready', 'true');
+  await expect(purchaseSection(page)).toHaveAttribute('data-suppliers-saved', 'true');
+  await page.goto('/sync');
+  await page.getByRole('button', { name: 'Sync now' }).click();
+  await expect(page.getByTestId('sync-outbox-count')).toHaveText('0');
+
+  // A slow connection: the supplier read is still on its way when the device goes offline.
+  await page.route('**/rest/v1/parties?*', async (route) => {
+    await new Promise((r) => setTimeout(r, 3000));
+    await route.continue().catch(() => undefined);
+  });
+  await page.goto('/purchases?new=1');
+  const purchase = purchaseSection(page);
+  await expect(purchase.getByTestId('supplier-source')).toHaveText('Loading suppliers and items…');
+  await context.setOffline(true);
+  await expect(purchase).toHaveAttribute('data-purchase-ready', 'true');
+  await expect(purchase.getByTestId('supplier-source')).toHaveText(
+    'Offline: using the supplier list saved on this device (1 supplier).',
+  );
+  // The interrupted online load is not reported as an error: the device copy replaced it.
+  await expect(page.getByRole('alert').filter({ hasText: /fetch|TypeError/i })).toHaveCount(0);
+  await purchase.locator('.bill-details-toggle').click();
+  await expect(purchase.locator('select[name="partyId"]')).toBeEnabled();
+  await purchase.locator('select[name="partyId"]').selectOption({ label: 'Offline Supplier' });
 });

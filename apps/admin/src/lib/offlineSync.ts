@@ -1039,12 +1039,19 @@ export async function closeRejectedPurchase(clientId: string): Promise<OfflinePu
   return record;
 }
 /** Suppliers seen on the last online load, for opening Purchases offline. Display/selection only. */
+/**
+ * Saves the supplier list the offline bill form uses. Waits for the device cache to start (it used to
+ * skip silently when the page loaded faster than the cache, leaving offline bills with no suppliers).
+ * Resolves true once saved, false when the cache never started.
+ */
 export async function cacheOfflineSuppliers(
   rows: ReadonlyArray<{ id: string; name: string }>,
-): Promise<void> {
+): Promise<boolean> {
+  if (!runtime) await waitForOfflineRuntime(30000).catch(() => undefined);
   const db = runtime?.db;
-  if (!db) return;
+  if (!db) return false;
   await db.meta.put({ key: 'purchaseSuppliers', value: rows.map((r) => ({ ...r })) });
+  return true;
 }
 export async function getOfflineSuppliers<T>(): Promise<T[] | null> {
   return getMeta<T[]>(requireRuntime().db, 'purchaseSuppliers');

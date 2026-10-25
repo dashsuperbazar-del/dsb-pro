@@ -67,6 +67,7 @@ import {
   getPurchaseExtras,
   replaceItemImage,
   setItemPrice,
+  PriceRefusedError,
   setItemMinStock,
   setItemTaxRate,
   type Item,
@@ -126,6 +127,15 @@ import {
 } from '../lib/offlineSync';
 import { OfflinePurchasesPanel, queuedKnownBills } from '../components/OfflinePurchasesPanel';
 import { paiseToDecimal, rupees } from '../lib/money';
+import {
+  forgetPendingPrice,
+  listPendingPrices,
+  currentPriceFor,
+  sendPendingPrice,
+  unsureStatus,
+  waitForPrice,
+  type PendingPrice,
+} from '../lib/pendingPrices';
 import { compressItemImage } from '../lib/compressImage';
 import { BillDocumentPreview } from '../components/BillDocumentPreview';
 import { BillAttachmentEditor } from '../components/BillAttachmentEditor';
@@ -188,6 +198,9 @@ type InventorySnapshot = { items: Item[]; parties: Party[]; stock: StockRow[] };
 // A sale price of a bill that was not written. failed: bill saved, write failed (Retry). check: found on
 // this device after a reload, bill state unknown (check, then Retry). late: the bill confirmed more than a
 // day after the price was entered (not written by itself; Retry). expired / refused: Discard only.
+// An unsure "Set price" on screen. nowPaise: the server's current price when last checked; changed: that
+// price is not the one the user saw before the change, so Retry needs an explicit "Replace".
+type UnsurePrice = PendingPrice & { nowPaise?: number | null; changed?: boolean };
 type PriceRetry = {
   key: string;
   shop: string;
@@ -347,6 +360,10 @@ export function InventoryScreen({
   const contextApplied = useRef('');
   const contextNeedsReset = useRef(false);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
+  // Where the bill form's supplier list came from: the server, or the copy saved on this device.
+  const [suppliersFrom, setSuppliersFrom] = useState<'' | 'server' | 'device'>('');
+  // The online supplier list has been saved on this device (what an offline bill form will use).
+  const [suppliersSaved, setSuppliersSaved] = useState(false);
   // New items made on this device (offline). QUEUED ones join the bill-card list (not stock); a refused or
   // matched device item leaves it. A bill that uses a QUEUED item is always saved on the device (it syncs
   // after its item), even when online; a matched item is sent under the server's id.
@@ -499,6 +516,9 @@ export function InventoryScreen({
   const [legacyClientId, setLegacyClientId] = useState(() => crypto.randomUUID());
   const [legacyBusy, setLegacyBusy] = useState(false);
   const [message, setMessage] = useState('');
+  // "Set price" writes recorded on this device whose answer this screen never saw (left mid-request).
+  const [unsurePrices, setUnsurePrices] = useState<UnsurePrice[]>([]);
+  const [priceSaving, setPriceSaving] = useState(false);
   const [error, setError] = useState('');
   const refreshGeneration = useRef(0);
   // After any server read (first load fallback, or a read that follows our own write) the screen's list is
@@ -567,8 +587,13 @@ export function InventoryScreen({
     if (catalog.source === 'server') serverAuthoritative.current = true;
     setItems(catalog.items);
     setParties(p);
+    setSuppliersFrom('server');
     if (purchaseOnly)
-      void cacheOfflineSuppliers(p.map((x) => ({ id: x.id, name: x.name }))).catch(() => undefined);
+      void cacheOfflineSuppliers(p.map((x) => ({ id: x.id, name: x.name })))
+        .then((saved) => {
+          if (saved && generation === refreshGeneration.current) setSuppliersSaved(true);
+        })
+        .catch(() => undefined);
     setStock(s);
     setSnapshotAt(null);
     if (!purchaseOnly && session.user.id === userId)
@@ -605,6 +630,7 @@ export function InventoryScreen({
     if (generation !== refreshGeneration.current) return;
     setItems(catalogItems);
     setParties(suppliers.map((x) => ({ phone: null, gstin: null, ...x })));
+    setSuppliersFrom('device');
     setStock(
       stockRows.map((r) => ({
         tenant_id: r.tenant_id,
@@ -623,6 +649,16 @@ export function InventoryScreen({
       );
   }
   const catalogKey = useRef('');
+  // Purchases: the connection dropped before the online load finished (it may fail or simply never
+  // answer). Load the device copy (saved suppliers, catalog, stock) instead of leaving the bill form
+  // disabled; the newer refresh generation makes any late online answer be ignored.
+  const wasOnline = useRef(online);
+  useEffect(() => {
+    const dropped = wasOnline.current && !online;
+    wasOnline.current = online;
+    if (!dropped || !purchaseOnly || catalogLoaded) return;
+    void refresh().catch((e) => setError(String(e)));
+  }, [online, purchaseOnly, catalogLoaded]);
   useEffect(() => {
     let stopped = false;
     void refresh()
@@ -638,6 +674,8 @@ export function InventoryScreen({
         setItems(device.items as unknown as Item[]);
       })
       .catch((e) => {
+        // Purchases lost the connection mid-load: the device copy is being loaded instead (below).
+        if (purchaseOnly && typeof navigator !== 'undefined' && navigator.onLine === false) return;
         snapshotRefreshFailed('inventory', e);
         setSnapshotFailed(true);
         setError(String(e));
@@ -1422,6 +1460,38 @@ export function InventoryScreen({
   }
   const unitSuggestions = useMemo(() => learnedUnits(items), [items]);
   const selectedItem = items.find((i) => i.id === selected);
+  // A "Set price" whose answer an earlier visit never saw: settle it against the item's current prices.
+  useEffect(() => {
+    if (!tenantId || !saleUser || purchaseOnly) return;
+    let live = true;
+    void (async () => {
+      const found: UnsurePrice[] = [];
+      for (const p of listPendingPrices(tenantId, saleUser)) {
+        const running = waitForPrice(p.clientId);
+        if (running) {
+          // Still running from before this screen was left: its outcome is recorded when it ends.
+          await running.catch(() => undefined);
+        }
+        const still = listPendingPrices(tenantId, saleUser).find((x) => x.clientId === p.clientId);
+        if (!still) continue;
+        const current = await listCurrentPrices(still.itemId).catch(() => null);
+        if (!current) {
+          found.push(still);
+          continue;
+        }
+        const status = unsureStatus(still, current);
+        if (status.state === 'applied') {
+          forgetPendingPrice(still.clientId);
+          continue;
+        }
+        found.push({ ...still, nowPaise: status.nowPaise, changed: status.state === 'changed' });
+      }
+      if (live) setUnsurePrices(found);
+    })();
+    return () => {
+      live = false;
+    };
+  }, [tenantId, saleUser, purchaseOnly]);
   const detailPicker = boundedItemOptions(items, itemSearch, selected);
   const selectedStock = useMemo(
     () => stock.find((s) => s.item_id === selected)?.qty_base ?? 0,
@@ -2444,24 +2514,95 @@ export function InventoryScreen({
       setError('Shop data is still loading.');
       return;
     }
-    if (!selected) return;
+    if (!selected || !selectedItem) return;
     const f = new FormData(ev.currentTarget as HTMLFormElement);
+    const unitLevel = Number(f.get('unitLevel')) as 1 | 2 | 3;
+    const entry: PendingPrice = {
+      clientId: crypto.randomUUID(),
+      tenantId,
+      userId: saleUser,
+      itemId: selected,
+      itemName: selectedItem.name,
+      shopId,
+      kind: String(f.get('kind')) as ItemPrice['kind'],
+      unitLevel,
+      unitName:
+        (unitLevel === 3 ? selectedItem.unit3 : unitLevel === 2 ? selectedItem.unit2 : null) ||
+        selectedItem.unit1,
+      pricePaise: paise(String(f.get('price'))),
+      at: Date.now(),
+    };
+    // The price the user saw before this change (unknown while the item's prices are not loaded).
+    entry.beforePaise =
+      !pricesLoading && !pricesFailed ? currentPriceFor(entry, prices) : undefined;
+    setPriceSaving(true);
+    setMessage('Saving price…');
     try {
-      await setItemPrice({
-        itemId: selected,
-        shopId,
-        kind: String(f.get('kind')) as ItemPrice['kind'],
-        unitLevel: Number(f.get('unitLevel')) as 1 | 2 | 3,
-        pricePaise: paise(String(f.get('price'))),
-        clientId: crypto.randomUUID(),
-      });
-      const updatedPrices = await listCurrentPrices(selected);
-      if (selectedRef.current === selected) setPrices(updatedPrices);
-      reloadSalePrices();
+      await sendPriceEntry(entry);
       setMessage('Price history updated atomically.');
     } catch (e) {
+      setMessage('');
       setError(String(e));
+      // A refusal shown here was definitely not written: nothing to check on a later visit.
+      if (e instanceof PriceRefusedError) forgetPendingPrice(entry.clientId);
+    } finally {
+      setPriceSaving(false);
     }
+  }
+  async function sendPriceEntry(entry: PendingPrice) {
+    await sendPendingPrice(entry, (p) =>
+      setItemPrice({
+        itemId: p.itemId,
+        shopId: p.shopId,
+        kind: p.kind,
+        unitLevel: p.unitLevel,
+        pricePaise: p.pricePaise,
+        clientId: p.clientId,
+      }),
+    );
+    forgetPendingPrice(entry.clientId);
+    setUnsurePrices((v) => v.filter((u) => u.clientId !== entry.clientId));
+    if (selectedRef.current === entry.itemId) {
+      const updatedPrices = await listCurrentPrices(entry.itemId).catch(() => null);
+      if (updatedPrices && selectedRef.current === entry.itemId) setPrices(updatedPrices);
+    }
+    reloadSalePrices();
+  }
+  // Retry re-reads the server's price first: if it already holds the user's price the record is
+  // forgotten ("Already saved"); if it is no longer the price the user saw before the change, nothing is
+  // sent until the user taps "Replace" for exactly that current price. Same client id every time.
+  async function retryUnsurePrice(p: UnsurePrice, replace = false) {
+    setError('');
+    const patch = (over: Partial<UnsurePrice>) =>
+      setUnsurePrices((v) => v.map((u) => (u.clientId === p.clientId ? { ...u, ...over } : u)));
+    const what = `${p.itemName} ${p.kind} ${rupees(p.pricePaise)} per ${p.unitName}`;
+    const current = await listCurrentPrices(p.itemId).catch(() => null);
+    if (!current) {
+      patch({ failure: 'Could not read the current price. Check the connection and Retry.' });
+      return;
+    }
+    const status = unsureStatus(p, current);
+    if (status.state === 'applied') {
+      forgetPendingPrice(p.clientId);
+      setUnsurePrices((v) => v.filter((u) => u.clientId !== p.clientId));
+      setMessage(`Already saved: ${what}.`);
+      return;
+    }
+    if (status.state === 'changed' && !(replace && p.changed && p.nowPaise === status.nowPaise)) {
+      patch({ nowPaise: status.nowPaise, changed: true, failure: undefined });
+      return;
+    }
+    try {
+      await sendPriceEntry(p);
+      setMessage(`Price saved: ${what}.`);
+    } catch (e) {
+      if (e instanceof PriceRefusedError) forgetPendingPrice(p.clientId);
+      patch({ failure: String(e) });
+    }
+  }
+  function dismissUnsurePrice(p: PendingPrice) {
+    forgetPendingPrice(p.clientId);
+    setUnsurePrices((v) => v.filter((u) => u.clientId !== p.clientId));
   }
   async function changeImage(ev: Event) {
     const file = (ev.currentTarget as HTMLInputElement).files?.[0];
@@ -2594,6 +2735,30 @@ export function InventoryScreen({
       {error && <p role="alert">{error}</p>}
       {!purchaseOnly && <SnapshotNote at={snapshotAt} failed={snapshotFailed} />}
       {message && <p role="status">{message}</p>}
+      {priceSaving && <p class="muted">Saving price… it finishes even if you leave this screen.</p>}
+      {unsurePrices.map((p) => (
+        <p role="alert" key={p.clientId}>
+          {p.failure ? 'Price not saved' : 'Price may not be saved'}: {p.itemName} ({p.kind}{' '}
+          {rupees(p.pricePaise)} per {p.unitName}).{p.failure ? ` ${p.failure}` : ''}{' '}
+          {p.changed && (
+            <strong>
+              Now {p.nowPaise == null ? 'no price' : rupees(p.nowPaise)} — set elsewhere.{' '}
+            </strong>
+          )}
+          {p.changed ? (
+            <button type="button" onClick={() => void retryUnsurePrice(p, true)}>
+              Replace with {rupees(p.pricePaise)}
+            </button>
+          ) : (
+            <button type="button" onClick={() => void retryUnsurePrice(p)}>
+              Retry price
+            </button>
+          )}{' '}
+          <button type="button" onClick={() => dismissUnsurePrice(p)}>
+            Dismiss
+          </button>
+        </p>
+      ))}
       {priceRetries.map((r) => {
         const w = r.write;
         const what = `${w.itemName} (${w.kind} ${rupees(w.pricePaise)} per ${w.unitName})`;
@@ -2846,7 +3011,7 @@ export function InventoryScreen({
                 required
               />
             </label>{' '}
-            <button disabled={!shopId}>Set price</button>
+            <button disabled={!shopId || priceSaving}>Set price</button>
           </form>
         )}
       </section>
@@ -2897,6 +3062,8 @@ export function InventoryScreen({
       )}
       <section
         hidden={view !== 'purchase'}
+        data-purchase-ready={purchaseOnly && catalogLoaded && !editLocked ? 'true' : 'false'}
+        data-suppliers-saved={suppliersSaved ? 'true' : 'false'}
         onInput={() => setDraftTouched(true)}
         onChange={() => setDraftTouched(true)}
       >
@@ -3103,6 +3270,13 @@ export function InventoryScreen({
                   <BillDocumentPreview key={path} path={path} />
                 ))}
             </div>
+          )}
+          {purchaseOnly && (!catalogLoaded || suppliersFrom === 'device') && (
+            <p class="muted" role="status" data-testid="supplier-source">
+              {!catalogLoaded
+                ? 'Loading suppliers and items…'
+                : `Offline: using the supplier list saved on this device (${parties.length} supplier${parties.length === 1 ? '' : 's'}).`}
+            </p>
           )}
           <fieldset disabled={editLocked} class="plain bill-head">
             <label class="bill-supplier">
