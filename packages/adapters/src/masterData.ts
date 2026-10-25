@@ -74,6 +74,12 @@ export async function listParties(): Promise<Party[]> {
   if (error) throw new Error(friendly(error));
   return (data ?? []) as Party[];
 }
+/** Plain words for DSB_ITEM_NAME_TAKEN: an item with this name (other units, or 2+ same-name items) exists.
+ * Same name + different units is refused (owner decision, 25 Oct): the user picks it or names this one apart. */
+export function itemNameTakenMessage(name: string): string {
+  const n = name.trim();
+  return `An item called “${n}” already exists with different units, so it was not created. Choose that item, or give this one a distinct name (for example “Sugar 50kg bag” next to “Sugar”).`;
+}
 /**
  * Online item create (0073): through create_item_v2, the same locked RPC the offline sync uses, so online
  * and offline creates of one name are serialised and follow one rule: exactly one same-name item with the
@@ -107,7 +113,12 @@ export async function createItem(input: {
       tax_rate_bp: input.taxRateBp ?? 0,
     },
   });
-  if (error) throw new Error(friendly(error));
+  if (error) {
+    const raw = (error as { message?: unknown }).message;
+    if (typeof raw === 'string' && raw.includes('DSB_ITEM_NAME_TAKEN'))
+      throw new Error(itemNameTakenMessage(input.name));
+    throw new Error(friendly(error));
+  }
   const r = data as Record<string, unknown> | null;
   const itemId = typeof r?.itemId === 'string' ? r.itemId : '';
   const mapped = r?.mapped === true;
@@ -120,18 +131,6 @@ export async function createItem(input: {
     throw new Error('Item create returned an unexpected answer. Check Stock before trying again.');
   const read = await sb.from('items').select().eq('id', itemId).single();
   return { ...(must(read.data, read.error) as Item), mapped };
-}
-/** The item this tenant saved under a create's client id (the plain RLS items read), or null. Used to
- * confirm a create whose answer was lost: the retry is refused by unique(tenant_id, client_id). */
-export async function findItemByClientId(tenantId: string, clientId: string): Promise<Item | null> {
-  const { data, error } = await getSupabaseClient()
-    .from('items')
-    .select('id,name,sku,unit1,unit2,unit3,conv1,conv2,tax_rate_bp,min_stock,image_path')
-    .eq('tenant_id', tenantId)
-    .eq('client_id', clientId)
-    .maybeSingle();
-  if (error) throw new Error(friendly(error));
-  return (data ?? null) as Item | null;
 }
 export async function setItemMinStock(itemId: string, minStock: number): Promise<Item> {
   if (!Number.isFinite(minStock) || minStock < 0)

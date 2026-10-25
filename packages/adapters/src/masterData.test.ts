@@ -1,35 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { collectPaginatedRows, createItem, findItemByClientId } from './masterData';
+import { collectPaginatedRows, createItem } from './masterData';
 
 const client = vi.hoisted(() => ({ from: vi.fn(), rpc: vi.fn() }));
 vi.mock('./client', () => ({ getSupabaseClient: () => client }));
-
-describe('findItemByClientId', () => {
-  it('reads the tenant item saved under that client id through the RLS items read', async () => {
-    const calls: unknown[][] = [];
-    const chain = {
-      select: (...a: unknown[]) => (calls.push(['select', ...a]), chain),
-      eq: (...a: unknown[]) => (calls.push(['eq', ...a]), chain),
-      maybeSingle: async () => ({ data: { id: 'i1', name: 'Rice' }, error: null }),
-    };
-    client.from.mockReturnValue(chain);
-    await expect(findItemByClientId('t1', 'c1')).resolves.toEqual({ id: 'i1', name: 'Rice' });
-    expect(client.from).toHaveBeenCalledWith('items');
-    expect(calls).toContainEqual(['eq', 'tenant_id', 't1']);
-    expect(calls).toContainEqual(['eq', 'client_id', 'c1']);
-  });
-
-  it('returns null when no item has that client id, and throws on a read error', async () => {
-    const maybeSingle = vi
-      .fn()
-      .mockResolvedValueOnce({ data: null, error: null })
-      .mockResolvedValueOnce({ data: null, error: { message: 'permission denied' } });
-    const chain = { select: () => chain, eq: () => chain, maybeSingle };
-    client.from.mockReturnValue(chain);
-    await expect(findItemByClientId('t1', 'c1')).resolves.toBeNull();
-    await expect(findItemByClientId('t1', 'c1')).rejects.toThrow('permission denied');
-  });
-});
 
 describe('collectPaginatedRows', () => {
   it('loads all 10,000 rows instead of stopping at the API response cap', async () => {
@@ -116,7 +89,9 @@ describe('createItem (0073: online create shares create_item_v2 lock and rule)',
     });
     await expect(
       createItem({ tenantId: 't1', name: 'Tea', unit1: 'kg', clientId: C }),
-    ).rejects.toThrow(/already exists/);
+    ).rejects.toThrow(
+      'An item called “Tea” already exists with different units, so it was not created. Choose that item, or give this one a distinct name (for example “Sugar 50kg bag” next to “Sugar”).',
+    );
   });
   it('rejects a malformed answer instead of guessing', async () => {
     client.rpc.mockResolvedValueOnce({

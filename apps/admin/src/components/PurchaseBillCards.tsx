@@ -20,6 +20,7 @@ import {
   ITEM_FIELD_LABELS,
   ITEM_UNITS_HINT,
   exactItemMatch,
+  mappedItemMessage,
   newItemProblem,
   sameUnits,
   type NewItemFields,
@@ -99,7 +100,7 @@ export function PurchaseBillCards(props: {
    * unchanged), used when it is chosen. */
   lastUnit?: (item: Item) => 1 | 2 | 3 | undefined;
   /** Creates an item with the Add item adapter and refreshes the item list; absent = no "+ Create". */
-  onCreateItem?: (fields: NewItemFields, clientId: string) => Promise<Item>;
+  onCreateItem?: (fields: NewItemFields, clientId: string) => Promise<Item & { mapped?: boolean }>;
   /** onCreateItem also works offline (saves the item on this device; it syncs before the bill). */
   createsOffline?: boolean;
   /** Current sale prices per item id. Absent = the user's role cannot set prices: no sale price box. */
@@ -227,12 +228,12 @@ export function PurchaseBillCards(props: {
       const item = await create(fields, form.clientId);
       createdKeys.current.add(key);
       closeForm(key);
+      // mapped: the server already had this name with these units — that item is used, nothing new made.
+      const made = item.mapped ? mappedItemMessage(item.name) : `Created ${item.name}.`;
       const now = latest.current.cards;
       const index = now.findIndex((c) => c.key === key);
       if (latest.current.disabled)
-        latest.current.onMessage(
-          `Created ${item.name}. It was not put on the bill because the bill is locked.`,
-        );
+        latest.current.onMessage(`${made} It was not put on the bill because the bill is locked.`);
       else if (index >= 0 && !now[index]!.item) {
         // Selected with nothing carried over: the quantity and cost are entered for this item.
         // "Save all new items" keeps the quantity and cost already typed on the row.
@@ -248,12 +249,14 @@ export function PurchaseBillCards(props: {
         if (!keepFigures) setFocusKey(`${key}|qty`);
         latest.current.onMessage(
           keepFigures
-            ? `Created ${item.name} for item ${index + 1}. Check its quantity and cost.`
-            : `Created ${item.name}. Enter the quantity and cost for item ${index + 1}.`,
+            ? item.mapped
+              ? `${made} It is on item ${index + 1}. Check its quantity and cost.`
+              : `Created ${item.name} for item ${index + 1}. Check its quantity and cost.`
+            : `${made} Enter the quantity and cost for item ${index + 1}.`,
         );
       } else
         latest.current.onMessage(
-          `Created ${item.name}. It was not put on the bill because ${
+          `${made} It was not put on the bill because ${
             index < 0 ? 'that item card was removed' : `item ${index + 1} already has an item`
           }.`,
         );

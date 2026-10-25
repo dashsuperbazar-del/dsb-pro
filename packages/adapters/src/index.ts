@@ -64,7 +64,7 @@ export {
   listItems,
   listParties,
   createItem,
-  findItemByClientId,
+  itemNameTakenMessage,
   createParty,
   addItemBarcode,
   findItemByBarcode,
