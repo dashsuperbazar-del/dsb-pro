@@ -1209,8 +1209,33 @@ jobs:
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "grant execute on function void_purchase_if_unchanged(uuid,text,text,text) to anon"
           if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Anonymous offline void accepted'; exit 1; fi
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "revoke execute on function void_purchase_if_unchanged(uuid,text,text,text) from anon"
-          grep -Fx 'needs_upgrade=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          grep -Fx 'needs_offlinebillchange=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
           echo 'DISPOSABLE OFFLINE BILL CHANGES UPGRADE: PASS'
+      - name: Prove itemnamelock upgrade (Item name lock; apply, no-op, tamper/partial refusal)
+        env:
+          PROOF_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          grep -Fx 'needs_itemnamelock=true' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          # Same-name items that already exist (as live data may) must not block the apply.
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "with u as (insert into auth.users(id) values('e7300000-0000-4000-8000-0000000000ff') returning id), t as (insert into tenants(name,slug,created_by,client_id) select 'E73 Proof','e73-proof',id,'e73-proof' from u returning id,created_by) insert into items(tenant_id,created_by,name,unit1,client_id) select id,created_by,'E73 Dup','bag','e73-dup-1' from t union all select id,created_by,'e73 dup','bag','e73-dup-2' from t"
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" itemnamelock
+          test "$(psql "$PROOF_DB_URL" -X -At -c "select count(*) from items where client_id in ('e73-dup-1','e73-dup-2')")" = 2
+          grep -Fx 'needs_itemnamelock=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          grep -Fx 'needs_offlinebillchange=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" itemnamelock
+          expected_checksum=$(sha256sum supabase/migrations/0073_item_name_lock.sql | cut -d' ' -f1)
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update app_migration_receipts set checksum_sha256=repeat('0',64) where version='0073'"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo '0073 tamper accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update app_migration_receipts set checksum_sha256='$expected_checksum' where version='0073'"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "alter table items disable trigger items_name_guard"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Disabled item name guard accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "alter table items enable trigger items_name_guard"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "grant execute on function items_name_guard() to authenticated"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Client-callable item name guard accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "revoke execute on function items_name_guard() from authenticated"
+          grep -Fx 'needs_upgrade=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          echo 'DISPOSABLE ITEM NAME LOCK UPGRADE: PASS'
       - name: Stop and erase the disposable target
         if: always()
         run: supabase stop --workdir "$PROOF_ROOT" --no-backup
@@ -1955,6 +1980,11 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" offlinebillchange
+      - name: Apply itemnamelock (Item name lock) atomically
+        if: steps.preflight.outputs.needs_itemnamelock == 'true'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" itemnamelock
       - name: Verify live Batch B contract
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}

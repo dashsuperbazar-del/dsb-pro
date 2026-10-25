@@ -7,11 +7,9 @@ import { learnedUnits } from '../lib/unitLearning';
 import {
   ITEM_FIELD_LABELS,
   ITEM_UNITS_HINT,
-  describeItemUnits,
-  isItemClientIdConflict,
+  mappedItemMessage,
   newItemInput,
   newItemProblem,
-  sameUnits,
   type NewItemFields,
 } from '../lib/newItem';
 import { PurchaseBillCards } from '../components/PurchaseBillCards';
@@ -45,7 +43,6 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/ho
 import {
   addItemBarcode,
   createItem,
-  findItemByClientId,
   createParty,
   findItemByBarcode,
   onAuthStateChange,
@@ -1640,7 +1637,7 @@ export function InventoryScreen({
       });
       form.reset();
       await refresh(true);
-      setMessage(`Created ${item.name}.`);
+      setMessage(item.mapped ? mappedItemMessage(item.name) : `Created ${item.name}.`);
     } catch (e) {
       setError(String(e));
     }
@@ -1648,7 +1645,10 @@ export function InventoryScreen({
   // "+ Create" inside a bill card: the same adapter and field mapping as the Add item form above. The new
   // item joins the list at once (every card can find it) and the list is then re-read from the server; a
   // failed re-read never turns the successful create into an error (that would invite a second create).
-  async function createItemFromCard(fields: NewItemFields, clientId: string): Promise<Item> {
+  async function createItemFromCard(
+    fields: NewItemFields,
+    clientId: string,
+  ): Promise<Item & { mapped?: boolean }> {
     if (!tenantId) throw new Error('Shop data is still loading.');
     // Offline (owner/manager): the item is saved on this device under a device id and synced BEFORE any
     // bill that uses it (same ordered outbox). It is never added to the synced catalog or stock.
@@ -1670,29 +1670,14 @@ export function InventoryScreen({
       );
       return queued;
     }
-    let item: Item;
+    let item: Item & { mapped: boolean };
     try {
+      // Same client id on a retry = exact replay of create_item_v2 (same item), so no lookup is needed.
       item = await createItem({ tenantId, ...newItemInput(fields), clientId });
     } catch (e) {
-      // The answer may be lost after the server saved it: re-read, so a retry finds the name instead.
+      // The answer may be lost after the server saved it: re-read, so the list is current for a retry.
       void refresh(true).catch(() => {});
-      if (!isItemClientIdConflict(e)) throw e;
-      // A retry refused because this create was already saved: it succeeded, so find that item.
-      const found = await findItemByClientId(tenantId, clientId).catch((lookupError: unknown) => {
-        console.warn('New item lookup by client id failed', lookupError);
-        return null;
-      });
-      if (!found)
-        throw new Error('Could not confirm the new item. Check Stock, then search for it here.', {
-          cause: e,
-        });
-      // Only the item that was asked for counts as created; anything else is reported, never selected.
-      if (!sameUnits(found, fields))
-        throw new Error(
-          `Saved earlier as: ${found.name} — ${describeItemUnits(found)}. Check it in Stock before using it.`,
-          { cause: e },
-        );
-      item = found;
+      throw e;
     }
     setItems((now) =>
       now.some((i) => i.id === item.id)
