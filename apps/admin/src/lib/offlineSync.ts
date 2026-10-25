@@ -1038,7 +1038,6 @@ export async function closeRejectedPurchase(clientId: string): Promise<OfflinePu
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('dsb-offline-purchases'));
   return record;
 }
-/** Suppliers seen on the last online load, for opening Purchases offline. Display/selection only. */
 /**
  * Saves the supplier list the offline bill form uses. Waits for the device cache to start (it used to
  * skip silently when the page loaded faster than the cache, leaving offline bills with no suppliers).
@@ -1050,8 +1049,15 @@ export async function cacheOfflineSuppliers(
   if (!runtime) await waitForOfflineRuntime(30000).catch(() => undefined);
   const db = runtime?.db;
   if (!db) return false;
-  await db.meta.put({ key: 'purchaseSuppliers', value: rows.map((r) => ({ ...r })) });
+  await db.transaction('rw', db.meta, async () => {
+    await db.meta.put({ key: 'purchaseSuppliers', value: rows.map((r) => ({ ...r })) });
+    await db.meta.put({ key: 'purchaseSuppliersSavedAt', value: new Date().toISOString() });
+  });
   return true;
+}
+/** When the saved supplier list was written (ISO), or null (none, or saved by an older app version). */
+export async function getOfflineSuppliersSavedAt(): Promise<string | null> {
+  return getMeta<string>(requireRuntime().db, 'purchaseSuppliersSavedAt');
 }
 export async function getOfflineSuppliers<T>(): Promise<T[] | null> {
   return getMeta<T[]>(requireRuntime().db, 'purchaseSuppliers');

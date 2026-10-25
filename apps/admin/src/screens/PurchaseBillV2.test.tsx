@@ -57,6 +57,7 @@ const offline = vi.hoisted(() => ({
   queuePurchaseOffline: vi.fn(),
   closeRejectedPurchase: vi.fn(),
   getOfflineSuppliers: vi.fn(async () => null),
+  getOfflineSuppliersSavedAt: vi.fn(async () => null),
   getOfflineStock: vi.fn(async () => []),
   getOfflineItems: vi.fn(async () => []),
   getOfflineBusinessDate: vi.fn(async () => null),
@@ -372,6 +373,67 @@ test('offline after a restart: the bill form opens from the device copy (catalog
   });
   await vi.waitFor(() => expect(offline.queuePurchaseOffline).toHaveBeenCalledTimes(1));
   expect(api.postPurchaseV2Outcome).not.toHaveBeenCalled();
+});
+
+test('offline supplier note says how old the saved list is; back online it is re-read and the label goes', async () => {
+  onLine = false;
+  offline.getOfflineRuntimeIdentity.mockReturnValue({
+    userId: 'user',
+    tenantId: TENANT,
+    shopId: SHOP,
+    deviceId: 'dev',
+    role: 'owner',
+  } as never);
+  offline.getSyncedOfflineCatalog.mockResolvedValue({ items: [itemA] });
+  offline.getOfflineSuppliers.mockResolvedValue([{ id: 'p9', name: 'Saved Supplier' }] as never);
+  offline.getOfflineSuppliersSavedAt.mockResolvedValue(
+    new Date(Date.now() - 2 * 3600_000 - 60_000).toISOString() as never,
+  );
+  offline.getOfflineBusinessDate.mockResolvedValue('2026-10-20' as never);
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly />, host);
+  });
+  await vi.waitFor(() =>
+    expect(text('supplier-source')).toBe(
+      'Offline: using the supplier list saved on this device (1 supplier, saved 2 hours ago). A supplier archived since then is refused when the bill syncs.',
+    ),
+  );
+  expect(api.listParties).not.toHaveBeenCalled();
+  // Back online: only the supplier list is re-read from the server and saved again; the label goes.
+  api.listParties.mockResolvedValue([{ id: 'p1', name: 'Acme' }]);
+  await act(async () => {
+    onLine = true;
+    window.dispatchEvent(new Event('online'));
+  });
+  await vi.waitFor(() =>
+    expect(host.querySelector('select[name="partyId"] option[value="p1"]')).not.toBeNull(),
+  );
+  expect(host.querySelector('select[name="partyId"] option[value="p9"]')).toBeNull();
+  expect(host.querySelector('[data-testid="supplier-source"]')).toBeNull();
+  expect(api.listParties).toHaveBeenCalledTimes(1);
+  expect(api.listItems).not.toHaveBeenCalled();
+  expect(offline.cacheOfflineSuppliers).toHaveBeenCalledWith([{ id: 'p1', name: 'Acme' }]);
+});
+
+test('offline supplier list saved by an older app version says its age is unknown', async () => {
+  onLine = false;
+  offline.getOfflineRuntimeIdentity.mockReturnValue({
+    userId: 'user',
+    tenantId: TENANT,
+    shopId: SHOP,
+    deviceId: 'dev',
+    role: 'owner',
+  } as never);
+  offline.getSyncedOfflineCatalog.mockResolvedValue({ items: [itemA] });
+  offline.getOfflineSuppliers.mockResolvedValue([{ id: 'p9', name: 'Saved Supplier' }] as never);
+  offline.getOfflineSuppliersSavedAt.mockResolvedValue(null as never);
+  await act(async () => {
+    render(<InventoryScreen purchaseOnly />, host);
+  });
+  await vi.waitFor(() => expect(text('supplier-source')).toContain('saved at an unknown time'));
+  // Still offline: nothing is re-read.
+  expect(api.listParties).not.toHaveBeenCalled();
+  onLine = true;
 });
 
 test('a lost reply is retried as the same v2 request (same id, same payload), even after a reload', async () => {

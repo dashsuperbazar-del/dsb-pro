@@ -15,6 +15,7 @@ import {
   type NewItemFields,
 } from '../lib/newItem';
 import { PurchaseBillCards } from '../components/PurchaseBillCards';
+import { savedAgo } from '../lib/savedAge';
 import { UsualItems, type UsualLoad } from '../components/UsualItems';
 import {
   cardsFromUsual,
@@ -116,6 +117,7 @@ import {
   getOfflineRuntimeIdentity,
   getOfflineStock,
   getOfflineSuppliers,
+  getOfflineSuppliersSavedAt,
   getSyncedOfflineCatalog,
   listOfflineItems,
   queueItemOffline,
@@ -362,6 +364,8 @@ export function InventoryScreen({
   const [catalogLoaded, setCatalogLoaded] = useState(false);
   // Where the bill form's supplier list came from: the server, or the copy saved on this device.
   const [suppliersFrom, setSuppliersFrom] = useState<'' | 'server' | 'device'>('');
+  // When the device supplier list in use was saved (null = unknown: saved by an older app version).
+  const [suppliersSavedAt, setSuppliersSavedAt] = useState<string | null>(null);
   // The online supplier list has been saved on this device (what an offline bill form will use).
   const [suppliersSaved, setSuppliersSaved] = useState(false);
   // New items made on this device (offline). QUEUED ones join the bill-card list (not stock); a refused or
@@ -625,12 +629,14 @@ export function InventoryScreen({
     const device = await getSyncedOfflineCatalog();
     const catalogItems = (device?.items ?? (await getOfflineItems())) as unknown as Item[];
     const suppliers = (await getOfflineSuppliers<{ id: string; name: string }>()) ?? [];
+    const savedAt = await getOfflineSuppliersSavedAt().catch(() => null);
     const stockRows = await getOfflineStock(identity.shopId);
     const d = (await getOfflineBusinessDate()) ?? localToday();
     if (generation !== refreshGeneration.current) return;
     setItems(catalogItems);
     setParties(suppliers.map((x) => ({ phone: null, gstin: null, ...x })));
     setSuppliersFrom('device');
+    setSuppliersSavedAt(savedAt);
     setStock(
       stockRows.map((r) => ({
         tenant_id: r.tenant_id,
@@ -659,6 +665,32 @@ export function InventoryScreen({
     if (!dropped || !purchaseOnly || catalogLoaded) return;
     void refresh().catch((e) => setError(String(e)));
   }, [online, purchaseOnly, catalogLoaded]);
+  // Back online while the bill form uses the device supplier list: re-read it from the server (archived
+  // suppliers drop out, new ones appear) and drop the offline label. Only suppliers are replaced, so the
+  // items list (incl. new items still queued on this device) and the bill being typed are untouched.
+  const suppliersFromRef = useRef(suppliersFrom);
+  suppliersFromRef.current = suppliersFrom;
+  useEffect(() => {
+    if (!online || suppliersFrom !== 'device') return;
+    let stale = false;
+    void listParties()
+      .then((p) => {
+        if (stale || suppliersFromRef.current !== 'device') return;
+        setParties(p);
+        setSuppliersFrom('server');
+        setSuppliersSavedAt(null);
+        if (purchaseOnly)
+          void cacheOfflineSuppliers(p.map((x) => ({ id: x.id, name: x.name })))
+            .then((saved) => {
+              if (saved && !stale) setSuppliersSaved(true);
+            })
+            .catch(() => undefined);
+      })
+      .catch(() => undefined); // still unreachable: keep the device list and its label
+    return () => {
+      stale = true;
+    };
+  }, [online, suppliersFrom, purchaseOnly]);
   useEffect(() => {
     let stopped = false;
     void refresh()
@@ -3271,7 +3303,7 @@ export function InventoryScreen({
             <p class="muted" role="status" data-testid="supplier-source">
               {!catalogLoaded
                 ? 'Loading suppliers and items…'
-                : `Offline: using the supplier list saved on this device (${parties.length} supplier${parties.length === 1 ? '' : 's'}).`}
+                : `Offline: using the supplier list saved on this device (${parties.length} supplier${parties.length === 1 ? '' : 's'}, ${savedAgo(suppliersSavedAt)}). A supplier archived since then is refused when the bill syncs.`}
             </p>
           )}
           <fieldset disabled={editLocked} class="plain bill-head">
