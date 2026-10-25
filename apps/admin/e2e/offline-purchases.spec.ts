@@ -261,12 +261,21 @@ test('offline purchases: a connection lost while Purchases is loading falls back
   await expect(purchase.getByTestId('supplier-source')).toHaveText('Loading suppliers and items…');
   await context.setOffline(true);
   await expect(purchase).toHaveAttribute('data-purchase-ready', 'true');
+  // The note says how old the saved list is (saved a moment ago on the visit above) and what sync refuses.
   await expect(purchase.getByTestId('supplier-source')).toHaveText(
-    'Offline: using the supplier list saved on this device (1 supplier).',
+    /^Offline: using the supplier list saved on this device \(1 supplier, saved (just now|1 minute ago)\)\. A supplier archived since then is refused when the bill syncs\.$/,
   );
   // The interrupted online load is not reported as an error: the device copy replaced it.
   await expect(page.getByRole('alert').filter({ hasText: /fetch|TypeError/i })).toHaveCount(0);
   await purchase.locator('.bill-details-toggle').click();
   await expect(purchase.locator('select[name="partyId"]')).toBeEnabled();
   await purchase.locator('select[name="partyId"]').selectOption({ label: 'Offline Supplier' });
+
+  // Back online: the supplier list is re-read from the server and the offline label goes.
+  await page.unroute('**/rest/v1/parties?*');
+  const reread = page.waitForResponse((r) => r.url().includes('/rest/v1/parties?') && r.ok());
+  await context.setOffline(false);
+  await reread;
+  await expect(purchase.getByTestId('supplier-source')).toHaveCount(0);
+  await expect(purchase.locator('select[name="partyId"]')).toHaveValue(/.+/);
 });

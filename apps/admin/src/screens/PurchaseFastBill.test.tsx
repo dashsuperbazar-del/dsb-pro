@@ -53,6 +53,7 @@ const offline = vi.hoisted(() => ({
   queuePurchaseOffline: vi.fn(),
   closeRejectedPurchase: vi.fn(),
   getOfflineSuppliers: vi.fn(async () => null),
+  getOfflineSuppliersSavedAt: vi.fn(async () => null),
   getOfflineStock: vi.fn(async () => []),
   getOfflineItems: vi.fn(async () => []),
   getOfflineBusinessDate: vi.fn(async () => null),
@@ -504,7 +505,13 @@ test('the remembered supplier never lands on a resumed draft or a repeat, nor co
   );
   await tap(button('Resume draft'));
   expect(host.querySelector<HTMLInputElement>('input[name="billNo"]')!.value).toBe('NOSUP-1');
-  await act(async () => new Promise((r) => setTimeout(r, 20)));
+  // No timing wait: the remembered-supplier effect runs synchronously inside act() once the shop context
+  // and the supplier list are loaded, so once the draft is restored AND p1 is a selectable option, it has
+  // already had its chance to (wrongly) choose p1.
+  await vi.waitFor(() => {
+    expect(host.textContent).toContain('Saved purchase draft restored');
+    expect(host.querySelector('select[name="partyId"] option[value="p1"]')).not.toBeNull();
+  });
   expect(host.querySelector<HTMLSelectElement>('select[name="partyId"]')!.value).toBe('');
   // A repeat of a bill of another supplier keeps that supplier.
   await act(async () => render(null, host));
@@ -547,8 +554,12 @@ test('the remembered supplier never lands on a resumed draft or a repeat, nor co
     render(<InventoryScreen purchaseOnly purchaseRepeatId="old" />, host);
   });
   await vi.waitFor(() => expect(host.textContent).toContain('Draft repeated from R'));
-  await act(async () => new Promise((r) => setTimeout(r, 20)));
-  expect(host.querySelector<HTMLSelectElement>('select[name="partyId"]')!.value).toBe('p2');
+  // A <select> shows a value only once that option exists: wait for the supplier list (both options)
+  // rather than a fixed delay, then the repeated bill's supplier must be the one chosen.
+  await vi.waitFor(() => {
+    expect(host.querySelector('select[name="partyId"] option[value="p1"]')).not.toBeNull();
+    expect(host.querySelector<HTMLSelectElement>('select[name="partyId"]')!.value).toBe('p2');
+  });
 });
 
 test('bill details: a problem opens them again after they were closed by hand', async () => {
