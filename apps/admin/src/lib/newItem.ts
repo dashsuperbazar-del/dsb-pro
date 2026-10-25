@@ -81,10 +81,10 @@ export function sameUnits(saved: Units, f: NewItemFields): boolean {
   );
 }
 
-/** A create refused because this client id was already saved (a retry after a lost answer). Only the
- * items unique(tenant_id, client_id) constraint counts; any other duplicate (e.g. SKU) is a real error. */
-export function isItemClientIdConflict(error: unknown): boolean {
-  return error instanceof Error && error.message.includes('items_tenant_id_client_id_key');
+/** An online create that found the same name with the same units: nothing new was written and the existing
+ * item was returned (create_item_v2 mapped=true). Typed GST/SKU are not applied to it. */
+export function mappedItemMessage(name: string): string {
+  return `${name} already exists with these units — no new item was created (its GST and SKU are unchanged; any GST or SKU typed here was not used).`;
 }
 
 /** The item already called this (ignoring case and outer spaces); a bill card chooses it, never re-creates it. */

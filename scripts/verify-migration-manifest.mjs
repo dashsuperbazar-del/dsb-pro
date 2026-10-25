@@ -60,6 +60,7 @@ export const ALLOWED_GROUPS = Object.freeze([
   'backlog',
   'offlineitems',
   'offlinebillchange',
+  'itemnamelock',
 ]);
 
 const VERSION_RE = /^[0-9]{4}$/;
@@ -243,6 +244,7 @@ const EXPECTED_IN_FLIGHT_GROUP_AND_PATH = Object.freeze({
   '0070': ['backlog', 'supabase/migrations/0070_free_text_lines_audit.sql'],
   '0071': ['offlineitems', 'supabase/migrations/0071_offline_items.sql'],
   '0072': ['offlinebillchange', 'supabase/migrations/0072_offline_bill_changes.sql'],
+  '0073': ['itemnamelock', 'supabase/migrations/0073_item_name_lock.sql'],
 });
 
 /**

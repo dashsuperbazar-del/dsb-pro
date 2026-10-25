@@ -4,7 +4,7 @@ import {
   ITEM_FIELD_LABELS,
   describeItemUnits,
   exactItemMatch,
-  isItemClientIdConflict,
+  mappedItemMessage,
   newItemInput,
   newItemProblem,
   sameUnits,
@@ -105,19 +105,10 @@ test('units are described big to piece, and compared with what was submitted', (
   ).toBe(false);
 });
 
-test('only the items client_id unique violation counts as an already-saved create', () => {
-  expect(
-    isItemClientIdConflict(
-      new Error('duplicate key value violates unique constraint "items_tenant_id_client_id_key"'),
-    ),
-  ).toBe(true);
-  expect(
-    isItemClientIdConflict(
-      new Error('duplicate key value violates unique constraint "items_tenant_id_sku_key"'),
-    ),
-  ).toBe(false);
-  expect(isItemClientIdConflict(new Error('network down'))).toBe(false);
-  expect(isItemClientIdConflict('x')).toBe(false);
+test('a mapped create says no new item was made and typed GST/SKU were not used', () => {
+  expect(mappedItemMessage('Tea')).toBe(
+    'Tea already exists with these units — no new item was created (its GST and SKU are unchanged; any GST or SKU typed here was not used).',
+  );
 });
 
 test('an exact name match ignores case and outer spaces; a partial name is not a match', () => {
