@@ -14,6 +14,7 @@ export function SyncRuntime({ session }: { session: SessionState }) {
     session.status,
     session.status === 'active' ? session.session.user.id : '',
     session.status === 'active' ? session.membership.tenantId : '',
+    session.status === 'active' ? session.membership.role : '',
   ]);
   return null;
 }

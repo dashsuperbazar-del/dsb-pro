@@ -58,18 +58,6 @@ export function App() {
     applyTheme(readTheme());
   }, []);
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
-  // The header's shop name comes from the receipt-profile cache; when nothing usable is cached yet (new
-  // device, or only a placeholder), read it once so the line shows the real name instead of staying empty.
-  const [, refreshName] = useState(0);
-  const activeUser = session.status === 'active' ? session.session.user.id : '';
-  const firstShop = session.status === 'active' ? session.membership.shopIds[0] : undefined;
-  useEffect(() => {
-    if (!activeUser || !firstShop) return;
-    if (readCachedShopName(activeUser, [firstShop])) return;
-    void loadShopProfile(firstShop)
-      .then(() => refreshName((n) => n + 1))
-      .catch(() => undefined);
-  }, [activeUser, firstShop]);
   const testMode = import.meta.env.VITE_TEST_MODE === 'phase4-shop-test';
   return (
     <>
@@ -81,11 +69,7 @@ export function App() {
             <span class="brand-word">
               DSB <span class="brand-pro">Pro</span>
             </span>
-            <small>
-              {(session.status === 'active' &&
-                readCachedShopName(session.session.user.id, session.membership.shopIds)) ||
-                'Your shop workspace'}
-            </small>
+            <ShopName session={session} />
           </span>
         </a>
         {session.status === 'active' && <SyncIndicator />}
@@ -141,6 +125,30 @@ export function App() {
         <BottomNav role={session.membership.role} currentPath={currentPath} />
       )}
     </>
+  );
+}
+
+// The header's shop name comes from the receipt-profile cache; when nothing usable is cached yet (new
+// device, or only a placeholder), read it once so the line shows the real name instead of staying empty.
+// It owns its refresh state: updating the name must NOT re-render App (that would remount Home and
+// re-fetch every tile just after the first screen).
+function ShopName({ session }: { session: ReturnType<typeof useSession> }) {
+  const [, refreshName] = useState(0);
+  const activeUser = session.status === 'active' ? session.session.user.id : '';
+  const firstShop = session.status === 'active' ? session.membership.shopIds[0] : undefined;
+  useEffect(() => {
+    if (!activeUser || !firstShop) return;
+    if (readCachedShopName(activeUser, [firstShop])) return;
+    void loadShopProfile(firstShop)
+      .then(() => refreshName((n) => n + 1))
+      .catch(() => undefined);
+  }, [activeUser, firstShop]);
+  return (
+    <small>
+      {(session.status === 'active' &&
+        readCachedShopName(session.session.user.id, session.membership.shopIds)) ||
+        'Your shop workspace'}
+    </small>
   );
 }
 

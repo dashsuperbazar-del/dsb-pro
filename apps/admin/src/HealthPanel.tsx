@@ -24,7 +24,26 @@ export function HealthPanel(props: { canAdjustStock?: boolean; quiet?: boolean }
   // N1: items below zero that the shop's policy allows are not invariant failures, but still need a
   // recount; list them as a warning (invariants already flag below-zero stock when not allowed).
   const [belowZero, setBelowZero] = useState<string[] | 'error' | null>(null);
+  // Perf: the health checks are monitoring, not part of the first screen. They start when the browser is
+  // idle (at most ~1.5 s later) so the Home figures and the boot sync are not queued behind them.
+  const idle = (
+    typeof window !== 'undefined'
+      ? (window as unknown as {
+          requestIdleCallback?: (cb: () => void, o: { timeout: number }) => number;
+        })
+      : {}
+  ).requestIdleCallback;
+  const [checksReady, setChecksReady] = useState(!idle); // no idle API (old browsers, tests): start at once
   useEffect(() => {
+    if (!idle) return;
+    const handle = idle(() => setChecksReady(true), { timeout: 1500 });
+    return () =>
+      (window as unknown as { cancelIdleCallback?: (h: number) => void }).cancelIdleCallback?.(
+        handle,
+      );
+  }, []);
+  useEffect(() => {
+    if (!checksReady) return;
     void (async () => {
       const shop = await getDefaultShopId();
       const settings = await getShopSettings(shop);
@@ -33,8 +52,9 @@ export function HealthPanel(props: { canAdjustStock?: boolean; quiet?: boolean }
       const names = new Map(items.map((i) => [i.id, i.name]));
       setBelowZero(stock.map((r) => names.get(r.item_id) ?? r.item_id).sort());
     })().catch(() => setBelowZero('error'));
-  }, []);
+  }, [checksReady]);
   useEffect(() => {
+    if (!checksReady) return;
     void getLatestBackupHealth()
       .then(setBackup)
       .catch((e: unknown) => {
@@ -55,7 +75,7 @@ export function HealthPanel(props: { canAdjustStock?: boolean; quiet?: boolean }
         setIntegrity(null);
         setIntegrityError(e instanceof Error ? e.message : String(e));
       });
-  }, []);
+  }, [checksReady]);
   const backupAgeMs = backup?.finished_at
     ? Date.now() - Date.parse(backup.finished_at)
     : Number.POSITIVE_INFINITY;
