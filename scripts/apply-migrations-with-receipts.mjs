@@ -65,6 +65,7 @@ const GROUP_ORDER = [
   'offlineitems',
   'offlinebillchange',
   'itemnamelock',
+  'offlinesupplierpay',
 ];
 
 /**

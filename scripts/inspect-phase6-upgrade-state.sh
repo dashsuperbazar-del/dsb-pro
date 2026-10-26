@@ -1275,11 +1275,43 @@ if [[ "$itemnamelock" != '0' && "$offlinebillchange" != '2' && ! ( "$itemnameloc
  echo 'Item name lock (0073) appears ahead of completed offlinebillchange. Refusing migration.' >&2; exit 1
 fi
 
+# Offline supplier payments (0074): additive classifier field. 3 anchors, all or nothing.
+offlinesupplierpay_probe=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -F' ' <<'SQL'
+do $$ begin
+ create temp table _offlinesupplierpay_receipt (present boolean);
+ if to_regclass('public.app_migration_receipts') is not null then
+   insert into _offlinesupplierpay_receipt select exists(select 1 from public.app_migration_receipts where version='0074');
+ else insert into _offlinesupplierpay_receipt values(false); end if;
+end $$;
+select (select present from _offlinesupplierpay_receipt),
+ (select count(*) from (values
+   (exists(select 1 from pg_proc where oid=to_regprocedure('public.pay_supplier_if_unchanged(uuid,uuid,date,bigint,text,text,jsonb,text,jsonb)') and prosecdef and position('DSB_BILL_CHANGED' in prosrc)>0 and position('DSB_PAYMENT_EXCEEDS_OWED' in prosrc)>0 and position('DSB_SUPPLIER_MERGED' in prosrc)>0 and position('dsb_request_result' in prosrc)>0) and exists(select 1 from pg_proc where oid=to_regprocedure('public.get_supplier_pay_context(uuid)') and prosecdef and position('obp_bill_version' in prosrc)>0)),
+   (coalesce(has_function_privilege('authenticated',to_regprocedure('public.pay_supplier_if_unchanged(uuid,uuid,date,bigint,text,text,jsonb,text,jsonb)'),'execute'),false) and not coalesce(has_function_privilege('anon',to_regprocedure('public.pay_supplier_if_unchanged(uuid,uuid,date,bigint,text,text,jsonb,text,jsonb)'),'execute'),false) and coalesce(has_function_privilege('authenticated',to_regprocedure('public.get_supplier_pay_context(uuid)'),'execute'),false) and not coalesce(has_function_privilege('anon',to_regprocedure('public.get_supplier_pay_context(uuid)'),'execute'),false) and not coalesce(has_function_privilege('authenticated',to_regprocedure('public.obp_bill_version(uuid,uuid)'),'execute'),false) and not coalesce(has_function_privilege('authenticated',to_regprocedure('public.obp_supplier_version(uuid,uuid)'),'execute'),false) and not coalesce(has_function_privilege('authenticated',to_regprocedure('public.obp_owed(uuid,uuid)'),'execute'),false)),
+   (exists(select 1 from pg_constraint where conrelid=to_regclass('public.financial_requests') and conname='financial_requests_operation_check' and position('supplier.pay.offline.v1' in pg_get_constraintdef(oid))>0) and exists(select 1 from pg_proc where oid=to_regprocedure('public.get_financial_request(uuid,text,text)') and position('supplier.pay.offline.v1' in prosrc)>0))
+ ) p(ok) where ok);
+SQL
+)
+read -r offlinesupplierpay_receipt offlinesupplierpay_anchors <<<"$(tail -n 1 <<<"$offlinesupplierpay_probe")"
+case "$offlinesupplierpay_receipt:$offlinesupplierpay_anchors" in
+ f:0) offlinesupplierpay=0; needs_offlinesupplierpay=true ;;
+ f:3) offlinesupplierpay=1; needs_offlinesupplierpay=true ;;
+ t:3) offlinesupplierpay=2; needs_offlinesupplierpay=false ;;
+ *) echo "Offline supplier payments (0074) partial/drift state ($offlinesupplierpay_receipt/$offlinesupplierpay_anchors). Refusing migration." >&2; exit 1 ;;
+esac
+if [[ "$offlinesupplierpay" == '2' ]]; then
+ offlinesupplierpay_expected=$(sha256sum "$repo_root/supabase/migrations/0074_offline_supplier_payments.sql" | cut -d' ' -f1)
+ offlinesupplierpay_recorded=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -c "select checksum_sha256 from public.app_migration_receipts where version='0074'")
+ [[ "$offlinesupplierpay_expected" == "$offlinesupplierpay_recorded" ]] || { echo '0074 receipt checksum mismatch. Refusing migration.' >&2; exit 1; }
+fi
+if [[ "$offlinesupplierpay" != '0' && "$itemnamelock" != '2' && ! ( "$offlinesupplierpay" == '1' && "$itemnamelock" == '1' ) ]]; then
+ echo 'Offline supplier payments (0074) appears ahead of completed itemnamelock. Refusing migration.' >&2; exit 1
+fi
+
 emit_state() {
   local needs_foundation=$1 needs_hardening=$2 needs_phase65=$3 needs_batcha=$4 needs_batchb=$5 needs_p1=$6 needs_p2=$7 needs_c0=$8 needs_c1=$9 needs_c2=${10} needs_c3=${11} needs_c3b=${12} needs_r0=${13} needs_d1=${14} needs_r0b=${15} needs_o1=${16} needs_o2=${17} needs_d2b=${18} needs_d3a=${19}
   local needs_upgrade=true
   if [[ "$needs_foundation:$needs_hardening:$needs_phase65:$needs_batcha:$needs_batchb:$needs_p1:$needs_p2:$needs_c0:$needs_c1:$needs_c2:$needs_c3:$needs_c3b:$needs_r0:$needs_d1:$needs_r0b:$needs_o1:$needs_o2:$needs_d2b:$needs_d3a" == "false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false" ]]; then
-    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" && "$needs_supplierschedule" == "false" && "$needs_partymerge" == "false" && "$needs_itemindex" == "false" && "$needs_billextras" == "false" && "$needs_salepricing" == "false" && "$needs_billedit" == "false" && "$needs_remarks" == "false" && "$needs_remarksfix" == "false" && "$needs_billcode" == "false" && "$needs_backlog" == "false" && "$needs_offlineitems" == "false" && "$needs_offlinebillchange" == "false" && "$needs_itemnamelock" == "false" ]]; then needs_upgrade=false; fi
+    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" && "$needs_supplierschedule" == "false" && "$needs_partymerge" == "false" && "$needs_itemindex" == "false" && "$needs_billextras" == "false" && "$needs_salepricing" == "false" && "$needs_billedit" == "false" && "$needs_remarks" == "false" && "$needs_remarksfix" == "false" && "$needs_billcode" == "false" && "$needs_backlog" == "false" && "$needs_offlineitems" == "false" && "$needs_offlinebillchange" == "false" && "$needs_itemnamelock" == "false" && "$needs_offlinesupplierpay" == "false" ]]; then needs_upgrade=false; fi
   fi
   printf 'observed_state=%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s\n' "$foundation" "$hardening" "$phase65" "$batcha" "$batchb" "$p1" "$p2" "$c0" "$c1" "$c2" "$c3" "$c3b" "$r0" "$d1" "$r0b" "$o1" "$o2" "$d2b" "$d3a"
   printf 'needs_upgrade=%s\n' "$needs_upgrade"
@@ -1334,6 +1366,8 @@ emit_state() {
   printf 'needs_offlinebillchange=%s\n' "$needs_offlinebillchange"
   printf 'itemnamelock_state=%s\n' "$itemnamelock"
   printf 'needs_itemnamelock=%s\n' "$needs_itemnamelock"
+  printf 'offlinesupplierpay_state=%s\n' "$offlinesupplierpay"
+  printf 'needs_offlinesupplierpay=%s\n' "$needs_offlinesupplierpay"
 }
 
 # Legacy (0030-0043) classification is unchanged from before Packet P1: the
