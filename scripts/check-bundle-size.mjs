@@ -44,6 +44,28 @@ for (const name of readdirSync(assets)) {
   if (initialNames.has(name)) initial += size;
 }
 
+// The service worker precaches exactly what precache.json lists; it must be every JS/CSS file built,
+// and every asset index.html loads must exist (a missing one would be counted as 0 bytes).
+const built = rows.map(([name]) => `assets/${name}`).sort();
+const precachePath = join(root, 'apps', 'admin', 'dist', 'precache.json');
+const listed = existsSync(precachePath) ? JSON.parse(readFileSync(precachePath, 'utf8')) : [];
+if (!Array.isArray(listed) || listed.length === 0) {
+  console.error('check-bundle-size: dist/precache.json is missing or empty.');
+  process.exit(1);
+}
+if (JSON.stringify([...listed].sort()) !== JSON.stringify(built)) {
+  console.error(
+    `check-bundle-size: dist/precache.json does not match the built JS/CSS files.\n  listed: ${listed.join(', ')}\n  built:  ${built.join(', ')}`,
+  );
+  process.exit(1);
+}
+const rowNames = new Set(rows.map(([name]) => name));
+for (const name of initialNames)
+  if (!rowNames.has(name)) {
+    console.error(`check-bundle-size: index.html references assets/${name}, which is not built.`);
+    process.exit(1);
+  }
+
 rows.sort((a, b) => b[1] - a[1]);
 for (const [name, size] of rows) {
   const tag = initialNames.has(name) ? 'initial' : 'on demand';

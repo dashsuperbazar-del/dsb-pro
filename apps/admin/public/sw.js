@@ -15,14 +15,16 @@ const shellRoutes = [
   'sync',
 ];
 
+// A real build file: ok, and never the SPA fallback page served under a script/style URL.
+const isAsset = (response) =>
+  response.ok && !(response.headers.get('content-type') || '').includes('text/html');
+
+// All-or-nothing: everything is fetched and checked BEFORE the new cache is written, and a failed
+// write removes the half-filled cache, so a new version never serves a partial shell.
 async function precacheShell() {
-  const cache = await caches.open(CACHE);
   const response = await fetch(new Request(scopeRoot, { cache: 'reload' }));
   if (!response.ok) throw new Error('Unable to fetch app shell');
   const html = await response.clone().text();
-  await Promise.all(
-    shellRoutes.map((route) => cache.put(new URL(route, scopeRoot).toString(), response.clone())),
-  );
 
   const refs = [...html.matchAll(/(?:src|href)="([^"]+)"/g)]
     .map((match) => new URL(match[1], scopeRoot))
@@ -36,7 +38,27 @@ async function precacheShell() {
   if (!manifest.ok) throw new Error('Unable to fetch precache.json');
   const files = (await manifest.json()).map((file) => new URL(file, scopeRoot).toString());
 
-  await cache.addAll([...new Set([...refs, ...files])]);
+  const urls = [...new Set([...refs, ...files])];
+  const fetched = await Promise.all(
+    urls.map(async (url) => {
+      const res = await fetch(new Request(url, { cache: 'reload' }));
+      if (!isAsset(res)) throw new Error('Unable to fetch ' + url);
+      return [url, res];
+    }),
+  );
+
+  const cache = await caches.open(CACHE);
+  try {
+    await Promise.all([
+      ...shellRoutes.map((route) =>
+        cache.put(new URL(route, scopeRoot).toString(), response.clone()),
+      ),
+      ...fetched.map(([url, res]) => cache.put(url, res)),
+    ]);
+  } catch (error) {
+    await caches.delete(CACHE);
+    throw error;
+  }
 }
 
 async function cachedNavigation(request) {
@@ -111,7 +133,7 @@ self.addEventListener('fetch', (event) => {
       if (hit) return hit;
       try {
         const response = await fetch(request);
-        if (response.ok) await cache.put(request, response.clone());
+        if (isAsset(response)) await cache.put(request, response.clone());
         return response;
       } catch {
         return Response.error();
