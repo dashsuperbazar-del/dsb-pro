@@ -56,22 +56,27 @@ test('POS is operable from the keyboard and no shortcut posts a sale by itself',
   await page.goto('/pos');
   await expect(page.getByText(/F2.*customer.*F3.*find/).first()).toBeVisible();
   const find = page.getByLabel('Find product');
-  const chosen = page.getByLabel('Item', { exact: true }).locator('option:checked');
   await find.fill('Key');
-  // Enter picks the first match, arrows move the choice, Enter again adds it.
-  await find.press('Enter');
-  await expect(chosen).toHaveText(/Key Rice/);
+  await expect(page.locator('.pick-row')).toHaveCount(2);
+  // Arrows move the highlighted row; Enter adds the highlighted row (else the top match), qty 1.
   await find.press('ArrowDown');
-  await expect(chosen).toHaveText(/Key Rock Salt/);
+  await expect(page.locator('.pick-row.active')).toContainText('Key Rice');
+  await find.press('ArrowDown');
+  await expect(page.locator('.pick-row.active')).toContainText('Key Rock Salt');
   await find.press('ArrowUp');
-  await expect(chosen).toHaveText(/Key Rice/);
+  await expect(page.locator('.pick-row.active')).toContainText('Key Rice');
   await find.press('Enter');
   await expect(page.getByRole('cell', { name: /Key Rice/ })).toBeVisible();
   await expect(find).toBeFocused();
-  // A second Enter picks again; it never adds the same item twice.
+  // A second Enter is a second tap: the same line goes to 2, never a second line.
   await find.press('Enter');
-  await expect(chosen).toHaveText(/Key Rice/);
+  await expect(page.getByLabel('Cart qty for Key Rice')).toHaveValue('2');
   await expect(page.locator('#pos-cart tbody tr')).toHaveCount(1);
+  // Enter with no highlight adds the top match.
+  await find.fill('Key Ro');
+  await find.press('Enter');
+  await expect(page.locator('#pos-cart tbody tr')).toHaveCount(2);
+  await expect(page.getByRole('cell', { name: /Key Rock Salt/ })).toBeVisible();
   // Nothing was posted by adding.
   await expect(page.getByRole('status').filter({ hasText: 'Sale finalized' })).toHaveCount(0);
 
@@ -96,7 +101,8 @@ test('POS is operable from the keyboard and no shortcut posts a sale by itself',
 
   // The sale is posted only by Ctrl+Enter in the payment view, through the normal Finalize checks.
   await page.keyboard.press('F4');
-  await page.getByLabel('Amount ₹').first().fill('40');
+  // Key Rice x2 (40 each) + Key Rock Salt x1 (15).
+  await page.getByLabel('Amount ₹').first().fill('95');
   await page.getByLabel('Amount ₹').first().press('Control+Enter');
   await expect(
     page

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { addByTap } from './pos-shop-setup';
 import { addItemForm, stockTask, fillBillItem } from './design-helpers';
 // D2 counter screens: POS (empty, cart, payment) and purchase bill entry (empty, filled, offline
 // queued) at phone and desktop size, light and dark. Screenshots go to DESIGN_SHOTS_DIR (default:
@@ -111,17 +112,14 @@ test('design screenshots: counter screens, phone + desktop, light + dark', async
       // POS: empty, cart, payment.
       await page.goto('/pos');
       await expect(page.getByRole('heading', { name: 'Sales POS', exact: true })).toBeVisible();
-      await expect(page.getByLabel('Item', { exact: true })).toBeEnabled();
+      await expect(page.locator('.pick-list')).toBeVisible();
       if ((await page.locator('.pos-cart').textContent())?.includes('Basmati')) {
         await page.evaluate(() => localStorage.clear());
         await page.evaluate((t) => localStorage.setItem('dsb-pro:appearance', t), theme);
         await page.reload();
       }
       await shot(`01-pos-empty-${tag}`);
-      await page.getByLabel('Item', { exact: true }).selectOption({ label: 'Basmati rice 1kg' });
-      await page.getByLabel('Quantity', { exact: true }).fill('2');
-      await page.getByRole('button', { name: 'Add item', exact: true }).click();
-      await expect(page.locator('.pos-cart')).toContainText('Basmati rice 1kg');
+      await addByTap(page, 'Basmati rice 1kg', '2');
       await shot(`02-pos-cart-${tag}`);
       if (!(await page.locator('#pos-payment').isVisible()))
         await page.getByRole('button', { name: 'Review payment →', exact: true }).click();
