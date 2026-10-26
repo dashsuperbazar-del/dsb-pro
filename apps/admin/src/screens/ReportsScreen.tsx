@@ -176,10 +176,10 @@ export function ReportsScreen() {
 
   return (
     <main class="wide">
-      <h1>Reports & recovery</h1>
       <p>
         <a href={appRoute.home}>← Home</a>
       </p>
+      <h1>Reports & recovery</h1>
       <p class="muted">Choose a category and date range, then Refresh to load server figures.</p>
       <TaskTabs
         label="Report categories"
@@ -274,9 +274,9 @@ export function ReportsScreen() {
                 <th>Date</th>
                 <th>Type</th>
                 <th>Document</th>
-                <th>Debit</th>
-                <th>Credit</th>
-                <th>Balance</th>
+                <th class="num">Debit</th>
+                <th class="num">Credit</th>
+                <th class="num">Balance</th>
               </tr>
             </thead>
             <tbody>
@@ -285,9 +285,9 @@ export function ReportsScreen() {
                   <td>{r.business_date}</td>
                   <td>{r.entry_type}</td>
                   <td>{r.document}</td>
-                  <td>{rupee(r.debit_paise)}</td>
-                  <td>{rupee(r.credit_paise)}</td>
-                  <td>{rupee(r.running_balance_paise)}</td>
+                  <td class="num">{rupee(r.debit_paise)}</td>
+                  <td class="num">{rupee(r.credit_paise)}</td>
+                  <td class="num">{rupee(r.running_balance_paise)}</td>
                 </tr>
               ))}
             </tbody>
@@ -296,29 +296,50 @@ export function ReportsScreen() {
       </section>
       <section class="card" hidden={view !== 'money'}>
         <h2>Day book</h2>
+        {day.length > 0 && (
+          <div class="kpi-grid" role="group" aria-label="Day book totals for the range">
+            {(
+              [
+                ['Sales', 'sales_paise'],
+                ['Purchases', 'purchases_paise'],
+                ['Receipts', 'receipts_paise'],
+                ['Payments', 'payments_paise'],
+                ['Expenses', 'expenses_paise'],
+                ['Net money flow', 'net_cashflow_paise'],
+              ] as const
+            ).map(([label, key]) => (
+              <div class="kpi" key={key}>
+                <span class="kpi-label">{label}</span>
+                <strong class="kpi-value money">
+                  {rupee(day.reduce((n, r) => n + Number(r[key]), 0))}
+                </strong>
+              </div>
+            ))}
+          </div>
+        )}
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Sales</th>
-                <th>Purchases</th>
-                <th>Receipts</th>
-                <th>Payments</th>
-                <th>Expenses</th>
-                <th>Net money flow</th>
+                <th class="num">Sales</th>
+                <th class="num">Purchases</th>
+                <th class="num">Receipts</th>
+                <th class="num">Payments</th>
+                <th class="num">Expenses</th>
+                <th class="num">Net money flow</th>
               </tr>
             </thead>
             <tbody>
               {day.map((r) => (
                 <tr>
                   <td>{r.business_date}</td>
-                  <td>{rupee(r.sales_paise)}</td>
-                  <td>{rupee(r.purchases_paise)}</td>
-                  <td>{rupee(r.receipts_paise)}</td>
-                  <td>{rupee(r.payments_paise)}</td>
-                  <td>{rupee(r.expenses_paise)}</td>
-                  <td>{rupee(r.net_cashflow_paise)}</td>
+                  <td class="num">{rupee(r.sales_paise)}</td>
+                  <td class="num">{rupee(r.purchases_paise)}</td>
+                  <td class="num">{rupee(r.receipts_paise)}</td>
+                  <td class="num">{rupee(r.payments_paise)}</td>
+                  <td class="num">{rupee(r.expenses_paise)}</td>
+                  <td class="num">{rupee(r.net_cashflow_paise)}</td>
                 </tr>
               ))}
             </tbody>
@@ -332,18 +353,18 @@ export function ReportsScreen() {
             <thead>
               <tr>
                 <th>Item</th>
-                <th>Qty base</th>
-                <th>Last cost</th>
-                <th>Value</th>
+                <th class="num">Qty base</th>
+                <th class="num">Last cost</th>
+                <th class="num">Value</th>
               </tr>
             </thead>
             <tbody>
               {stock.map((r) => (
                 <tr>
                   <td>{r.item_name}</td>
-                  <td>{formatQuantity(r.qty_base)}</td>
-                  <td>{rupee(r.cost_paise)}</td>
-                  <td>{rupee(r.value_paise)}</td>
+                  <td class="num">{formatQuantity(r.qty_base)}</td>
+                  <td class="num">{rupee(r.cost_paise)}</td>
+                  <td class="num">{rupee(r.value_paise)}</td>
                 </tr>
               ))}
             </tbody>
@@ -361,20 +382,20 @@ export function ReportsScreen() {
             <thead>
               <tr>
                 <th>Rate</th>
-                <th>Taxable sales</th>
-                <th>Gross sales</th>
-                <th>Taxable purchases</th>
-                <th>Gross purchases</th>
+                <th class="num">Taxable sales</th>
+                <th class="num">Gross sales</th>
+                <th class="num">Taxable purchases</th>
+                <th class="num">Gross purchases</th>
               </tr>
             </thead>
             <tbody>
               {gst.map((r) => (
                 <tr>
                   <td>{(r.tax_rate_bp / 100).toFixed(2)}%</td>
-                  <td>{rupee(r.taxable_sales_paise)}</td>
-                  <td>{rupee(r.gross_sales_paise)}</td>
-                  <td>{rupee(r.taxable_purchases_paise)}</td>
-                  <td>{rupee(r.gross_purchases_paise)}</td>
+                  <td class="num">{rupee(r.taxable_sales_paise)}</td>
+                  <td class="num">{rupee(r.gross_sales_paise)}</td>
+                  <td class="num">{rupee(r.taxable_purchases_paise)}</td>
+                  <td class="num">{rupee(r.gross_purchases_paise)}</td>
                 </tr>
               ))}
             </tbody>
@@ -395,22 +416,22 @@ export function ReportsScreen() {
               <thead>
                 <tr>
                   <th>Item</th>
-                  <th>On hand</th>
-                  <th>Min stock</th>
-                  <th>Shortfall</th>
+                  <th class="num">On hand</th>
+                  <th class="num">Min stock</th>
+                  <th class="num">Shortfall</th>
                 </tr>
               </thead>
               <tbody>
                 {lowStock.map((r) => (
                   <tr>
                     <td>{r.item_name}</td>
-                    <td>
+                    <td class="num">
                       {formatQuantity(r.on_hand)} {r.unit_name}
                     </td>
-                    <td>
+                    <td class="num">
                       {formatQuantity(r.min_stock)} {r.unit_name}
                     </td>
-                    <td>
+                    <td class="num">
                       {formatQuantity(r.shortfall)} {r.unit_name}
                     </td>
                   </tr>
@@ -427,22 +448,22 @@ export function ReportsScreen() {
             <thead>
               <tr>
                 <th>Item</th>
-                <th>Sold</th>
-                <th>Returned</th>
-                <th>Net qty</th>
-                <th>Gross sales</th>
-                <th>Net sales</th>
+                <th class="num">Sold</th>
+                <th class="num">Returned</th>
+                <th class="num">Net qty</th>
+                <th class="num">Gross sales</th>
+                <th class="num">Net sales</th>
               </tr>
             </thead>
             <tbody>
               {itemSales.map((r) => (
                 <tr>
                   <td>{r.item_name}</td>
-                  <td>{formatQuantity(r.qty_sold)}</td>
-                  <td>{formatQuantity(r.qty_returned)}</td>
-                  <td>{formatQuantity(r.net_qty)}</td>
-                  <td>{rupee(r.gross_sales_paise)}</td>
-                  <td>{rupee(r.net_sales_paise)}</td>
+                  <td class="num">{formatQuantity(r.qty_sold)}</td>
+                  <td class="num">{formatQuantity(r.qty_returned)}</td>
+                  <td class="num">{formatQuantity(r.net_qty)}</td>
+                  <td class="num">{rupee(r.gross_sales_paise)}</td>
+                  <td class="num">{rupee(r.net_sales_paise)}</td>
                 </tr>
               ))}
             </tbody>
@@ -466,11 +487,11 @@ export function ReportsScreen() {
                 <th>Bill</th>
                 <th>Date</th>
                 <th>Supplier</th>
-                <th>Subtotal</th>
-                <th>Discount</th>
-                <th>Extra</th>
-                <th>Round off</th>
-                <th>Total</th>
+                <th class="num">Subtotal</th>
+                <th class="num">Discount</th>
+                <th class="num">Extra</th>
+                <th class="num">Round off</th>
+                <th class="num">Total</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -480,11 +501,11 @@ export function ReportsScreen() {
                   <td>{r.doc_no}</td>
                   <td>{r.business_date}</td>
                   <td>{r.party_name ?? '—'}</td>
-                  <td>{rupee(r.subtotal_paise)}</td>
-                  <td>{rupee(r.discount_paise)}</td>
-                  <td>{rupee(r.extra_charges_paise)}</td>
-                  <td>{rupee(r.round_off_paise ?? 0)}</td>
-                  <td>{rupee(r.total_paise)}</td>
+                  <td class="num">{rupee(r.subtotal_paise)}</td>
+                  <td class="num">{rupee(r.discount_paise)}</td>
+                  <td class="num">{rupee(r.extra_charges_paise)}</td>
+                  <td class="num">{rupee(r.round_off_paise ?? 0)}</td>
+                  <td class="num">{rupee(r.total_paise)}</td>
                   <td>{r.status}</td>
                 </tr>
               ))}
@@ -540,16 +561,16 @@ function AgingSection(props: {
             <thead>
               <tr>
                 <th>Name</th>
-                <th>0 days</th>
-                <th>1–30</th>
-                <th>31–60</th>
-                <th>61–90</th>
-                <th>Over 90</th>
-                <th>Open bills</th>
-                <th>Bill credits</th>
-                <th>{props.outLabel}</th>
-                <th>{props.inLabel}</th>
-                <th>Net balance</th>
+                <th class="num">0 days</th>
+                <th class="num">1–30</th>
+                <th class="num">31–60</th>
+                <th class="num">61–90</th>
+                <th class="num">Over 90</th>
+                <th class="num">Open bills</th>
+                <th class="num">Bill credits</th>
+                <th class="num">{props.outLabel}</th>
+                <th class="num">{props.inLabel}</th>
+                <th class="num">Net balance</th>
               </tr>
             </thead>
             <tbody>
@@ -559,16 +580,16 @@ function AgingSection(props: {
                     {a.name}
                     {a.legacyInferredAllocation ? ' ⚠ old allocation dates estimated' : ''}
                   </td>
-                  <td>{rupees(a.days0Paise)}</td>
-                  <td>{rupees(a.days1to30Paise)}</td>
-                  <td>{rupees(a.days31to60Paise)}</td>
-                  <td>{rupees(a.days61to90Paise)}</td>
-                  <td>{rupees(a.daysOver90Paise)}</td>
-                  <td>{rupees(a.grossOpenPaise)}</td>
-                  <td>{rupees(a.documentCreditsPaise)}</td>
-                  <td>{rupees(a.unassignedOutPaise)}</td>
-                  <td>{rupees(a.unassignedInPaise)}</td>
-                  <td>{rupees(a.netLedgerBalancePaise)}</td>
+                  <td class="num">{rupees(a.days0Paise)}</td>
+                  <td class="num">{rupees(a.days1to30Paise)}</td>
+                  <td class="num">{rupees(a.days31to60Paise)}</td>
+                  <td class="num">{rupees(a.days61to90Paise)}</td>
+                  <td class="num">{rupees(a.daysOver90Paise)}</td>
+                  <td class="num">{rupees(a.grossOpenPaise)}</td>
+                  <td class="num">{rupees(a.documentCreditsPaise)}</td>
+                  <td class="num">{rupees(a.unassignedOutPaise)}</td>
+                  <td class="num">{rupees(a.unassignedInPaise)}</td>
+                  <td class="num">{rupees(a.netLedgerBalancePaise)}</td>
                 </tr>
               ))}
               <tr>

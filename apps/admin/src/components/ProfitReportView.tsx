@@ -73,7 +73,7 @@ export function ProfitReportView({ report }: { report: ProfitReport }) {
                   <th>Item</th>
                   <th>Sold</th>
                   <th>Returned</th>
-                  <th>Net sales</th>
+                  <th class="num">Net sales</th>
                   <th>Cost</th>
                   <th>Profit</th>
                   <th>Margin</th>
@@ -100,7 +100,7 @@ export function ProfitReportView({ report }: { report: ProfitReport }) {
                       </td>
                       <td>{qty(i.qtySold)}</td>
                       <td>{qty(i.qtyReturned)}</td>
-                      <td>{rupees(i.netRevenuePaise)}</td>
+                      <td class="num">{rupees(i.netRevenuePaise)}</td>
                       <td>{uncosted ? '—' : rupees(i.costOfGoodsPaise)}</td>
                       <td>{uncosted ? '—' : rupees(i.grossProfitPaise)}</td>
                       <td>{uncosted ? '—' : percent(i.marginBp)}</td>

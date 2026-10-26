@@ -3,6 +3,8 @@ import * as Sentry from '@sentry/browser';
 import { App } from './App';
 import './tokens.css';
 import './style.css';
+import './d3.css';
+import './d3-screens.css';
 
 const dsn = import.meta.env.VITE_SENTRY_DSN;
 if (dsn) Sentry.init({ dsn });

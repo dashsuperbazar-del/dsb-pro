@@ -1,3 +1,5 @@
+import { HomeRow } from '../components/HomeRow';
+import { useUserId } from '../lib/useUserId';
 import { useEffect, useState } from 'preact/hooks';
 import type { LocalSyncConflict } from '@dsb-pro/sync';
 import { appRoute } from '../lib/paths';
@@ -15,6 +17,7 @@ type Dashboard = Awaited<ReturnType<typeof getSyncDashboard>>;
 const when = (value: number | null) => (value ? new Date(value).toLocaleString() : 'Never');
 
 export function SyncScreen() {
+  const userId = useUserId();
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -152,8 +155,19 @@ export function SyncScreen() {
               </label>
             )}
           </section>
-          <section class="card" aria-label="Offline sales">
-            <h2>Provisional / synced offline sales</h2>
+          <HomeRow
+            name="sync-offline-sales"
+            title="Offline sales"
+            label="Offline sales"
+            userId={userId}
+            count={dashboard.sales.length}
+            tone={dashboard.sales.some((s) => s.status !== 'SYNCED') ? 'warning' : 'neutral'}
+            summary={
+              dashboard.sales.length
+                ? `${dashboard.sales.filter((s) => s.status !== 'SYNCED').length} not synced`
+                : 'none on this device'
+            }
+          >
             {dashboard.sales.length ? (
               <div class="table-wrap">
                 <table>
@@ -182,9 +196,17 @@ export function SyncScreen() {
             ) : (
               <p>No offline sales on this device.</p>
             )}
-          </section>
-          <section class="card" aria-label="Sync conflicts">
-            <h2>Needs review on this device</h2>
+          </HomeRow>
+          <HomeRow
+            name="sync-local-conflicts"
+            title="Needs review"
+            label="Sync conflicts"
+            userId={userId}
+            count={dashboard.conflicts.filter((c) => c.status === 'OPEN').length}
+            tone={dashboard.conflicts.some((c) => c.status === 'OPEN') ? 'danger' : 'neutral'}
+            summary="on this device"
+            forceOpen={dashboard.conflicts.some((c) => c.status === 'OPEN')}
+          >
             {dashboard.conflicts.filter((c) => c.status === 'OPEN').length ? (
               <ul>
                 {dashboard.conflicts
@@ -204,7 +226,7 @@ export function SyncScreen() {
             ) : (
               <p>No open local conflicts.</p>
             )}
-          </section>
+          </HomeRow>
           <section class="card" aria-label="Server sync conflicts">
             <h2>Shop-wide sync conflicts</h2>
             {dashboard.serverConflicts.filter((c) => c.status === 'OPEN').length ? (

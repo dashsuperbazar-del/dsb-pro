@@ -629,7 +629,7 @@ export function SalesHistoryScreen() {
             <thead>
               <tr>
                 <th>Item</th>
-                <th>Qty</th>
+                <th class="num">Qty</th>
                 <th>Rate</th>
                 <th>Amount</th>
               </tr>
@@ -647,7 +647,7 @@ export function SalesHistoryScreen() {
                         : ''}
                     </small>
                   </td>
-                  <td>{formatQuantity(l.qty)}</td>
+                  <td class="num">{formatQuantity(l.qty)}</td>
                   <td>{money(l.unit_price_paise)}</td>
                   <td>{money(l.line_total_paise - (l.tax_paise ?? 0))}</td>
                 </tr>
