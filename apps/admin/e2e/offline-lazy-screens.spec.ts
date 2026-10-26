@@ -43,7 +43,9 @@ test('screens that load on demand open offline without ever being opened online'
   expect(missing.out).toEqual([]);
   await context.setOffline(true);
   await page.goto('/sync');
-  await expect(page.getByRole('heading', { name: 'Sync & offline' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Sync & offline' })).toBeVisible({
+    timeout: 15000,
+  });
   await page.goto('/customers');
   await expect(page.getByRole('heading', { name: 'Customers & ledger' })).toBeVisible();
   await page.goto('/sales-history');

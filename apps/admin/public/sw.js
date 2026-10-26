@@ -106,7 +106,8 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     (async () => {
       const cache = await caches.open(CACHE);
-      const hit = await cache.match(request, { ignoreSearch: true });
+      // Built files are content-hashed: the stored copy is right whatever Origin asked (Vary: Origin).
+      const hit = await cache.match(request, { ignoreSearch: true, ignoreVary: true });
       if (hit) return hit;
       try {
         const response = await fetch(request);
