@@ -1332,7 +1332,12 @@ export function PosScreen() {
         />
       )}
 
-      <section class="card pos-items" id="pos-items" hidden={checkout}>
+      <section
+        class="card pos-items"
+        id="pos-items"
+        data-catalog-count={items.length}
+        hidden={checkout}
+      >
         <h2>Find products</h2>
         <div class="pick-search">
           <input
