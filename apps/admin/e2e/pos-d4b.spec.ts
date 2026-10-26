@@ -150,3 +150,54 @@ test.describe('phone', () => {
     await context.setOffline(false);
   });
 });
+
+test.describe('desktop keyboard and scanner', () => {
+  test('Enter highlights first, then adds; a scanner burst in the search box adds nothing; barcode box adds once', async ({
+    page,
+  }) => {
+    test.setTimeout(120000);
+    await setupPosShop(page, 'd4b-enter');
+    await page.goto('/inventory');
+    await page.getByLabel('Item details').selectOption({ label: NAME });
+    await page.getByPlaceholder('Barcode').fill('8901234500024');
+    await page.getByRole('button', { name: 'Link barcode' }).click();
+    await expect(page.getByText('Barcode linked to item.')).toBeVisible();
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await openPos(page);
+
+    // The barcode box path adds exactly once.
+    await page.getByLabel('Barcode', { exact: true }).fill('8901234500024');
+    await page.getByRole('button', { name: 'Scan / Add' }).click();
+    await expect(cartQty(page, NAME)).toHaveValue('1');
+    await expect(page.locator('#pos-cart tbody tr')).toHaveCount(1);
+
+    const find = page.getByLabel('Find product');
+    await find.fill('rice');
+    await find.press('Enter');
+    // First Enter only highlights the top match.
+    await expect(row(page, NAME)).toHaveClass(/active/);
+    await expect(cartQty(page, NAME)).toHaveValue('1');
+    await find.press('Enter');
+    await expect(cartQty(page, NAME)).toHaveValue('2');
+    await expect(page.locator('#pos-cart tbody tr')).toHaveCount(1);
+    await expect(
+      page.getByRole('status').filter({ hasText: `Added ${NAME} (qty 2)` }),
+    ).toBeAttached();
+    // The text is selected and focus is back in the box: typing replaces it.
+    await expect(find).toBeFocused();
+    await page.keyboard.type('Bas');
+    await expect(find).toHaveValue('Bas');
+
+    // A scanner burst typed into the search box ends in Enter and must add nothing by itself.
+    await find.fill('');
+    await find.pressSequentially('8901234500024', { delay: 0 });
+    await find.press('Enter');
+    await expect(cartQty(page, NAME)).toHaveValue('2');
+    await expect(page.locator('#pos-cart tbody tr')).toHaveCount(1);
+    // A scan-like burst that does match a name is highlighted only, never added.
+    await find.fill('');
+    await find.pressSequentially('Basmati', { delay: 0 });
+    await find.press('Enter');
+    await expect(cartQty(page, NAME)).toHaveValue('2');
+  });
+});

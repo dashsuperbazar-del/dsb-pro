@@ -264,6 +264,8 @@ test('a typed quantity and line discount survive a redraw of the page, then rese
   await addByTap(page, 'Basmati rice 1kg');
   await page.getByLabel('Cart qty for Basmati rice 1kg').fill('5');
   await page.getByLabel('Discount for Basmati rice 1kg').fill('3');
+  // The cart row's own discount box changes the line total (5 x 1,200.00 - 3.00).
+  await expect(page.locator('.pos-cart')).toContainText('₹5,997.00');
   // Typing in another box re-renders the whole POS screen (state change).
   await page.locator('form').filter({ hasText: 'Record payment' }).getByLabel('Amount ₹').fill('7');
   await expect(page.getByLabel('Cart qty for Basmati rice 1kg')).toHaveValue('5');

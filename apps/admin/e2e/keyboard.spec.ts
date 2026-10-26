@@ -72,8 +72,13 @@ test('POS is operable from the keyboard and no shortcut posts a sale by itself',
   await find.press('Enter');
   await expect(page.getByLabel('Cart qty for Key Rice')).toHaveValue('2');
   await expect(page.locator('#pos-cart tbody tr')).toHaveCount(1);
-  // Enter with no highlight adds the top match.
-  await find.fill('Key Ro');
+  // After an add the search text is selected: typing replaces it.
+  await page.keyboard.type('Key Ro');
+  await expect(find).toHaveValue('Key Ro');
+  // Enter with no highlight only highlights the top match; the second Enter adds it.
+  await find.press('Enter');
+  await expect(page.locator('#pos-cart tbody tr')).toHaveCount(1);
+  await expect(page.locator('.pick-row.active')).toContainText('Key Rock Salt');
   await find.press('Enter');
   await expect(page.locator('#pos-cart tbody tr')).toHaveCount(2);
   await expect(page.getByRole('cell', { name: /Key Rock Salt/ })).toBeVisible();

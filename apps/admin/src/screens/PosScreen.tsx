@@ -265,7 +265,7 @@ export function PosScreen() {
   const [rowPrices, setRowPrices] = useState<Map<string, PriceLite[]>>(new Map());
   const [stockMap, setStockMap] = useState<Map<string, number> | null>(null);
   const [recentIds, setRecentIds] = useState<string[]>([]);
-  const [pickNote, setPickNote] = useState('');
+  const [lastAdded, setLastAdded] = useState<{ id: string; name: string } | null>(null);
   const pricesAsked = useRef(new Set<string>());
   const [listTick, setListTick] = useState(0);
   const [saleClientId, setSaleClientId] = useState(() => crypto.randomUUID());
@@ -503,6 +503,10 @@ export function PosScreen() {
     for (const l of cart) if (!l.freeText) m.set(l.item.id, (m.get(l.item.id) ?? 0) + 1);
     return m;
   }, [cart]);
+  // The spoken note changes with every add (a repeat tap says the new quantity), so it is announced again.
+  const pickNote = lastAdded
+    ? `Added ${lastAdded.name} (qty ${cart.find((l) => !l.freeText && l.item.id === lastAdded.id)?.qty ?? '?'})`
+    : '';
   const pickIds = pickShown.map((i) => i.id).join(',');
   // Prices for the rows on screen only (cached; a price is never worked out here, see pickPrice).
   useEffect(() => {
@@ -853,7 +857,13 @@ export function PosScreen() {
       const level = rowLevel[item.id] ?? defaultSellLevel(item);
       const added = await addLine(item, level, 1, pickKind, 0, true);
       if (added) {
-        setPickNote(`Added ${item.name}`);
+        setLastAdded({ id: item.id, name: item.name });
+        // Ready for the next search: on a desktop the text is selected so typing replaces it; on a phone
+        // the keyboard is not raised.
+        if (hasFinePointer()) {
+          findRef.current?.focus({ preventScroll: true });
+          findRef.current?.select();
+        }
         setRecentIds((list) => {
           const next = pushRecent(list, item.id);
           if (userId && shopId) writeRecent(userId, shopId, next);
@@ -1195,10 +1205,14 @@ export function PosScreen() {
       ev.stopPropagation();
       // A held Enter auto-repeats: each add needs its own key press.
       if (ev.repeat) return;
-      // With an empty box only a row the arrow keys chose is added (never a recent item by accident).
-      if (!itemQuery.trim() && !activeId) return;
-      const row = pickShown.find((i) => i.id === activeId) ?? pickShown[0];
+      // Two steps, so nothing unseen is ever added (a scanner burst typed into this box ends in Enter):
+      // Enter adds ONLY a highlighted row; with none, it just highlights the top match (visible).
+      const row = pickShown.find((i) => i.id === activeId);
       if (row) void tapAdd(row);
+      else if (itemQuery.trim() && pickShown[0]) {
+        setActiveId(pickShown[0].id);
+        document.getElementById(`pick-${pickShown[0].id}`)?.scrollIntoView?.({ block: 'nearest' });
+      }
     }
   }
   function printLocalReceipt(sale: OfflineSaleRecord) {
