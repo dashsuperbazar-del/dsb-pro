@@ -3044,7 +3044,7 @@ export function InventoryScreen({
         </form>
       </section>
       {purchaseOnly && (
-        <details class="card">
+        <details class="card purchase-add-supplier">
           <summary>Add a supplier</summary>
           <form onSubmit={addParty}>
             <label>
@@ -3074,6 +3074,7 @@ export function InventoryScreen({
         </details>
       )}
       <section
+        class="purchase-entry"
         hidden={view !== 'purchase'}
         data-purchase-ready={purchaseOnly && catalogLoaded && !editLocked ? 'true' : 'false'}
         data-suppliers-saved={suppliersSaved ? 'true' : 'false'}

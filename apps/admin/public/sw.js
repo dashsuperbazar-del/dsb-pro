@@ -29,7 +29,14 @@ async function precacheShell() {
     .filter((url) => url.origin === self.location.origin)
     .map((url) => url.toString());
 
-  if (refs.length) await cache.addAll([...new Set(refs)]);
+  // Every built JS/CSS file, including chunks that load on demand (D2), so every screen opens offline.
+  const manifest = await fetch(
+    new Request(new URL('precache.json', scopeRoot), { cache: 'reload' }),
+  );
+  if (!manifest.ok) throw new Error('Unable to fetch precache.json');
+  const files = (await manifest.json()).map((file) => new URL(file, scopeRoot).toString());
+
+  await cache.addAll([...new Set([...refs, ...files])]);
 }
 
 async function cachedNavigation(request) {
@@ -71,7 +78,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   // The build marker must always be the deployed one, never a cached copy.
-  if (url.pathname.endsWith('/version.json')) return;
+  if (url.pathname.endsWith('/version.json') || url.pathname.endsWith('/precache.json')) return;
 
   if (request.mode === 'navigate') {
     event.respondWith(

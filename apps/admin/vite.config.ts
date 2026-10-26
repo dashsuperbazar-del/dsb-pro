@@ -28,11 +28,22 @@ export default defineConfig({
     {
       name: 'dsb-version-json',
       apply: 'build',
-      generateBundle() {
+      generateBundle(_options, bundle) {
         this.emitFile({
           type: 'asset',
           fileName: 'version.json',
           source: buildVersionJson(commit, builtAt),
+        });
+        // Every built JS/CSS file, for the service worker to precache at install (D2): screens that
+        // load on demand must still open offline even if they were never opened online.
+        this.emitFile({
+          type: 'asset',
+          fileName: 'precache.json',
+          source: JSON.stringify(
+            Object.keys(bundle)
+              .filter((f) => /\.(js|css)$/.test(f))
+              .sort(),
+          ),
         });
       },
     },
