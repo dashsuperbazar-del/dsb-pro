@@ -47,6 +47,11 @@ const OpeningsScreen = lazyScreen(() => import('./rareScreens').then((m) => m.Op
 const SearchScreen = lazyScreen(() => import('./rareScreens').then((m) => m.SearchScreen));
 const AuditLogScreen = lazyScreen(() => import('./rareScreens').then((m) => m.AuditLogScreen));
 
+// POS and purchase entry keep the money first: the health pill stays on Home/Settings (D4).
+const onPath = (path: string, route: string) => path === route || path.startsWith(route + '/');
+export const isCounterEntryPath = (path: string) =>
+  onPath(path, appRoute.pos) || onPath(path, appRoute.purchases);
+
 export function App() {
   const session = useSession();
   useEffect(() => {
@@ -98,7 +103,10 @@ export function App() {
       )}
       {session.status === 'active' && session.membership.role !== 'cashier' && (
         <div class="health-container no-print">
-          <HealthPanel canAdjustStock={['owner', 'manager'].includes(session.membership.role)} />
+          <HealthPanel
+            canAdjustStock={['owner', 'manager'].includes(session.membership.role)}
+            quiet={isCounterEntryPath(currentPath)}
+          />
         </div>
       )}
       <Router onChange={(event) => setCurrentPath(event.url.split(/[?#]/)[0])}>

@@ -25,9 +25,11 @@ import {
   listItems,
   listRecentSales,
   recordCustomerPayment,
+  getSaleReceipt,
   type Customer,
   type Item,
   type SaleInvoice,
+  type SaleReceipt,
 } from '@dsb-pro/adapters';
 import {
   isDefinitiveFinancialRejectionMessage,
@@ -58,6 +60,18 @@ import {
 } from '../lib/offlineSync';
 import { mergeCatalog, watchOfflineCatalog } from '../lib/catalogWatch';
 import { ReceiptHeader } from '../components/ReceiptHeader';
+import { SaleReceiptPrint } from '../components/SaleReceiptPrint';
+import { SaleDoneCard, type SaleDoneInfo } from '../components/SaleDoneCard';
+import { ShareImageButton } from '../components/ShareImageButton';
+import { saleInvoiceDoc } from '../lib/shareImage';
+import { rupees } from '../lib/money';
+import { friendlyError, type FriendlyError } from '../lib/friendlyError';
+import {
+  figuresFromReceipt,
+  figuresFromRecord,
+  friendlySaleName,
+  saleStateLabel,
+} from '../lib/saleDone';
 import { loadShopProfile, type ProfileLoad } from '../lib/shopProfile';
 import { addSalePricePlans, flushSalePricePlans, type SalePricePlan } from '../lib/salePricePlans';
 
@@ -105,8 +119,26 @@ type PendingPrice = {
   discountPaise: number;
 };
 type Tender = { mode: 'cash' | 'upi' | 'card' | 'bank' | 'other'; amount: string };
-const money = (paise: number) => `₹${(paise / 100).toFixed(2)}`;
-const paise = (rupees: string) => parseRupeesToPaise(rupees || '0');
+// One money format on the counter (₹2,647.00, same as Home); never "₹NaN" and never a minus sign on zero.
+const money = (paise: number) => (Number.isSafeInteger(paise) ? rupees(paise) : '—');
+// Printed receipts keep their own plain format (the same document Sales history reprints).
+const receiptMoney = (paise: number) => `₹${(paise / 100).toFixed(2)}`;
+const paise = (text: string) => parseRupeesToPaise(text || '0');
+/** A money box the cashier may have left half typed: 0 instead of throwing while the screen draws. */
+const safePaise = (text: string) => {
+  try {
+    return paise(text);
+  } catch {
+    return 0;
+  }
+};
+/** A phone-sized screen: the secondary blocks start closed there. */
+const isPhoneScreen = () =>
+  typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 640px)').matches;
+/** A mouse + keyboard counter (not a touch phone): the barcode box may take focus without a keyboard popping up. */
+const hasFinePointer = () =>
+  typeof window !== 'undefined' &&
+  !!window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
 const lineGross = (qty: string, pricePaise: number) => {
   try {
     return quantityTimesPaise(qty, pricePaise);
@@ -123,11 +155,6 @@ function typedPricePaise(value: string): number | null {
   const amount = parseRupeesToPaise(typed);
   return amount > 0 ? amount : null;
 }
-/** Server codes stay in the log; the counter sees the sentence. */
-const plainError = (e: unknown) =>
-  String(e)
-    .replace(/^Error: /, '')
-    .replace(/DSB_[A-Z_]+: /, '');
 
 function readHoldLabelDraft() {
   if (typeof sessionStorage === 'undefined') return '';
@@ -196,8 +223,21 @@ export function PosScreen() {
   const [extra, setExtra] = useState('0');
   const [tenders, setTenders] = useState<Tender[]>([{ mode: 'cash', amount: '' }]);
   const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  // Errors are shown in plain words with the server code kept apart (central map: lib/friendlyError).
+  const [error, setErrorState] = useState<FriendlyError | null>(null);
+  const setError = (e: unknown) => setErrorState(e ? friendlyError(e) : null);
   const [busy, setBusy] = useState(false);
+  // D4: the card after a finalized sale, and the printed receipt of a synced sale (one receipt at a time).
+  const [saleDone, setSaleDone] = useState<SaleDoneInfo | null>(null);
+  const [saleDoneSale, setSaleDoneSale] = useState<{
+    saleId: string;
+    customerId: string;
+    receipt: SaleReceipt | null;
+    record: OfflineSaleRecord | null;
+  } | null>(null);
+  const [printReceipt, setPrintReceipt] = useState<SaleReceipt | null>(null);
+  // Secondary blocks start closed on a phone only; a desktop counter keeps them open as before.
+  const [phone] = useState(isPhoneScreen);
   const [barcode, setBarcode] = useState('');
   const [itemQuery, setItemQuery] = useState('');
   const [manualItemId, setManualItemId] = useState('');
@@ -226,6 +266,11 @@ export function PosScreen() {
   const canTypePrice = role === 'owner' || role === 'manager';
   const scanBlocked = useRef(false);
   const findRef = useRef<HTMLInputElement>(null);
+  const barcodeRef = useRef<HTMLInputElement>(null);
+  const saleDoneRef = useRef<HTMLElement>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  const paymentRef = useRef<HTMLElement>(null);
   // The item whose manual add is in flight: Enter pressed again for the SAME item while its price lookup
   // runs must not add it twice (another item may still be added meanwhile).
   const addingManual = useRef<string | null>(null);
@@ -328,7 +373,7 @@ export function PosScreen() {
         setError(`The sale is saved, but a sale price was not: ${failed.join('; ')}`);
       return saved.length ? ` Saved as sale price: ${saved.join(', ')}.` : '';
     } catch (e) {
-      setError(`The sale is saved, but a sale price was not: ${plainError(e)}`);
+      setError(`The sale is saved, but a sale price was not: ${friendlyError(e).text}`);
       return '';
     }
   }
@@ -370,6 +415,41 @@ export function PosScreen() {
       active = false;
     };
   }, [heldCleanup?.id, heldCleanup?.token]);
+  // The barcode box takes focus only where that cannot raise a phone keyboard over the form.
+  useEffect(() => {
+    if (catalogReady && hasFinePointer()) barcodeRef.current?.focus();
+  }, [catalogReady]);
+  // A message must be seen: in checkout it sits just above the Finalize bar and is brought into view.
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [error]);
+  // The payment fields must never sit under the fixed Finalize bar: scroll just enough to clear it.
+  function keepAmountVisible() {
+    const bar = barRef.current;
+    const fields = paymentRef.current?.querySelectorAll<HTMLElement>('[data-tender-amount]');
+    const field = fields?.length ? fields[fields.length - 1] : null;
+    if (!bar || !field) return;
+    const over = field.getBoundingClientRect().bottom + 12 - bar.getBoundingClientRect().top;
+    if (over > 0) window.scrollBy(0, over);
+  }
+  useEffect(() => {
+    if (!checkout) return;
+    const frame = window.requestAnimationFrame(keepAmountVisible);
+    return () => window.cancelAnimationFrame(frame);
+  }, [checkout, tenders.length, error]);
+  // Starting the next bill closes the old sale's card.
+  useEffect(() => {
+    if (cart.length > 0) {
+      setSaleDone(null);
+      setSaleDoneSale(null);
+    }
+  }, [cart.length]);
+  // A finished sale is announced and brought into view.
+  useEffect(() => {
+    if (!saleDone) return;
+    saleDoneRef.current?.scrollIntoView?.({ block: 'start' });
+    saleDoneRef.current?.focus?.({ preventScroll: true });
+  }, [saleDone?.clientId]);
   const manualItem = items.find((i) => i.id === manualItemId);
   const visibleItems = useMemo(() => searchCatalogItems(items, itemQuery, 50), [items, itemQuery]);
   const preview = useMemo(
@@ -419,6 +499,27 @@ export function PosScreen() {
     unpaidPaise > 0 &&
     outstandingPaise + unpaidPaise > creditLimit;
   const tenderTotal = useMemo(() => tenderTotalOf(tenders), [tenders]);
+  // Changing the payment makes the last refusal out of date: take it off the screen.
+  const editTenders = (change: (v: Tender[]) => Tender[]) => {
+    setError('');
+    setTenders(change);
+  };
+  // Bill options (invoice type, discount, extra charges, hold): closed on a phone unless something is set.
+  const billDiscountPaise = safePaise(globalDiscount);
+  const extraChargesPaise = safePaise(extra);
+  const optionsNeedAction =
+    invoiceType === 'gst_extra' ||
+    billDiscountPaise > 0 ||
+    extraChargesPaise > 0 ||
+    Boolean(heldCleanup);
+  const optionsSummary = [
+    invoiceType === 'gst_extra' ? 'GST on top' : 'GST included',
+    billDiscountPaise > 0 ? `discount ${money(billDiscountPaise)}` : '',
+    extraChargesPaise > 0 ? `charges ${money(extraChargesPaise)}` : '',
+    heldCleanup ? 'held cart needs cleanup' : 'hold a cart',
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   async function currentPrices(itemId: string) {
     let prices;
@@ -681,7 +782,18 @@ export function PosScreen() {
       // Only when focus is still in this form: the price lookup is async and the cashier may have moved on.
       const at = document.activeElement;
       // The choice is cleared so a second Enter (or a held key) picks again instead of adding the item twice.
-      if (added) setManualItemId('');
+      if (added) {
+        setManualItemId('');
+        // The add form's quantity and discount boxes are not controlled (a redraw must not overwrite what is
+        // typed), so they go back to 1 / 0 here, after a successful add.
+        for (const [name, start] of [
+          ['qty', '1'],
+          ['lineDiscount', '0'],
+        ] as const) {
+          const box = addForm.elements.namedItem(name);
+          if (box instanceof HTMLInputElement) box.value = start;
+        }
+      }
       if (added && (!at || at === document.body || addForm.contains(at))) {
         findRef.current?.focus();
         findRef.current?.select();
@@ -764,6 +876,12 @@ export function PosScreen() {
       }));
     setBusy(true);
     setError('');
+    const soldClientId = saleClientId;
+    const soldCustomerId = customerId;
+    const soldCustomerName = selectedCustomer?.name ?? null;
+    // The numbers this sale was sent with; shown only if the saved copy cannot be read back.
+    const sentTotalPaise = previewTotal;
+    const sentPaidPaise = Math.min(tenderTotalOf(tenders), previewTotal);
     try {
       // Kept before sending: written only once this sale is confirmed (never for a rejected sale).
       addSalePricePlans(shopId, plans);
@@ -773,7 +891,7 @@ export function PosScreen() {
         businessDate: await resolveBusinessDate(),
         discountPaise: paise(globalDiscount),
         extraChargesPaise: paise(extra),
-        clientId: saleClientId,
+        clientId: soldClientId,
         lines: cart.map((l) => ({
           itemId: l.item.id,
           unitLevel: l.unitLevel,
@@ -798,11 +916,66 @@ export function PosScreen() {
       });
       const savedNote =
         result.kind === 'synced' && plans.length ? await savePlannedPrices(shopId) : '';
-      setMessage(
-        result.kind === 'synced'
-          ? `Sale finalized: ${result.docNo}.${savedNote}`
-          : `Saved locally as ${result.provisionalDocNo}. It will sync automatically when the backend is reachable.${plans.length ? ' The typed price is saved to the item after the sale syncs.' : ''}`,
-      );
+      // The device's own record of this sale (total + payments exactly as they were stored).
+      const saved =
+        (await listOfflineSales().catch(() => [] as OfflineSaleRecord[])).find(
+          (r) => r.clientId === soldClientId,
+        ) ?? null;
+      const fallback = {
+        totalPaise: sentTotalPaise,
+        paidPaise: sentPaidPaise,
+        balancePaise: Math.max(0, sentTotalPaise - sentPaidPaise),
+      };
+      const figures = saved ? figuresFromRecord(saved) : fallback;
+      setMessage('');
+      if (result.kind === 'synced') {
+        setSaleDone({
+          kind: 'synced',
+          clientId: soldClientId,
+          docNo: result.docNo,
+          billCode: null,
+          figures: { ...figures, confirmed: false },
+          customerName: soldCustomerName,
+          note: savedNote.trim(),
+        });
+        setSaleDoneSale({
+          saleId: result.saleId,
+          customerId: soldCustomerId,
+          receipt: null,
+          record: saved,
+        });
+        // The server's own invoice replaces the device copy (bill code, posted payments) when it arrives.
+        void getSaleReceipt(result.saleId)
+          .then((receipt) => {
+            setSaleDone((cur) =>
+              cur && cur.clientId === soldClientId
+                ? {
+                    ...cur,
+                    billCode: receipt.invoice.bill_code ?? null,
+                    figures: figuresFromReceipt(receipt),
+                  }
+                : cur,
+            );
+            setSaleDoneSale((cur) =>
+              cur && cur.saleId === result.saleId ? { ...cur, receipt } : cur,
+            );
+          })
+          .catch(() => undefined);
+      } else {
+        setSaleDone({
+          kind: 'queued',
+          clientId: soldClientId,
+          docNo: result.provisionalDocNo,
+          billCode: null,
+          figures,
+          customerName: soldCustomerName,
+          note: plans.length ? 'The typed price is saved to the item after the sale syncs.' : '',
+        });
+        setSaleDoneSale({ saleId: '', customerId: soldCustomerId, receipt: null, record: saved });
+      }
+      setItemQuery('');
+      setManualItemId('');
+      setBarcode('');
       setSaleClientId(crypto.randomUUID());
       setCart([]);
       setCheckout(false);
@@ -812,16 +985,58 @@ export function PosScreen() {
       setCreditOverride(false);
       setCreditRefused(false);
       setInvoiceType('gst_included');
-      await refresh();
+      // The sale is done; a failed screen refresh must never look like a failed sale.
+      await refresh().catch(() => undefined);
     } catch (e) {
       const text = String(e);
       if (/DSB_CREDIT_LIMIT_EXCEEDED/.test(text)) setCreditRefused(true);
       // A sale the server refused is final: the next attempt is a new sale (new request id).
       if (isDefinitiveFinancialRejectionMessage(text)) setSaleClientId(crypto.randomUUID());
-      setError(plainError(e));
+      setError(e);
     } finally {
       setBusy(false);
     }
+  }
+
+  /** "New sale": the old card, the old search text and any half-typed barcode go; the next sale starts clean. */
+  function startNewSale() {
+    setSaleDone(null);
+    setSaleDoneSale(null);
+    setItemQuery('');
+    setManualItemId('');
+    setBarcode('');
+    setMessage('');
+    setError('');
+    if (hasFinePointer()) window.setTimeout(() => findRef.current?.focus(), 0);
+    else document.getElementById('pos-items')?.scrollIntoView?.({ block: 'start' });
+  }
+  async function printSaleDone() {
+    if (!saleDone || !saleDoneSale) return;
+    if (saleDone.kind === 'queued') {
+      if (saleDoneSale.record) printLocalReceipt(saleDoneSale.record);
+      return;
+    }
+    try {
+      const receipt = saleDoneSale.receipt ?? (await getSaleReceipt(saleDoneSale.saleId));
+      const prof = profile ?? (await loadShopProfile(shopId));
+      setProfile(prof);
+      setLocalReceipt(null);
+      setPrintReceipt(receipt);
+      window.setTimeout(() => window.print(), 50);
+    } catch (e) {
+      setError(e);
+    }
+  }
+  async function saleDoneImage() {
+    if (!saleDoneSale) throw new Error('Nothing to share.');
+    const receipt = saleDoneSale.receipt ?? (await getSaleReceipt(saleDoneSale.saleId));
+    const prof = await loadShopProfile(shopId);
+    const customer = customers.find((c) => c.id === saleDoneSale.customerId);
+    return saleInvoiceDoc(
+      receipt,
+      prof.profile,
+      customer ? { name: customer.name, phone: customer.phone } : null,
+    );
   }
 
   async function addCustomer(ev: Event) {
@@ -878,12 +1093,15 @@ export function PosScreen() {
     }
     ev.preventDefault();
     if (action === 'payment') {
+      setError('');
       setCheckout(!checkout);
       window.scrollTo(0, 0);
     } else if (action === 'customer') {
+      setError('');
       setCheckout(true);
       window.setTimeout(() => customerRef.current?.focus(), 0);
     } else if (action === 'find') {
+      setError('');
       setCheckout(false);
       window.setTimeout(() => findRef.current?.focus(), 0);
     }
@@ -928,6 +1146,7 @@ export function PosScreen() {
   }
   function printLocalReceipt(sale: OfflineSaleRecord) {
     // Uses the profile loaded (or read from cache) when POS opened; never waits on the network.
+    setPrintReceipt(null);
     setLocalReceipt(sale);
     window.setTimeout(() => window.print(), 0);
   }
@@ -997,6 +1216,7 @@ export function PosScreen() {
           title="Shortcut: F4"
           aria-keyshortcuts="F4"
           onClick={() => {
+            setError('');
             setCheckout(!checkout);
             window.scrollTo(0, 0);
           }}
@@ -1022,15 +1242,37 @@ export function PosScreen() {
           <kbd>↓</kbd> choose an item, <kbd>Enter</kbd> pick, <kbd>Enter</kbd> add.
         </p>
       </details>
-      {error && (
-        <p role="alert" class="alert">
-          {error}
+      {error && !checkout && (
+        <p role="alert" aria-live="assertive" class="alert banner danger" ref={errorRef}>
+          {error.text}
+          {error.code && <small class="error-code">Code: {error.code}</small>}
         </p>
       )}
       {message && (
         <p role="status" class="success">
           {message}
         </p>
+      )}
+      {saleDone && !checkout && (
+        <SaleDoneCard
+          info={saleDone}
+          cardRef={saleDoneRef}
+          onNewSale={startNewSale}
+          onClose={() => {
+            setSaleDone(null);
+            setSaleDoneSale(null);
+          }}
+          onPrint={
+            saleDone.kind === 'synced' || saleDoneSale?.record
+              ? () => void printSaleDone()
+              : undefined
+          }
+          share={
+            saleDone.kind === 'synced' && saleDoneSale?.saleId ? (
+              <ShareImageButton build={saleDoneImage} />
+            ) : undefined
+          }
+        />
       )}
 
       <section class="card pos-items" id="pos-items" hidden={checkout}>
@@ -1039,7 +1281,7 @@ export function PosScreen() {
           <label>
             Barcode{' '}
             <input
-              autofocus
+              ref={barcodeRef}
               value={barcode}
               onInput={(e) => setBarcode((e.currentTarget as HTMLInputElement).value)}
             />
@@ -1118,7 +1360,7 @@ export function PosScreen() {
               inputMode="decimal"
               min="0.000001"
               step="0.000001"
-              value="1"
+              defaultValue="1"
               required
             />
           </label>
@@ -1137,7 +1379,7 @@ export function PosScreen() {
               inputMode="decimal"
               min="0"
               step="0.01"
-              value="0"
+              defaultValue="0"
             />
           </label>
           <button>Add item</button>
@@ -1371,100 +1613,115 @@ export function PosScreen() {
             </table>
           </div>
         )}
-        <div key="cart-totals" class="row">
-          <label>
-            Invoice type{' '}
-            <select
-              aria-label="Invoice type"
-              value={invoiceType}
-              onChange={(e) => {
-                const next = (e.currentTarget as HTMLSelectElement).value as SaleInvoiceType;
-                setInvoiceType(next);
-                if (next === 'gst_extra') setGlobalDiscount('0');
-              }}
-            >
-              <option value="gst_included">GST included in prices</option>
-              <option value="gst_extra">GST added on top</option>
-            </select>
-          </label>
-          <label>
-            Invoice discount ₹{' '}
-            <input
-              disabled={invoiceType === 'gst_extra'}
-              title={
-                invoiceType === 'gst_extra'
-                  ? 'Use item discounts when GST is added on top.'
-                  : undefined
-              }
-              value={globalDiscount}
-              type="number"
-              inputMode="decimal"
-              min="0"
-              step="0.01"
-              onInput={(e) => setGlobalDiscount((e.currentTarget as HTMLInputElement).value)}
-            />
-          </label>
-          <label>
-            Extra charges ₹{' '}
-            <input
-              value={extra}
-              type="number"
-              inputMode="decimal"
-              min="0"
-              step="0.01"
-              onInput={(e) => setExtra((e.currentTarget as HTMLInputElement).value)}
-            />
-          </label>
-          {gst && (
-            <span data-testid="gst-extra-summary">
-              GST {money(bill!.taxPaise)} (CGST {money(gst.cgstPaise)} + SGST {money(gst.sgstPaise)}
-              ) ·{' '}
-            </span>
-          )}
-          {invoiceType === 'gst_extra' &&
-            cart.some((l) => !l.freeText && !(l.item.tax_rate_bp ?? 0)) && (
-              <p role="alert" class="alert" data-testid="gst-zero-warning">
-                GST 0%:{' '}
-                {[
-                  ...new Set(
-                    cart
-                      .filter((l) => !l.freeText && !(l.item.tax_rate_bp ?? 0))
-                      .map((l) => l.item.name),
-                  ),
-                ].join(', ')}{' '}
-                {cart.filter((l) => !l.freeText && !(l.item.tax_rate_bp ?? 0)).length === 1
-                  ? 'has'
-                  : 'have'}{' '}
-                no GST rate, so no GST is added. Set the item GST % in Stock → Items if this is
-                wrong.
-              </p>
-            )}
-          {previewRoundOff !== 0 && (
-            <span>
-              Round off {previewRoundOff > 0 ? '+' : '−'}
-              {money(Math.abs(previewRoundOff))} ·{' '}
-            </span>
-          )}
-          <strong>Preview {money(previewTotal)}</strong>
-        </div>
-        <div key="hold-actions" class="row">
-          <label>
-            Hold label <HoldLabelField key={holdLabelResetVersion} />
-          </label>
-          <button
-            type="button"
-            disabled={!cart.length || Boolean(heldCleanup)}
-            onClick={() => void holdCartNow()}
-          >
-            Hold cart
-          </button>
-          {heldCleanup && (
-            <button type="button" onClick={() => void retryHeldCleanup()}>
-              Retry held-cart cleanup
-            </button>
-          )}
-        </div>
       </section>
+      <div hidden={checkout}>
+        <HomeRow
+          name="pos-bill-options"
+          title="Bill options"
+          label="Bill options"
+          userId={userId}
+          class="no-print"
+          count={null}
+          tone="neutral"
+          summary={optionsSummary}
+          defaultOpen={!phone}
+          forceOpen={optionsNeedAction}
+        >
+          <div key="cart-totals" class="row">
+            <label>
+              Invoice type{' '}
+              <select
+                aria-label="Invoice type"
+                value={invoiceType}
+                onChange={(e) => {
+                  const next = (e.currentTarget as HTMLSelectElement).value as SaleInvoiceType;
+                  setInvoiceType(next);
+                  if (next === 'gst_extra') setGlobalDiscount('0');
+                }}
+              >
+                <option value="gst_included">GST included in prices</option>
+                <option value="gst_extra">GST added on top</option>
+              </select>
+            </label>
+            <label>
+              Invoice discount ₹{' '}
+              <input
+                disabled={invoiceType === 'gst_extra'}
+                title={
+                  invoiceType === 'gst_extra'
+                    ? 'Use item discounts when GST is added on top.'
+                    : undefined
+                }
+                value={globalDiscount}
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="0.01"
+                onInput={(e) => setGlobalDiscount((e.currentTarget as HTMLInputElement).value)}
+              />
+            </label>
+            <label>
+              Extra charges ₹{' '}
+              <input
+                value={extra}
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="0.01"
+                onInput={(e) => setExtra((e.currentTarget as HTMLInputElement).value)}
+              />
+            </label>
+            {gst && (
+              <span data-testid="gst-extra-summary">
+                GST {money(bill!.taxPaise)} (CGST {money(gst.cgstPaise)} + SGST{' '}
+                {money(gst.sgstPaise)}) ·{' '}
+              </span>
+            )}
+            {invoiceType === 'gst_extra' &&
+              cart.some((l) => !l.freeText && !(l.item.tax_rate_bp ?? 0)) && (
+                <p role="alert" class="alert" data-testid="gst-zero-warning">
+                  GST 0%:{' '}
+                  {[
+                    ...new Set(
+                      cart
+                        .filter((l) => !l.freeText && !(l.item.tax_rate_bp ?? 0))
+                        .map((l) => l.item.name),
+                    ),
+                  ].join(', ')}{' '}
+                  {cart.filter((l) => !l.freeText && !(l.item.tax_rate_bp ?? 0)).length === 1
+                    ? 'has'
+                    : 'have'}{' '}
+                  no GST rate, so no GST is added. Set the item GST % in Stock → Items if this is
+                  wrong.
+                </p>
+              )}
+            {previewRoundOff !== 0 && (
+              <span>
+                Round off {previewRoundOff > 0 ? '+' : '−'}
+                {money(Math.abs(previewRoundOff))} ·{' '}
+              </span>
+            )}
+            <strong>Preview {money(previewTotal)}</strong>
+          </div>
+          <div key="hold-actions" class="row">
+            <label>
+              Hold label <HoldLabelField key={holdLabelResetVersion} />
+            </label>
+            <button
+              type="button"
+              disabled={!cart.length || Boolean(heldCleanup)}
+              onClick={() => void holdCartNow()}
+            >
+              Hold cart
+            </button>
+            {heldCleanup && (
+              <button type="button" onClick={() => void retryHeldCleanup()}>
+                Retry held-cart cleanup
+              </button>
+            )}
+          </div>
+        </HomeRow>
+      </div>
       {heldCarts.length > 0 && (
         <section class="card" aria-label="Held carts" hidden={checkout}>
           <h2>Held carts</h2>
@@ -1507,7 +1764,7 @@ export function PosScreen() {
         </section>
       )}
 
-      <section class="card pos-payment" id="pos-payment" hidden={!checkout}>
+      <section class="card pos-payment" id="pos-payment" hidden={!checkout} ref={paymentRef}>
         <h2>Customer & payment</h2>
         <p class="payment-total">
           Bill total <strong>{money(previewTotal)}</strong>
@@ -1520,6 +1777,7 @@ export function PosScreen() {
             value={customerId}
             onChange={(e) => {
               setCustomerId((e.currentTarget as HTMLSelectElement).value);
+              setError('');
               setCreditOverride(false);
               setCreditRefused(false);
             }}
@@ -1552,7 +1810,7 @@ export function PosScreen() {
               <select
                 value={t.mode}
                 onChange={(e) =>
-                  setTenders((v) =>
+                  editTenders((v) =>
                     v.map((x, i) =>
                       i === n
                         ? {
@@ -1574,13 +1832,14 @@ export function PosScreen() {
             <label>
               Amount ₹{' '}
               <input
+                data-tender-amount
                 value={t.amount}
                 type="number"
                 inputMode="decimal"
                 min="0"
                 step="0.01"
                 onInput={(e) =>
-                  setTenders((v) =>
+                  editTenders((v) =>
                     v.map((x, i) =>
                       i === n ? { ...x, amount: (e.currentTarget as HTMLInputElement).value } : x,
                     ),
@@ -1589,7 +1848,7 @@ export function PosScreen() {
               />
             </label>
             {n > 0 && (
-              <button type="button" onClick={() => setTenders((v) => v.filter((_, i) => i !== n))}>
+              <button type="button" onClick={() => editTenders((v) => v.filter((_, i) => i !== n))}>
                 Remove tender
               </button>
             )}
@@ -1622,14 +1881,25 @@ export function PosScreen() {
             )}
           </div>
         )}
-        <div class="row checkout-actions">
+        <div class="row">
           <button
             type="button"
-            onClick={() => setTenders((v) => [...v, { mode: 'upi', amount: '' }])}
+            onClick={() => editTenders((v) => [...v, { mode: 'upi', amount: '' }])}
           >
             + Split tender
           </button>
-          <span>Entered {money(tenderTotal)}</span>
+        </div>
+        <div class="checkout-actions" ref={barRef}>
+          {error && (
+            <p role="alert" aria-live="assertive" class="bar-error" ref={errorRef}>
+              {error.text}
+              {error.code && <small class="error-code">Code: {error.code}</small>}
+            </p>
+          )}
+          <div class="checkout-entered">
+            <small>Entered</small>
+            <strong>{money(tenderTotal)}</strong>
+          </div>
           <button
             class="primary"
             type="button"
@@ -1641,54 +1911,65 @@ export function PosScreen() {
         </div>
       </section>
 
-      <section class="card" hidden={checkout}>
-        <h2>Customer payment / advance</h2>
-        <form onSubmit={receivePayment} class="grid-form">
-          <label>
-            Customer{' '}
-            <select
-              value={paymentCustomer}
-              onChange={(e) => setPaymentCustomer((e.currentTarget as HTMLSelectElement).value)}
-              required
-            >
-              <option value="">Choose…</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Amount ₹{' '}
-            <input
-              value={paymentAmount}
-              onInput={(e) => setPaymentAmount((e.currentTarget as HTMLInputElement).value)}
-              type="number"
-              inputMode="decimal"
-              min="0.01"
-              step="0.01"
-              required
-            />
-          </label>
-          <label>
-            Mode{' '}
-            <select
-              value={paymentMode}
-              onChange={(e) =>
-                setPaymentMode((e.currentTarget as HTMLSelectElement).value as Tender['mode'])
-              }
-            >
-              <option value="cash">Cash</option>
-              <option value="upi">UPI</option>
-              <option value="card">Card</option>
-              <option value="bank">Bank</option>
-              <option value="other">Other</option>
-            </select>
-          </label>
-          <button disabled={busy}>Record payment</button>
-        </form>
-      </section>
+      <div hidden={checkout}>
+        <HomeRow
+          name="pos-customer-payment"
+          title="Customer payment / advance"
+          userId={userId}
+          class="no-print"
+          count={null}
+          tone="neutral"
+          summary="Record money a customer paid"
+          defaultOpen={!phone}
+          forceOpen={Boolean(paymentCustomer || paymentAmount)}
+        >
+          <form onSubmit={receivePayment} class="grid-form">
+            <label>
+              Customer{' '}
+              <select
+                value={paymentCustomer}
+                onChange={(e) => setPaymentCustomer((e.currentTarget as HTMLSelectElement).value)}
+                required
+              >
+                <option value="">Choose…</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Amount ₹{' '}
+              <input
+                value={paymentAmount}
+                onInput={(e) => setPaymentAmount((e.currentTarget as HTMLInputElement).value)}
+                type="number"
+                inputMode="decimal"
+                min="0.01"
+                step="0.01"
+                required
+              />
+            </label>
+            <label>
+              Mode{' '}
+              <select
+                value={paymentMode}
+                onChange={(e) =>
+                  setPaymentMode((e.currentTarget as HTMLSelectElement).value as Tender['mode'])
+                }
+              >
+                <option value="cash">Cash</option>
+                <option value="upi">UPI</option>
+                <option value="card">Card</option>
+                <option value="bank">Bank</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+            <button disabled={busy}>Record payment</button>
+          </form>
+        </HomeRow>
+      </div>
 
       {offlineSales.length > 0 && (
         <HomeRow
@@ -1700,47 +1981,62 @@ export function PosScreen() {
           count={offlineSales.length}
           tone={offlineSales.some((s) => s.status !== 'SYNCED') ? 'warning' : 'neutral'}
           summary={`${offlineSales.filter((s) => s.status !== 'SYNCED').length} not synced`}
-          forceOpen={offlineSales.some(
-            (s) => s.reconciliationWarning && !s.reconciliationReviewedAt,
-          )}
+          forceOpen={offlineSales.some((s) => saleStateLabel(s) === 'needs review')}
         >
-          <div class="table-wrap">
+          <div class="table-wrap mobile-records">
             <table>
               <thead>
                 <tr>
-                  <th>Provisional</th>
+                  <th>Sale</th>
                   <th>Status</th>
                   <th>Total</th>
-                  <th>Official</th>
+                  <th>Invoice</th>
                   <th>Receipt</th>
                 </tr>
               </thead>
               <tbody>
-                {offlineSales.map((s) => (
-                  <tr>
-                    <td>
-                      {s.provisionalDocNo}
-                      {s.reconciliationWarning && !s.reconciliationReviewedAt ? (
-                        <small role="alert">
-                          Totals changed after sync:{' '}
-                          {s.provisionalTotals ? money(s.provisionalTotals.totalPaise) + ' → ' : ''}
-                          {money(s.totalPaise)}{' '}
-                          <button type="button" onClick={() => void reviewMismatch(s.clientId)}>
-                            Mark reviewed
-                          </button>
+                {offlineSales.map((s) => {
+                  const state = saleStateLabel(s);
+                  return (
+                    <tr key={s.clientId}>
+                      <td class="record-title">
+                        {friendlySaleName(s)}
+                        <small class="muted" title={s.provisionalDocNo}>
+                          {' '}
+                          ref {s.provisionalDocNo.slice(0, 10)}
                         </small>
-                      ) : null}
-                    </td>
-                    <td>{s.status}</td>
-                    <td>{money(s.totalPaise)}</td>
-                    <td>{s.officialDocNo ?? '—'}</td>
-                    <td>
-                      <button type="button" onClick={() => printLocalReceipt(s)}>
-                        Print provisional
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                        {s.reconciliationWarning && !s.reconciliationReviewedAt ? (
+                          <small role="alert">
+                            Totals changed after sync:{' '}
+                            {s.provisionalTotals
+                              ? money(s.provisionalTotals.totalPaise) + ' → '
+                              : ''}
+                            {money(s.totalPaise)}{' '}
+                            <button type="button" onClick={() => void reviewMismatch(s.clientId)}>
+                              Mark reviewed
+                            </button>
+                          </small>
+                        ) : null}
+                      </td>
+                      <td data-label="Status">
+                        <span
+                          class={`badge ${state === 'synced' ? 'success' : state === 'waiting' ? 'warning' : 'danger'}`}
+                        >
+                          {state}
+                        </span>
+                      </td>
+                      <td data-label="Total" class="num">
+                        {money(s.totalPaise)}
+                      </td>
+                      <td data-label="Invoice">{s.officialDocNo ?? 'Numbered after sync'}</td>
+                      <td>
+                        <button type="button" onClick={() => printLocalReceipt(s)}>
+                          Print provisional
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1787,8 +2083,8 @@ export function PosScreen() {
                     <small>{l.unitName}</small>
                   </td>
                   <td>{formatQuantity(l.qty)}</td>
-                  <td data-label="Price">{money(l.unitPricePaise)}</td>
-                  <td>{money(l.lineTotalPaise - (l.taxPaise ?? 0))}</td>
+                  <td data-label="Price">{receiptMoney(l.unitPricePaise)}</td>
+                  <td>{receiptMoney(l.lineTotalPaise - (l.taxPaise ?? 0))}</td>
                 </tr>
               ))}
             </tbody>
@@ -1798,30 +2094,30 @@ export function PosScreen() {
               <dt>
                 {localReceipt.invoiceType === 'gst_extra' ? 'Subtotal (before GST)' : 'Subtotal'}
               </dt>
-              <dd>{money(localReceipt.subtotalPaise - (localReceipt.taxPaise ?? 0))}</dd>
+              <dd>{receiptMoney(localReceipt.subtotalPaise - (localReceipt.taxPaise ?? 0))}</dd>
             </div>
             {localReceipt.discountPaise > 0 && (
               <div>
                 <dt>Discount</dt>
-                <dd>−{money(localReceipt.discountPaise)}</dd>
+                <dd>−{receiptMoney(localReceipt.discountPaise)}</dd>
               </div>
             )}
             {localReceipt.invoiceType === 'gst_extra' && (
               <>
                 <div>
                   <dt>CGST</dt>
-                  <dd>{money(splitGst(localReceipt.taxPaise ?? 0).cgstPaise)}</dd>
+                  <dd>{receiptMoney(splitGst(localReceipt.taxPaise ?? 0).cgstPaise)}</dd>
                 </div>
                 <div>
                   <dt>SGST</dt>
-                  <dd>{money(splitGst(localReceipt.taxPaise ?? 0).sgstPaise)}</dd>
+                  <dd>{receiptMoney(splitGst(localReceipt.taxPaise ?? 0).sgstPaise)}</dd>
                 </div>
               </>
             )}
             {localReceipt.extraChargesPaise > 0 && (
               <div>
                 <dt>Extra charges</dt>
-                <dd>{money(localReceipt.extraChargesPaise)}</dd>
+                <dd>{receiptMoney(localReceipt.extraChargesPaise)}</dd>
               </div>
             )}
             {(localReceipt.roundOffPaise ?? 0) !== 0 && (
@@ -1829,14 +2125,14 @@ export function PosScreen() {
                 <dt>Round off</dt>
                 <dd>
                   {(localReceipt.roundOffPaise ?? 0) > 0 ? '+' : '−'}
-                  {money(Math.abs(localReceipt.roundOffPaise ?? 0))}
+                  {receiptMoney(Math.abs(localReceipt.roundOffPaise ?? 0))}
                 </dd>
               </div>
             )}
             <div>
               <dt>Total</dt>
               <dd>
-                <strong>{money(localReceipt.totalPaise)}</strong>
+                <strong>{receiptMoney(localReceipt.totalPaise)}</strong>
               </dd>
             </div>
           </dl>
@@ -1850,7 +2146,7 @@ export function PosScreen() {
             <ul>
               {localReceipt.payments.map((p) => (
                 <li>
-                  {p.mode.toUpperCase()} {money(p.amountPaise)}
+                  {p.mode.toUpperCase()} {receiptMoney(p.amountPaise)}
                   {p.reference ? ' · ' + p.reference : ''}
                 </li>
               ))}
@@ -1869,34 +2165,49 @@ export function PosScreen() {
           )}
         </article>
       )}
-      <section class="card print-area" hidden={checkout}>
-        <div class="row no-print">
-          <h2>Recent invoices</h2>
-          <button type="button" onClick={() => window.print()}>
-            Print list
-          </button>
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th>Invoice</th>
-              <th>Date</th>
-              <th>Status</th>
-              <th>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sales.map((s) => (
-              <tr>
-                <td>{s.doc_no}</td>
-                <td>{s.business_date}</td>
-                <td>{s.status}</td>
-                <td>{money(s.total_paise)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+      {printReceipt && (
+        <SaleReceiptPrint receipt={printReceipt} profile={profile} printMode="thermal" />
+      )}
+      <div hidden={checkout}>
+        <HomeRow
+          name="pos-recent-invoices"
+          title="Recent invoices"
+          userId={userId}
+          class="no-print"
+          count={sales.length}
+          tone="neutral"
+          summary={sales[0] ? `${sales[0].doc_no} · ${money(sales[0].total_paise)}` : 'None yet'}
+          defaultOpen={!phone}
+        >
+          <div class="print-area">
+            <div class="row no-print">
+              <button type="button" onClick={() => window.print()}>
+                Print list
+              </button>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Invoice</th>
+                  <th>Date</th>
+                  <th>Status</th>
+                  <th class="num">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sales.map((s) => (
+                  <tr>
+                    <td>{s.doc_no}</td>
+                    <td>{s.business_date}</td>
+                    <td>{s.status}</td>
+                    <td class="num">{money(s.total_paise)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </HomeRow>
+      </div>
     </main>
   );
 }

@@ -20,6 +20,11 @@ afterEach(() => {
   vi.clearAllMocks();
   vi.useRealTimers();
 });
+// Let the mocked reads answer and the panel draw their result.
+const settle = () =>
+  act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
 const healthyBackup = {
   status: 'success',
   finished_at: new Date().toISOString(),
@@ -84,4 +89,34 @@ test('a late invariant failure opens the warning without user interaction', asyn
   });
   expect(panel.open).toBe(true);
   expect(panel.textContent).toContain('Stop financial posting');
+});
+
+test('on a counter screen the panel is hidden unless a financial check FAILED', async () => {
+  api.getLatestBackupHealth.mockResolvedValue(null);
+  api.checkInvariants.mockResolvedValue({ ok: true, saleTotalViolations: 0 });
+  await act(async () => {
+    render(<HealthPanel quiet />, host);
+  });
+  await settle();
+  // A missing backup would say "Needs attention" on Home; here nothing is shown.
+  expect(host.textContent).toBe('');
+  api.checkInvariants.mockResolvedValue({ ok: false, saleTotalViolations: 2 });
+  await act(async () => {
+    render(null, host);
+    render(<HealthPanel quiet />, host);
+  });
+  await settle();
+  const banner = host.querySelector('[data-testid="health-banner"]')!;
+  expect(banner.getAttribute('role')).toBe('alert');
+  expect(banner.textContent).toContain('Stop financial posting');
+});
+
+test('a check that could not run is not a FAIL banner on a counter screen', async () => {
+  api.getLatestBackupHealth.mockResolvedValue(healthyBackup);
+  api.checkInvariants.mockRejectedValue(new Error('offline'));
+  await act(async () => {
+    render(<HealthPanel quiet />, host);
+  });
+  await settle();
+  expect(host.textContent).toBe('');
 });

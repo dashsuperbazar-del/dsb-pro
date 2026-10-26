@@ -50,6 +50,43 @@ describe('HomeRow', () => {
     expect(mount().getAttribute('aria-expanded')).toBe('true');
   });
 });
+describe('HomeRow default', () => {
+  const mountDefault = (defaultOpen: boolean) => {
+    host = document.createElement('div');
+    document.body.append(host);
+    act(() =>
+      render(
+        <HomeRow
+          name="d"
+          title="Recent"
+          userId="u1"
+          count={1}
+          tone="neutral"
+          summary="s"
+          defaultOpen={defaultOpen}
+        >
+          <p>body</p>
+        </HomeRow>,
+        host,
+      ),
+    );
+    return host.querySelector('button')!;
+  };
+  it('opens by default when asked, and a saved choice replaces the default', () => {
+    let button = mountDefault(true);
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    act(() => button.click());
+    expect(button.getAttribute('aria-expanded')).toBe('false');
+    expect(localStorage.getItem('dsb-pro:home-open:u1:d')).toBe('0');
+    render(null, host);
+    host.remove();
+    button = mountDefault(true);
+    expect(button.getAttribute('aria-expanded')).toBe('false');
+  });
+  it('stays closed without a default, and forceOpen still wins', () => {
+    expect(mountDefault(false).getAttribute('aria-expanded')).toBe('false');
+  });
+});
 describe('syncLabel', () => {
   const base = { online: true, running: false, pending: 0, conflicts: 0 };
   it('names each state from existing local counts', () => {

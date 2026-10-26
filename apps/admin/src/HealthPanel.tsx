@@ -15,7 +15,7 @@ import { invariantLabel, invariantRows } from './lib/invariants';
 
 type Integrity = { ok: boolean; rows: { code: string; count: number }[]; checkedAt: Date };
 
-export function HealthPanel(props: { canAdjustStock?: boolean } = {}) {
+export function HealthPanel(props: { canAdjustStock?: boolean; quiet?: boolean } = {}) {
   const [expanded, setExpanded] = useState(false);
   const [backup, setBackup] = useState<BackupHealth | null | undefined>(undefined);
   const [integrity, setIntegrity] = useState<Integrity | null | undefined>(undefined);
@@ -73,6 +73,17 @@ export function HealthPanel(props: { canAdjustStock?: boolean } = {}) {
   useEffect(() => {
     if (integrityFailed) setExpanded(true);
   }, [integrityFailed]);
+  // D4: on the counter screens (POS, purchase entry) the panel stays out of the way; the checks still run.
+  // Only a financial invariant that FAILED (not one that could not run) is shown, as a clear banner.
+  if (props.quiet) {
+    if (!integrity || integrity.ok) return null;
+    return (
+      <p role="alert" class="banner danger health-banner" data-testid="health-banner">
+        <strong>Financial check FAILED.</strong> Stop financial posting and investigate.{' '}
+        <a href={appRoute.home}>Open System health</a>
+      </p>
+    );
+  }
   return (
     <section class="card" aria-label="System health">
       <details
