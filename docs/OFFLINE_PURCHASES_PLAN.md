@@ -48,7 +48,7 @@ reads that answer, which is all an outbox needs.
 7. **Bill edit / void posting twice, out of order, or over a newer change** (24 Oct, mig 0072). Guard: the
    request carries the bill's version token read with the bill; the server replays an exact same-id
    request first, then refuses any changed bill (DSB_BILL_CHANGED) and a void with a payment assigned;
-   one queued change per bill; nothing local changes until SYNCED. Supplier payments: online only.
+   one queued change per bill; nothing local changes until SYNCED. Supplier payments: offline since 0074 (see STATE.md; refused, never re-pointed, when the supplier or a bill changed).
    Void replay is keyed by {purchaseId, reason}; the base version is fixed per client id by the device.
    A queued edit naming a device-created item is re-pointed on a match and refused if the item is refused.
 8. **Corrected bill posted twice**. Guard: a correction of a plain refusal keeps the same client id (nothing
@@ -62,7 +62,7 @@ reads that answer, which is all an outbox needs.
 - New items offline (owner/manager, 24 Oct): see risk 6. A bill that uses a still-queued item is saved on
   the device even when online (it must sync after its item).
 - Offline bill edit / credit-bill void (owner/manager, opened while online): see risk 7.
-- Online only (clear message): paid-bill void, supplier payments, sale-price box
+- Online only (clear message): paid-bill void, supplier advances/allocations/voids, sale-price box
   (writes happen after the bill confirms; kept online), retrying an unconfirmed online post.
 - Offline saving is for owner/manager (the roles that post purchases and keep drafts/photos).
 - Queue: the same outbox (`target post_purchase_v2`) ordered with offline sales; new Dexie table

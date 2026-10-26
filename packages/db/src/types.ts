@@ -3990,6 +3990,7 @@ export type Database = {
         Returns: Json
       }
       get_supplier_outstanding: { Args: { p_shop_id: string }; Returns: Json }
+      get_supplier_pay_context: { Args: { p_shop_id: string }; Returns: Json }
       get_supplier_payments_due: {
         Args: { p_on: string; p_shop_id: string }
         Returns: {
@@ -4068,6 +4069,29 @@ export type Database = {
       obc_bill_version: {
         Args: { p_bill: string; p_tenant: string }
         Returns: string
+      }
+      obp_bill_version: {
+        Args: { p_bill: string; p_tenant: string }
+        Returns: string
+      }
+      obp_owed: { Args: { p_party: string; p_shop: string }; Returns: number }
+      obp_supplier_version: {
+        Args: { p_party: string; p_tenant: string }
+        Returns: string
+      }
+      pay_supplier_if_unchanged: {
+        Args: {
+          p_allocations: Json
+          p_amount_paise: number
+          p_base_versions: Json
+          p_business_date: string
+          p_client_id: string
+          p_mode: string
+          p_party_id: string
+          p_reference: string
+          p_shop_id: string
+        }
+        Returns: Json
       }
       phase3_assert_shop: { Args: { p_shop_id: string }; Returns: string }
       phase4_current_price: {

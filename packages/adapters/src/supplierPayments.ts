@@ -10,7 +10,7 @@ export type SupplierOperation =
   'supplier.record.v1' | 'supplier.allocate.v1' | 'supplier.void.v1' | 'supplier.release.v1';
 // C3: customer receipts use the same request ledger and outcome model.
 export type CustomerOperation = 'record_customer_payment_v2' | 'allocate_customer_payment_v2';
-export type FinancialOperation = SupplierOperation | CustomerOperation;
+export type FinancialOperation = SupplierOperation | CustomerOperation | 'supplier.pay.offline.v1';
 export type SaleAllocation = { saleInvoiceId: string; amountPaise: string };
 export type PaymentMode = 'cash' | 'upi' | 'card' | 'bank' | 'other';
 export type SupplierAllocation = { purchaseBillId: string; amountPaise: string };

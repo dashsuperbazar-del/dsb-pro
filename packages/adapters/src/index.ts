@@ -339,3 +339,15 @@ export {
   voidPurchaseIfUnchangedOutcome,
   plainOfflineVoidRefusal,
 } from './offlineBillChanges';
+export {
+  getSupplierPayContext,
+  paySupplierIfUnchangedOutcome,
+  plainOfflineSupplierPaymentRefusal,
+} from './offlineSupplierPayments';
+export type {
+  PaySupplierIfUnchangedInput,
+  PaySupplierResult,
+  SupplierPayContext,
+  SupplierPayContextBill,
+  SupplierPayContextSupplier,
+} from './offlineSupplierPayments';
