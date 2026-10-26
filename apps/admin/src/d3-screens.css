@@ -169,3 +169,26 @@ main > section:has(> .settings-form) {
   font-weight: var(--weight-bold);
   white-space: nowrap;
 }
+
+/* Collapsed cards in purchase entry: the summary line must never be clipped. */
+.purchase-add-supplier > summary,
+.purchase-entry > details.card > summary {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 12px 0;
+  line-height: 1.4;
+  overflow: visible;
+}
+.offline-purchases .home-row-body ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.offline-purchases .home-row-body li {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+.offline-purchases .home-row-body li:last-child {
+  border-bottom: 0;
+}

@@ -15,6 +15,8 @@ import { savePurchaseDraft, type PurchaseDraft } from '../lib/purchaseDraft';
 import type { KnownBill } from '../lib/duplicateBill';
 import { rupees } from '../lib/money';
 import { removeLocalDocument } from '../lib/billDocumentStore';
+import { HomeRow } from './HomeRow';
+import { useUserId } from '../lib/useUserId';
 
 // Purchases saved on this device while offline (docs/OFFLINE_PURCHASES_PLAN.md). Queued bills are shown as
 // "not synced" with what they will add; a refused bill stays here with its reason until the user turns it
@@ -73,6 +75,7 @@ export function OfflinePurchasesPanel({
   const [itemRows, setItemRows] = useState<OfflineItemRecord[]>([]);
   const [changeRows, setChangeRows] = useState<OfflineBillChangeRecord[]>([]);
   const [note, setNote] = useState('');
+  const userId = useUserId();
   async function load() {
     if (!shopId) return;
     try {
@@ -118,6 +121,29 @@ export function OfflinePurchasesPanel({
   );
   if (!shown.length && !items.length && !changes.length && !note) return null;
   const queued = shown.filter((r) => r.status === 'QUEUED').length;
+  const queuedAll =
+    queued +
+    items.filter((r) => r.status === 'QUEUED').length +
+    changes.filter((r) => r.status === 'QUEUED').length;
+  const refused =
+    shown.filter((r) => r.status === 'REJECTED').length +
+    items.filter((r) => r.status === 'REJECTED').length +
+    changes.filter((r) => r.status === 'REJECTED').length;
+  const count = shown.length + items.length + changes.length;
+  const queuedPaise = shown
+    .filter((r) => r.status === 'QUEUED')
+    .reduce((n, r) => n + BigInt(r.totalPaise), 0n);
+  const summary = [
+    queuedAll
+      ? queuedPaise > 0n
+        ? `${rupees(queuedPaise.toString())} not synced`
+        : `${queuedAll} not synced`
+      : '',
+    refused ? `${refused} refused` : '',
+    !queuedAll && !refused ? `${count} synced` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
   async function correct(r: OfflinePurchaseRecord) {
     setNote('');
     try {
@@ -149,8 +175,17 @@ export function OfflinePurchasesPanel({
     await load();
   }
   return (
-    <section aria-label="Purchases saved on this device" class="offline-purchases">
-      <h3>Purchases saved on this device</h3>
+    <HomeRow
+      name="offline-saved"
+      title="Saved on this device"
+      label="Purchases saved on this device"
+      userId={userId}
+      count={count}
+      tone={queuedAll || refused ? 'warning' : 'neutral'}
+      summary={summary}
+      forceOpen={refused > 0}
+      class="offline-purchases"
+    >
       {queued > 0 && (
         <p class="muted" data-testid="offline-purchases-queued">
           {queued} not synced yet — they post automatically when you're back online. Stock and
@@ -269,7 +304,7 @@ export function OfflinePurchasesPanel({
           </li>
         ))}
       </ul>
-    </section>
+    </HomeRow>
   );
 }
 

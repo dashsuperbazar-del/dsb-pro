@@ -1,3 +1,5 @@
+import { HomeRow } from '../components/HomeRow';
+import { useUserId } from '../lib/useUserId';
 import { formatQuantity } from '@dsb-pro/core';
 import { CameraScanner } from '../components/CameraScanner';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
@@ -171,6 +173,7 @@ function HoldLabelField() {
 }
 
 export function PosScreen() {
+  const userId = useUserId();
   const [checkout, setCheckout] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -1688,8 +1691,19 @@ export function PosScreen() {
       </section>
 
       {offlineSales.length > 0 && (
-        <section class="card no-print" aria-label="Local offline sales">
-          <h2>Local provisional sales</h2>
+        <HomeRow
+          name="pos-offline-sales"
+          title="Saved on this device"
+          label="Local offline sales"
+          userId={userId}
+          class="no-print"
+          count={offlineSales.length}
+          tone={offlineSales.some((s) => s.status !== 'SYNCED') ? 'warning' : 'neutral'}
+          summary={`${offlineSales.filter((s) => s.status !== 'SYNCED').length} not synced`}
+          forceOpen={offlineSales.some(
+            (s) => s.reconciliationWarning && !s.reconciliationReviewedAt,
+          )}
+        >
           <div class="table-wrap">
             <table>
               <thead>
@@ -1730,7 +1744,7 @@ export function PosScreen() {
               </tbody>
             </table>
           </div>
-        </section>
+        </HomeRow>
       )}
       {localReceipt && (
         <article

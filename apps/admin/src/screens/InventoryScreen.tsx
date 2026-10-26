@@ -2560,7 +2560,7 @@ export function InventoryScreen({
         ? ` Paid by ${PAYMENT_LABEL[request.paymentType]} — recorded with the bill when it syncs.`
         : '';
     setMessage(
-      `Saved on this device — will sync (${lineCount} item${lineCount === 1 ? '' : 's'}).${paid} Not synced yet: stock and the supplier balance update after it syncs.`,
+      `Saved on this device — will sync (${lineCount} item${lineCount === 1 ? '' : 's'}).${paid}`,
     );
   }
   async function changePrice(ev: Event) {

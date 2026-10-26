@@ -1,5 +1,5 @@
 import type { ComponentChildren } from 'preact';
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 
 // Home (D1): a compact one-line row — title, count badge, short summary — that expands to the full tile.
 // Collapsed by default; the open/closed choice is remembered per user on this device (a convenience only).
@@ -21,12 +21,19 @@ export function HomeRow(props: {
   tone: RowTone;
   summary: string;
   class?: string;
+  /** Accessible name of the section when it differs from the visible title. */
+  label?: string;
+  /** Safety exception: stays open while true (e.g. a refused item needs attention). */
+  forceOpen?: boolean;
   children: ComponentChildren;
 }) {
-  const [open, setOpen] = useState(() => readOpen(props.userId, props.name));
+  const [stored, setOpen] = useState(() => readOpen(props.userId, props.name));
+  // The user may become known after the first render: read their choice then.
+  useEffect(() => setOpen(readOpen(props.userId, props.name)), [props.userId, props.name]);
+  const open = stored || Boolean(props.forceOpen);
   const bodyId = `home-row-${props.name}`;
   return (
-    <section class={`home-row ${props.class ?? ''}`} aria-label={props.title}>
+    <section class={`home-row ${props.class ?? ''}`} aria-label={props.label ?? props.title}>
       <h2>
         <button
           type="button"
@@ -34,7 +41,7 @@ export function HomeRow(props: {
           aria-expanded={open}
           aria-controls={bodyId}
           onClick={() => {
-            const next = !open;
+            const next = !stored;
             setOpen(next);
             try {
               localStorage.setItem(key(props.userId, props.name), next ? '1' : '0');

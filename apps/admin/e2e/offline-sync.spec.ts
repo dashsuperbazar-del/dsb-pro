@@ -106,6 +106,8 @@ test('chaos: airplane mode + app restart + logical one-hour outage preserves and
     page.getByRole('status').filter({ hasText: 'Saved locally as T-' }).first(),
   ).toBeVisible();
   await expect(page.locator('section[aria-label="Local offline sales"]')).toContainText('QUEUED');
+  // D3: the saved-sales row is collapsed by default; open it first.
+  await page.locator('section[aria-label="Local offline sales"] .home-row-toggle').click();
   await page.getByRole('button', { name: 'Print provisional' }).first().click();
   await expect(page.locator('[aria-label="provisional offline receipt"]')).toContainText(
     'PROVISIONAL — PENDING SYNC',
