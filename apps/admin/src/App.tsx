@@ -35,6 +35,9 @@ import { MoreScreen } from './screens/MoreScreen';
 import { Icon } from './components/Icon';
 import { applyTheme, readTheme } from './components/ThemeToggle';
 import { SyncRuntime } from './components/SyncRuntime';
+import { SyncIndicator } from './components/SyncIndicator';
+import { Awning } from './components/Logo';
+import { readCachedShopName } from './lib/shopProfile';
 import { appRoute } from './lib/paths';
 
 export function App() {
@@ -49,11 +52,19 @@ export function App() {
       <SyncRuntime session={session} />
       <header class="app-bar no-print">
         <a href={appRoute.home} class="app-brand" aria-label="DSB Pro home">
-          <span class="brand-mark">DSB</span>
-          <span>
-            DSB Pro<small>Your shop workspace</small>
+          <span class="brand-lockup">
+            <Awning />
+            <span class="brand-word">
+              DSB <span class="brand-pro">Pro</span>
+            </span>
+            <small>
+              {(session.status === 'active' &&
+                readCachedShopName(session.session.user.id, session.membership.shopIds)) ||
+                'Your shop workspace'}
+            </small>
           </span>
         </a>
+        {session.status === 'active' && <SyncIndicator />}
         {session.status === 'active' && (
           <a href={appRoute.more} class="toolbar-action" aria-label="Shop tools">
             <Icon name="settings" />
@@ -143,8 +154,10 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
           </p>
         )}
         {session.membership.role !== 'cashier' && <DayBookTile />}
-        {session.membership.role !== 'cashier' && <AttentionTile />}
-        <OpenRemarksTile />
+        {session.membership.role !== 'cashier' && (
+          <AttentionTile userId={session.session.user.id} />
+        )}
+        <OpenRemarksTile userId={session.session.user.id} />
         <h2 class="section-label">Quick entry</h2>
         <QuickEntry role={session.membership.role} />
         <h2 class="section-label">Workspace</h2>

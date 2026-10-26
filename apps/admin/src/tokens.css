@@ -1,0 +1,210 @@
+/* DSB Pro design tokens (D1). Every colour, size, radius, shadow and motion value used by the app
+   comes from here. Light is the default; dark applies with the OS setting unless the Appearance
+   setting (html[data-theme]) says otherwise. Contrast of every text/background pair is checked by
+   scripts/check-contrast.mjs (WCAG AA). The old names (--accent, --muted, --surface-2 …) stay as
+   aliases so existing rules keep working. */
+:root {
+  color-scheme: light;
+  /* Neutrals (green-tinted greys) */
+  --gray-0: #ffffff;
+  --gray-50: #f5f7f6;
+  --gray-100: #eceeec;
+  --gray-200: #dfe4e1;
+  --gray-300: #c3cbc6;
+  --gray-500: #66716b;
+  --gray-600: #515b55;
+  --gray-700: #3a433e;
+  --gray-900: #16201b;
+  /* Brand: deep green */
+  --brand: #0f6b4f;
+  --brand-hover: #0c5a42;
+  --brand-active: #094835;
+  --brand-subtle: #e4f2ec;
+  --brand-subtle-text: #0b553f;
+  --on-brand: #ffffff;
+  --header-bg: #0f6b4f;
+  --header-text: #ffffff;
+  --header-muted: #d3eae0;
+  --header-overlay: rgb(255 255 255 / 12%);
+  --header-overlay-strong: rgb(255 255 255 / 20%);
+  --header-line: rgb(255 255 255 / 26%);
+  --status-online: #7ee2b5;
+  --status-offline: #c9d3ce;
+  --status-syncing: #ffd36b;
+  --shadow-up: 0 -2px 10px rgb(16 32 24 / 6%);
+  /* Surfaces */
+  --bg: var(--gray-50);
+  --surface: var(--gray-0);
+  --surface-sunken: #eef2f0;
+  --surface-elevated: var(--gray-0);
+  --border: var(--gray-200);
+  --border-strong: var(--gray-300);
+  --text: var(--gray-900);
+  --text-muted: #525c56;
+  --link: #0d6248;
+  /* Semantic (fg = text/icon on surface, bg = subtle fill, border) */
+  --success: #146c43;
+  --success-bg: #e5f4ea;
+  --success-border: #9fd3b4;
+  --warning: #84500a;
+  --warning-bg: #fff3d6;
+  --warning-border: #e9be62;
+  --danger: #b42318;
+  --danger-bg: #fdecea;
+  --danger-border: #f2aaa3;
+  --danger-hover: #951c13;
+  --info: #1d5c9e;
+  --info-bg: #e7f0fa;
+  --info-border: #a9c6e8;
+  --money-positive: var(--success);
+  --money-negative: var(--danger);
+  --focus-ring: #0f6b4f;
+  --focus-ring-halo: rgb(15 107 79 / 25%);
+  --scrim: rgb(10 20 15 / 55%);
+  --media-bg: #000;
+  /* Type */
+  --font-sans:
+    system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-base: 14px;
+  --text-lg: 16px;
+  --text-xl: 18px;
+  --text-2xl: 20px;
+  --text-3xl: 24px;
+  --weight-regular: 400;
+  --weight-medium: 550;
+  --weight-semibold: 620;
+  --weight-bold: 700;
+  /* Spacing (4px base) */
+  --space-0: 2px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius: 10px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgb(16 32 24 / 6%);
+  --shadow: 0 1px 3px rgb(16 32 24 / 8%), 0 1px 2px rgb(16 32 24 / 4%);
+  --shadow-lg: 0 12px 32px rgb(16 32 24 / 18%);
+  /* Motion */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --duration-fast: 120ms;
+  --duration: 180ms;
+  /* Layout */
+  --touch: 44px;
+  --app-bar-h: 58px;
+  --bottom-nav-h: 64px;
+  --side-nav-w: 220px;
+  /* Legacy aliases */
+  --surface-2: var(--bg);
+  --muted: var(--text-muted);
+  --accent: var(--brand);
+  --accent-text: var(--on-brand);
+  --accent-soft: var(--brand-subtle);
+  --warn: var(--warning);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --gray-0: #161d19;
+    --gray-50: #0e1411;
+    --gray-100: #1b231f;
+    --gray-200: #2b3631;
+    --gray-300: #3e4b45;
+    --gray-500: #8d9a93;
+    --gray-600: #a6b2ab;
+    --gray-700: #c8d2cc;
+    --gray-900: #e8eeea;
+    --brand: #4cc497;
+    --brand-hover: #63d0a7;
+    --brand-active: #7bdab6;
+    --brand-subtle: #163a2c;
+    --brand-subtle-text: #8fe1c0;
+    --on-brand: #04170f;
+    --header-bg: #10291f;
+    --header-text: #eaf5ef;
+    --header-muted: #a9cbbb;
+    --surface-sunken: #121916;
+    --surface-elevated: #1d2621;
+    --text-muted: #a8b5ae;
+    --link: #6fd3ab;
+    --success: #74d6a2;
+    --success-bg: #12301f;
+    --success-border: #2f6b48;
+    --warning: #f1c269;
+    --warning-bg: #352812;
+    --warning-border: #7a5a1c;
+    --danger: #ff9e94;
+    --danger-bg: #3a1714;
+    --danger-border: #7d3029;
+    --danger-hover: #ffb8b0;
+    --info: #92bff2;
+    --info-bg: #142739;
+    --info-border: #2f5378;
+    --focus-ring: #6fd3ab;
+    --focus-ring-halo: rgb(111 211 171 / 30%);
+    --shadow-sm: none;
+    --shadow: 0 1px 2px rgb(0 0 0 / 40%);
+    --shadow-lg: 0 12px 32px rgb(0 0 0 / 55%);
+  }
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --gray-0: #161d19;
+  --gray-50: #0e1411;
+  --gray-100: #1b231f;
+  --gray-200: #2b3631;
+  --gray-300: #3e4b45;
+  --gray-500: #8d9a93;
+  --gray-600: #a6b2ab;
+  --gray-700: #c8d2cc;
+  --gray-900: #e8eeea;
+  --brand: #4cc497;
+  --brand-hover: #63d0a7;
+  --brand-active: #7bdab6;
+  --brand-subtle: #163a2c;
+  --brand-subtle-text: #8fe1c0;
+  --on-brand: #04170f;
+  --header-bg: #10291f;
+  --header-text: #eaf5ef;
+  --header-muted: #a9cbbb;
+  --surface-sunken: #121916;
+  --surface-elevated: #1d2621;
+  --text-muted: #a8b5ae;
+  --link: #6fd3ab;
+  --success: #74d6a2;
+  --success-bg: #12301f;
+  --success-border: #2f6b48;
+  --warning: #f1c269;
+  --warning-bg: #352812;
+  --warning-border: #7a5a1c;
+  --danger: #ff9e94;
+  --danger-bg: #3a1714;
+  --danger-border: #7d3029;
+  --danger-hover: #ffb8b0;
+  --info: #92bff2;
+  --info-bg: #142739;
+  --info-border: #2f5378;
+  --focus-ring: #6fd3ab;
+  --focus-ring-halo: rgb(111 211 171 / 30%);
+  --shadow-sm: none;
+  --shadow: 0 1px 2px rgb(0 0 0 / 40%);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / 55%);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration: 0ms;
+  }
+}

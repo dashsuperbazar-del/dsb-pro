@@ -7,6 +7,7 @@ import {
   type OpenRemark,
 } from '@dsb-pro/adapters';
 import { shopContext } from '../lib/shopContext';
+import { HomeRow } from './HomeRow';
 import { flushRemarkQueue, remarkAgeDays, remarkDocHref } from '../lib/remarkQueue';
 
 type State = { state: 'loading' } | { state: 'error' } | { state: 'ok'; value: OpenRemark[] };
@@ -15,7 +16,7 @@ const SHOWN = 8;
 
 // Home: open pending remarks of this shop, oldest first. Each opens its bill or invoice (a corrected bill
 // opens itself). A read failure is shown as unavailable, never as "nothing pending".
-export function OpenRemarksTile() {
+export function OpenRemarksTile({ userId }: { userId?: string } = {}) {
   const [s, setS] = useState<State>({ state: 'loading' });
   const [all, setAll] = useState(false);
   useEffect(() => {
@@ -43,8 +44,25 @@ export function OpenRemarksTile() {
   }, []);
   const list = s.state === 'ok' ? (all ? s.value : s.value.slice(0, SHOWN)) : [];
   return (
-    <section class="card open-remarks-tile" aria-label="Pending items">
-      <h2>Pending items</h2>
+    <HomeRow
+      name="pending"
+      class="open-remarks-tile"
+      title="Pending items"
+      userId={userId}
+      count={s.state === 'ok' ? s.value.length : null}
+      tone={
+        s.state === 'error' ? 'danger' : s.state === 'ok' && s.value.length ? 'warning' : 'neutral'
+      }
+      summary={
+        s.state === 'loading'
+          ? 'Checking…'
+          : s.state === 'error'
+            ? 'Unavailable right now'
+            : s.value.length
+              ? `Oldest: ${s.value[0].docKind === 'purchase' ? 'Bill' : 'Invoice'} ${s.value[0].docNo ?? ''}`.trim()
+              : 'None'
+      }
+    >
       {s.state === 'loading' && <p class="muted">Checking pending remarks…</p>}
       {s.state === 'error' && <p role="alert">Pending remarks are unavailable right now.</p>}
       {s.state === 'ok' && !s.value.length && (
@@ -84,6 +102,6 @@ export function OpenRemarksTile() {
           {all ? 'Show fewer' : `Show all ${s.value.length}`}
         </button>
       )}
-    </section>
+    </HomeRow>
   );
 }

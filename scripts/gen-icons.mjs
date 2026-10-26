@@ -25,8 +25,12 @@ function loadSharp() {
   } catch {
     // pnpm keeps packages in a content-addressed store; find it there.
     const store = join(root, 'node_modules', '.pnpm');
-    if (!existsSync(store)) throw new Error('sharp is not resolvable and node_modules/.pnpm is missing');
-    const dir = readdirSync(store).filter((d) => d.startsWith('sharp@')).sort().pop();
+    if (!existsSync(store))
+      throw new Error('sharp is not resolvable and node_modules/.pnpm is missing');
+    const dir = readdirSync(store)
+      .filter((d) => d.startsWith('sharp@'))
+      .sort()
+      .pop();
     if (!dir) throw new Error('sharp is not resolvable; see the header of this file');
     return require(join(store, dir, 'node_modules', 'sharp'));
   }
@@ -54,10 +58,19 @@ const glyph = await sharp(svg, { density: 384 })
   .resize(inner, inner, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
   .toBuffer();
 const maskable = await sharp({
-  create: { width: MASKABLE, height: MASKABLE, channels: 4, background: '#ffffff' },
+  create: { width: MASKABLE, height: MASKABLE, channels: 4, background: '#0f6b4f' },
 })
   .composite([{ input: glyph, gravity: 'centre' }])
   .png({ compressionLevel: 9 })
   .toBuffer();
 writeFileSync(join(publicDir, 'icon-maskable-512.png'), maskable);
 console.log(`wrote icon-maskable-512.png (${maskable.length} bytes)`);
+
+// iOS home-screen icon: opaque 180px (iOS rounds the corners itself).
+const apple = await sharp(svg, { density: 384 })
+  .resize(180, 180)
+  .flatten({ background: '#0f6b4f' })
+  .png({ compressionLevel: 9 })
+  .toBuffer();
+writeFileSync(join(publicDir, 'apple-touch-icon.png'), apple);
+console.log(`wrote apple-touch-icon.png (${apple.length} bytes)`);

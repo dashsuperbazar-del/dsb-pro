@@ -15,6 +15,7 @@ import { rupees } from '../lib/money';
 import { summarizeLowStock, summarizeSuppliers } from '../lib/attention';
 import { summarizeDue } from '../lib/supplierSchedule';
 import { SnapshotNote } from './SnapshotNote';
+import { HomeRow, type RowTone } from './HomeRow';
 import {
   peekSnapshot,
   putSnapshot,
@@ -32,7 +33,7 @@ type Part<T> = { state: 'loading' } | { state: 'error' } | { state: 'ok'; value:
 
 // Home tile for owner/manager: what needs a look today. A report that fails is shown as unavailable,
 // never as "all clear". "Owed" is the ledger balance; "due" comes only from a saved payment schedule.
-export function AttentionTile() {
+export function AttentionTile({ userId }: { userId?: string } = {}) {
   const [low, setLow] = useState<Part<LowStockRow[]>>({ state: 'loading' });
   const [sup, setSup] = useState<Part<SupplierOutstandingRow[]>>({ state: 'loading' });
   const [due, setDue] = useState<Part<SupplierPaymentDue[]>>({ state: 'loading' });
@@ -110,9 +111,37 @@ export function AttentionTile() {
   const lowSummary = low.state === 'ok' ? summarizeLowStock(low.value) : null;
   const dueSummary = due.state === 'ok' ? summarizeDue(due.value) : null;
   const supSummary = sup.state === 'ok' ? summarizeSuppliers(sup.value) : null;
+  const stranded = supSummary?.strandedSuppliers ?? 0;
+  const loading = [low, sup, due].some((p) => p.state === 'loading');
+  const failed = [low, sup, due].some((p) => p.state === 'error');
+  const parts: string[] = [];
+  if (failed) parts.push('Some checks unavailable');
+  if (supSummary && supSummary.owedCount > 0) parts.push(`${rupees(supSummary.owedPaise)} owed`);
+  if (dueSummary && dueSummary.count > 0) parts.push(`${dueSummary.count} payment due`);
+  if (stranded > 0) parts.push('stranded payments');
+  if (lowSummary && lowSummary.count > 0) parts.push(`${lowSummary.count} low stock`);
+  const count =
+    (supSummary && supSummary.owedCount > 0 ? 1 : 0) +
+    (dueSummary?.count ?? 0) +
+    (stranded > 0 ? 1 : 0) +
+    (lowSummary?.count ?? 0) +
+    (failed ? 1 : 0);
+  const tone: RowTone =
+    failed || stranded > 0 || (supSummary?.owedCount ?? 0) > 0 || (dueSummary?.count ?? 0) > 0
+      ? 'danger'
+      : (lowSummary?.count ?? 0) > 0
+        ? 'warning'
+        : 'neutral';
   return (
-    <section class="card attention-tile" aria-label="Needs attention">
-      <h2>Needs attention</h2>
+    <HomeRow
+      name="attention"
+      class="attention-tile"
+      title="Needs attention"
+      userId={userId}
+      count={loading && !parts.length ? null : count}
+      tone={tone}
+      summary={parts.length ? parts.join(' · ') : loading ? 'Checking…' : 'All clear'}
+    >
       <SnapshotNote at={snapshotAt} />
       <ul>
         <li>
@@ -175,6 +204,6 @@ export function AttentionTile() {
           </li>
         )}
       </ul>
-    </section>
+    </HomeRow>
   );
 }

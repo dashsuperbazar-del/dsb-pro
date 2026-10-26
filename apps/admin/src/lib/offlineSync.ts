@@ -655,6 +655,24 @@ export async function finalizeSaleResilient(input: {
 export function getOfflineRuntimeState(): PublicState {
   return { ...state };
 }
+export type LocalSyncSummary = {
+  online: boolean;
+  running: boolean;
+  pending: number;
+  conflicts: number;
+};
+/** Header indicator (D1): local reads only — never starts a sync or calls the server. */
+export async function getLocalSyncSummary(): Promise<LocalSyncSummary> {
+  const online = typeof navigator === 'undefined' ? true : navigator.onLine;
+  if (!runtime) return { online, running: false, pending: 0, conflicts: 0 };
+  const health = await getSyncHealth(runtime.db);
+  return {
+    online,
+    running: state.running,
+    pending: health.outboxCount,
+    conflicts: health.conflictCount,
+  };
+}
 export async function refreshOfflineReturnSources(): Promise<void> {
   const rt = requireRuntime();
   await cacheReturnSources(

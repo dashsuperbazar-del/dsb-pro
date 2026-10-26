@@ -1337,6 +1337,8 @@ jobs:
         run: pnpm --filter @dsb-pro/admin run build
       - name: Enforce the admin bundle ceiling on the Cloudflare artifact (plan §12)
         run: node scripts/check-bundle-size.mjs
+      - name: Enforce WCAG AA contrast of the design tokens (D1)
+        run: node scripts/check-contrast.mjs
       - name: Enforce installability (plan §12, as amended by §19.6)
         run: node scripts/check-installable.mjs
       - name: Assert the security headers artifact (plan §8)

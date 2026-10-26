@@ -65,16 +65,14 @@ export function HealthPanel(props: { canAdjustStock?: boolean } = {}) {
     backupAgeMs <= 24 * 60 * 60 * 1000 &&
     backup.destinations.length >= 2 &&
     backup.destinations.every((d) => d.verified);
-  const needsAttention =
-    (backup !== undefined && !backupOk) ||
-    (integrity !== undefined && !integrity?.ok) ||
-    belowZero === 'error' ||
-    (Array.isArray(belowZero) && belowZero.length > 0);
   // A new problem reveals its warning. A later healthy response must not erase
   // the user's explicit expansion while they are inspecting the checks.
+  // D1 (owner): the panel starts collapsed so money figures come first; its title chip shows the state.
+  // A failed financial invariant check ("Stop financial posting") still opens it by itself.
+  const integrityFailed = integrity !== undefined && !integrity?.ok;
   useEffect(() => {
-    if (needsAttention) setExpanded(true);
-  }, [needsAttention]);
+    if (integrityFailed) setExpanded(true);
+  }, [integrityFailed]);
   return (
     <section class="card" aria-label="System health">
       <details
@@ -83,14 +81,15 @@ export function HealthPanel(props: { canAdjustStock?: boolean } = {}) {
         onToggle={(event) => setExpanded(event.currentTarget.open)}
       >
         <summary>
-          Shop checks ·{' '}
-          {backup === undefined || integrity === undefined || belowZero === null
-            ? 'Checking…'
-            : backupOk && integrity?.ok && Array.isArray(belowZero) && !belowZero.length
-              ? 'All clear'
-              : 'Needs attention'}
+          <span class="health-title">System health</span>{' '}
+          {backup === undefined || integrity === undefined || belowZero === null ? (
+            <span class="badge">Checking…</span>
+          ) : backupOk && integrity?.ok && Array.isArray(belowZero) && !belowZero.length ? (
+            <span class="badge success">All clear</span>
+          ) : (
+            <span class={`badge ${integrityFailed ? 'danger' : 'warning'}`}>Needs attention</span>
+          )}
         </summary>
-        <h2>System health</h2>
         {belowZero === 'error' && <p class="alert">Below-zero stock check unavailable.</p>}
         {Array.isArray(belowZero) && belowZero.length > 0 && (
           <p class="alert" data-testid="below-zero-warning">
