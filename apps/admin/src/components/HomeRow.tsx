@@ -5,11 +5,13 @@ import { useEffect, useState } from 'preact/hooks';
 // Collapsed by default; the open/closed choice is remembered per user on this device (a convenience only).
 const key = (userId: string | undefined, name: string) =>
   `dsb-pro:home-open:${userId ?? 'anon'}:${name}`;
-function readOpen(userId: string | undefined, name: string): boolean {
+function readOpen(userId: string | undefined, name: string, fallback: boolean): boolean {
   try {
-    return localStorage.getItem(key(userId, name)) === '1';
+    const saved = localStorage.getItem(key(userId, name));
+    // Nothing saved yet: the screen's own default. A saved choice always wins.
+    return saved === null ? fallback : saved === '1';
   } catch {
-    return false;
+    return fallback;
   }
 }
 export type RowTone = 'danger' | 'warning' | 'neutral';
@@ -25,11 +27,19 @@ export function HomeRow(props: {
   label?: string;
   /** Safety exception: stays open while true (e.g. a refused item needs attention). */
   forceOpen?: boolean;
+  /** Open before the user has chosen (default closed). A saved choice replaces it. */
+  defaultOpen?: boolean;
   children: ComponentChildren;
 }) {
-  const [stored, setOpen] = useState(() => readOpen(props.userId, props.name));
+  const [stored, setOpen] = useState(() =>
+    readOpen(props.userId, props.name, Boolean(props.defaultOpen)),
+  );
   // The user may become known after the first render: read their choice then.
-  useEffect(() => setOpen(readOpen(props.userId, props.name)), [props.userId, props.name]);
+  useEffect(
+    () => setOpen(readOpen(props.userId, props.name, Boolean(props.defaultOpen))),
+    // The default only matters until the user chooses; a later change of it must not undo a choice.
+    [props.userId, props.name],
+  );
   const open = stored || Boolean(props.forceOpen);
   const bodyId = `home-row-${props.name}`;
   return (
@@ -41,7 +51,7 @@ export function HomeRow(props: {
           aria-expanded={open}
           aria-controls={bodyId}
           onClick={() => {
-            const next = !stored;
+            const next = !open;
             setOpen(next);
             try {
               localStorage.setItem(key(props.userId, props.name), next ? '1' : '0');

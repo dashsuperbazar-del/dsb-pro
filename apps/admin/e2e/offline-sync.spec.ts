@@ -105,7 +105,7 @@ test('chaos: airplane mode + app restart + logical one-hour outage preserves and
   await expect(
     page.getByRole('status').filter({ hasText: 'Saved locally as T-' }).first(),
   ).toBeVisible();
-  await expect(page.locator('section[aria-label="Local offline sales"]')).toContainText('QUEUED');
+  await expect(page.locator('section[aria-label="Local offline sales"]')).toContainText('waiting');
   // D3: the saved-sales row is collapsed by default; open it first.
   await page.locator('section[aria-label="Local offline sales"] .home-row-toggle').click();
   await page.getByRole('button', { name: 'Print provisional' }).first().click();
@@ -121,7 +121,7 @@ test('chaos: airplane mode + app restart + logical one-hour outage preserves and
   // app shell and IndexedDB must retain both the outbox and cached shop data.
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('heading', { name: 'Sales POS' })).toBeVisible();
-  await expect(page.locator('section[aria-label="Local offline sales"]')).toContainText('QUEUED');
+  await expect(page.locator('section[aria-label="Local offline sales"]')).toContainText('waiting');
 
   // Simulate that the backend has remained unavailable for one hour. Sync
   // retries may run, but the first queued bill must remain durable.

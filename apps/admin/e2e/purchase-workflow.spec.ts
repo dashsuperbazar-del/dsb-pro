@@ -160,9 +160,12 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
   await page.getByRole('button', { name: 'Close bill viewer' }).click();
   async function capture(name: string) {
     const health = page.locator('.health-summary');
-    await expect(health.locator(':scope > summary')).not.toContainText('Checking…');
-    if ((await health.getAttribute('open')) !== null)
-      await health.locator(':scope > summary').click();
+    // D4: the strip is hidden on the POS and purchase entry; wait for it only on the screens that show it.
+    if (!/\/(pos|purchases)\b/.test(new URL(page.url()).pathname)) {
+      await expect(health.locator(':scope > summary')).not.toContainText('Checking…');
+      if ((await health.getAttribute('open')) !== null)
+        await health.locator(':scope > summary').click();
+    }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );

@@ -1,4 +1,10 @@
-import { stockTask, addItemForm, reviewPayment, fillBillItem } from './design-helpers';
+import {
+  stockTask,
+  addItemForm,
+  reviewPayment,
+  fillBillItem,
+  openBillOptions,
+} from './design-helpers';
 import { test, expect } from '@playwright/test';
 
 const PASSWORD = 'TestOnly-2026!pw';
@@ -86,6 +92,7 @@ test('cart lines edit in place, and a held cart survives being parked and comes 
   await expect(cartSection).toContainText('₹25.00');
 
   // Hold the cart. It must clear the active cart without losing the edits.
+  await openBillOptions(page);
   await page.getByTestId('pos-hold-label').fill('Table 3');
   await page.getByRole('button', { name: 'Hold cart' }).click();
   await expect(page.getByText('Cart is empty.')).toBeVisible();

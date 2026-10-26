@@ -19,6 +19,12 @@ export async function reviewPayment(page: Page) {
     await page.getByRole('button', { name: 'Review payment →', exact: true }).click();
   await expect(page.locator('#pos-payment')).toBeVisible();
 }
+// D4: on a phone the POS "Bill options" row (invoice type, discounts, hold label) starts closed.
+export async function openBillOptions(page: Page) {
+  const toggle = page.locator('.home-row-toggle').filter({ hasText: /^Bill options/ });
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+}
 export async function addCustomerForm(page: Page) {
   const details = page
     .locator('details')

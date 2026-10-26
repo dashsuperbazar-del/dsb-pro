@@ -20,9 +20,12 @@ test('professional phone workspace preserves drafts across task views and has re
       true,
     );
     const healthPanel = page.locator('.health-summary');
-    await expect(healthPanel.locator('summary').first()).not.toContainText('Checking…');
-    if ((await healthPanel.getAttribute('open')) !== null)
-      await healthPanel.locator('summary').first().click();
+    // D4: the strip is hidden on the POS and purchase entry; wait for it only on the screens that show it.
+    if (!/\/(pos|purchases)\b/.test(new URL(page.url()).pathname)) {
+      await expect(healthPanel.locator('summary').first()).not.toContainText('Checking…');
+      if ((await healthPanel.getAttribute('open')) !== null)
+        await healthPanel.locator('summary').first().click();
+    }
     if (resetScroll) await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: testInfo.outputPath(`${name}.png`), fullPage: false });
   }
