@@ -103,8 +103,10 @@
   --duration: 180ms;
   /* Layout */
   --touch: 44px;
-  --app-bar-h: 58px;
+  --app-bar-h: 70px;
   --bottom-nav-h: 64px;
+  /* What a bottom-sticky bar must clear on a phone: the fixed nav plus the home-indicator inset. */
+  --bottom-clear: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom));
   --side-nav-w: 220px;
   /* Legacy aliases */
   --surface-2: var(--bg);

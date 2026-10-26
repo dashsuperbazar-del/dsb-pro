@@ -15,21 +15,50 @@ const shellRoutes = [
   'sync',
 ];
 
+// A real build file: ok, and never the SPA fallback page served under a script/style URL.
+const isAsset = (response) =>
+  response.ok && !(response.headers.get('content-type') || '').includes('text/html');
+
+// All-or-nothing: everything is fetched and checked BEFORE the new cache is written, and a failed
+// write removes the half-filled cache, so a new version never serves a partial shell.
 async function precacheShell() {
-  const cache = await caches.open(CACHE);
   const response = await fetch(new Request(scopeRoot, { cache: 'reload' }));
   if (!response.ok) throw new Error('Unable to fetch app shell');
   const html = await response.clone().text();
-  await Promise.all(
-    shellRoutes.map((route) => cache.put(new URL(route, scopeRoot).toString(), response.clone())),
-  );
 
   const refs = [...html.matchAll(/(?:src|href)="([^"]+)"/g)]
     .map((match) => new URL(match[1], scopeRoot))
     .filter((url) => url.origin === self.location.origin)
     .map((url) => url.toString());
 
-  if (refs.length) await cache.addAll([...new Set(refs)]);
+  // Every built JS/CSS file, including chunks that load on demand (D2), so every screen opens offline.
+  const manifest = await fetch(
+    new Request(new URL('precache.json', scopeRoot), { cache: 'reload' }),
+  );
+  if (!manifest.ok) throw new Error('Unable to fetch precache.json');
+  const files = (await manifest.json()).map((file) => new URL(file, scopeRoot).toString());
+
+  const urls = [...new Set([...refs, ...files])];
+  const fetched = await Promise.all(
+    urls.map(async (url) => {
+      const res = await fetch(new Request(url, { cache: 'reload' }));
+      if (!isAsset(res)) throw new Error('Unable to fetch ' + url);
+      return [url, res];
+    }),
+  );
+
+  const cache = await caches.open(CACHE);
+  try {
+    await Promise.all([
+      ...shellRoutes.map((route) =>
+        cache.put(new URL(route, scopeRoot).toString(), response.clone()),
+      ),
+      ...fetched.map(([url, res]) => cache.put(url, res)),
+    ]);
+  } catch (error) {
+    await caches.delete(CACHE);
+    throw error;
+  }
 }
 
 async function cachedNavigation(request) {
@@ -71,7 +100,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   // The build marker must always be the deployed one, never a cached copy.
-  if (url.pathname.endsWith('/version.json')) return;
+  if (url.pathname.endsWith('/version.json') || url.pathname.endsWith('/precache.json')) return;
 
   if (request.mode === 'navigate') {
     event.respondWith(
@@ -99,11 +128,12 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     (async () => {
       const cache = await caches.open(CACHE);
-      const hit = await cache.match(request, { ignoreSearch: true });
+      // Built files are content-hashed: the stored copy is right whatever Origin asked (Vary: Origin).
+      const hit = await cache.match(request, { ignoreSearch: true, ignoreVary: true });
       if (hit) return hit;
       try {
         const response = await fetch(request);
-        if (response.ok) await cache.put(request, response.clone());
+        if (isAsset(response)) await cache.put(request, response.clone());
         return response;
       } catch {
         return Response.error();

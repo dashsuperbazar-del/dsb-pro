@@ -7,23 +7,10 @@ import { LoginScreen } from './screens/LoginScreen';
 import { SignupScreen } from './screens/SignupScreen';
 import { NoTenantScreen } from './screens/NoTenantScreen';
 import { JoinInviteScreen } from './screens/JoinInviteScreen';
-import { TeamScreen } from './screens/TeamScreen';
-import { DevicesScreen } from './screens/DevicesScreen';
 import { PurchasesScreen } from './screens/PurchasesScreen';
 import { InventoryScreen } from './screens/InventoryScreen';
 import { PosScreen } from './screens/PosScreen';
-import { CustomersScreen } from './screens/CustomersScreen';
-import { SalesHistoryScreen } from './screens/SalesHistoryScreen';
-import { SyncScreen } from './screens/SyncScreen';
-import { ReportsScreen } from './screens/ReportsScreen';
-import { ReturnsScreen } from './screens/ReturnsScreen';
-import { SettingsScreen } from './screens/SettingsScreen';
 import { SuppliersScreen } from './screens/SuppliersScreen';
-import { ExpensesScreen } from './screens/ExpensesScreen';
-import { StockAdjustScreen } from './screens/StockAdjustScreen';
-import { OpeningsScreen } from './screens/OpeningsScreen';
-import { SearchScreen } from './screens/SearchScreen';
-import { AuditLogScreen } from './screens/AuditLogScreen';
 import { DayBookTile } from './components/DayBookTile';
 import { AttentionTile } from './components/AttentionTile';
 import { OpenRemarksTile } from './components/OpenRemarksTile';
@@ -39,6 +26,26 @@ import { SyncIndicator } from './components/SyncIndicator';
 import { Awning } from './components/Logo';
 import { readCachedShopName } from './lib/shopProfile';
 import { appRoute } from './lib/paths';
+import { lazyScreen } from './lib/lazyScreen';
+
+// Rarely used screens load on demand (D2 bundle room); the service worker precaches their chunks.
+const TeamScreen = lazyScreen(() => import('./rareScreens').then((m) => m.TeamScreen));
+const DevicesScreen = lazyScreen(() => import('./rareScreens').then((m) => m.DevicesScreen));
+const CustomersScreen = lazyScreen(() => import('./rareScreens').then((m) => m.CustomersScreen));
+const SalesHistoryScreen = lazyScreen(() =>
+  import('./rareScreens').then((m) => m.SalesHistoryScreen),
+);
+const SyncScreen = lazyScreen(() => import('./rareScreens').then((m) => m.SyncScreen));
+const ReportsScreen = lazyScreen(() => import('./rareScreens').then((m) => m.ReportsScreen));
+const ReturnsScreen = lazyScreen(() => import('./rareScreens').then((m) => m.ReturnsScreen));
+const SettingsScreen = lazyScreen(() => import('./rareScreens').then((m) => m.SettingsScreen));
+const ExpensesScreen = lazyScreen(() => import('./rareScreens').then((m) => m.ExpensesScreen));
+const StockAdjustScreen = lazyScreen(() =>
+  import('./rareScreens').then((m) => m.StockAdjustScreen),
+);
+const OpeningsScreen = lazyScreen(() => import('./rareScreens').then((m) => m.OpeningsScreen));
+const SearchScreen = lazyScreen(() => import('./rareScreens').then((m) => m.SearchScreen));
+const AuditLogScreen = lazyScreen(() => import('./rareScreens').then((m) => m.AuditLogScreen));
 
 export function App() {
   const session = useSession();
