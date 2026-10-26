@@ -9,6 +9,7 @@ import {
 import { BuildVersion } from '../components/BuildVersion';
 import { appRoute } from '../lib/paths';
 import { useDirtyGuard } from '../lib/dirtyGuard';
+import { rememberShopSettings } from '../lib/shopProfile';
 
 const MONTHS = [
   'January',
@@ -78,6 +79,7 @@ export function SettingsScreen() {
     const shop = await getDefaultShopId();
     setShopId(shop);
     const s = await getShopSettings(shop);
+    void rememberShopSettings(shop, s);
     setName(s.name);
     setAddress(s.address ?? '');
     setGstin(s.gstin ?? '');
@@ -123,6 +125,12 @@ export function SettingsScreen() {
         allowNegativeStock,
       });
       setSavedJson(currentJson);
+      void rememberShopSettings(shopId, {
+        name,
+        address: address || null,
+        gstin: gstin || null,
+        printerWidth,
+      });
       setMessage('Shop settings saved.');
     } catch (e) {
       setError(String(e));
@@ -152,110 +160,120 @@ export function SettingsScreen() {
       {message && <p role="status">{message}</p>}
       <section>
         <h2>Shop profile</h2>
-        <form onSubmit={saveProfile}>
-          <label>
-            Shop name{' '}
-            <input
-              value={name}
-              onInput={(e) => setName((e.currentTarget as HTMLInputElement).value)}
-              required
-            />
-          </label>{' '}
-          <label>
-            Address{' '}
-            <input
-              value={address}
-              onInput={(e) => setAddress((e.currentTarget as HTMLInputElement).value)}
-            />
-          </label>{' '}
-          <label>
-            GSTIN{' '}
-            <input
-              value={gstin}
-              onInput={(e) => setGstin((e.currentTarget as HTMLInputElement).value)}
-              placeholder="27ABCDE1234F1Z5"
-              aria-describedby="gstin-hint"
-            />
-          </label>
-          {gstinOdd && (
-            <small id="gstin-hint" class="muted">
-              {' '}
-              This does not look like a 15-character GSTIN. Check it before saving.
-            </small>
-          )}
-          <br />
-          <label>
-            Invoice prefix{' '}
-            <input
-              value={invoicePrefix}
-              onInput={(e) => setInvoicePrefix((e.currentTarget as HTMLInputElement).value)}
-              placeholder="INV"
-            />
-          </label>{' '}
-          <label>
-            Timezone{' '}
-            <input
-              value={timezone}
-              list="timezone-options"
-              onInput={(e) => setTimezone((e.currentTarget as HTMLInputElement).value)}
-              required
-            />
-            <datalist id="timezone-options">
-              {TIMEZONES.map((tz) => (
-                <option key={tz} value={tz} />
-              ))}
-            </datalist>
-          </label>
-          <label>
-            Printer width{' '}
-            <select
-              value={printerWidth}
-              onChange={(e) =>
-                setPrinterWidth((e.currentTarget as HTMLSelectElement).value as PrinterWidth)
-              }
-            >
-              <option value="58mm">58mm thermal</option>
-              <option value="80mm">80mm thermal</option>
-            </select>
-          </label>
-          <label>
-            Fiscal year starts{' '}
-            <select
-              value={String(fiscalYearStartMonth)}
-              disabled
-              title="Fixed until fiscal-year invoice numbering is added"
-              onChange={(e) =>
-                setFiscalYearStartMonth(Number((e.currentTarget as HTMLSelectElement).value))
-              }
-            >
-              {MONTHS.map((m, i) => (
-                <option key={m} value={i + 1}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </label>
-          <p>
+        <form onSubmit={saveProfile} class="settings-form">
+          <fieldset class="form-group">
+            <legend>Shop details</legend>
             <label>
+              Shop name{' '}
               <input
-                type="checkbox"
-                checked={allowNegativeStock}
-                disabled={!isOwner}
-                onChange={(e) =>
-                  setAllowNegativeStock((e.currentTarget as HTMLInputElement).checked)
-                }
-              />{' '}
-              Allow selling below zero stock
+                value={name}
+                onInput={(e) => setName((e.currentTarget as HTMLInputElement).value)}
+                required
+              />
+            </label>{' '}
+            <label>
+              Address{' '}
+              <input
+                value={address}
+                onInput={(e) => setAddress((e.currentTarget as HTMLInputElement).value)}
+              />
+            </label>{' '}
+            <label>
+              GSTIN{' '}
+              <input
+                value={gstin}
+                onInput={(e) => setGstin((e.currentTarget as HTMLInputElement).value)}
+                placeholder="27ABCDE1234F1Z5"
+                aria-describedby="gstin-hint"
+              />
             </label>
-            {!isOwner && <span class="muted"> (owner only)</span>}
-          </p>
-          <p class="muted">
-            On: a sale never blocks on stock — it posts, the item's stock can go negative, and you
-            reconcile it at the next physical count. Off (default): a sale is blocked if it would
-            take an item below zero.
-          </p>
-          <p>
-            <button disabled={busy}>{busy ? 'Saving…' : 'Save shop profile'}</button>
+            {gstinOdd && (
+              <small id="gstin-hint" class="muted">
+                {' '}
+                This does not look like a 15-character GSTIN. Check it before saving.
+              </small>
+            )}
+          </fieldset>
+          <fieldset class="form-group">
+            <legend>Invoices & printing</legend>
+            <label>
+              Invoice prefix{' '}
+              <input
+                value={invoicePrefix}
+                onInput={(e) => setInvoicePrefix((e.currentTarget as HTMLInputElement).value)}
+                placeholder="INV"
+              />
+            </label>{' '}
+            <label>
+              Timezone{' '}
+              <input
+                value={timezone}
+                list="timezone-options"
+                onInput={(e) => setTimezone((e.currentTarget as HTMLInputElement).value)}
+                required
+              />
+              <datalist id="timezone-options">
+                {TIMEZONES.map((tz) => (
+                  <option key={tz} value={tz} />
+                ))}
+              </datalist>
+            </label>
+            <label>
+              Printer width{' '}
+              <select
+                value={printerWidth}
+                onChange={(e) =>
+                  setPrinterWidth((e.currentTarget as HTMLSelectElement).value as PrinterWidth)
+                }
+              >
+                <option value="58mm">58mm thermal</option>
+                <option value="80mm">80mm thermal</option>
+              </select>
+            </label>
+            <label>
+              Fiscal year starts{' '}
+              <select
+                value={String(fiscalYearStartMonth)}
+                disabled
+                title="Fixed until fiscal-year invoice numbering is added"
+                onChange={(e) =>
+                  setFiscalYearStartMonth(Number((e.currentTarget as HTMLSelectElement).value))
+                }
+              >
+                {MONTHS.map((m, i) => (
+                  <option key={m} value={i + 1}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </fieldset>
+          <fieldset class="form-group">
+            <legend>Stock policy</legend>
+            <p>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={allowNegativeStock}
+                  disabled={!isOwner}
+                  onChange={(e) =>
+                    setAllowNegativeStock((e.currentTarget as HTMLInputElement).checked)
+                  }
+                />{' '}
+                Allow selling below zero stock
+              </label>
+              {!isOwner && <span class="muted"> (owner only)</span>}
+            </p>
+            <p class="muted">
+              On: a sale never blocks on stock — it posts, the item's stock can go negative, and you
+              reconcile it at the next physical count. Off (default): a sale is blocked if it would
+              take an item below zero.
+            </p>
+          </fieldset>
+          <p class="form-actions">
+            <button class="primary" disabled={busy}>
+              {busy ? 'Saving…' : 'Save shop profile'}
+            </button>
             {unsaved && !busy && <span class="muted"> Unsaved changes</span>}
           </p>
         </form>

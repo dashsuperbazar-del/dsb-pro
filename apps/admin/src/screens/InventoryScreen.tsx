@@ -54,6 +54,7 @@ import {
   getShopBusinessDate,
   importLegacyDsbMaster,
   listCurrentPrices,
+  listRetailPrices,
   listItems,
   listParties,
   listStock,
@@ -1522,6 +1523,47 @@ export function InventoryScreen({
     };
   }, [tenantId, saleUser, purchaseOnly]);
   const detailPicker = boundedItemOptions(items, itemSearch, selected);
+  // D3: the item list shows each shown item's current retail price beside its stock (read-only, only for
+  // the rows on screen; a failed read leaves the price out, never a guess).
+  const listedItems = items
+    .filter((item) =>
+      (item.name + ' ' + (item.sku ?? '')).toLowerCase().includes(itemSearch.toLowerCase()),
+    )
+    .slice(0, 50);
+  const listedKey = listedItems.map((i) => i.id).join(',');
+  const [listPrices, setListPrices] = useState<Map<string, ItemPrice[]>>(new Map());
+  const listPricesAsked = useRef(new Set<string>());
+  useEffect(() => {
+    if (purchaseOnly || view !== 'items' || !listedKey) return;
+    const missing = listedKey.split(',').filter((id) => !listPricesAsked.current.has(id));
+    if (!missing.length) return;
+    missing.forEach((id) => listPricesAsked.current.add(id));
+    let live = true;
+    let done = false;
+    (async () => {
+      try {
+        const rows = await listRetailPrices(missing);
+        if (!live) return;
+        done = true;
+        setListPrices((m) => {
+          const next = new Map(m);
+          for (const id of missing)
+            next.set(
+              id,
+              rows.filter((p) => p.item_id === id),
+            );
+          return next;
+        });
+      } catch {
+        missing.forEach((id) => listPricesAsked.current.delete(id));
+      }
+    })();
+    return () => {
+      live = false;
+      // A read that did not finish for these rows is asked again next time.
+      if (!done) missing.forEach((id) => listPricesAsked.current.delete(id));
+    };
+  }, [listedKey, purchaseOnly, view]);
   const selectedStock = useMemo(
     () => stock.find((s) => s.item_id === selected)?.qty_base ?? 0,
     [stock, selected],
@@ -2714,12 +2756,14 @@ export function InventoryScreen({
           New item
         </button>
         <div class="record-list">
-          {items
-            .filter((item) =>
-              (item.name + ' ' + (item.sku ?? '')).toLowerCase().includes(itemSearch.toLowerCase()),
-            )
-            .slice(0, 50)
-            .map((item) => (
+          {listedItems.map((item) => {
+            const unit = item.unit3 || item.unit2 || item.unit1;
+            const level: 1 | 2 | 3 = item.unit3 ? 3 : item.unit2 ? 2 : 1;
+            const qty = stock.find((row) => row.item_id === item.id)?.qty_base;
+            const priceRows = listPrices.get(item.id);
+            const price = priceRows ? currentPricePaise(priceRows, shopId, 'retail', level) : null;
+            const low = (item.min_stock ?? 0) > 0 && Number(qty ?? 0) <= Number(item.min_stock);
+            return (
               <button
                 type="button"
                 key={item.id}
@@ -2734,14 +2778,19 @@ export function InventoryScreen({
               >
                 <span>
                   <strong>{item.name}</strong>
-                  <small>{item.sku || 'No SKU'}</small>
+                  <small>
+                    {item.sku || 'No SKU'}
+                    {price !== null && ` · ${rupees(price)} / ${unit}`}
+                  </small>
                 </span>
                 <span class="record-value">
-                  {formatQuantity(stock.find((row) => row.item_id === item.id)?.qty_base) || '—'}
-                  <small>{item.unit3 || item.unit2 || item.unit1}</small>
+                  {formatQuantity(qty) || '—'}
+                  <small>{unit}</small>
+                  {low && <span class="chip warning">Low stock</span>}
                 </span>
               </button>
-            ))}
+            );
+          })}
         </div>
         <p class="muted">Showing up to 50 matches · {items.length} items</p>
       </section>
@@ -2914,22 +2963,31 @@ export function InventoryScreen({
           </p>
         )}
         {selectedItem && (
-          <div aria-label="item peek">
-            <strong>{selectedItem.name}</strong> · Stock {selectedStock}{' '}
-            {selectedItem.unit3 || selectedItem.unit2 || selectedItem.unit1}
-            <br />
-            Current prices:{' '}
-            {pricesLoading
-              ? 'Loading…'
-              : pricesFailed
-                ? 'Unavailable'
-                : prices.length
-                  ? prices.map((p) => `${p.kind} ₹${(p.price_paise / 100).toFixed(2)}`).join(' · ')
-                  : 'none'}
-            <br />
-            Reorder at: {formatQuantity(selectedItem.min_stock)}{' '}
-            {selectedItem.unit3 || selectedItem.unit2 || selectedItem.unit1}
-            <br />
+          <div aria-label="item peek" class="item-peek">
+            <p class="peek-line">
+              <strong>{selectedItem.name}</strong> · Stock {selectedStock}{' '}
+              {selectedItem.unit3 || selectedItem.unit2 || selectedItem.unit1}
+              {(selectedItem.min_stock ?? 0) > 0 &&
+                Number(selectedStock) <= Number(selectedItem.min_stock) && (
+                  <span class="chip warning">Low stock</span>
+                )}
+            </p>
+            <p class="peek-line">
+              Current prices:{' '}
+              {pricesLoading
+                ? 'Loading…'
+                : pricesFailed
+                  ? 'Unavailable'
+                  : prices.length
+                    ? prices
+                        .map((p) => `${p.kind} ₹${(p.price_paise / 100).toFixed(2)}`)
+                        .join(' · ')
+                    : 'none'}
+            </p>
+            <p class="peek-line">
+              Reorder at: {formatQuantity(selectedItem.min_stock)}{' '}
+              {selectedItem.unit3 || selectedItem.unit2 || selectedItem.unit1}
+            </p>
             <input type="file" accept="image/*" onChange={changeImage} />
             {canSeePurchasePrices && (
               <PriceHistory

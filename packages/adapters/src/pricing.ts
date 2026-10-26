@@ -22,6 +22,24 @@ export async function listCurrentPrices(itemId: string): Promise<ItemPrice[]> {
   if (error) throw new Error(friendly(error));
   return (data ?? []) as ItemPrice[];
 }
+/**
+ * Current retail prices of the given items (read-only, chunked so the id list stays short). Used by the
+ * search and item lists to show a price beside each match; never used to write or to decide anything.
+ */
+export async function listRetailPrices(itemIds: string[]): Promise<ItemPrice[]> {
+  const out: ItemPrice[] = [];
+  for (let i = 0; i < itemIds.length; i += 100) {
+    const { data, error } = await getSupabaseClient()
+      .from('item_prices')
+      .select('id,item_id,shop_id,kind,unit_level,price_paise,effective_from,effective_to')
+      .in('item_id', itemIds.slice(i, i + 100))
+      .eq('kind', 'retail')
+      .is('effective_to', null);
+    if (error) throw new Error(friendly(error));
+    out.push(...((data ?? []) as ItemPrice[]));
+  }
+  return out;
+}
 /** The server refused the price (not permitted, invalid price…): it was definitely not written. */
 export class PriceRefusedError extends Error {}
 export async function setItemPrice(input: {

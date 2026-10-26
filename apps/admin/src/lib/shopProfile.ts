@@ -26,13 +26,42 @@ function readCache(key: string): ShopProfile | null {
   }
 }
 
+/** A name that only repeats the app's own brand ("Dsb", "DSB Pro") or is a single character is a
+ * placeholder, not a shop name: the header hides the line rather than show it (D3). */
+export function isPlaceholderShopName(name: string | null | undefined): boolean {
+  const n = (name ?? '').trim();
+  return n.length < 2 || /^dsb(\s*pro)?$/i.test(n);
+}
+
 /** Header (D1): the shop name from the receipt-profile cache only — no network read. */
 export function readCachedShopName(userId: string, shopIds: string[]): string | null {
   for (const shop of shopIds) {
     const p = readCache(cacheKey(userId, shop));
-    if (p?.name) return p.name;
+    if (p?.name && !isPlaceholderShopName(p.name)) return p.name.trim();
   }
   return null;
+}
+
+/** Settings just read the shop's profile: keep the receipt/header cache in step (a convenience only). */
+export async function rememberShopSettings(
+  shopId: string,
+  s: { name: string; address: string | null; gstin: string | null; printerWidth: PrinterWidth },
+): Promise<void> {
+  try {
+    const session = await getSession();
+    if (!session || !shopId) return;
+    const profile: ShopProfile = {
+      shopId,
+      name: s.name,
+      address: s.address,
+      gstin: s.gstin,
+      printerWidth: s.printerWidth,
+      fetchedAt: new Date().toISOString(),
+    };
+    localStorage.setItem(cacheKey(session.user.id, shopId), JSON.stringify(profile));
+  } catch {
+    /* cache is a convenience only */
+  }
 }
 
 export async function loadShopProfile(shopId: string): Promise<ProfileLoad> {

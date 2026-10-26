@@ -313,8 +313,8 @@ export function ReturnsScreen() {
                 <thead>
                   <tr>
                     <th>Item</th>
-                    <th>Sold/bought</th>
-                    <th>Already returned</th>
+                    <th class="num">Sold/bought</th>
+                    <th class="num">Already returned</th>
                     <th>Return qty</th>
                     <th>Disposition</th>
                   </tr>
@@ -330,10 +330,10 @@ export function ReturnsScreen() {
                             <small class="muted"> · not in the item list, cannot be returned</small>
                           )}
                         </td>
-                        <td>
+                        <td class="num">
                           {formatQuantity(line.qty)} {line.unit_name_snapshot}
                         </td>
-                        <td>{formatQuantity(line.returned_qty)}</td>
+                        <td class="num">{formatQuantity(line.returned_qty)}</td>
                         <td>
                           <input
                             aria-label={`Return quantity for ${line.item_name_snapshot}`}

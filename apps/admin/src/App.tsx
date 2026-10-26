@@ -24,7 +24,7 @@ import { applyTheme, readTheme } from './components/ThemeToggle';
 import { SyncRuntime } from './components/SyncRuntime';
 import { SyncIndicator } from './components/SyncIndicator';
 import { Awning } from './components/Logo';
-import { readCachedShopName } from './lib/shopProfile';
+import { loadShopProfile, readCachedShopName } from './lib/shopProfile';
 import { appRoute } from './lib/paths';
 import { lazyScreen } from './lib/lazyScreen';
 
@@ -53,6 +53,18 @@ export function App() {
     applyTheme(readTheme());
   }, []);
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
+  // The header's shop name comes from the receipt-profile cache; when nothing usable is cached yet (new
+  // device, or only a placeholder), read it once so the line shows the real name instead of staying empty.
+  const [, refreshName] = useState(0);
+  const activeUser = session.status === 'active' ? session.session.user.id : '';
+  const firstShop = session.status === 'active' ? session.membership.shopIds[0] : undefined;
+  useEffect(() => {
+    if (!activeUser || !firstShop) return;
+    if (readCachedShopName(activeUser, [firstShop])) return;
+    void loadShopProfile(firstShop)
+      .then(() => refreshName((n) => n + 1))
+      .catch(() => undefined);
+  }, [activeUser, firstShop]);
   const testMode = import.meta.env.VITE_TEST_MODE === 'phase4-shop-test';
   return (
     <>

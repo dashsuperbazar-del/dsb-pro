@@ -80,7 +80,7 @@ export {
   setItemTaxRate,
 } from './masterData';
 export type { ItemPrice } from './pricing';
-export { listCurrentPrices, PriceRefusedError, setItemPrice } from './pricing';
+export { listCurrentPrices, listRetailPrices, PriceRefusedError, setItemPrice } from './pricing';
 export { replaceItemImage } from './itemImages';
 export type {
   Customer,

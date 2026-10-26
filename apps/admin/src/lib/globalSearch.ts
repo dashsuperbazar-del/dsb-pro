@@ -2,7 +2,13 @@ import { billCodeMatch } from './billCode';
 
 export const GLOBAL_SEARCH_LIMIT = 10;
 type Named = { id: string; name: string };
-export type SearchItem = Named & { sku?: string | null };
+export type SearchItem = Named & {
+  sku?: string | null;
+  unit1?: string | null;
+  unit2?: string | null;
+  unit3?: string | null;
+  min_stock?: number | null;
+};
 export type SearchParty = Named & { phone?: string | null };
 export type SearchData = {
   items: SearchItem[];
@@ -37,7 +43,11 @@ function rank<T extends Named & { sku?: string | null; phone?: string | null }>(
   }
   return scored.sort((a, b) => a[0] - b[0] || a[1].name.localeCompare(b[1].name)).map(([, r]) => r);
 }
-export function searchEverything(query: string, data: SearchData): SearchResult {
+export function searchEverything(
+  query: string,
+  data: SearchData,
+  limits: { items?: number; customers?: number; suppliers?: number } = {},
+): SearchResult {
   const q = query.trim().toLowerCase();
   if (q.length < 2)
     return {
@@ -52,9 +62,9 @@ export function searchEverything(query: string, data: SearchData): SearchResult 
   const customers = rank(data.customers, q);
   const suppliers = rank(data.suppliers, q);
   return {
-    items: items.slice(0, GLOBAL_SEARCH_LIMIT),
-    customers: customers.slice(0, GLOBAL_SEARCH_LIMIT),
-    suppliers: suppliers.slice(0, GLOBAL_SEARCH_LIMIT),
+    items: items.slice(0, limits.items ?? GLOBAL_SEARCH_LIMIT),
+    customers: customers.slice(0, limits.customers ?? GLOBAL_SEARCH_LIMIT),
+    suppliers: suppliers.slice(0, limits.suppliers ?? GLOBAL_SEARCH_LIMIT),
     itemsTotal: items.length,
     customersTotal: customers.length,
     suppliersTotal: suppliers.length,
@@ -71,6 +81,8 @@ export type SearchBill = {
   partyName: string;
   date: string;
   totalPaise: string | number;
+  /** Document status as stored (POSTED / VOID / FINALIZED / DRAFT); shown as a chip. */
+  status?: string | null;
 };
 function amountMatches(totalPaise: string | number, q: string): boolean {
   const m = /^₹?\s*(\d[\d,]*)(?:\.(\d{1,2}))?$/.exec(q);
@@ -83,6 +95,7 @@ function amountMatches(totalPaise: string | number, q: string): boolean {
 export function searchBills(
   query: string,
   bills: SearchBill[],
+  limit = GLOBAL_SEARCH_LIMIT,
 ): { rows: SearchBill[]; total: number } {
   const q = query.trim().toLowerCase();
   if (q.length < 2) return { rows: [], total: 0 };
@@ -102,5 +115,5 @@ export function searchBills(
   const rows = scored
     .sort((a, b) => a[0] - b[0] || b[1].date.localeCompare(a[1].date))
     .map(([, r]) => r);
-  return { rows: rows.slice(0, GLOBAL_SEARCH_LIMIT), total: rows.length };
+  return { rows: rows.slice(0, limit), total: rows.length };
 }
