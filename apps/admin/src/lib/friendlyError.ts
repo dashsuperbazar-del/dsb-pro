@@ -18,7 +18,7 @@ const BY_CODE: Record<string, string> = {
   DSB_FREE_TEXT_INVALID:
     'The item that is not in the list needs a name, a quantity and a price above zero.',
   DSB_PAYLOAD_MISMATCH:
-    'This sale was already sent with different details. Start a new sale and enter it again.',
+    'An earlier version of this sale was already received. Check Sales history before entering it again.',
   DSB_FUTURE_DATE: "The date is in the future. Use today's date.",
   DSB_ITEM_REJECTED:
     'An item on this bill could not be saved. Correct the bill, or ask the owner or a manager.',
@@ -58,5 +58,5 @@ export function friendlyError(raw: unknown): FriendlyError {
   const text = code ? cleaned.replace(new RegExp(`${code}:?\\s*`), '').trim() : cleaned;
   for (const [pattern, sentence] of BY_SENTENCE)
     if (pattern.test(text)) return { text: sentence, code };
-  return { text: text || 'Something went wrong. Nothing was saved.', code };
+  return { text: text || 'Something went wrong. Check Sales history before trying again.', code };
 }

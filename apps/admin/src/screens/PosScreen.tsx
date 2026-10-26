@@ -782,7 +782,18 @@ export function PosScreen() {
       // Only when focus is still in this form: the price lookup is async and the cashier may have moved on.
       const at = document.activeElement;
       // The choice is cleared so a second Enter (or a held key) picks again instead of adding the item twice.
-      if (added) setManualItemId('');
+      if (added) {
+        setManualItemId('');
+        // The add form's quantity and discount boxes are not controlled (a redraw must not overwrite what is
+        // typed), so they go back to 1 / 0 here, after a successful add.
+        for (const [name, start] of [
+          ['qty', '1'],
+          ['lineDiscount', '0'],
+        ] as const) {
+          const box = addForm.elements.namedItem(name);
+          if (box instanceof HTMLInputElement) box.value = start;
+        }
+      }
       if (added && (!at || at === document.body || addForm.contains(at))) {
         findRef.current?.focus();
         findRef.current?.select();
@@ -923,7 +934,7 @@ export function PosScreen() {
           clientId: soldClientId,
           docNo: result.docNo,
           billCode: null,
-          figures,
+          figures: { ...figures, confirmed: false },
           customerName: soldCustomerName,
           note: savedNote.trim(),
         });
@@ -974,7 +985,8 @@ export function PosScreen() {
       setCreditOverride(false);
       setCreditRefused(false);
       setInvoiceType('gst_included');
-      await refresh();
+      // The sale is done; a failed screen refresh must never look like a failed sale.
+      await refresh().catch(() => undefined);
     } catch (e) {
       const text = String(e);
       if (/DSB_CREDIT_LIMIT_EXCEEDED/.test(text)) setCreditRefused(true);
@@ -1348,7 +1360,7 @@ export function PosScreen() {
               inputMode="decimal"
               min="0.000001"
               step="0.000001"
-              value="1"
+              defaultValue="1"
               required
             />
           </label>
@@ -1367,7 +1379,7 @@ export function PosScreen() {
               inputMode="decimal"
               min="0"
               step="0.01"
-              value="0"
+              defaultValue="0"
             />
           </label>
           <button>Add item</button>

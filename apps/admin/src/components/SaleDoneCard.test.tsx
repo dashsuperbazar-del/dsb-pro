@@ -80,4 +80,18 @@ describe('SaleDoneCard', () => {
     expect(host.querySelector('.sale-done-total')).toBeNull();
     expect(host.textContent).not.toContain('Paid');
   });
+  it('labels figures not read back from the server invoice, and never calls an unclear remainder credit', () => {
+    mount({
+      ...base,
+      figures: { totalPaise: 10000, paidPaise: 4000, balancePaise: 6000, confirmed: false },
+    });
+    expect(host.textContent).toContain('Total as entered on this device');
+    render(null, host);
+    mount({
+      ...base,
+      figures: { totalPaise: 10000, paidPaise: 4000, balancePaise: 6000, paymentsUnclear: true },
+    });
+    expect(host.textContent).toContain('BalanceCheck Sales history');
+    expect(host.textContent).not.toContain('Balance on credit');
+  });
 });

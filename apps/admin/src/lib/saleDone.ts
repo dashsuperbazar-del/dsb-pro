@@ -4,7 +4,15 @@ import type { OfflineSaleRecord } from '@dsb-pro/sync';
 // Figures for the "sale done" card and the saved-sales list. Display only: every number is one the
 // posting path already stored (the server invoice and its payments, or the device's own sale record).
 // Nothing here recomputes a total, tax or round-off.
-export type SaleDoneFigures = { totalPaise: number; paidPaise: number; balancePaise: number };
+export type SaleDoneFigures = {
+  totalPaise: number;
+  paidPaise: number;
+  balancePaise: number;
+  /** false = not read back from the server invoice (device copy or as entered). Absent = confirmed/stored. */
+  confirmed?: boolean;
+  /** A payment on the invoice is not POSTED: the remainder is not shown as credit. */
+  paymentsUnclear?: boolean;
+};
 
 const settle = (totalPaise: number, paidPaise: number): SaleDoneFigures => ({
   totalPaise,
@@ -17,7 +25,10 @@ export function figuresFromReceipt(receipt: SaleReceipt): SaleDoneFigures {
   const paid = receipt.payments
     .filter((p) => p.status === 'POSTED')
     .reduce((sum, p) => sum + (p.direction === 'out' ? -p.amount_paise : p.amount_paise), 0);
-  return settle(receipt.invoice.total_paise, paid);
+  return {
+    ...settle(receipt.invoice.total_paise, paid),
+    paymentsUnclear: receipt.payments.some((p) => p.status !== 'POSTED'),
+  };
 }
 
 /** The device's saved sale: its stored total and the payments it holds. */

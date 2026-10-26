@@ -253,3 +253,24 @@ test('the System health strip stays off the POS and purchase entry, and stays on
   await page.goto('/');
   await expect(health).toBeVisible();
 });
+
+test('a typed quantity and line discount survive a redraw of the page, then reset after Add', async ({
+  page,
+}) => {
+  test.setTimeout(90000);
+  await setupPosShop(page, 'd4-redraw');
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await openPos(page);
+  await page.getByLabel('Item', { exact: true }).selectOption({ label: 'Basmati rice 1kg' });
+  await page.getByLabel('Quantity', { exact: true }).fill('5');
+  await page.getByLabel('Discount ₹', { exact: true }).fill('3');
+  // Typing in another box re-renders the whole POS screen (state change).
+  await page.locator('form').filter({ hasText: 'Record payment' }).getByLabel('Amount ₹').fill('7');
+  await expect(page.getByLabel('Quantity', { exact: true })).toHaveValue('5');
+  await expect(page.getByLabel('Discount ₹', { exact: true })).toHaveValue('3');
+  await page.getByRole('button', { name: 'Add item', exact: true }).click();
+  await expect(page.getByLabel('Cart qty for Basmati rice 1kg')).toHaveValue('5');
+  await expect(page.getByLabel('Discount for Basmati rice 1kg')).toHaveValue('3.00');
+  await expect(page.getByLabel('Quantity', { exact: true })).toHaveValue('1');
+  await expect(page.getByLabel('Discount ₹', { exact: true })).toHaveValue('0');
+});

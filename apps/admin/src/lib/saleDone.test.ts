@@ -74,7 +74,25 @@ describe('sale done figures', () => {
       totalPaise: 264700,
       paidPaise: 190000,
       balancePaise: 74700,
+      paymentsUnclear: true, // one of the payments is VOID
     });
+  });
+  it('does not flag a receipt whose payments are all posted', () => {
+    const receipt = {
+      invoice: { total_paise: 1000 },
+      lines: [],
+      payments: [
+        {
+          id: '1',
+          amount_paise: 400,
+          direction: 'in',
+          mode: 'cash',
+          reference: null,
+          status: 'POSTED',
+        },
+      ],
+    } as unknown as SaleReceipt;
+    expect(figuresFromReceipt(receipt).paymentsUnclear).toBe(false);
   });
   it('never shows a negative balance', () => {
     expect(

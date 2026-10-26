@@ -57,11 +57,6 @@ export async function addToCart(page: Page, qty: string) {
   await page.getByLabel('Quantity', { exact: true }).fill(qty);
   await page.getByRole('button', { name: 'Add item', exact: true }).click();
   await expect(page.locator('.pos-cart')).toContainText('Basmati rice 1kg');
-  // The add form's quantity box is redrawn to 1 when the page's first data load lands late; the cart's own
-  // quantity box is state-driven, so make sure the line has the quantity asked for.
-  const cartQty = page.getByLabel('Cart qty for Basmati rice 1kg');
-  if ((await cartQty.inputValue()) !== qty) await cartQty.fill(qty);
-  await expect(cartQty).toHaveValue(qty);
 }
 export async function toPayment(page: Page) {
   if (!(await page.locator('#pos-payment').isVisible()))

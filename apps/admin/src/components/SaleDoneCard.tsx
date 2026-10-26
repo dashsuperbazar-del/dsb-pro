@@ -63,7 +63,9 @@ export function SaleDoneCard({
       </p>
       {f && (
         <div class="sale-done-total">
-          <small>Total</small>
+          <small>
+            {!queued && f.confirmed === false ? 'Total as entered on this device' : 'Total'}
+          </small>
           <strong>{money(f.totalPaise)}</strong>
         </div>
       )}
@@ -75,9 +77,13 @@ export function SaleDoneCard({
               <dd>{money(f.paidPaise)}</dd>
             </div>
             <div>
-              <dt>{f.balancePaise > 0 ? 'Balance on credit' : 'Balance'}</dt>
-              <dd class={f.balancePaise > 0 ? 'sale-done-credit' : undefined}>
-                {f.balancePaise > 0 ? money(f.balancePaise) : 'Nil, fully paid'}
+              <dt>{f.balancePaise > 0 && !f.paymentsUnclear ? 'Balance on credit' : 'Balance'}</dt>
+              <dd class={f.balancePaise > 0 && !f.paymentsUnclear ? 'sale-done-credit' : undefined}>
+                {f.paymentsUnclear
+                  ? 'Check Sales history'
+                  : f.balancePaise > 0
+                    ? money(f.balancePaise)
+                    : 'Nil, fully paid'}
               </dd>
             </div>
           </>
