@@ -266,3 +266,16 @@
 .filter-bar input[type='date'] {
   width: 100%;
 }
+
+.plain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.plain-list li {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+.plain-list li:last-child {
+  border-bottom: 0;
+}

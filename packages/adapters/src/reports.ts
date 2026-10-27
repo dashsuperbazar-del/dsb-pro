@@ -137,6 +137,27 @@ export async function postStockCount(stockCountId: string) {
   });
   if (error) fail(error);
 }
+export type RecentExpense = {
+  id: string;
+  business_date: string;
+  category: string;
+  description: string;
+  amount_paise: number;
+  mode: string;
+};
+// Read-only: the newest posted (not voided) expenses, for the Expenses screen's "Recent expenses".
+export async function listRecentExpenses(shopId: string, limit = 10): Promise<RecentExpense[]> {
+  const { data, error } = await getSupabaseClient()
+    .from('expenses')
+    .select('id,business_date,category,description,amount_paise,mode')
+    .eq('shop_id', shopId)
+    .eq('status', 'POSTED')
+    .order('business_date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) fail(error);
+  return (data ?? []) as RecentExpense[];
+}
 export async function voidExpense(expenseId: string) {
   const { error } = await getSupabaseClient().rpc('void_expense', { p_expense_id: expenseId });
   if (error) fail(error);

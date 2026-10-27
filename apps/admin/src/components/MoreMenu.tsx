@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 
-export type MoreItem = { label: string; onSelect: () => void; danger?: boolean; disabled?: boolean };
+export type MoreItem = {
+  label: string;
+  onSelect: () => void;
+  danger?: boolean;
+  disabled?: boolean;
+};
 
 // Per-row "More" menu: an accessible menu button. Closes on Escape, outside tap, or a choice.
 export function MoreMenu(props: { label: string; items: MoreItem[] }) {

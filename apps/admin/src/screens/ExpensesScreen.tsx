@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   getDayBook,
+  listRecentExpenses,
+  type RecentExpense,
   getDefaultShopId,
   getShopBusinessDate,
   postExpenseOutcome,
@@ -9,10 +11,12 @@ import {
 } from '@dsb-pro/adapters';
 import { parseRupeesToPaise } from '@dsb-pro/core';
 import { appRoute } from '../lib/paths';
+import { rupees } from '../lib/money';
+import { HomeRow } from '../components/HomeRow';
+import { useUserId } from '../lib/useUserId';
 import { clearPendingIntent, loadPendingIntent, savePendingIntent } from '../lib/pendingIntent';
 
-const rupee = (p: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(p / 100);
+const rupee = (p: number) => rupees(p);
 const CATEGORIES = [
   'Rent',
   'Electricity',
@@ -24,6 +28,8 @@ const CATEGORIES = [
 ];
 
 export function ExpensesScreen() {
+  const userId = useUserId();
+  const [recent, setRecent] = useState<RecentExpense[] | null>(null);
   const [shop, setShop] = useState('');
   const [date, setDate] = useState('');
   const [today, setToday] = useState<DayBookRow | null>(null);
@@ -55,6 +61,11 @@ export function ExpensesScreen() {
     const rows = await getDayBook(shopId, d, d);
     if (seq !== loadSeq.current) return;
     setToday(rows[0] ?? null);
+    // The list is a convenience: a failed read leaves it out, never blocks the form or the total.
+    void listRecentExpenses(shopId, 10).then(
+      (r) => seq === loadSeq.current && setRecent(r),
+      () => seq === loadSeq.current && setRecent(null),
+    );
   }
   useEffect(() => {
     void (async () => {
@@ -184,16 +195,22 @@ export function ExpensesScreen() {
   }
 
   return (
-    <main>
-      <div class="row">
+    <main class="page wide">
+      <div class="page-head">
         <h1>Expenses</h1>
-        <a href={appRoute.home}>Home</a>
+        <a href={appRoute.home}>← Home</a>
       </div>
       {msg && <p role="status">{msg}</p>}
+      <div class="money-first" aria-label="Spent today">
+        <span class="money-first-label">Spent today{date ? ` (${date})` : ''}</span>
+        <span class="money-first-value" data-testid="expenses-today-total">
+          {today ? rupee(today.expenses_paise) : rupee(0)}
+        </span>
+      </div>
       <section class="card">
         <h2>Post expense</h2>
-        <form class="grid-form" onSubmit={(e) => void submit(e)}>
-          <fieldset disabled={Boolean(pending)} class="plain grid-form">
+        <form class="wide-form" onSubmit={(e) => void submit(e)}>
+          <fieldset disabled={Boolean(pending)}>
             <label>
               Date
               <input
@@ -224,11 +241,11 @@ export function ExpensesScreen() {
             <label>
               Mode
               <select name="mode">
-                <option>cash</option>
-                <option>upi</option>
-                <option>card</option>
-                <option>bank</option>
-                <option>other</option>
+                <option value="cash">Cash</option>
+                <option value="upi">UPI</option>
+                <option value="card">Card</option>
+                <option value="bank">Bank</option>
+                <option value="other">Other</option>
               </select>
             </label>
           </fieldset>
@@ -243,12 +260,35 @@ export function ExpensesScreen() {
         )}
       </section>
       {today && (
-        <section class="card" aria-label="Expenses today">
-          <h2>{date}</h2>
+        <HomeRow
+          name="expenses-recent"
+          title="Recent expenses"
+          label="Expenses today"
+          userId={userId}
+          count={null}
+          tone="neutral"
+          summary={`${rupee(today.expenses_paise)} on ${date}`}
+        >
+          <h3>{date}</h3>
           <p>
-            Expenses {rupee(today.expenses_paise)} · Net cash flow {rupee(today.net_cashflow_paise)}
+            Expenses {rupee(today.expenses_paise)} · Net cash flow{' '}
+            <span class={today.net_cashflow_paise < 0 ? 'money-negative' : ''}>
+              {rupee(today.net_cashflow_paise)}
+            </span>
           </p>
-        </section>
+          {recent && recent.length > 0 && (
+            <ul class="plain-list" aria-label="Latest expenses">
+              {recent.map((e) => (
+                <li key={e.id}>
+                  {e.business_date} · {e.category}
+                  {e.description && e.description !== e.category
+                    ? ` — ${e.description}`
+                    : ''} · <strong>{rupee(e.amount_paise)}</strong>
+                </li>
+              ))}
+            </ul>
+          )}
+        </HomeRow>
       )}
     </main>
   );

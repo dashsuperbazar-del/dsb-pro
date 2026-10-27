@@ -9,6 +9,8 @@ import {
   type ReturnType,
   type ReturnableLine,
 } from '@dsb-pro/adapters';
+import { ScrollTable } from '../components/ScrollTable';
+import { rupees } from '../lib/money';
 import { appRoute } from '../lib/paths';
 import { roundOffLabel } from '../lib/money';
 import {
@@ -26,7 +28,7 @@ import {
 } from '../lib/offlineSync';
 import type { OfflineReturnRecord } from '@dsb-pro/sync';
 
-const money = (paise: number) => `₹${(paise / 100).toFixed(2)}`;
+const money = (paise: number) => rupees(paise);
 const dispositions: { value: ReturnDisposition; label: string }[] = [
   { value: 'RETURN_TO_SELLABLE', label: 'Return to sellable stock' },
   { value: 'DAMAGED', label: 'Damaged' },
@@ -308,7 +310,7 @@ export function ReturnsScreen() {
             </label>
           </div>
           {lines.length > 0 && (
-            <div class="table-wrap">
+            <ScrollTable>
               <table>
                 <thead>
                   <tr>
@@ -374,7 +376,7 @@ export function ReturnsScreen() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </ScrollTable>
           )}
           <label>
             Notes{' '}
@@ -421,7 +423,7 @@ export function ReturnsScreen() {
         {!recent.length ? (
           <p>No returns posted.</p>
         ) : (
-          <div class="table-wrap">
+          <ScrollTable>
             <table>
               <thead>
                 <tr>
@@ -471,7 +473,7 @@ export function ReturnsScreen() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </ScrollTable>
         )}
       </section>
     </main>

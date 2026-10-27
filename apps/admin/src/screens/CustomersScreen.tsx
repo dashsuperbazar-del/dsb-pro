@@ -23,6 +23,8 @@ import {
 import { CustomerStatement } from '../components/CustomerStatement';
 import { PartyEditor } from '../components/PartyEditor';
 import { TaskTabs } from '../components/TaskTabs';
+import { ScrollTable } from '../components/ScrollTable';
+import { rupees } from '../lib/money';
 import { appRoute } from '../lib/paths';
 import {
   listOpenFinancialAttempts,
@@ -58,7 +60,7 @@ import {
   snapshotUserId,
 } from '../lib/routeSnapshot';
 
-const money = (paise: number) => `₹${(paise / 100).toFixed(2)}`;
+const money = (paise: number) => rupees(paise);
 const toPaise = (rupees: string) => parseRupeesToPaise(rupees || '0');
 /** Blank = no credit limit (null); otherwise whole rupees with up to 2 decimals. */
 function newCustomerLimit(value: FormDataEntryValue | null): number | null {
@@ -511,8 +513,7 @@ export function CustomersScreen() {
               <ul>
                 {openAttempts.map((a) => (
                   <li key={a.id}>
-                    ₹{(Number((a.payload as ReceiptPayload).amountPaise) / 100).toFixed(2)} ·{' '}
-                    {a.state}{' '}
+                    {rupees(Number((a.payload as ReceiptPayload).amountPaise))} · {a.state}{' '}
                     <button type="button" disabled={busy} onClick={() => void checkAttempt(a)}>
                       Check status
                     </button>
@@ -570,7 +571,7 @@ export function CustomersScreen() {
             {!openSales.length ? (
               <p class="muted">No outstanding customer invoices.</p>
             ) : (
-              <div class="table-wrap">
+              <ScrollTable>
                 <table>
                   <thead>
                     <tr>
@@ -638,7 +639,7 @@ export function CustomersScreen() {
                     })}
                   </tbody>
                 </table>
-              </div>
+              </ScrollTable>
             )}
             <p>
               Allocated {money(allocated)} · Unallocated advance{' '}
@@ -670,7 +671,7 @@ export function CustomersScreen() {
           {!ledger.length ? (
             <p class="muted">No ledger entries.</p>
           ) : (
-            <div class="table-wrap">
+            <ScrollTable>
               <table>
                 <thead>
                   <tr>
@@ -709,7 +710,7 @@ export function CustomersScreen() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ScrollTable>
           )}
         </section>
       )}

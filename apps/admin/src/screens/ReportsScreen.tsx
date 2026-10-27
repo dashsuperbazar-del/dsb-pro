@@ -30,6 +30,7 @@ import {
   type PurchaseRegisterRow,
   type AgingReportV2,
 } from '@dsb-pro/adapters';
+import { ScrollTable } from '../components/ScrollTable';
 import { TaskTabs } from '../components/TaskTabs';
 import { ProfitReportView } from '../components/ProfitReportView';
 import { appRoute } from '../lib/paths';
@@ -37,8 +38,8 @@ import { rupees } from '../lib/money';
 import { exportOfflineBillingSnapshot } from '../lib/offlineSync';
 import { buildBusinessExportArchive } from '@dsb-pro/core';
 
-const rupee = (p: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(p / 100);
+const rupee = (p: number) => rupees(p);
+const tone = (p: number) => (p < 0 ? 'money-negative' : '');
 function download(name: string, content: string | Uint8Array, type: string) {
   const part: BlobPart =
     typeof content === 'string' ? content : (content.slice().buffer as ArrayBuffer);
@@ -195,7 +196,7 @@ export function ReportsScreen() {
           { value: 'recovery', label: 'Recovery' },
         ]}
       />
-      <div class="row">
+      <div class="filter-bar">
         <label>
           From
           <input
@@ -267,7 +268,7 @@ export function ReportsScreen() {
           </select>
           <button onClick={() => void load()}>Load ledger</button>
         </div>
-        <div class="table-wrap">
+        <ScrollTable>
           <table>
             <thead>
               <tr>
@@ -287,12 +288,14 @@ export function ReportsScreen() {
                   <td>{r.document}</td>
                   <td class="num">{rupee(r.debit_paise)}</td>
                   <td class="num">{rupee(r.credit_paise)}</td>
-                  <td class="num">{rupee(r.running_balance_paise)}</td>
+                  <td class={`num ${tone(r.running_balance_paise)}`}>
+                    {rupee(r.running_balance_paise)}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollTable>
       </section>
       <section class="card" hidden={view !== 'money'}>
         <h2>Day book</h2>
@@ -310,14 +313,16 @@ export function ReportsScreen() {
             ).map(([label, key]) => (
               <div class="kpi" key={key}>
                 <span class="kpi-label">{label}</span>
-                <strong class="kpi-value money">
+                <strong
+                  class={`kpi-value money ${tone(day.reduce((n, r) => n + Number(r[key]), 0))}`}
+                >
                   {rupee(day.reduce((n, r) => n + Number(r[key]), 0))}
                 </strong>
               </div>
             ))}
           </div>
         )}
-        <div class="table-wrap">
+        <ScrollTable>
           <table>
             <thead>
               <tr>
@@ -339,16 +344,16 @@ export function ReportsScreen() {
                   <td class="num">{rupee(r.receipts_paise)}</td>
                   <td class="num">{rupee(r.payments_paise)}</td>
                   <td class="num">{rupee(r.expenses_paise)}</td>
-                  <td class="num">{rupee(r.net_cashflow_paise)}</td>
+                  <td class={`num ${tone(r.net_cashflow_paise)}`}>{rupee(r.net_cashflow_paise)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollTable>
       </section>
       <section class="card" hidden={view !== 'stock'}>
         <h2>Stock valuation</h2>
-        <div class="table-wrap">
+        <ScrollTable>
           <table>
             <thead>
               <tr>
@@ -369,7 +374,7 @@ export function ReportsScreen() {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollTable>
       </section>
       <section class="card" hidden={view !== 'sales'}>
         <h2>GST summary</h2>
@@ -377,7 +382,7 @@ export function ReportsScreen() {
           Derived from immutable tax-rate snapshots. This is a bookkeeping summary, not filing
           advice.
         </p>
-        <div class="table-wrap">
+        <ScrollTable>
           <table>
             <thead>
               <tr>
@@ -400,7 +405,7 @@ export function ReportsScreen() {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollTable>
       </section>
       <section class="card" hidden={view !== 'stock'}>
         <h2>Low stock / reorder</h2>
@@ -411,7 +416,7 @@ export function ReportsScreen() {
         {!lowStock.length ? (
           <p class="muted">Nothing is at or below its minimum stock.</p>
         ) : (
-          <div class="table-wrap">
+          <ScrollTable>
             <table>
               <thead>
                 <tr>
@@ -438,12 +443,12 @@ export function ReportsScreen() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </ScrollTable>
         )}
       </section>
       <section class="card" hidden={view !== 'sales'}>
         <h2>Item-wise sales</h2>
-        <div class="table-wrap">
+        <ScrollTable>
           <table>
             <thead>
               <tr>
@@ -468,7 +473,7 @@ export function ReportsScreen() {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollTable>
       </section>
       <section class="card" hidden={view !== 'profit'}>
         <h2>Profit</h2>
@@ -480,7 +485,7 @@ export function ReportsScreen() {
       </section>
       <section class="card" hidden={view !== 'purchases'}>
         <h2>Purchase register</h2>
-        <div class="table-wrap">
+        <ScrollTable>
           <table>
             <thead>
               <tr>
@@ -511,7 +516,7 @@ export function ReportsScreen() {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollTable>
       </section>
       <AgingSection
         hidden={view !== 'outstanding'}
@@ -556,7 +561,7 @@ function AgingSection(props: {
       {!r || !r.accounts.length ? (
         <p class="muted">No balances.</p>
       ) : (
-        <div class="table-wrap">
+        <ScrollTable>
           <table>
             <thead>
               <tr>
@@ -597,15 +602,15 @@ function AgingSection(props: {
                   <strong>Total</strong>
                 </td>
                 <td colSpan={5}></td>
-                <td>{rupees(r.totals.grossOpenPaise)}</td>
-                <td>{rupees(r.totals.documentCreditsPaise)}</td>
-                <td>{rupees(r.totals.unassignedOutPaise)}</td>
-                <td>{rupees(r.totals.unassignedInPaise)}</td>
-                <td>{rupees(r.totals.netLedgerBalancePaise)}</td>
+                <td class="num">{rupees(r.totals.grossOpenPaise)}</td>
+                <td class="num">{rupees(r.totals.documentCreditsPaise)}</td>
+                <td class="num">{rupees(r.totals.unassignedOutPaise)}</td>
+                <td class="num">{rupees(r.totals.unassignedInPaise)}</td>
+                <td class="num">{rupees(r.totals.netLedgerBalancePaise)}</td>
               </tr>
             </tbody>
           </table>
-        </div>
+        </ScrollTable>
       )}
     </section>
   );

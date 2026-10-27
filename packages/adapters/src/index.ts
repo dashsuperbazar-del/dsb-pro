@@ -159,6 +159,7 @@ export type {
   AgingAccountV2,
   AgingDetailV2,
   DayBookText,
+  RecentExpense,
 } from './reports';
 export {
   getDayBook,
@@ -166,6 +167,7 @@ export {
   getGstSummary,
   postExpense,
   voidExpense,
+  listRecentExpenses,
   exportTenant,
   checkInvariants,
   getPartyLedger,
