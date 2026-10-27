@@ -19,6 +19,7 @@ import type { FinancialAttempt } from './financialAttempts';
 import type { OfflinePurchaseRecord } from './offlinePurchase';
 import type { OfflineItemRecord } from './offlineItem';
 import type { OfflineBillChangeRecord } from './offlineBillChange';
+import type { OfflineSupplierPaymentRecord } from './offlineSupplierPayment';
 
 function safePart(value: string) {
   return value.replace(/[^A-Za-z0-9_-]/g, '_');
@@ -48,6 +49,7 @@ export class DsbSyncDb extends Dexie {
   offlinePurchases!: Table<OfflinePurchaseRecord, string>;
   offlineItems!: Table<OfflineItemRecord, string>;
   offlineBillChanges!: Table<OfflineBillChangeRecord, string>;
+  offlineSupplierPayments!: Table<OfflineSupplierPaymentRecord, string>;
 
   constructor(name: string) {
     super(name);
@@ -79,6 +81,10 @@ export class DsbSyncDb extends Dexie {
     this.version(7).stores({ offlineItems: '&clientId,&itemId,status,tenantId,createdAt' });
     // Offline bill edit/void requests carrying the bill's version (mig 0072). Additive.
     this.version(8).stores({ offlineBillChanges: '&clientId,billId,status,shopId,createdAt' });
+    // Offline supplier payments carrying the supplier/bill versions (mig 0074). Additive.
+    this.version(9).stores({
+      offlineSupplierPayments: '&clientId,partyId,status,shopId,createdAt',
+    });
   }
 }
 
