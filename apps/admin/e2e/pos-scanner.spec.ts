@@ -107,3 +107,29 @@ test('a burst into a cart quantity field is ignored by the scanner path', async 
   await expect(page.getByText(/No item with code/)).toHaveCount(0);
   await expect(cartQty(page)).toHaveValue(CODE);
 });
+
+test('a fast burst plus Enter in another text field (hold label) is left untouched', async ({
+  page,
+}) => {
+  test.setTimeout(120000);
+  await openPosWithBarcode(page, 'scan-other');
+  const hold = page.getByTestId('pos-hold-label');
+  await hold.click();
+  await page.keyboard.type(`${CODE}\n`, { delay: 5 });
+  await page.waitForTimeout(300);
+  await expect(hold).toHaveValue(CODE);
+  await expect(cartRows(page)).toHaveCount(0);
+  await expect(page.getByText(/No item with code/)).toHaveCount(0);
+});
+
+test('text typed before a scan stays in the search box', async ({ page }) => {
+  test.setTimeout(120000);
+  await openPosWithBarcode(page, 'scan-keep');
+  const find = page.getByLabel('Find product');
+  await find.fill('xy');
+  await find.focus();
+  await page.keyboard.press('End');
+  await page.keyboard.type(`${CODE}\n`, { delay: 5 });
+  await expect(cartRows(page)).toHaveCount(1);
+  await expect(find).toHaveValue('xy');
+});

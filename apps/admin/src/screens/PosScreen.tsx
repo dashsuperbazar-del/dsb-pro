@@ -1214,7 +1214,9 @@ export function PosScreen() {
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       const field = ev.target;
-      if (!isScanTarget(field)) {
+      // Only the Find-product field and the Barcode box: other text fields (hold label, customer, modals) are
+      // never read as scans.
+      if (!isScanTarget(field) || (field !== findRef.current && field !== barcodeRef.current)) {
         burst.current.reset();
         return;
       }
@@ -1223,7 +1225,7 @@ export function PosScreen() {
       ev.preventDefault();
       ev.stopImmediatePropagation();
       // Take the burst back out of the field (anything typed before it stays), as if it was never typed.
-      const before = field.value.endsWith(code) ? field.value.slice(0, -code.length) : '';
+      const before = field.value.endsWith(code) ? field.value.slice(0, -code.length) : field.value;
       field.value = before;
       field.dispatchEvent(new Event('input', { bubbles: true }));
       void scanRef.current(code, { burst: true });
