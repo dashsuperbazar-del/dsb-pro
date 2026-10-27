@@ -35,7 +35,6 @@ const api = vi.hoisted(() => ({
   getSavedSupplierPayCopy: vi.fn(),
   refreshSupplierPayCopy: vi.fn(),
   listOfflineSupplierPayments: vi.fn(),
-  getQueuedSupplierPaymentTotals: vi.fn(),
   queueSupplierPaymentOffline: vi.fn(),
   closeRejectedSupplierPayment: vi.fn(),
   runSyncNow: vi.fn(),
@@ -82,7 +81,6 @@ beforeEach(() => {
   api.getSavedSupplierPayCopy.mockReset().mockResolvedValue(copy);
   api.refreshSupplierPayCopy.mockReset().mockRejectedValue(new Error('offline'));
   api.listOfflineSupplierPayments.mockReset().mockResolvedValue([]);
-  api.getQueuedSupplierPaymentTotals.mockReset().mockResolvedValue({ bySupplier: {}, byBill: {} });
   api.queueSupplierPaymentOffline
     .mockReset()
     .mockImplementation(async (i) => ({ ...i, status: 'QUEUED' }));
@@ -228,10 +226,6 @@ const record = (over = {}) => ({
 
 test('a queued payment is listed as saved on this device and does not change the owed figure', async () => {
   api.listOfflineSupplierPayments.mockResolvedValue([record()]);
-  api.getQueuedSupplierPaymentTotals.mockResolvedValue({
-    bySupplier: { [PARTY]: 600000n },
-    byBill: { [BILL]: 600000n },
-  });
   await mount();
   await vi.waitFor(() =>
     expect(host.querySelector('[data-testid="offline-supplier-payment"]')).not.toBeNull(),
@@ -242,7 +236,7 @@ test('a queued payment is listed as saved on this device and does not change the
   expect(field('Supplier to pay').textContent).toContain('owed ₹15,000.00');
   await choose(PARTY);
   expect(host.querySelector('[data-testid="pay-supplier-owed"]')!.textContent).toMatch(
-    /₹15,000.00 as saved.*waiting to sync from this device: ₹6,000.00 \(left to pay ₹9,000.00\)/,
+    /₹15,000.00 as saved.*saved from this device and not in these figures: ₹6,000.00 \(left to pay ₹9,000.00\)/,
   );
 });
 
@@ -295,5 +289,40 @@ test('online but the refresh failed: warns the figures may be out of date', asyn
     expect(host.querySelector('[data-testid="pay-copy-note"]')!.textContent).toMatch(
       /Could not refresh/,
     ),
+  );
+});
+
+test('a payment SYNCED after the stale copy was saved still reduces owed and the bill limit', async () => {
+  online(true); // refresh fails (mock rejects): the stale copy stays
+  api.listOfflineSupplierPayments.mockResolvedValue([
+    record({ status: 'SYNCED', syncedAt: copy.savedAt + 1000 }),
+  ]);
+  await mount();
+  await vi.waitFor(() => expect(host.textContent).toContain('Could not refresh'));
+  await choose(PARTY);
+  expect(host.querySelector('[data-testid="pay-supplier-owed"]')!.textContent).toMatch(
+    /not in these figures: ₹6,000.00 \(left to pay ₹9,000.00\)/,
+  );
+  expect(host.textContent).toContain('₹ left ₹4,000.00');
+});
+
+test('a payment synced BEFORE the copy was saved is not subtracted twice', async () => {
+  api.listOfflineSupplierPayments.mockResolvedValue([
+    record({ status: 'SYNCED', syncedAt: copy.savedAt - 1000 }),
+  ]);
+  await mount();
+  await choose(PARTY);
+  expect(host.querySelector('[data-testid="pay-supplier-owed"]')!.textContent).not.toContain(
+    'left to pay',
+  );
+});
+
+test('the confirm step shows the payment date clearly', async () => {
+  await mount();
+  await choose(PARTY);
+  await type(field('Amount to pay') as HTMLInputElement, '500');
+  await submit();
+  expect(host.querySelector('[data-testid="pay-review-date"]')!.textContent).toMatch(
+    /^\d{4}-\d{2}-\d{2}$/,
   );
 });

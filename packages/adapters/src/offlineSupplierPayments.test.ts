@@ -151,6 +151,7 @@ describe('offline supplier payment adapters', () => {
       'DSB_SUPPLIER_ARCHIVED',
       'DSB_SUPPLIER_CHANGED',
       'DSB_FUTURE_DATE',
+      'DSB_FUTURE_BILL',
     ])
       expect(plainOfflineSupplierPaymentRefusal(`${code}: raw`)).toMatch(/Nothing was recorded/);
     expect(plainOfflineSupplierPaymentRefusal('DSB_SUPPLIER_MERGED: x')).toMatch(/kept supplier/);

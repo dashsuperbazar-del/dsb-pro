@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { SupplierPayCopySupplier } from '@dsb-pro/sync';
-import { checkPayForm, fifoPlan, rupeesTextToPaise, type PayFormInput } from './supplierPayForm';
+import {
+  checkPayForm,
+  fifoPlan,
+  rupeesTextToPaise,
+  unreflectedPayments,
+  type PayFormInput,
+} from './supplierPayForm';
 
 const V = '0123456789abcdef0123456789abcdef';
 const supplier: SupplierPayCopySupplier = {
@@ -150,5 +156,35 @@ describe('fifoPlan', () => {
       allocations: { b2: '3000.00' },
       remainderPaise: 0n,
     });
+  });
+});
+
+describe('payment date against the chosen bill', () => {
+  it('refuses a date earlier than an assigned bill, inline', () => {
+    const e = errors({ dateText: '2026-10-03', allocTexts: { b2: '100' } });
+    expect(e.date).toContain('earlier than bill A-2 (2026-10-05)');
+  });
+  it('allows the bill date itself, a later date, or an earlier date when that bill is not assigned', () => {
+    expect(run({ dateText: '2026-10-05', allocTexts: { b2: '100' } }).ok).toBe(true);
+    expect(run({ dateText: '2026-10-20', allocTexts: { b2: '100' } }).ok).toBe(true);
+    expect(run({ dateText: '2026-10-03', allocTexts: { b1: '100' } }).ok).toBe(true);
+  });
+});
+
+describe('unreflectedPayments', () => {
+  const rec = (status: string, syncedAt: number | null, amount = '1000') => ({
+    partyId: 'p',
+    amountPaise: amount,
+    status,
+    syncedAt,
+    allocations: [{ purchaseBillId: 'b1', amountPaise: amount }],
+  });
+  it('counts queued and synced-after-copy, not older synced or refused', () => {
+    const t = unreflectedPayments(
+      [rec('QUEUED', null), rec('SYNCED', 200), rec('SYNCED', 100), rec('REJECTED', null)],
+      100,
+    );
+    expect(t.bySupplier.p).toBe(2000n);
+    expect(t.byBill.b1).toBe(2000n);
   });
 });
