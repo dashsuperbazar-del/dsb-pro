@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { swReady } from './sw-ready';
 import { setupPosShop, toPayment } from './pos-shop-setup';
 import { addItemForm } from './design-helpers';
 // D4b "tappable result list": the POS item picker is a search box with result rows (tap = add one, tap again
@@ -130,6 +131,7 @@ test.describe('phone', () => {
     await expect(page.getByTestId('sync-outbox-count')).toHaveText('0');
     await openPos(page);
     await expect(row(page, NAME)).toContainText('in stock');
+    await swReady(page);
     await context.setOffline(true);
     // A fresh load while offline works from the saved catalog, stock and prices.
     await page.reload();

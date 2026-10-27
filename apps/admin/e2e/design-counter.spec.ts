@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { swReady } from './sw-ready';
 import { addByTap } from './pos-shop-setup';
 import { addItemForm, stockTask, fillBillItem } from './design-helpers';
 // D2 counter screens: POS (empty, cart, payment) and purchase bill entry (empty, filled, offline
@@ -136,6 +137,7 @@ test('design screenshots: counter screens, phone + desktop, light + dark', async
       await fillBillItem(purchase, 1, 'Basmati rice 1kg', String(10 + round), '95');
       await page.evaluate(() => window.scrollTo(0, 0));
       await shot(`05-purchase-filled-${tag}`);
+      await swReady(page);
       await context.setOffline(true);
       await expect(purchase.getByTestId('offline-post')).toBeVisible();
       await purchase

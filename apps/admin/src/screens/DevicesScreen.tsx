@@ -11,7 +11,7 @@ import {
 import { useSession } from '../lib/useSession';
 
 export function DevicesScreen() {
-  const session = useSession();
+  const session = useSession({ requireVerified: true });
 
   if (session.status === 'loading') {
     return <p>Loading…</p>;

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { swReady } from './sw-ready';
 
 // D2: rarely used screens load on demand from a separate chunk. Once the service worker is installed
 // that chunk is precached (dist/precache.json), so screens NEVER opened online still open offline.
@@ -41,6 +42,7 @@ test('screens that load on demand open offline without ever being opened online'
   });
   expect(missing.files.some((f) => /rareScreens-/.test(f))).toBe(true);
   expect(missing.out).toEqual([]);
+  await swReady(page);
   await context.setOffline(true);
   await page.goto('/sync');
   await expect(page.getByRole('heading', { name: 'Sync & offline' })).toBeVisible({

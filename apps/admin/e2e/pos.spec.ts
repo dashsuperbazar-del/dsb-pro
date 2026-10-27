@@ -1,4 +1,5 @@
 import { stockTask, addItemForm, reviewPayment, fillBillItem } from './design-helpers';
+import { swReady } from './sw-ready';
 import { test, expect } from '@playwright/test';
 import { addByTap } from './pos-shop-setup';
 
@@ -136,6 +137,7 @@ test('real browser money path posts stock then finalizes a paid sale', async ({
   await expect(page.getByRole('heading', { name: 'Returns', exact: true })).toBeVisible();
   await expect(page.getByLabel('Source document').locator('option')).toHaveCount(2);
   await page.getByLabel('Source document').selectOption({ index: 1 });
+  await swReady(page);
   await context.setOffline(true);
   await page.getByLabel('Return quantity for POS E2E Item').fill('1');
   await page.getByRole('button', { name: 'Post return' }).click();
@@ -191,6 +193,7 @@ test('real browser money path posts stock then finalizes a paid sale', async ({
       const response = await route.fetch();
       expect(response.ok()).toBe(true);
       lostAcknowledgement = true;
+      await swReady(page);
       await context.setOffline(true);
       await route.abort('failed');
     } else await route.continue();
@@ -227,6 +230,7 @@ test('real browser money path posts stock then finalizes a paid sale', async ({
   // Model a stale replica: another till has already returned the whole line,
   // but this till still believes it is available. Server rejection must retain
   // the document as a conflict and undo only its provisional stock projection.
+  await swReady(page);
   await context.setOffline(true);
   await page.evaluate(async () => {
     const name = (await indexedDB.databases()).find((db) =>
@@ -302,6 +306,7 @@ test('real browser money path posts stock then finalizes a paid sale', async ({
       const response = await route.fetch();
       expect(response.ok()).toBe(true);
       lostVoid = true;
+      await swReady(page);
       await context.setOffline(true);
       await route.abort('failed');
     } else await route.continue();
@@ -338,6 +343,7 @@ test('real browser money path posts stock then finalizes a paid sale', async ({
   await page.goto('/sync');
   await page.getByRole('button', { name: 'Retry queued work now' }).click();
   await expect(page.getByTestId('sync-outbox-count')).toHaveText('0', { timeout: 15000 });
+  await swReady(page);
   await context.setOffline(true);
   await page.goto('/returns');
   await expect(

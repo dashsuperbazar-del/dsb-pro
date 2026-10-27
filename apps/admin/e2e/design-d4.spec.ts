@@ -1,4 +1,5 @@
 import { test, expect, type BrowserContext, type Page, type TestInfo } from '@playwright/test';
+import { swReady } from './sw-ready';
 import { setupPosShop, addToCart, toPayment } from './pos-shop-setup';
 // D4 evidence: the POS sell + pay screens (empty, cart, payment error, credit, sale done online and
 // offline-queued, collapsed/expanded secondary blocks, 195px zoom). The phone runs in a touch context
@@ -73,6 +74,7 @@ async function shoot(
     await page.evaluate(() => window.scrollTo(0, 0));
     await shot(`06-pos-sale-done-online-${tag}`);
     // Offline: the same flow is saved on this device.
+    await swReady(page);
     await context.setOffline(true);
     await page.reload();
     await expect(page.locator('.pick-list')).toBeVisible();

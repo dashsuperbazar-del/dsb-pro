@@ -7,9 +7,17 @@
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
     <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./shell.css" />
     <title>DSB Pro Admin</title>
   </head>
   <body>
+    <div id="boot-shell" aria-hidden="true">
+      <div class="bar"></div>
+      <div class="block"></div>
+      <div class="block"></div>
+      <div class="block"></div>
+      <p class="slow">Taking longer than usual. <a href="./">Reload</a></p>
+    </div>
     <div id="app"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

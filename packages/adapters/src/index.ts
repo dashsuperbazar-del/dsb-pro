@@ -30,6 +30,7 @@ export type { Membership, Invite, TenantUser } from './tenancy';
 export {
   createTenant,
   getDefaultShopId,
+  resetDefaultShopInFlight,
   createInvite,
   revokeInvite,
   acceptInvite,
