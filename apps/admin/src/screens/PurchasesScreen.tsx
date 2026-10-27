@@ -1,3 +1,4 @@
+import { errorText } from '../lib/friendlyError';
 import { formatQuantity } from '@dsb-pro/core';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { hiddenNote, hideVoided, loadShowVoided, saveShowVoided } from '../lib/voidedVisibility';
@@ -190,7 +191,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
       });
     } catch (e) {
       if (token === listGeneration.current) {
-        setError(String(e));
+        setError(errorText(e));
         snapshotRefreshFailed('purchases', e, userRef.current);
         setSnapshotFailed(true);
       }
@@ -251,7 +252,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
         await refresh(s);
       } catch (e) {
         if (active) {
-          setError(String(e));
+          setError(errorText(e));
           setLoading(false);
         }
       }
@@ -335,7 +336,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
       if (token !== generation.current) return;
       applyOpen(o);
     } catch (e) {
-      if (token === generation.current) setDetailError(String(e));
+      if (token === generation.current) setDetailError(errorText(e));
     } finally {
       if (token === generation.current) setDetailLoading(false);
     }
@@ -593,7 +594,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
                     setMore(next.length === 50);
                   })
                   .catch((e) => {
-                    if (token === listGeneration.current) setError(String(e));
+                    if (token === listGeneration.current) setError(errorText(e));
                   })
                   .finally(() => {
                     if (token === listGeneration.current) setLoading(false);

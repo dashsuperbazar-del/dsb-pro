@@ -1,3 +1,4 @@
+import { errorText } from '../lib/friendlyError';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Item, Party } from '@dsb-pro/adapters';
 import {
@@ -269,7 +270,7 @@ export function PurchaseBillCards(props: {
             ? OFFLINE_NOT_CREATED
             : e instanceof Error
               ? e.message
-              : String(e)) + LOCKED_NOTE,
+              : errorText(e)) + LOCKED_NOTE,
       });
     } finally {
       creating.current.delete(key);
@@ -555,7 +556,7 @@ export function PurchaseBillCards(props: {
                         `Scanned ${hit.item.name} into item ${at}. Enter the quantity and cost.`,
                       );
                     } catch (e) {
-                      props.onMessage(`Barcode lookup failed: ${String(e)}`);
+                      props.onMessage(`Barcode lookup failed: ${errorText(e)}`);
                     }
                   })();
                 }}

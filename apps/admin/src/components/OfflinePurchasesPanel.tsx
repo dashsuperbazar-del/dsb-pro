@@ -1,3 +1,4 @@
+import { errorText } from '../lib/friendlyError';
 import { useEffect, useState } from 'preact/hooks';
 import {
   closeRejectedPurchase,
@@ -153,7 +154,7 @@ export function OfflinePurchasesPanel({
       onDraftSaved();
       setNote('The refused bill is now a draft below: open it, correct it and post again.');
     } catch (e) {
-      setNote(`Could not make a draft: ${e instanceof Error ? e.message : String(e)}`);
+      setNote(`Could not make a draft: ${errorText(e)}`);
     }
     await load();
   }
@@ -170,7 +171,7 @@ export function OfflinePurchasesPanel({
       for (const d of r.documents)
         await removeLocalDocument(r.documentScope, d.id).catch(() => undefined);
     } catch (e) {
-      setNote(e instanceof Error ? e.message : String(e));
+      setNote(errorText(e));
     }
     await load();
   }
@@ -226,7 +227,7 @@ export function OfflinePurchasesPanel({
                         void closeRejectedBillChange(r.clientId)
                           .then(load)
                           .catch((e: unknown) =>
-                            setNote(e instanceof Error ? e.message : String(e)),
+                            setNote(errorText(e)),
                           )
                       }
                     >

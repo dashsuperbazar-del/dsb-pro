@@ -1,3 +1,4 @@
+import { errorText } from '../lib/friendlyError';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   closeRejectedSupplierPayment,
@@ -260,7 +261,7 @@ export function PaySupplierPanel() {
       await loadRecords();
       void runSyncNow().catch(() => undefined);
     } catch (e) {
-      setFail(e instanceof Error ? e.message : String(e));
+      setFail(errorText(e));
       setReview(null);
     } finally {
       saving.current = false;
@@ -296,7 +297,7 @@ export function PaySupplierPanel() {
     try {
       await closeRejectedSupplierPayment(r.clientId);
     } catch (e) {
-      setNote(e instanceof Error ? e.message : String(e));
+      setNote(errorText(e));
     }
     await loadRecords();
   }

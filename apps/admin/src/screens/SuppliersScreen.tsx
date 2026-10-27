@@ -1,3 +1,4 @@
+import { errorText } from '../lib/friendlyError';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { withAccountLock } from '../lib/accountLock';
 import {
@@ -200,12 +201,12 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
       setError(
         typeof navigator !== 'undefined' && navigator.onLine === false
           ? 'You are offline. Balances and bills load when you are back online. Pay supplier below works from what is saved on this device.'
-          : String(e),
+          : errorText(e),
       );
     });
   }, []);
   useEffect(() => {
-    void refreshParty().catch((e) => setError(String(e)));
+    void refreshParty().catch((e) => setError(errorText(e)));
   }, [shopId, partyId]);
 
   useEffect(() => {
@@ -221,7 +222,7 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
     contextUsed.current = key;
     void changeParty(contextSupplier)
       .then(() => setView(contextView))
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(errorText(e)));
   }, [shopId, allParties, snapshotAt, contextSupplier, contextBill, contextView]);
   useEffect(() => {
     if (!contextBill || loadedParty !== contextSupplier || targetBillUsed.current === contextBill)
@@ -249,7 +250,7 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
         'Oldest-first allocation prepared. Review before recording; any remainder stays as advance.',
       );
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   }
   function payload(): RecordPayload {
@@ -315,7 +316,7 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
     try {
       await fn();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -428,7 +429,7 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
               setAlloc({});
               setConfirming(false);
             }
-            void Promise.all([refreshParty(), refreshBase()]).catch((e) => setError(String(e)));
+            void Promise.all([refreshParty(), refreshBase()]).catch((e) => setError(errorText(e)));
           }}
         />
       )}
@@ -690,7 +691,7 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
                                     'Full bill allocation selected. Enter or check the amount you actually paid.',
                                   );
                                 } catch (e) {
-                                  setError(String(e));
+                                  setError(errorText(e));
                                 }
                               }}
                             >
@@ -984,7 +985,7 @@ function RejectedCopy(props: { shopId: string; partyId: string; onCopied: () => 
           onClick={() =>
             void copyRejectedFinancialAttempt(hint.trim())
               .then(props.onCopied)
-              .catch((e) => alert(String(e)))
+              .catch((e) => alert(errorText(e)))
           }
         >
           Copy to new draft

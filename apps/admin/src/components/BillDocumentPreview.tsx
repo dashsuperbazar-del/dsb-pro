@@ -1,3 +1,4 @@
+import { errorText } from '../lib/friendlyError';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { readBillDocument } from '@dsb-pro/adapters';
 
@@ -56,7 +57,7 @@ export function BillDocumentPreview({
         setMime(file.type);
         setUrl(objectUrl);
       } catch (e) {
-        if (active) setError(String(e));
+        if (active) setError(errorText(e));
       }
     })();
     return () => {

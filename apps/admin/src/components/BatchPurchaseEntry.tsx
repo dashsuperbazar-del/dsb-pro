@@ -1,3 +1,4 @@
+import { errorText } from '../lib/friendlyError';
 import { useState } from 'preact/hooks';
 import type { Item, Party } from '@dsb-pro/adapters';
 import { buildBatchDrafts, type BatchError, type BatchRow } from '../lib/batchPurchase';
@@ -66,7 +67,7 @@ export function BatchPurchaseEntry({
         billNo: d.draft.billNo,
       }));
     } catch (e) {
-      setMessage(`Saved drafts could not be checked: ${String(e)}. Nothing was saved.`);
+      setMessage(`Saved drafts could not be checked: ${errorText(e)}. Nothing was saved.`);
       return;
     }
     const result = buildBatchDrafts(rows, items, parties, {
@@ -88,7 +89,7 @@ export function BatchPurchaseEntry({
       setRows((v) => v.slice(saved));
       setSearches({});
       setMessage(
-        `Saved ${saved} of ${result.drafts.length} drafts, then storage failed: ${String(e)}. The remaining bills are still here.`,
+        `Saved ${saved} of ${result.drafts.length} drafts, then storage failed: ${errorText(e)}. The remaining bills are still here.`,
       );
       if (saved) onSaved();
       return;

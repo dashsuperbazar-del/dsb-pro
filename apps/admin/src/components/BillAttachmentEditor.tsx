@@ -1,3 +1,4 @@
+import { errorText } from '../lib/friendlyError';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import {
   billDocumentHash,
@@ -104,8 +105,8 @@ export function BillAttachmentEditor({
       if (mounted.current) emit([...props.current.documents, doc]);
     } catch (e) {
       if (mounted.current) {
-        setError(String(e));
-        onProblem(String(e));
+        setError(errorText(e));
+        onProblem(errorText(e));
       }
     } finally {
       if (mounted.current) setPicking(false);
@@ -273,8 +274,8 @@ function AttachmentRow({
         }
       } catch (e) {
         if (active) {
-          setError(String(e));
-          props.current.onProblem(String(e));
+          setError(errorText(e));
+          props.current.onProblem(errorText(e));
         }
       } finally {
         if (active) {

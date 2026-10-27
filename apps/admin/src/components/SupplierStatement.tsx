@@ -1,3 +1,4 @@
+import { errorText } from '../lib/friendlyError';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { getPurchaseReturnRoundOffs, getShopSettings, getSupplierLedger } from '@dsb-pro/adapters';
 import { roundOffLabel, rupees } from '../lib/money';
@@ -89,7 +90,7 @@ export function SupplierStatement({
             /* only a note: the statement amounts are exact without it */
           });
     } catch (e) {
-      if (request === generation.current && current.current === key) setError(String(e));
+      if (request === generation.current && current.current === key) setError(errorText(e));
     } finally {
       if (request === generation.current && current.current === key) setBusy(false);
     }

@@ -1,3 +1,4 @@
+import { errorText } from '../lib/friendlyError';
 import { formatQuantity, purchaseBillTotals } from '@dsb-pro/core';
 import { CameraScanner } from '../components/CameraScanner';
 import { PriceHistory } from '../components/PriceHistory';
@@ -96,6 +97,8 @@ import {
   pendingImages,
   percentText,
   postButtonText,
+  pendingPurchaseSummary,
+  retryPurchaseText,
   roundOffText,
   type ChargeRow,
   type PendingPurchase,
@@ -662,7 +665,7 @@ export function InventoryScreen({
     const dropped = wasOnline.current && !online;
     wasOnline.current = online;
     if (!dropped || !purchaseOnly || catalogLoaded) return;
-    void refresh().catch((e) => setError(String(e)));
+    void refresh().catch((e) => setError(errorText(e)));
   }, [online, purchaseOnly, catalogLoaded]);
   // Back online while the bill form uses the device supplier list: re-read it from the server (archived
   // suppliers drop out, new ones appear) and drop the offline label. Only suppliers are replaced, so the
@@ -709,7 +712,7 @@ export function InventoryScreen({
         if (purchaseOnly && typeof navigator !== 'undefined' && navigator.onLine === false) return;
         snapshotRefreshFailed('inventory', e);
         setSnapshotFailed(true);
-        setError(String(e));
+        setError(errorText(e));
       });
     return () => {
       stopped = true;
@@ -735,7 +738,7 @@ export function InventoryScreen({
       })
       .catch((e) => {
         if (!cancelled) {
-          setError(String(e));
+          setError(errorText(e));
           setPricesFailed(true);
           setPricesLoading(false);
         }
@@ -803,7 +806,7 @@ export function InventoryScreen({
         if (active)
           setUsual({
             key,
-            load: { state: 'failed', message: e instanceof Error ? e.message : String(e) },
+            load: { state: 'failed', message: errorText(e) },
           });
       });
     return () => {
@@ -1069,7 +1072,7 @@ export function InventoryScreen({
         completed = true;
       } catch (e) {
         if (active) {
-          setError(String(e));
+          setError(errorText(e));
           contextNeedsReset.current = true;
         }
       } finally {
@@ -1103,7 +1106,7 @@ export function InventoryScreen({
       setUnreadableDrafts(scan.unreadable);
       setDraftError('');
     } catch (e) {
-      setDraftError(`Draft recovery unavailable: ${String(e)}. Existing drafts have been kept.`);
+      setDraftError(`Draft recovery unavailable: ${errorText(e)}. Existing drafts have been kept.`);
     }
   }
   useEffect(() => {
@@ -1334,7 +1337,7 @@ export function InventoryScreen({
       reloadSalePrices();
       setMessage(`Sale price updated for ${w.itemName}.`);
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
+      const message = errorText(e);
       const permanent = isPermanentPriceError(message);
       if (permanent) dropFromPlan(entry);
       setPriceRetries((r) =>
@@ -1419,7 +1422,7 @@ export function InventoryScreen({
       setDraftError('');
     } catch (e) {
       setDraftStatus('');
-      setDraftError(`Draft not saved: ${String(e)}. Keep this page open until storage works.`);
+      setDraftError(`Draft not saved: ${errorText(e)}. Keep this page open until storage works.`);
     }
   }, [
     accountChanged,
@@ -1486,7 +1489,7 @@ export function InventoryScreen({
       setError('');
       setMessage('Saved purchase draft restored. Review it before posting.');
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   }
   const unitSuggestions = useMemo(() => learnedUnits(items), [items]);
@@ -1593,6 +1596,23 @@ export function InventoryScreen({
     purchaseLocked && lockedPurchase.current && isV2Pending(lockedPurchase.current)
       ? lockedPurchase.current
       : null;
+  const pendingSummary =
+    purchaseLocked && lockedPurchase.current ? pendingPurchaseSummary(lockedPurchase.current) : null;
+  const pendingSupplier = (() => {
+    const id = lockedPurchase.current?.partyId;
+    return id ? (parties.find((p) => p.id === id)?.name ?? '') : '';
+  })();
+  // "Review pending purchase": open the purchase view and bring the pending block into view (clear of the
+  // sticky bill bar) and focus it, so a screen reader reads it.
+  function reviewPendingPurchase() {
+    setView('purchase');
+    setTimeout(() => {
+      const el = document.getElementById('pending-purchase');
+      if (!el) return;
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      el.focus({ preventScroll: true });
+    }, 0);
+  }
   // What Post will do with money: shown before Post, and on the button itself.
   const shownType: PurchasePaymentType = purchaseLocked
     ? (lockedV2?.paymentType ?? 'credit')
@@ -1640,7 +1660,7 @@ export function InventoryScreen({
       setLegacyFileName(file.name);
       setMessage(`Backup checked: ${plan.items.length} valid items are ready to import.`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorText(e));
     }
   }
   async function runLegacyImport() {
@@ -1666,7 +1686,7 @@ export function InventoryScreen({
         `Import complete: ${summary.items} items, ${summary.parties} suppliers, ${summary.customers} customers and ${summary.stockRows} stock balances loaded.`,
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorText(e));
     } finally {
       setLegacyBusy(false);
     }
@@ -1714,7 +1734,7 @@ export function InventoryScreen({
       await refresh(true);
       setMessage(item.mapped ? mappedItemMessage(item.name) : `Created ${item.name}.`);
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   }
   // "+ Create" inside a bill card: the same adapter and field mapping as the Add item form above. The new
@@ -1782,7 +1802,7 @@ export function InventoryScreen({
       form.reset();
       setMessage('Barcode linked to item.');
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   }
   async function addParty(ev: Event) {
@@ -1812,7 +1832,7 @@ export function InventoryScreen({
       }
       setMessage(`Created supplier ${party.name}.`);
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   }
   // Card camera scan: the device copy first when offline, as on the POS screen. Fills that card only.
@@ -1886,7 +1906,7 @@ export function InventoryScreen({
       }
       cards = got;
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorText(e));
       return;
     }
     // Decide from the cards as they are NOW (after the await): anything typed meanwhile is asked about.
@@ -1972,10 +1992,10 @@ export function InventoryScreen({
       // Sale prices only after the bill is confirmed. A failed price write never undoes the bill.
       extra += await writeSalePrices(shop, bill);
     } catch (e) {
-      extra += ` (Sale prices could not be written: ${String(e)})`;
+      extra += ` (Sale prices could not be written: ${errorText(e)})`;
     }
     // Same sequence guard as every refresh: a newer refresh supersedes this one without overwriting state.
-    await refresh(true).catch((e) => (extra += ` (Refresh failed: ${String(e)})`));
+    await refresh(true).catch((e) => (extra += ` (Refresh failed: ${errorText(e)})`));
     if (!mounted.current) return;
     if (seq === postSeq.current)
       // Only our own "Updating stock…" is replaced, never a message another action has shown since.
@@ -2144,7 +2164,7 @@ export function InventoryScreen({
       try {
         restorePurchaseDraft(draftSnapshot, items, parties);
       } catch (e) {
-        setError(String(e));
+        setError(errorText(e));
         return;
       }
     }
@@ -2267,7 +2287,7 @@ export function InventoryScreen({
         else if (ownKey) removePricePlan(ownKey);
       } catch (e) {
         setError(
-          `Sale prices could not be kept on this device, so the bill was not sent: ${e instanceof Error ? e.message : String(e)}`,
+          `Sale prices could not be kept on this device, so the bill was not sent: ${errorText(e)}`,
         );
         return;
       }
@@ -2293,7 +2313,7 @@ export function InventoryScreen({
         if (ownKey) removePricePlan(ownKey);
         ownPlans.current.delete(request.clientId);
       }
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorText(e));
       return;
     }
     lockedPurchase.current = request;
@@ -2394,7 +2414,7 @@ export function InventoryScreen({
           refreshDrafts();
         } catch (e) {
           setDraftError(
-            `Purchase confirmed, but its old draft could not be removed: ${String(e)}.`,
+            `Purchase confirmed, but its old draft could not be removed: ${errorText(e)}.`,
           );
         }
       }
@@ -2470,7 +2490,7 @@ export function InventoryScreen({
         },
       });
     } catch (e) {
-      setError(`Not saved on this device: ${e instanceof Error ? e.message : String(e)}`);
+      setError(`Not saved on this device: ${errorText(e)}`);
       setPurchaseBusy(false);
       return;
     }
@@ -2538,7 +2558,7 @@ export function InventoryScreen({
         })),
       });
     } catch (e) {
-      setError(`Not saved on this device: ${e instanceof Error ? e.message : String(e)}`);
+      setError(`Not saved on this device: ${errorText(e)}`);
       setPurchaseBusy(false);
       return;
     }
@@ -2612,7 +2632,7 @@ export function InventoryScreen({
       setMessage('Price history updated atomically.');
     } catch (e) {
       setMessage('');
-      setError(String(e));
+      setError(errorText(e));
       // A refusal shown here was definitely not written: nothing to check on a later visit.
       if (e instanceof PriceRefusedError) forgetPendingPrice(entry.clientId);
     } finally {
@@ -2667,7 +2687,7 @@ export function InventoryScreen({
       setMessage(`Price saved: ${what}.`);
     } catch (e) {
       if (e instanceof PriceRefusedError) forgetPendingPrice(p.clientId);
-      patch({ failure: String(e) });
+      patch({ failure: errorText(e) });
     }
   }
   function dismissUnsurePrice(p: PendingPrice) {
@@ -2688,7 +2708,7 @@ export function InventoryScreen({
       setMessage(`Image stored (${Math.round(blob.size / 1024)} KB).`);
       setItems((v) => v.map((i) => (i.id === selectedItem.id ? { ...i, image_path: path } : i)));
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   }
   async function changeTaxRate(ev: Event) {
@@ -2701,7 +2721,7 @@ export function InventoryScreen({
       setItems((v) => v.map((i) => (i.id === selectedItem.id ? { ...i, tax_rate_bp: rate } : i)));
       setMessage(`GST rate saved: ${percentText(rate)}%.`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorText(e));
     }
   }
   async function changeMinStock(ev: Event) {
@@ -2713,7 +2733,7 @@ export function InventoryScreen({
       setItems((v) => v.map((i) => (i.id === updated.id ? updated : i)));
       setMessage('Reorder threshold saved.');
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   }
 
@@ -2744,9 +2764,9 @@ export function InventoryScreen({
         />
       )}
       {(purchaseLocked || purchaseStorageBlocked) && (
-        <p role="alert">
-          A purchase needs attention.{' '}
-          <button type="button" onClick={() => setView('purchase')}>
+        <p role="alert" class="pending-note">
+          A purchase is waiting for confirmation.{' '}
+          <button type="button" onClick={reviewPendingPurchase}>
             Review pending purchase
           </button>
         </p>
@@ -3155,6 +3175,42 @@ export function InventoryScreen({
         onChange={() => setDraftTouched(true)}
       >
         <h2>{purchaseEditOf || lockedEditOf ? 'Edit bill' : 'Post purchase'}</h2>
+        {purchaseLocked && (
+          <div class="alert pending-purchase" role="alert" id="pending-purchase" tabIndex={-1}>
+            <p>
+              <strong>
+                {lockedEditOf ? 'A bill correction' : 'Your last purchase'} is waiting for
+                confirmation.
+              </strong>{' '}
+              We did not get the shop's answer, so it may already be saved. The form is locked until
+              you press “Retry same {lockedEditOf ? 'edit' : 'purchase'}” below. That never records
+              the bill twice.
+            </p>
+            {pendingSummary && (
+              <p class="pending-summary">
+                {pendingSupplier ? `${pendingSupplier} · ` : ''}
+                {pendingSummary.billNo ? `Bill no. ${pendingSummary.billNo} · ` : ''}
+                {pendingSummary.items} item{pendingSummary.items === 1 ? '' : 's'}
+                {pendingSummary.totalPaise !== null && (
+                  <>
+                    {' · '}
+                    <strong class="num">{rupees(pendingSummary.totalPaise)}</strong>
+                  </>
+                )}
+              </p>
+            )}
+            {lockedV2 && lockedV2.paymentType && lockedV2.paymentType !== 'credit' && (
+              <p>
+                This bill was sent as a {PAYMENT_LABEL[lockedV2.paymentType]} bill. A retry records
+                its payment only once.
+              </p>
+            )}
+            {lockedPurchase.current &&
+              pendingImages(lockedPurchase.current).map((path) => (
+                <BillDocumentPreview key={path} path={path} />
+              ))}
+          </div>
+        )}
         {purchaseOnly && shopId && (
           <OfflinePurchasesPanel
             shopId={shopId}
@@ -3204,7 +3260,7 @@ export function InventoryScreen({
                     removePurchaseDraft(key);
                     refreshDrafts();
                   } catch (e) {
-                    setDraftError(`Draft could not be discarded: ${String(e)}.`);
+                    setDraftError(`Draft could not be discarded: ${errorText(e)}.`);
                   }
                 }}
               >
@@ -3269,7 +3325,7 @@ export function InventoryScreen({
                     removePurchaseDrafts(old.map((s) => s.key));
                     refreshDrafts();
                   } catch (e) {
-                    setDraftError(`Old drafts could not be discarded: ${String(e)}.`);
+                    setDraftError(`Old drafts could not be discarded: ${errorText(e)}.`);
                   }
                 }}
               >
@@ -3325,7 +3381,7 @@ export function InventoryScreen({
                           void removeLocalDocument(draftPrefix, id).catch(() => {});
                         refreshDrafts();
                       } catch (e) {
-                        setDraftError(`Draft could not be discarded: ${String(e)}.`);
+                        setDraftError(`Draft could not be discarded: ${errorText(e)}.`);
                       }
                     }}
                   >
@@ -3340,24 +3396,6 @@ export function InventoryScreen({
             <kbd>Enter</kbd> next field · <kbd>↓</kbd> <kbd>↑</kbd> pick a match · <kbd>F2</kbd> add
             item · <kbd>F4</kbd> go to Post (then <kbd>Enter</kbd>)
           </p>
-          {purchaseLocked && (
-            <div class="alert" role="alert">
-              <p>
-                The last purchase may already be saved. Editing is locked: press “Retry same
-                purchase” — it never posts the bill twice.
-              </p>
-              {lockedV2 && lockedV2.paymentType && lockedV2.paymentType !== 'credit' && (
-                <p>
-                  This bill was sent as a {PAYMENT_LABEL[lockedV2.paymentType]} bill. A retry
-                  records its payment only once.
-                </p>
-              )}
-              {lockedPurchase.current &&
-                pendingImages(lockedPurchase.current).map((path) => (
-                  <BillDocumentPreview key={path} path={path} />
-                ))}
-            </div>
-          )}
           {purchaseOnly && (!catalogLoaded || suppliersFrom === 'device') && (
             <p class="muted" role="status" data-testid="supplier-source">
               {!catalogLoaded
@@ -3682,7 +3720,7 @@ export function InventoryScreen({
                       return true;
                     } catch (e) {
                       setDocumentSaveError(
-                        `Draft could not be kept before opening the picker: ${String(e)}`,
+                        `Draft could not be kept before opening the picker: ${errorText(e)}`,
                       );
                       return false;
                     }
@@ -3702,7 +3740,7 @@ export function InventoryScreen({
                       setDraftTouched(true);
                       setDocumentSaveError('');
                     } catch (e) {
-                      setDocumentSaveError(String(e));
+                      setDocumentSaveError(errorText(e));
                       throw e;
                     }
                   }}
@@ -3827,8 +3865,8 @@ export function InventoryScreen({
                 ? 'Posting…'
                 : purchaseLocked
                   ? lockedEditOf
-                    ? 'Retry same edit'
-                    : 'Retry same purchase'
+                    ? retryPurchaseText(true, pendingSummary?.totalPaise ?? null)
+                    : retryPurchaseText(false, pendingSummary?.totalPaise ?? null)
                   : purchaseEditOf
                     ? online
                       ? 'Save corrected bill'
