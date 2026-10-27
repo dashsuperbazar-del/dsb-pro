@@ -20,6 +20,36 @@ export const paiseToRupeesText = (paise: bigint | string): string => {
   return `${n / 100n}.${String(n % 100n).padStart(2, '0')}`;
 };
 
+type PaidRecord = {
+  partyId: string;
+  amountPaise: string;
+  status: string;
+  syncedAt: number | null;
+  allocations: readonly { purchaseBillId: string; amountPaise: string }[];
+};
+/**
+ * Payments the saved copy does not include yet, per supplier and per bill: the queued ones plus the ones
+ * already SYNCED after the copy was saved (a refresh that failed leaves a stale copy that still shows the
+ * old owed/outstanding figures). Exact paise.
+ */
+export function unreflectedPayments(
+  records: readonly PaidRecord[],
+  copySavedAt: number,
+): { bySupplier: Record<string, bigint>; byBill: Record<string, bigint> } {
+  const bySupplier: Record<string, bigint> = {};
+  const byBill: Record<string, bigint> = {};
+  for (const r of records) {
+    const counts =
+      r.status === 'QUEUED' ||
+      (r.status === 'SYNCED' && r.syncedAt !== null && r.syncedAt > copySavedAt);
+    if (!counts) continue;
+    bySupplier[r.partyId] = (bySupplier[r.partyId] ?? 0n) + BigInt(r.amountPaise);
+    for (const a of r.allocations)
+      byBill[a.purchaseBillId] = (byBill[a.purchaseBillId] ?? 0n) + BigInt(a.amountPaise);
+  }
+  return { bySupplier, byBill };
+}
+
 export type PayFormInput = {
   supplier: SupplierPayCopySupplier | null;
   amountText: string;
@@ -71,6 +101,16 @@ export function checkPayForm(
   if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) errors.date = 'Enter the date as year-month-day.';
   else if (date && date > i.businessDate)
     errors.date = `The date cannot be after today (${i.businessDate}).`;
+  else if (date && s) {
+    // The server refuses a payment dated before a bill it is assigned to (DSB_FUTURE_BILL); stop it here.
+    const effective = date;
+    const early = s.bills.find(
+      (b) =>
+        (rupeesTextToPaise(i.allocTexts[b.billId] ?? '') ?? 0n) > 0n && effective < b.businessDate,
+    );
+    if (early)
+      errors.date = `The payment date (${effective}) is earlier than bill ${billLabel(early)} (${early.businessDate}). Use a date on or after the bill date, or do not assign it to that bill.`;
+  }
   const reference = i.reference.trim();
   if (reference.length > 200)
     errors.reference = 'The reference is too long (200 characters at most).';
