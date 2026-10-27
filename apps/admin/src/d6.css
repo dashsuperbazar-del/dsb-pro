@@ -298,3 +298,9 @@ main > .home-row {
 td.date {
   white-space: nowrap;
 }
+
+/* The wrapper scrolls (and shows the cue); the table itself stays a real table. */
+.scroll-table > .table-wrap:not(.sales-cards):not(.mobile-records) > table {
+  display: table;
+  overflow: visible;
+}

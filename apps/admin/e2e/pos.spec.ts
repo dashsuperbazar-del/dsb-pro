@@ -98,6 +98,8 @@ test('real browser money path posts stock then finalizes a paid sale', async ({
     '₹10.00',
   );
 
+  // The day reconciliation is a collapsed row (D6): open it to use the comparison.
+  await reconciliation.getByRole('button', { name: /Day reconciliation/ }).click();
   const businessDate = await page.getByLabel('Reconciliation business date').inputValue();
   const legacyClosingBackup = {
     version: 3,

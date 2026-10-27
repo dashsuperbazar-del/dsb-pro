@@ -21,7 +21,11 @@ export function ScrollTable(props: { children: ComponentChildren; class?: string
     const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
     ro?.observe(el);
     if (el.firstElementChild) ro?.observe(el.firstElementChild);
+    // Rows arriving later change the content width without resizing the table box.
+    const mo = typeof MutationObserver === 'undefined' ? null : new MutationObserver(update);
+    mo?.observe(el, { childList: true, subtree: true, characterData: true });
     return () => {
+      mo?.disconnect();
       el.removeEventListener('scroll', update);
       window.removeEventListener('resize', update);
       ro?.disconnect();

@@ -61,13 +61,16 @@ test('tables that overflow show a scroll cue; Sync leads with a status summary',
 }) => {
   test.setTimeout(180000);
   await setupPosShop(page, 'd6sy');
+  // A narrow phone (about 200% zoom): the seven-column Day book cannot fit.
+  await page.setViewportSize({ width: 260, height: 700 });
   await page.goto('/reports');
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect(page.getByText('Invariant check: PASS')).toBeVisible();
-  // The Day book has seven columns: on a 390px phone it overflows and says so.
+  // The Day book has seven columns: here it overflows and says so.
   await expect(page.getByTestId('scroll-hint').first()).toContainText('Swipe sideways');
   await expect(page.locator('.scroll-table[data-scrollable="true"]').first()).toBeVisible();
 
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/sync');
   await expect(page.getByTestId('sync-headline')).toHaveText('All saved. Nothing waiting.');
   await expect(page.getByTestId('sync-chip-waiting')).toHaveText('0 waiting');
