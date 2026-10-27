@@ -4,7 +4,7 @@
 -- refused to anon and to a caller without POST_PURCHASES. It is read-only.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(13);
+select plan(16);
 insert into auth.users(id) values
  ('e7500000-0000-0000-0000-000000000001'),  -- owner
  ('e7500000-0000-0000-0000-000000000003'),  -- cashier
@@ -47,6 +47,9 @@ select set_config('e75.mid',pg_temp.post('e7500000-0000-4000-8000-000000000002',
 select set_config('e75.tt',pg_temp.post('e7500000-0000-4000-8000-000000000003','t','INV-77',current_date-5,3)::text,false);
 select set_config('e75.vd',pg_temp.post('e7500000-0000-4000-8000-000000000004','s','V-1',current_date-2,6)::text,false);
 select void_purchase(pg_temp.id('vd'),'e75-void-vd');
+select set_config('e75.ws1',pg_temp.post('e7500000-0000-4000-8000-000000000005','s',E'\tWS-1\n',current_date-3,2)::text,false);
+select set_config('e75.ws2',pg_temp.post('e7500000-0000-4000-8000-000000000006','s',E'\u00a0WS-2\u00a0',current_date-3,2)::text,false);
+select set_config('e75.ws3',pg_temp.post('e7500000-0000-4000-8000-000000000007','s',E'WS-3\u00a0 \tX',current_date-3,2)::text,false);
 
 select is(jsonb_array_length(pg_temp.find('s','INV-77',null,null)),1,'a bill number from 400 days ago is found');
 select is(pg_temp.find('s','INV-77',null,null)->0->>'id',pg_temp.id('old')::text,'it is the right bill');
@@ -57,6 +60,9 @@ select is(jsonb_array_length(pg_temp.find('s','',null,null)),0,'a blank number f
 select is(pg_temp.find('s','V-1',null,null)->0->>'status','VOID','a voided copy comes back as VOID');
 select is(jsonb_array_length(pg_temp.find('s',null,4000,current_date-8)),1,'same total within 3 days is found');
 select is(jsonb_array_length(pg_temp.find('s',null,4000,current_date-20)),0,'same total beyond 3 days is not');
+select is(pg_temp.find('s','WS-1',null,null)->0->>'id',pg_temp.id('ws1')::text,'a tab/newline-padded stored number matches the plain one');
+select is(pg_temp.find('s',E'  \u00a0ws-2\t',null,null)->0->>'id',pg_temp.id('ws2')::text,'an NBSP-padded stored number matches a differently padded query');
+select is(pg_temp.find('s',E'ws-3 x',null,null)->0->>'id',pg_temp.id('ws3')::text,'mixed inner whitespace collapses to one space');
 select pg_temp.act('e7500000-0000-0000-0000-000000000003');
 select throws_like($$select pg_temp.find('s','INV-77',null,null)$$,'%not permitted%','a cashier without POST_PURCHASES is refused');
 select pg_temp.act('e7500000-0000-0000-0000-000000000004');

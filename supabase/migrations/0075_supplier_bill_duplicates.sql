@@ -1,8 +1,8 @@
 -- supplierbillsearch: look for a duplicate purchase bill anywhere in a supplier's history, not only the latest 1,000.
 --  * find_supplier_bill_duplicates(shop, supplier, bill_no, total_paise, business_date): read-only lookup for the
 --    purchase entry WARNING (it never blocks or posts anything). Returns at most 20 rows {id, billNo, businessDate,
---    totalPaise, status}: bills of this supplier with the same bill number (trimmed, lower-cased, runs of spaces
---    collapsed -- the same rule the app uses), then, when a date is given, bills with exactly the same total within 3
+--    totalPaise, status}: bills of this supplier with the same bill number (trimmed of ALL whitespace incl. tab, newline,
+--    NBSP and BOM like JavaScript trim(), runs of whitespace collapsed to one space, lower-cased -- exactly the app's rule), then, when a date is given, bills with exactly the same total within 3
 --    days of that date. VOID bills are returned WITH their status so the app can let a VOID copy outrank a stale
 --    cached POSTED copy. Tenant comes from the JWT (phase3_assert_shop); requires POST_PURCHASES.
 --  * purchase_bills_supplier_billno_idx: (tenant, supplier, normalised bill number) so the lookup does not scan the
@@ -10,7 +10,7 @@
 -- No new table, no column, no change to existing rows or policies. Forward-only.
 
 create index purchase_bills_supplier_billno_idx on purchase_bills(
-  tenant_id, party_id, (lower(regexp_replace(btrim(bill_no), '\s+', ' ', 'g'))))
+  tenant_id, party_id, (lower(regexp_replace(regexp_replace(bill_no,'^[\s\ufeff]+|[\s\ufeff]+$','','g'),'[\s\ufeff]+',' ','g'))))
   where deleted_at is null and bill_no is not null;
 
 create function find_supplier_bill_duplicates(p_shop_id uuid,p_party_id uuid,p_bill_no text,p_total_paise bigint,
@@ -21,13 +21,13 @@ begin
  v_tenant:=phase3_assert_shop(p_shop_id);
  if not has_perm('POST_PURCHASES') then raise exception 'not permitted'; end if;
  if p_party_id is null then return '[]'::jsonb; end if;
- v_no:=lower(regexp_replace(btrim(coalesce(p_bill_no,'')),'\s+',' ','g'));
+ v_no:=lower(regexp_replace(regexp_replace(coalesce(p_bill_no,''),'^[\s\ufeff]+|[\s\ufeff]+$','','g'),'[\s\ufeff]+',' ','g'));
  with hits as (
    select b.id,b.bill_no,b.business_date,b.total_paise,b.status,1 as rank
      from purchase_bills b
     where v_no<>'' and b.tenant_id=v_tenant and b.shop_id=p_shop_id and b.party_id=p_party_id and b.deleted_at is null
       and b.bill_no is not null
-      and lower(regexp_replace(btrim(b.bill_no),'\s+',' ','g'))=v_no
+      and lower(regexp_replace(regexp_replace(b.bill_no,'^[\s\ufeff]+|[\s\ufeff]+$','','g'),'[\s\ufeff]+',' ','g'))=v_no
    union all
    select b.id,b.bill_no,b.business_date,b.total_paise,b.status,2
      from purchase_bills b
