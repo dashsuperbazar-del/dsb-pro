@@ -1307,11 +1307,43 @@ if [[ "$offlinesupplierpay" != '0' && "$itemnamelock" != '2' && ! ( "$offlinesup
  echo 'Offline supplier payments (0074) appears ahead of completed itemnamelock. Refusing migration.' >&2; exit 1
 fi
 
+# Supplier bill duplicate search (0075): additive classifier field. 3 anchors, all or nothing.
+supplierbillsearch_probe=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -F' ' <<'SQL'
+do $$ begin
+ create temp table _supplierbillsearch_receipt (present boolean);
+ if to_regclass('public.app_migration_receipts') is not null then
+   insert into _supplierbillsearch_receipt select exists(select 1 from public.app_migration_receipts where version='0075');
+ else insert into _supplierbillsearch_receipt values(false); end if;
+end $$;
+select (select present from _supplierbillsearch_receipt),
+ (select count(*) from (values
+   (exists(select 1 from pg_proc where oid=to_regprocedure('public.find_supplier_bill_duplicates(uuid,uuid,text,bigint,date)') and prosecdef and position('POST_PURCHASES' in prosrc)>0 and position('phase3_assert_shop' in prosrc)>0 and position('between' in prosrc)>0)),
+   (coalesce(has_function_privilege('authenticated',to_regprocedure('public.find_supplier_bill_duplicates(uuid,uuid,text,bigint,date)'),'execute'),false) and not coalesce(has_function_privilege('anon',to_regprocedure('public.find_supplier_bill_duplicates(uuid,uuid,text,bigint,date)'),'execute'),false)),
+   (exists(select 1 from pg_indexes where schemaname='public' and tablename='purchase_bills' and indexname='purchase_bills_supplier_billno_idx' and position('lower' in indexdef)>0 and position('party_id' in indexdef)>0))
+ ) p(ok) where ok);
+SQL
+)
+read -r supplierbillsearch_receipt supplierbillsearch_anchors <<<"$(tail -n 1 <<<"$supplierbillsearch_probe")"
+case "$supplierbillsearch_receipt:$supplierbillsearch_anchors" in
+ f:0) supplierbillsearch=0; needs_supplierbillsearch=true ;;
+ f:3) supplierbillsearch=1; needs_supplierbillsearch=true ;;
+ t:3) supplierbillsearch=2; needs_supplierbillsearch=false ;;
+ *) echo "Supplier bill search (0075) partial/drift state ($supplierbillsearch_receipt/$supplierbillsearch_anchors). Refusing migration." >&2; exit 1 ;;
+esac
+if [[ "$supplierbillsearch" == '2' ]]; then
+ supplierbillsearch_expected=$(sha256sum "$repo_root/supabase/migrations/0075_supplier_bill_duplicates.sql" | cut -d' ' -f1)
+ supplierbillsearch_recorded=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -c "select checksum_sha256 from public.app_migration_receipts where version='0075'")
+ [[ "$supplierbillsearch_expected" == "$supplierbillsearch_recorded" ]] || { echo '0075 receipt checksum mismatch. Refusing migration.' >&2; exit 1; }
+fi
+if [[ "$supplierbillsearch" != '0' && "$offlinesupplierpay" != '2' && ! ( "$supplierbillsearch" == '1' && "$offlinesupplierpay" == '1' ) ]]; then
+ echo 'Supplier bill search (0075) appears ahead of completed offlinesupplierpay. Refusing migration.' >&2; exit 1
+fi
+
 emit_state() {
   local needs_foundation=$1 needs_hardening=$2 needs_phase65=$3 needs_batcha=$4 needs_batchb=$5 needs_p1=$6 needs_p2=$7 needs_c0=$8 needs_c1=$9 needs_c2=${10} needs_c3=${11} needs_c3b=${12} needs_r0=${13} needs_d1=${14} needs_r0b=${15} needs_o1=${16} needs_o2=${17} needs_d2b=${18} needs_d3a=${19}
   local needs_upgrade=true
   if [[ "$needs_foundation:$needs_hardening:$needs_phase65:$needs_batcha:$needs_batchb:$needs_p1:$needs_p2:$needs_c0:$needs_c1:$needs_c2:$needs_c3:$needs_c3b:$needs_r0:$needs_d1:$needs_r0b:$needs_o1:$needs_o2:$needs_d2b:$needs_d3a" == "false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false" ]]; then
-    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" && "$needs_supplierschedule" == "false" && "$needs_partymerge" == "false" && "$needs_itemindex" == "false" && "$needs_billextras" == "false" && "$needs_salepricing" == "false" && "$needs_billedit" == "false" && "$needs_remarks" == "false" && "$needs_remarksfix" == "false" && "$needs_billcode" == "false" && "$needs_backlog" == "false" && "$needs_offlineitems" == "false" && "$needs_offlinebillchange" == "false" && "$needs_itemnamelock" == "false" && "$needs_offlinesupplierpay" == "false" ]]; then needs_upgrade=false; fi
+    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" && "$needs_supplierschedule" == "false" && "$needs_partymerge" == "false" && "$needs_itemindex" == "false" && "$needs_billextras" == "false" && "$needs_salepricing" == "false" && "$needs_billedit" == "false" && "$needs_remarks" == "false" && "$needs_remarksfix" == "false" && "$needs_billcode" == "false" && "$needs_backlog" == "false" && "$needs_offlineitems" == "false" && "$needs_offlinebillchange" == "false" && "$needs_itemnamelock" == "false" && "$needs_offlinesupplierpay" == "false" && "$needs_supplierbillsearch" == "false" ]]; then needs_upgrade=false; fi
   fi
   printf 'observed_state=%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s\n' "$foundation" "$hardening" "$phase65" "$batcha" "$batchb" "$p1" "$p2" "$c0" "$c1" "$c2" "$c3" "$c3b" "$r0" "$d1" "$r0b" "$o1" "$o2" "$d2b" "$d3a"
   printf 'needs_upgrade=%s\n' "$needs_upgrade"
@@ -1368,6 +1400,8 @@ emit_state() {
   printf 'needs_itemnamelock=%s\n' "$needs_itemnamelock"
   printf 'offlinesupplierpay_state=%s\n' "$offlinesupplierpay"
   printf 'needs_offlinesupplierpay=%s\n' "$needs_offlinesupplierpay"
+  printf 'supplierbillsearch_state=%s\n' "$supplierbillsearch"
+  printf 'needs_supplierbillsearch=%s\n' "$needs_supplierbillsearch"
 }
 
 # Legacy (0030-0043) classification is unchanged from before Packet P1: the

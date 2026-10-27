@@ -235,6 +235,7 @@ export {
   getSupplierOutstanding,
   listSupplierBills,
   listSupplierBillsForDuplicateCheck,
+  findSupplierBillDuplicates,
   listSupplierPayments,
   listSupplierAllocations,
   getSupplierLedger,
