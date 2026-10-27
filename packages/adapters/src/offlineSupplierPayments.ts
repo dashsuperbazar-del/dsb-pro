@@ -171,6 +171,8 @@ export function plainOfflineSupplierPaymentRefusal(message: string): string {
       return 'This supplier changed after you saved the payment. Nothing was recorded. Open the supplier and pay again.';
     case 'DSB_FUTURE_DATE':
       return 'The payment date is after today. Nothing was recorded.';
+    case 'DSB_FUTURE_BILL':
+      return 'The payment is dated before a bill it was assigned to. Nothing was recorded. Pay again with a date on or after the bill date.';
     default:
       break;
   }

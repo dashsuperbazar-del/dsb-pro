@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   closeRejectedSupplierPayment,
   getOfflineRuntimeIdentity,
-  getQueuedSupplierPaymentTotals,
   getSavedSupplierPayCopy,
   listOfflineSupplierPayments,
   queueSupplierPaymentOffline,
@@ -19,6 +18,7 @@ import {
   paiseToRupeesText,
   rupeesTextToPaise,
   billLabel,
+  unreflectedPayments,
   type ParsedPayment,
   type PayFormErrors,
 } from '../lib/supplierPayForm';
@@ -34,7 +34,6 @@ import { useUserId } from '../lib/useUserId';
 // are the saved copy: they change only after the server confirms.
 
 const DAY_MS = 86_400_000;
-type Totals = { bySupplier: Record<string, bigint>; byBill: Record<string, bigint> };
 type Prefill = {
   partyId: string;
   amount: string;
@@ -71,7 +70,6 @@ export function PaySupplierPanel() {
   const [copyChecked, setCopyChecked] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
   const [records, setRecords] = useState<OfflineSupplierPaymentRecord[]>([]);
-  const [totals, setTotals] = useState<Totals>({ bySupplier: {}, byBill: {} });
   const [partyId, setPartyId] = useState('');
   const [formKey, setFormKey] = useState(0);
   const [prefill, setPrefill] = useState<Prefill | null>(null);
@@ -97,7 +95,6 @@ export function PaySupplierPanel() {
     if (!shop) return;
     try {
       setRecords(await listOfflineSupplierPayments(shop));
-      setTotals(await getQueuedSupplierPaymentTotals(shop));
     } catch {
       // The device store is not ready yet: the next event reloads.
     }
@@ -173,6 +170,9 @@ export function PaySupplierPanel() {
       allocs,
     };
   }
+  function pendingTotals() {
+    return unreflectedPayments(records, copy?.savedAt ?? 0);
+  }
   function check(form: SavedForm) {
     return checkPayForm({
       supplier,
@@ -182,8 +182,8 @@ export function PaySupplierPanel() {
       dateText: form.date,
       allocTexts: form.allocs,
       businessDate: maxDate,
-      queuedForSupplier: totals.bySupplier[partyId] ?? 0n,
-      queuedByBill: totals.byBill,
+      queuedForSupplier: pendingTotals().bySupplier[partyId] ?? 0n,
+      queuedByBill: pendingTotals().byBill,
     });
   }
   function onReview(e: Event) {
@@ -208,7 +208,7 @@ export function PaySupplierPanel() {
       });
       return;
     }
-    const plan = fifoPlan(supplier, totals.byBill, cents);
+    const plan = fifoPlan(supplier, pendingTotals().byBill, cents);
     for (const b of supplier.bills) {
       const el = allocRefs.current[b.billId];
       if (el) el.value = plan.allocations[b.billId] ?? '';
@@ -318,11 +318,13 @@ export function PaySupplierPanel() {
   ]
     .filter(Boolean)
     .join(' · ');
+  // Left-to-pay limits count everything the saved copy does not reflect: queued payments AND payments synced
+  // since the copy was saved (when the refresh failed the copy still shows the old figures).
+  const pending = pendingTotals();
   const err = errors ?? { allocations: {} };
   const initial = prefill && prefill.partyId === partyId ? prefill : null;
-  const owedLeft = supplier
-    ? BigInt(supplier.owedPaise) - (totals.bySupplier[supplier.partyId] ?? 0n)
-    : 0n;
+  const pendingForSupplier = supplier ? (pending.bySupplier[supplier.partyId] ?? 0n) : 0n;
+  const owedLeft = supplier ? BigInt(supplier.owedPaise) - pendingForSupplier : 0n;
 
   return (
     <section class="pay-supplier" aria-label="Pay supplier" data-testid="pay-supplier">
@@ -393,8 +395,8 @@ export function PaySupplierPanel() {
           {supplier && (
             <p class="muted" data-testid="pay-supplier-owed">
               Owed to {supplier.name}: {rupees(supplier.owedPaise)} as saved
-              {(totals.bySupplier[supplier.partyId] ?? 0n) > 0n &&
-                ` · waiting to sync from this device: ${rupees((totals.bySupplier[supplier.partyId] ?? 0n).toString())} (left to pay ${rupees((owedLeft < 0n ? 0n : owedLeft).toString())})`}
+              {pendingForSupplier > 0n &&
+                ` · saved from this device and not in these figures: ${rupees(pendingForSupplier.toString())} (left to pay ${rupees((owedLeft < 0n ? 0n : owedLeft).toString())})`}
               .
             </p>
           )}
@@ -469,7 +471,7 @@ export function PaySupplierPanel() {
               </button>
               <ul>
                 {supplier.bills.map((b) => {
-                  const left = BigInt(b.outstandingPaise) - (totals.byBill[b.billId] ?? 0n);
+                  const left = BigInt(b.outstandingPaise) - (pending.byBill[b.billId] ?? 0n);
                   return (
                     <li key={b.billId}>
                       <label>
@@ -520,8 +522,8 @@ export function PaySupplierPanel() {
         <div aria-label="Confirm supplier payment" data-testid="pay-review">
           <p>
             Pay <strong>{review.value.partyName}</strong>{' '}
-            <strong>{rupees(review.value.amountPaise)}</strong> by {review.value.mode}
-            {review.value.businessDate ? `, dated ${review.value.businessDate}` : ''}
+            <strong>{rupees(review.value.amountPaise)}</strong> by {review.value.mode}, dated{' '}
+            <strong data-testid="pay-review-date">{review.value.businessDate ?? maxDate}</strong>
             {review.value.reference ? ` (ref ${review.value.reference})` : ''}.
           </p>
           <p>
