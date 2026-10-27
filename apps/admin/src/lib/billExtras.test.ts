@@ -9,7 +9,9 @@ import {
   parsePercentBp,
   pendingImages,
   percentText,
+  pendingPurchaseSummary,
   postButtonText,
+  retryPurchaseText,
   roundOffText,
 } from './billExtras';
 
@@ -135,4 +137,29 @@ test('pending purchases: v1 entries stay v1; photos of either version', () => {
   const v2 = { api: 'v2' as const, shopId: 's', clientId: 'c', lines: [], images: ['a', 'b'] };
   expect(isV2Pending(v2)).toBe(true);
   expect(pendingImages(v2)).toEqual(['a', 'b']);
+});
+
+test('pending purchase summary: total from the frozen request, retry button states the amount', () => {
+  const v2 = {
+    api: 'v2',
+    shopId: 's',
+    clientId: 'c',
+    partyId: 'p',
+    billNo: ' A-1 ',
+    lines: [{ itemId: 'i', unitLevel: 1, qty: '2', unitPricePaise: 5000, gstBp: null }],
+    charges: [{ label: 'Cartage', amountPaise: 2000 }],
+  } as never;
+  const sum = pendingPurchaseSummary(v2);
+  expect(sum).toEqual({ totalPaise: 12000, items: 1, billNo: 'A-1' });
+  expect(retryPurchaseText(false, sum.totalPaise)).toBe('Retry same purchase · ₹120.00');
+  expect(retryPurchaseText(true, 123456)).toBe('Retry same edit · ₹1,234.56');
+  expect(retryPurchaseText(false, null)).toBe('Retry same purchase');
+  const v1 = {
+    shopId: 's',
+    clientId: 'c',
+    businessDate: '2026-10-01',
+    lines: [{ itemId: 'i', unitLevel: 1, qty: '3', unitPricePaise: 1000 }],
+    extraChargesPaise: 500,
+  } as never;
+  expect(pendingPurchaseSummary(v1).totalPaise).toBe(3500);
 });

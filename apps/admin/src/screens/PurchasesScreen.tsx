@@ -284,7 +284,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
       setExtrasError('');
     } else {
       setExtras(null);
-      setExtrasError(`Payment details could not be loaded: ${String(o.extras.e)}`);
+      setExtrasError(`Payment details could not be loaded: ${errorText(o.extras.e)}`);
     }
   }
   // Touch: prefetch only after a ~250 ms hold/pause on a row, never on every scroll touch.

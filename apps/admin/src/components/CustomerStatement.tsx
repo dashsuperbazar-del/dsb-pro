@@ -1,3 +1,4 @@
+import { errorText } from '../lib/friendlyError';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { getShopSettings, readCustomerLedgerForStatement } from '@dsb-pro/adapters';
 import { rupees } from '../lib/money';
@@ -78,7 +79,7 @@ export function CustomerStatement({
         ),
       );
     } catch (e) {
-      if (request === generation.current && current.current === key) setError(String(e));
+      if (request === generation.current && current.current === key) setError(errorText(e));
     } finally {
       if (request === generation.current && current.current === key) setBusy(false);
     }

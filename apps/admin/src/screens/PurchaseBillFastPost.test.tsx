@@ -180,7 +180,7 @@ test('a failed stock reload is still reported, after the bill was announced as p
   await vi.waitFor(() => expect(gates).toHaveLength(1));
   expect(host.textContent).toContain('Updating stock…');
   await act(async () => gates[0]!.fail(new Error('network down')));
-  await vi.waitFor(() => expect(host.textContent).toContain('Refresh failed: Error: network down'));
+  await vi.waitFor(() => expect(host.textContent).toContain('Refresh failed: network down'));
   expect(host.textContent).toContain('Purchase posted (1 item) and stock updated.');
 });
 

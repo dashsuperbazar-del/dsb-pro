@@ -1,3 +1,4 @@
+import { errorText } from '../lib/friendlyError';
 import { formatQuantity } from '@dsb-pro/core';
 import { useEffect, useState } from 'preact/hooks';
 import { listItemPurchasePrices, type ItemPurchasePrice, type Party } from '@dsb-pro/adapters';
@@ -21,7 +22,7 @@ export function PriceHistory(props: {
     if (!shopId || !itemId) return;
     listItemPurchasePrices(shopId, itemId).then(
       (r) => alive && setRows(r),
-      (e) => alive && setError(e instanceof Error ? e.message : String(e)),
+      (e) => alive && setError(errorText(e)),
     );
     return () => {
       alive = false;

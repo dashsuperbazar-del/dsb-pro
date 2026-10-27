@@ -1,3 +1,4 @@
+import { errorText } from '../lib/friendlyError';
 import { useEffect, useState } from 'preact/hooks';
 import {
   getSettlementOptions,
@@ -45,7 +46,7 @@ export function OpeningSettlements(props: {
     } else if (!saved.ok) setMsg(saved.message);
   }, [shop]);
   useEffect(() => {
-    if (shop) load().catch((e) => setMsg(String(e)));
+    if (shop) load().catch((e) => setMsg(errorText(e)));
   }, [shop, version]);
 
   const opening = opts?.openings.find((o) => o.id === openingId);

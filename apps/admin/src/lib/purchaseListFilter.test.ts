@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filterBills, listBadge } from './purchaseListFilter';
+import { filterBills, filterSummaryText, listBadge } from './purchaseListFilter';
 
 const bill = (id: string, date: string, status: 'POSTED' | 'VOID') =>
   ({ id, business_date: date, status }) as never;
@@ -33,5 +33,30 @@ describe('filterBills', () => {
     expect(listBadge(map.get('a'))).toBe('Paid');
     expect(listBadge(map.get('b'))).toBe('Void');
     expect(listBadge(undefined)).toBeNull();
+  });
+  it('credit is Owed, part-paid is Part paid', () => {
+    expect(listBadge({ status: 'unpaid' } as never)).toBe('Owed');
+    expect(listBadge({ status: 'partial' } as never)).toBe('Part paid');
+  });
+  it('summarises the active filters in one short line', () => {
+    const none = {
+      supplierName: null,
+      status: 'all',
+      sort: 'date',
+      from: '',
+      to: '',
+      showVoided: false,
+    };
+    expect(filterSummaryText(none)).toBe('All bills');
+    expect(
+      filterSummaryText({
+        ...none,
+        supplierName: 'Acme',
+        status: 'unpaid',
+        from: '2026-10-01',
+        to: '2026-10-20',
+      }),
+    ).toBe('Acme · Owed · 2026-10-01 to 2026-10-20');
+    expect(filterSummaryText({ ...none, showVoided: true })).toBe('Voided shown');
   });
 });

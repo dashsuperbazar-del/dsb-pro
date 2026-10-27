@@ -225,10 +225,10 @@ async function openCash(role: string, x: unknown, d: unknown = cashDetail) {
     expect(host.querySelector('[aria-label="Purchase detail"]')).not.toBeNull(),
   );
 }
-test('paid badge comes from the settlement: a cash bill whose payment was voided reads Unpaid', async () => {
+test('paid badge comes from the settlement: a cash bill whose payment was voided reads Owed', async () => {
   await openCash('owner', extras('unpaid'));
   await vi.waitFor(() =>
-    expect(host.querySelector('[data-testid="settlement-badge"]')?.textContent).toBe('Unpaid'),
+    expect(host.querySelector('[data-testid="settlement-badge"]')?.textContent).toBe('Owed'),
   );
   const detail = host.querySelector('[aria-label="Purchase detail"]')!.textContent!;
   expect(detail).toContain('Cash bill');
@@ -239,7 +239,7 @@ test('paid badge comes from the settlement: a cash bill whose payment was voided
   await act(async () => render(null, host));
   await openCash('owner', extras('settled'));
   await vi.waitFor(() =>
-    expect(host.querySelector('[data-testid="settlement-badge"]')?.textContent).toBe('Settled'),
+    expect(host.querySelector('[data-testid="settlement-badge"]')?.textContent).toBe('Paid'),
   );
   // Extras that cannot be read say so (never guessed from the payment type).
   await act(async () => render(null, host));
@@ -375,7 +375,7 @@ test('role gating: an accountant cannot void a credit bill; a manager can', asyn
   await vi.waitFor(() => expect(host.textContent).toContain('Edit bill'));
 });
 
-test('list shows Paid/Partial/Unpaid/Void from the ledger and filters by it', async () => {
+test('list shows Paid/Part paid/Owed/Void from the ledger and filters by it', async () => {
   const { clearSnapshots } = await import('../lib/routeSnapshot');
   clearSnapshots();
   shopContext.invalidate();
@@ -394,7 +394,7 @@ test('list shows Paid/Partial/Unpaid/Void from the ledger and filters by it', as
   await vi.waitFor(() =>
     expect(
       [...host.querySelectorAll('[data-testid="list-settlement"]')].map((e) => e.textContent),
-    ).toEqual(['Paid', 'Unpaid']),
+    ).toEqual(['Paid', 'Owed']),
   );
   const select = [...host.querySelectorAll('select')].find((s) =>
     [...s.options].some((o) => o.value === 'unpaid'),
@@ -557,8 +557,8 @@ test('bill codes: the list shows them, search finds a bill by its code (case, da
     render(<PurchasesScreen url="/purchases" />, host);
   });
   await vi.waitFor(() => expect(host.textContent).toContain('OLD-3'));
-  // A bill with no supplier bill no. is named by its code, never by a raw id; both show when both exist.
-  expect(host.textContent).toContain('SUP-1 · K7M2-QX9P');
+  // A bill with no supplier bill no. is named by its code, never by a raw id; with a bill no. the code stays in the detail (still searchable).
+  expect(host.textContent).toContain('SUP-1 · 2026');
   expect(host.textContent).toContain('ZZ4W-HH8N');
   const search = host.querySelector<HTMLInputElement>('.search-field input')!;
   const type = async (value: string) => {

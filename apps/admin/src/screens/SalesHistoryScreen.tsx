@@ -1,3 +1,4 @@
+import { errorText } from '../lib/friendlyError';
 import { formatQuantity } from '@dsb-pro/core';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { hiddenNote, hideVoided, loadShowVoided, saveShowVoided } from '../lib/voidedVisibility';
@@ -95,7 +96,7 @@ export function SalesHistoryScreen() {
     const saleParam = new URLSearchParams(window.location.search).get('sale');
     void refresh()
       .then(() => (saleParam ? viewSale(saleParam) : undefined))
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(errorText(e)));
     void listCustomers()
       .then(setCustomers)
       .catch(() => undefined);
@@ -118,7 +119,7 @@ export function SalesHistoryScreen() {
     try {
       setViewing(await getSaleReceipt(id));
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -134,7 +135,7 @@ export function SalesHistoryScreen() {
       setReceipt(r);
       setTimeout(() => window.print(), 50);
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -154,7 +155,7 @@ export function SalesHistoryScreen() {
       await refresh();
       if (receipt?.invoice.id === sale.id) setReceipt(null);
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -167,7 +168,7 @@ export function SalesHistoryScreen() {
     try {
       await loadReport(shopId, reportDate);
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   }
   async function compareLegacyBackup(ev: Event) {
@@ -190,7 +191,7 @@ export function SalesHistoryScreen() {
       setLegacyComparison(comparison);
       setLegacyCompareFile(file.name);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorText(e));
     }
   }
 

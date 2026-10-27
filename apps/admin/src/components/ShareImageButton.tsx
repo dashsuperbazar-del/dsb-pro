@@ -1,3 +1,4 @@
+import { errorText } from '../lib/friendlyError';
 import { useState } from 'preact/hooks';
 import { shareReceiptImage, whatsappLink, type ReceiptDoc } from '../lib/shareImage';
 
@@ -30,7 +31,7 @@ export function ShareImageButton({
         setLink(whatsappLink(doc.phone, doc.summary));
       }
     } catch (e) {
-      setError(`The image could not be shared: ${e instanceof Error ? e.message : String(e)}`);
+      setError(`The image could not be shared: ${errorText(e)}`);
     } finally {
       setBusy(false);
     }

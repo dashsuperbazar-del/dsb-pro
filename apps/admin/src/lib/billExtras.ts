@@ -195,24 +195,26 @@ export function pendingPurchaseSummary(p: PendingPurchase): {
   items: number;
   billNo: string | null;
 } {
-  let totalPaise: number | null = null;
-  try {
-    totalPaise = isV2Pending(p)
-      ? purchaseBillTotals({
-          lines: p.lines,
-          discountPaise: p.discountPaise ?? 0,
-          charges: p.charges ?? [],
-        }).totalPaise
-      : purchaseBillTotals({
-          lines: p.lines,
-          discountPaise: p.discountPaise ?? 0,
-          charges: p.extraChargesPaise
-            ? [{ label: 'Extra', amountPaise: p.extraChargesPaise }]
-            : [],
-        }).totalBeforeRoundOffPaise;
-  } catch {
-    totalPaise = null;
-  }
+  const total = (): number | null => {
+    try {
+      return isV2Pending(p)
+        ? purchaseBillTotals({
+            lines: p.lines,
+            discountPaise: p.discountPaise ?? 0,
+            charges: p.charges ?? [],
+          }).totalPaise
+        : purchaseBillTotals({
+            lines: p.lines,
+            discountPaise: p.discountPaise ?? 0,
+            charges: p.extraChargesPaise
+              ? [{ label: 'Extra', amountPaise: p.extraChargesPaise }]
+              : [],
+          }).totalBeforeRoundOffPaise;
+    } catch {
+      return null;
+    }
+  };
+  const totalPaise = total();
   return { totalPaise, items: p.lines.length, billNo: p.billNo?.trim() || null };
 }
 

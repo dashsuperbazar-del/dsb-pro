@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { friendlyError } from './friendlyError';
+import { errorText, friendlyError } from './friendlyError';
 
 describe('friendlyError', () => {
   it('maps a known server code to plain wording and keeps the code for support', () => {
@@ -29,5 +29,13 @@ describe('friendlyError', () => {
       'Barcode item is unavailable.',
     );
     expect(friendlyError('').text).not.toBe('');
+  });
+  it('never prints "[object Object]" for a bare object, and errorText is the sentence only', () => {
+    expect(errorText({})).not.toMatch(/object Object/);
+    expect(errorText({ code: '23505' })).not.toMatch(/object Object/);
+    expect(errorText({ details: 'Key (name) already exists.' })).toBe('Key (name) already exists.');
+    expect(errorText(new Error('DSB_FUTURE_DATE: x'))).toMatch(/future/);
+    expect(errorText(new Error('boom'))).toBe('boom');
+    expect(errorText({})).toBe('Something went wrong. Please try again.');
   });
 });

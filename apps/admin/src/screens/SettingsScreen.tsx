@@ -1,3 +1,4 @@
+import { errorText } from '../lib/friendlyError';
 import { useEffect, useState } from 'preact/hooks';
 import {
   getCurrentMembership,
@@ -103,7 +104,7 @@ export function SettingsScreen() {
     setLoaded(true);
   }
   useEffect(() => {
-    void refresh().catch((e) => setError(String(e)));
+    void refresh().catch((e) => setError(errorText(e)));
   }, []);
 
   async function saveProfile(ev: Event) {
@@ -133,7 +134,7 @@ export function SettingsScreen() {
       });
       setMessage('Shop settings saved.');
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }

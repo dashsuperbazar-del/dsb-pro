@@ -1,3 +1,4 @@
+import { errorText } from '../lib/friendlyError';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   getDayBook,
@@ -86,7 +87,7 @@ export function ExpensesScreen() {
         setMsg('An earlier expense was not confirmed. Press "Retry same expense" to finish it.');
       }
       await load(s, d);
-    })().catch((e) => setMsg(String(e)));
+    })().catch((e) => setMsg(errorText(e)));
   }, []);
 
   async function submit(e: Event) {
