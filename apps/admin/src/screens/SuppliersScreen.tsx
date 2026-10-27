@@ -535,14 +535,20 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
                     </strong>
                   </p>
                   <p class="muted supplier-meta">
-                    {last ? `Last bill ${last} · ` : ''}
-                    Open bills {rupees(s.grossOpenBills)}
-                    {BigInt(s.unallocatedCashAdvances) > 0n
-                      ? ` · Advance ${rupees(s.unallocatedCashAdvances)}`
-                      : ''}
-                    {BigInt(s.returnCredits) > 0n
-                      ? ` · Return credits ${rupees(s.returnCredits)}`
-                      : ''}
+                    {[
+                      last ? `Last bill ${last}` : '',
+                      s.grossOpenBills !== s.netLedgerBalance
+                        ? `Open bills ${rupees(s.grossOpenBills)}`
+                        : '',
+                      BigInt(s.unallocatedCashAdvances) > 0n
+                        ? `Advance ${rupees(s.unallocatedCashAdvances)}`
+                        : '',
+                      BigInt(s.returnCredits) > 0n
+                        ? `Return credits ${rupees(s.returnCredits)}`
+                        : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
                   </p>
                   {s.strandedAllocationsOnVoidBills > 0 && (
                     <p class="alert">
