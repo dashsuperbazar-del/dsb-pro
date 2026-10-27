@@ -1,0 +1,268 @@
+/* D6: sales history cards, scrolling tables with a cue, Sync summary, form layout. Tokens only.
+   Loaded with the rarely used screens chunk, after the main styles. */
+
+/* Tables that scroll sideways: edge fades + a hint. */
+.scroll-table {
+  position: relative;
+}
+.scroll-table > .table-wrap {
+  max-height: none;
+}
+.scroll-table.fade-right::after,
+.scroll-table.fade-left::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 22px;
+  width: 28px;
+  pointer-events: none;
+  z-index: 2;
+}
+.scroll-table.fade-right::after {
+  right: 0;
+  background: linear-gradient(to right, transparent, var(--surface));
+}
+.scroll-table.fade-left::before {
+  left: 0;
+  background: linear-gradient(to left, transparent, var(--surface));
+}
+.scroll-hint {
+  margin: 0;
+  padding-top: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  text-align: right;
+}
+.table-wrap td.num,
+.table-wrap th.num,
+.num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Money that is negative reads red; never on a success panel. */
+.money-negative {
+  color: var(--money-negative);
+}
+
+/* More menu. */
+.more-menu {
+  position: relative;
+  display: inline-block;
+}
+.more-menu-button {
+  min-height: var(--touch);
+  min-width: 64px;
+}
+.more-menu-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  display: grid;
+  min-width: 190px;
+  padding: var(--space-1);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+.more-menu-list button {
+  justify-content: flex-start;
+  text-align: left;
+  min-height: var(--touch);
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  white-space: nowrap;
+}
+.more-menu-list button:hover:not(:disabled) {
+  background: var(--surface-sunken);
+}
+.more-menu-list button.danger {
+  color: var(--danger);
+  border-top: 1px solid var(--border);
+  margin-top: var(--space-1);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+}
+
+/* Sales history list: a card per invoice on a phone. */
+.sale-actions {
+  white-space: nowrap;
+}
+.sale-actions > div {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+.sale-code {
+  display: block;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+@media (max-width: 640px) {
+  .sales-cards .table-wrap {
+    overflow: visible;
+    max-height: none;
+  }
+  .sales-cards table,
+  .sales-cards tbody {
+    display: block;
+  }
+  .sales-cards thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .sales-cards tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-1) var(--space-3);
+    margin-bottom: var(--space-2);
+    padding: var(--space-3);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+  }
+  .sales-cards tbody tr:hover td {
+    background: transparent;
+  }
+  .sales-cards td {
+    display: block;
+    border: 0;
+    padding: 0;
+    min-width: 0;
+  }
+  .sales-cards .sale-inv {
+    font-weight: var(--weight-bold);
+    overflow-wrap: anywhere;
+  }
+  .sales-cards .sale-total {
+    text-align: right;
+    font-weight: var(--weight-bold);
+    font-size: var(--text-lg);
+  }
+  .sales-cards .sale-date {
+    color: var(--text-muted);
+    font-size: var(--text-md);
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .sales-cards .sale-status {
+    text-align: right;
+  }
+  .sales-cards .sale-actions {
+    grid-column: 1 / -1;
+    padding-top: var(--space-2);
+  }
+  .sales-cards .sale-actions > div {
+    justify-content: space-between;
+  }
+  .sales-cards .sale-actions > div > button:first-child {
+    flex: 1 1 auto;
+  }
+}
+
+/* Sync: plain status summary on top. */
+.sync-summary {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  margin-bottom: var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.sync-summary h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+.sync-summary .sync-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.sync-summary.attention {
+  border-color: var(--danger-border);
+}
+.sync-summary.waiting {
+  border-color: var(--warning-border);
+}
+.sync-details-grid dt {
+  font-weight: var(--weight-semibold);
+}
+.sync-details-grid dd {
+  margin: 0 0 var(--space-2);
+}
+
+/* Forms that fill the card width (Expenses). */
+.wide-form,
+.wide-form fieldset {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.wide-form input,
+.wide-form select {
+  width: 100%;
+}
+@media (min-width: 700px) {
+  .wide-form fieldset {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.money-first {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-3) var(--space-4);
+  margin: 0 0 var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.money-first .money-first-label {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.money-first .money-first-value {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/* Date filter bar (Reports): one calm row of labelled fields. */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3);
+  margin: 0 0 var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.filter-bar label {
+  display: grid;
+  gap: 2px;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  min-width: 130px;
+  flex: 1 1 130px;
+}
+.filter-bar input[type='date'] {
+  width: 100%;
+}
