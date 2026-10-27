@@ -36,6 +36,10 @@ export async function createTenant(shopName: string): Promise<string> {
 // Home mounts several readers at once; they share ONE lookup while it is in flight (never cached after it
 // settles, so a changed default shop is always re-read by the next caller).
 let defaultShopInFlight: Promise<string> | null = null;
+/** A different user must never reuse another user's in-flight lookup: called on user change / sign-out. */
+export function resetDefaultShopInFlight(): void {
+  defaultShopInFlight = null;
+}
 export function getDefaultShopId(): Promise<string> {
   if (defaultShopInFlight) return defaultShopInFlight;
   const p = (async () => {

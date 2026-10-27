@@ -26,7 +26,7 @@ async function precacheShell() {
   if (!response.ok) throw new Error('Unable to fetch app shell');
   const html = await response.clone().text();
 
-  const refs = [...html.matchAll(/(?:src|href)="([^"]+)"/g)]
+  const refs = [...html.matchAll(/<(?:script|link)\b[^>]*?\b(?:src|href)="([^"]+)"/g)]
     .map((match) => new URL(match[1], scopeRoot))
     .filter((url) => url.origin === self.location.origin)
     .map((url) => url.toString());

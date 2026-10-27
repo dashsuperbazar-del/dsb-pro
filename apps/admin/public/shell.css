@@ -53,3 +53,29 @@ body {
     animation: none;
   }
 }
+/* Bounded fallback without script (CSP): if the app has not replaced this shell after ~12 s, say so. */
+#boot-shell .slow {
+  margin: 16px;
+  color: #3a433e;
+  opacity: 0;
+  animation: boot-slow 0.3s ease 12s forwards;
+  pointer-events: none;
+}
+#boot-shell .slow a {
+  color: #0f6b4f;
+  font-weight: 700;
+}
+@keyframes boot-slow {
+  to {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+@media (prefers-color-scheme: dark) {
+  #boot-shell .slow {
+    color: #c8d2cc;
+  }
+  #boot-shell .slow a {
+    color: #4cc497;
+  }
+}

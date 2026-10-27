@@ -88,7 +88,10 @@ export function App() {
       {session.status === 'active' && session.membership.role !== 'cashier' && (
         <div class="health-container no-print">
           <HealthPanel
-            canAdjustStock={['owner', 'manager'].includes(session.membership.role)}
+            canAdjustStock={
+              ['owner', 'manager'].includes(session.membership.role) &&
+              (session.verified || session.offline)
+            }
             quiet={isCounterEntryPath(currentPath)}
           />
         </div>
@@ -252,9 +255,10 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
         <details class="card shop-tools">
           <summary>Shop management</summary>
           <nav class="management-links" aria-label="Shop management">
-            {['owner', 'manager'].includes(session.membership.role) && (
-              <a href={appRoute.stockAdjust}>Stock adjust</a>
-            )}
+            {['owner', 'manager'].includes(session.membership.role) &&
+              (session.verified || session.offline) && (
+                <a href={appRoute.stockAdjust}>Stock adjust</a>
+              )}
             <a href={appRoute.team}>Team</a>
             <a href={appRoute.devices}>Devices</a>
             <a href={appRoute.settings}>Settings</a>

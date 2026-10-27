@@ -202,12 +202,21 @@ export async function waitForOfflineRuntime(timeoutMs = 30000): Promise<void> {
   });
 }
 
+// Start token: every start/stop bumps it, and a start that was superseded while it awaited (database open,
+// recovery) installs nothing, so only ONE loop (interval + realtime + listeners) can ever exist.
+let startGeneration = 0;
+// The old runtime's cycle may still be sending when it is stopped; a new start waits for it before
+// recovering "interrupted" outbox entries, so an entry still in flight is never mistaken for a crashed one.
+let draining: Promise<void> | null = null;
+
 export async function startOfflineSync(input: {
   userId: string;
   membership: Membership;
 }): Promise<void> {
   const deviceId = getOrCreateDeviceId();
+  const generation = ++startGeneration;
   const shopId = input.membership.shopIds[0] ?? (await getDefaultShopId());
+  if (generation !== startGeneration) return;
   const identity: SyncIdentity = {
     userId: input.userId,
     tenantId: input.membership.tenantId,
@@ -220,15 +229,35 @@ export async function startOfflineSync(input: {
     runtime.identity.userId === identity.userId &&
     runtime.identity.tenantId === identity.tenantId &&
     runtime.identity.deviceId === identity.deviceId
-  )
+  ) {
+    // Same user/shop group/device: the running loop stays; only the role and shop are updated in place
+    // (the server may confirm a different role than the cached one this session opened with). A demotion
+    // to cashier removes a formerly authorized cost cache right away.
+    const rt = runtime;
+    rt.identity = { ...rt.identity, role: identity.role, shopId: identity.shopId };
+    if (identity.role === 'cashier') await restrictCachedCostPrices(rt.db);
+    emit();
     return;
+  }
   stopOfflineSync();
+  startGeneration = generation; // stopOfflineSync bumps it; this start is still the current one
+  const superseded = () => generation !== startGeneration;
   const db = await openSyncDb(identity);
+  if (superseded()) {
+    return;
+  }
   // A role downgrade must remove a formerly authorized cost cache even when
   // this device starts offline and cannot yet receive the server capability.
   if (identity.role === 'cashier') await restrictCachedCostPrices(db);
+  if (draining) await draining.catch(() => undefined);
+  if (superseded()) {
+    return;
+  }
   await recoverInterruptedOutbox(db);
   await recoverInterruptedAttempts(db);
+  if (superseded()) {
+    return;
+  }
   runtime = {
     identity,
     db,
@@ -258,7 +287,9 @@ function offlineHandler() {
   emit();
 }
 export function stopOfflineSync() {
+  startGeneration++; // supersedes any start still awaiting
   if (!runtime) return;
+  draining = runtime.running;
   window.clearInterval(runtime.timer);
   runtime.unsubscribeRealtime?.();
   window.removeEventListener('online', onlineHandler);
@@ -269,6 +300,7 @@ export function stopOfflineSync() {
 
 async function processOutbox(rt: Runtime) {
   for (let guard = 0; guard < 100; guard++) {
+    if (runtime !== rt) return false; // stopped: never send another entry for a runtime that is gone
     const rows = await rt.db.outbox.orderBy('sequence').toArray();
     const next = nextOutboxEntry(rows, Date.now());
     // An unknown-outcome operation may already have committed at the server.
@@ -587,7 +619,9 @@ export async function runSyncNow(): Promise<void> {
           'Authentication session is unavailable. Sign in again before syncing queued work.',
         );
       if (!(await processOutbox(rt))) return;
+      if (runtime !== rt) return;
       const nextCursors = await pullAllPages(rt);
+      if (runtime !== rt) return;
       await ackSync({ deviceId: rt.identity.deviceId, cursors: nextCursors });
       rt.syncedOnce = true;
       rt.lastGoodCycleStartedAt = startedAt;

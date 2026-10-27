@@ -4,6 +4,7 @@ import {
   onAuthStateChange,
   getCurrentMembership,
   registerCurrentDevice,
+  resetDefaultShopInFlight,
   classifyError,
   errorMessage,
   type Session,
@@ -16,11 +17,35 @@ export type SessionState =
   | { status: 'signed-out' }
   | { status: 'error'; message: string }
   | { status: 'no-tenant'; session: Session }
-  | { status: 'active'; session: Session; membership: Membership; offline: boolean };
+  | {
+      status: 'active';
+      session: Session;
+      membership: Membership;
+      offline: boolean;
+      /** False while the app is open on the CACHED membership and the server has not answered yet. */
+      verified: boolean;
+    };
 
 class DeviceRevoked extends Error {}
 
-export function useSession(): SessionState {
+/**
+ * requireVerified: owner-only/write screens (Team, Devices, Audit log) stay on "loading" while online until
+ * the server has confirmed the membership, so a role changed server-side never shows owner controls.
+ */
+export function useSession(options: { requireVerified?: boolean } = {}): SessionState {
+  const raw = useSessionState();
+  if (
+    options.requireVerified &&
+    raw.status === 'active' &&
+    !raw.verified &&
+    !raw.offline &&
+    (typeof navigator === 'undefined' || navigator.onLine)
+  )
+    return { status: 'loading' };
+  return raw;
+}
+
+function useSessionState(): SessionState {
   const [state, setState] = useState<SessionState>({ status: 'loading' });
 
   useEffect(() => {
@@ -34,6 +59,7 @@ export function useSession(): SessionState {
       setState((prev) =>
         prev.status === 'active' &&
         prev.offline === next.offline &&
+        prev.verified === next.verified &&
         prev.session.user.id === next.session.user.id &&
         prev.membership.tenantId === next.membership.tenantId &&
         prev.membership.role === next.membership.role &&
@@ -44,14 +70,21 @@ export function useSession(): SessionState {
     }
 
     // The two start-up resolutions (getSession + the first auth event) share one membership read.
-    let membershipInFlight: ReturnType<typeof getCurrentMembership> | null = null;
-    function readMembership() {
-      const p = (membershipInFlight ??= getCurrentMembership());
-      void p.then(
-        () => (membershipInFlight = null),
-        () => (membershipInFlight = null),
-      );
-      return p;
+    // Keyed on the user: a different user (A signs out, B signs in) never reuses another user's read.
+    let membershipInFlight: {
+      userId: string;
+      promise: ReturnType<typeof getCurrentMembership>;
+    } | null = null;
+    function readMembership(userId: string) {
+      if (membershipInFlight?.userId !== userId) {
+        const entry = { userId, promise: getCurrentMembership() };
+        membershipInFlight = entry;
+        const clear = () => {
+          if (membershipInFlight === entry) membershipInFlight = null;
+        };
+        entry.promise.then(clear, clear);
+      }
+      return membershipInFlight!.promise;
     }
 
     function setError(error: unknown, context: string, id: number) {
@@ -64,6 +97,8 @@ export function useSession(): SessionState {
     async function resolve(session: Session | null) {
       const id = ++resolutionId;
       if (!session) {
+        membershipInFlight = null;
+        resetDefaultShopInFlight();
         if (!cancelled && id === resolutionId) setState({ status: 'signed-out' });
         return;
       }
@@ -74,6 +109,7 @@ export function useSession(): SessionState {
       // device still stops with the same error. Every write/read is still authorised by the server (RLS).
       let registration: Promise<void> = Promise.resolve();
       if (registeredForUserId !== session.user.id) {
+        resetDefaultShopInFlight();
         registeredForUserId = session.user.id;
         registration = registerCurrentDevice().then(
           () => undefined,
@@ -96,9 +132,10 @@ export function useSession(): SessionState {
             shopIds: cachedNow.shopIds,
           },
           offline: false,
+          verified: false,
         });
       }
-      const membershipRead = readMembership().then(
+      const membershipRead = readMembership(session.user.id).then(
         (value) => ({ value }) as const,
         (error: unknown) => ({ error }) as const,
       );
@@ -126,7 +163,7 @@ export function useSession(): SessionState {
             role: membership.role,
             shopIds: membership.shopIds,
           });
-          setActive({ status: 'active', session, membership, offline: false });
+          setActive({ status: 'active', session, membership, offline: false, verified: true });
         } else setState({ status: 'no-tenant', session });
       } catch (error) {
         const errorClass = classifyError(error);
@@ -138,6 +175,7 @@ export function useSession(): SessionState {
               session,
               membership: { tenantId: cached.tenantId, role: cached.role, shopIds: cached.shopIds },
               offline: true,
+              verified: false,
             });
             return;
           }

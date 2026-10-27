@@ -32,8 +32,18 @@ if ('serviceWorker' in navigator) {
     if (ric) ric(registerServiceWorker, { timeout: 4000 });
     else window.setTimeout(registerServiceWorker, 2000);
   };
+  // A hung asset must not delay offline readiness: wait for `load` at most 5 s, then go idle anyway.
   if (document.readyState === 'complete') whenIdle();
-  else window.addEventListener('load', whenIdle);
+  else {
+    let done = false;
+    const go = () => {
+      if (done) return;
+      done = true;
+      whenIdle();
+    };
+    window.addEventListener('load', go);
+    window.setTimeout(go, 5000);
+  }
 }
 
 render(<App />, document.getElementById('app')!);
