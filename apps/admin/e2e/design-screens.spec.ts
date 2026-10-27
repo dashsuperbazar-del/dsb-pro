@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { addByTap } from './pos-shop-setup';
 import { addItemForm, stockTask, fillBillItem } from './design-helpers';
 // D1 design evidence: the main screens at phone and desktop size, light and dark. Screenshots only;
 // every assertion here is a page-load wait, not a behaviour check (those live in the other specs).
@@ -99,12 +100,7 @@ test('design screenshots: main screens, phone + desktop, light + dark', async ({
           s.name === '02-pos' &&
           !(await page.locator('.pos-cart').textContent())?.includes('Basmati')
         ) {
-          await page
-            .getByLabel('Item', { exact: true })
-            .selectOption({ label: 'Basmati rice 1kg' });
-          await page.getByLabel('Quantity', { exact: true }).fill('2');
-          await page.getByRole('button', { name: 'Add item', exact: true }).click();
-          await expect(page.locator('.pos-cart')).toContainText('Basmati rice 1kg');
+          await addByTap(page, 'Basmati rice 1kg', '2');
         }
         await page.waitForTimeout(400);
         const file = `d1-${s.name}-${theme}-${vp.name}.png`;

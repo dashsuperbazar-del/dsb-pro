@@ -101,7 +101,7 @@ test.describe('Phase 6 production-scale performance gate', () => {
     const startSearch = performance.now();
     await search.fill('09999');
     await expect(
-      page.getByLabel('Item').locator('option').filter({ hasText: 'Performance Item 09999' }),
+      page.locator('.pick-row').filter({ hasText: 'Performance Item 09999' }),
     ).toHaveCount(1);
     const searchMs = performance.now() - startSearch;
     console.log(`PERF billing_search_ms value=${searchMs.toFixed(1)}`);

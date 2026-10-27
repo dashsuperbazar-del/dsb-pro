@@ -1,6 +1,7 @@
 // salepricing (0065): typed sale prices, "save as sale price", cashier refusal, manager override,
 // GST-extra invoice and the customer credit limit warning/override, through the real POS and PostgREST.
 import { test, expect, type Browser, type Page } from '@playwright/test';
+import { addByTap } from './pos-shop-setup';
 import pg from 'pg';
 import {
   addCustomerForm,
@@ -74,11 +75,7 @@ async function stockedItem(page: Page, name: string) {
 }
 
 async function addToCart(page: Page, name: string) {
-  await page.getByLabel('Find product').fill(name);
-  await expect(page.getByLabel('Item').locator('option')).toHaveCount(2);
-  await page.getByLabel('Item').selectOption({ index: 1 });
-  await page.getByLabel('Quantity').fill('1');
-  await page.getByRole('button', { name: 'Add item', exact: true }).click();
+  await addByTap(page, name);
 }
 
 async function finalizePaid(page: Page, rupees: string) {

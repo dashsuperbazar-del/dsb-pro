@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { setupPosShop, addToCart, toPayment } from './pos-shop-setup';
+import { setupPosShop, addToCart, toPayment, addByTap } from './pos-shop-setup';
 // D4 "Counter: POS sell + pay": the sale-done card (online and saved on the device), the error shown
 // directly above the Finalize bar, the Amount field above that bar, no barcode autofocus on a phone,
 // secondary blocks closed on a phone, no sideways scroll at 200% zoom, no health strip on the POS.
@@ -18,7 +18,7 @@ const doneCard = (page: Page) => page.getByRole('region', { name: 'Sale done' })
 async function openPos(page: Page) {
   await page.goto('/pos');
   await expect(page.getByRole('heading', { name: 'Sales POS', exact: true })).toBeVisible();
-  await expect(page.getByLabel('Item', { exact: true })).toBeEnabled();
+  await expect(page.locator('.pick-list')).toBeVisible();
 }
 
 test('sale done card (online): total, paid, credit balance, invoice, bill code, print, share, new sale', async ({
@@ -173,7 +173,7 @@ test.describe('phone', () => {
     await expect(row('Customer payment / advance')).toHaveAttribute('aria-expanded', 'true');
     await expect(page.getByRole('button', { name: 'Record payment' })).toBeVisible();
     await page.reload();
-    await expect(page.getByLabel('Item', { exact: true })).toBeEnabled();
+    await expect(page.locator('.pick-list')).toBeVisible();
     await expect(row('Customer payment / advance')).toHaveAttribute('aria-expanded', 'true');
     await expect(row('Bill options')).toHaveAttribute('aria-expanded', 'false');
     // Something that needs a look keeps the block open: GST added on top.
@@ -261,16 +261,13 @@ test('a typed quantity and line discount survive a redraw of the page, then rese
   await setupPosShop(page, 'd4-redraw');
   await page.setViewportSize({ width: 1366, height: 768 });
   await openPos(page);
-  await page.getByLabel('Item', { exact: true }).selectOption({ label: 'Basmati rice 1kg' });
-  await page.getByLabel('Quantity', { exact: true }).fill('5');
-  await page.getByLabel('Discount ₹', { exact: true }).fill('3');
+  await addByTap(page, 'Basmati rice 1kg');
+  await page.getByLabel('Cart qty for Basmati rice 1kg').fill('5');
+  await page.getByLabel('Discount for Basmati rice 1kg').fill('3');
+  // The cart row's own discount box changes the line total (5 x 1,200.00 - 3.00).
+  await expect(page.locator('.pos-cart')).toContainText('₹5,997.00');
   // Typing in another box re-renders the whole POS screen (state change).
   await page.locator('form').filter({ hasText: 'Record payment' }).getByLabel('Amount ₹').fill('7');
-  await expect(page.getByLabel('Quantity', { exact: true })).toHaveValue('5');
-  await expect(page.getByLabel('Discount ₹', { exact: true })).toHaveValue('3');
-  await page.getByRole('button', { name: 'Add item', exact: true }).click();
   await expect(page.getByLabel('Cart qty for Basmati rice 1kg')).toHaveValue('5');
   await expect(page.getByLabel('Discount for Basmati rice 1kg')).toHaveValue('3.00');
-  await expect(page.getByLabel('Quantity', { exact: true })).toHaveValue('1');
-  await expect(page.getByLabel('Discount ₹', { exact: true })).toHaveValue('0');
 });

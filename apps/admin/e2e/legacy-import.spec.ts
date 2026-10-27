@@ -1,5 +1,6 @@
 import { stockTask, reviewPayment } from './design-helpers';
 import { test, expect } from '@playwright/test';
+import { addByTap } from './pos-shop-setup';
 
 const PASSWORD = 'TestOnly-2026!pw';
 function uniqueEmail() {
@@ -99,9 +100,7 @@ test('owner can import a legacy DSB backup into an empty shop and sell imported 
   await expect(page.getByLabel('item peek')).toContainText('Stock 12 Pcs');
 
   await page.goto('/pos');
-  await page.getByLabel('Item').selectOption({ label: 'Imported Biscuit' });
-  await page.getByLabel('Quantity').fill('1');
-  await page.getByRole('button', { name: 'Add item', exact: true }).click();
+  await addByTap(page, 'Imported Biscuit');
   await expect(page.getByRole('cell', { name: /Imported Biscuit/ })).toBeVisible();
   await reviewPayment(page);
   await page.getByLabel('Amount ₹').first().fill('10');
