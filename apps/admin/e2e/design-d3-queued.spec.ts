@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { swReady } from './sw-ready';
 import { addItemForm, fillBillItem, stockTask } from './design-helpers';
 // D3 evidence: purchase entry with one bill queued offline, "Saved on this device" row collapsed and
 // expanded, phone size, light and dark. Set DESIGN_SHOTS_DIR to collect the PNGs.
@@ -47,6 +48,7 @@ test('design screenshots: queued bill row, collapsed + expanded', async ({
   await expect(page.getByTestId('sync-outbox-count')).toHaveText('0');
   await page.goto('/purchases?new=1');
   await expect(purchaseSection(page)).toHaveAttribute('data-purchase-ready', 'true');
+  await swReady(page);
   await context.setOffline(true);
   const purchase = purchaseSection(page);
   await purchase.locator('select[name="partyId"]').selectOption({ label: 'Sharma Traders' });

@@ -21,7 +21,7 @@ import { appPath } from '../lib/paths';
 const ROLES: Role[] = ['manager', 'cashier', 'accountant'];
 
 export function TeamScreen() {
-  const session = useSession();
+  const session = useSession({ requireVerified: true });
   const [refreshInvites, setRefreshInvites] = useState(0);
 
   if (session.status === 'loading') return <p>Loading…</p>;

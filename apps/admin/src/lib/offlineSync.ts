@@ -41,6 +41,7 @@ import { syncQueuedItem } from './offlineItemSync';
 import { syncQueuedBillChange } from './offlineBillChangeSync';
 import {
   applySyncPull,
+  setMeta,
   completeOfflineSale,
   getCachedBusinessDate,
   getCachedCustomers,
@@ -147,6 +148,8 @@ type Runtime = {
   syncedOnce: boolean;
   /** When the most recent fully successful cycle STARTED (what it pulled is at least this fresh). */
   lastGoodCycleStartedAt: number;
+  /** The shop the stored pull cursors belong to (null until the first cycle). */
+  cursorShopId: string | null;
 };
 type PublicState = {
   online: boolean;
@@ -202,12 +205,21 @@ export async function waitForOfflineRuntime(timeoutMs = 30000): Promise<void> {
   });
 }
 
+// Start token: every start/stop bumps it, and a start that was superseded while it awaited (database open,
+// recovery) installs nothing, so only ONE loop (interval + realtime + listeners) can ever exist.
+let startGeneration = 0;
+// The old runtime's cycle may still be sending when it is stopped; a new start waits for it before
+// recovering "interrupted" outbox entries, so an entry still in flight is never mistaken for a crashed one.
+let draining: Promise<void> | null = null;
+
 export async function startOfflineSync(input: {
   userId: string;
   membership: Membership;
 }): Promise<void> {
   const deviceId = getOrCreateDeviceId();
+  const generation = ++startGeneration;
   const shopId = input.membership.shopIds[0] ?? (await getDefaultShopId());
+  if (generation !== startGeneration) return;
   const identity: SyncIdentity = {
     userId: input.userId,
     tenantId: input.membership.tenantId,
@@ -220,15 +232,46 @@ export async function startOfflineSync(input: {
     runtime.identity.userId === identity.userId &&
     runtime.identity.tenantId === identity.tenantId &&
     runtime.identity.deviceId === identity.deviceId
-  )
+  ) {
+    // Same user/shop group/device: the running loop stays; only the role and shop are updated in place
+    // (the server may confirm a different role than the cached one this session opened with). A demotion
+    // to cashier removes a formerly authorized cost cache right away.
+    const rt = runtime;
+    rt.identity = { ...rt.identity, role: identity.role, shopId: identity.shopId };
+    if (identity.role === 'cashier') await restrictCachedCostPrices(rt.db);
+    emit();
     return;
+  }
   stopOfflineSync();
+  startGeneration = generation; // stopOfflineSync bumps it; this start is still the current one
+  const superseded = () => generation !== startGeneration;
   const db = await openSyncDb(identity);
+  if (superseded()) {
+    return;
+  }
   // A role downgrade must remove a formerly authorized cost cache even when
   // this device starts offline and cannot yet receive the server capability.
   if (identity.role === 'cashier') await restrictCachedCostPrices(db);
-  await recoverInterruptedOutbox(db);
+  // Wait for the old runtime's in-flight cycle, but never forever: after ~20 s skip recovering "sending"
+  // rows (the idempotent client_id protects a re-send; the next start recovers them).
+  let drained = true;
+  if (draining) {
+    drained = await Promise.race([
+      draining.then(
+        () => true,
+        () => true,
+      ),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 20000)),
+    ]);
+  }
+  if (superseded()) {
+    return;
+  }
+  if (drained) await recoverInterruptedOutbox(db);
   await recoverInterruptedAttempts(db);
+  if (superseded()) {
+    return;
+  }
   runtime = {
     identity,
     db,
@@ -237,6 +280,7 @@ export async function startOfflineSync(input: {
     running: null,
     syncedOnce: false,
     lastGoodCycleStartedAt: 0,
+    cursorShopId: null,
   };
   runtime.timer = window.setInterval(() => {
     void runSyncNow();
@@ -258,7 +302,9 @@ function offlineHandler() {
   emit();
 }
 export function stopOfflineSync() {
+  startGeneration++; // supersedes any start still awaiting
   if (!runtime) return;
+  draining = runtime.running;
   window.clearInterval(runtime.timer);
   runtime.unsubscribeRealtime?.();
   window.removeEventListener('online', onlineHandler);
@@ -269,6 +315,7 @@ export function stopOfflineSync() {
 
 async function processOutbox(rt: Runtime) {
   for (let guard = 0; guard < 100; guard++) {
+    if (runtime !== rt) return false; // stopped: never send another entry for a runtime that is gone
     const rows = await rt.db.outbox.orderBy('sequence').toArray();
     const next = nextOutboxEntry(rows, Date.now());
     // An unknown-outcome operation may already have committed at the server.
@@ -540,15 +587,17 @@ async function processOutbox(rt: Runtime) {
   throw new Error('Sync outbox safety limit reached.');
 }
 
-async function pullTablePages(rt: Runtime, table: SyncPullTable) {
+async function pullTablePages(rt: Runtime, table: SyncPullTable, shopId: string) {
   for (let page = 0; page < 100; page++) {
+    if (runtime !== rt) return; // replaced: stop pulling for a runtime that is gone
     const cursors = await getSyncCursors(rt.db);
     const pulled = await pullSyncTable({
       table,
       deviceId: rt.identity.deviceId,
-      shopId: rt.identity.shopId,
+      shopId,
       cursors,
     });
+    if (runtime !== rt) return;
     await applySyncPull(rt.db, asPull(pulled));
     if (pulled[table].length < SYNC_PULL_LIMITS[table]) return;
   }
@@ -560,11 +609,20 @@ async function pullAllPages(rt: Runtime) {
   // link. Sharing the initial bandwidth with four other large tables left a
   // 10k catalog only partially usable at the performance deadline. Once items
   // are complete, drain the dependent/reference caches concurrently.
-  await pullTablePages(rt, 'items');
+  // One shop for the whole cycle. When the shop changed since the last cycle, start every table from the
+  // beginning so rows scoped to the new shop (prices, stock) are not skipped by the old shop's cursors.
+  const shopId = rt.identity.shopId;
+  if (rt.cursorShopId !== shopId) {
+    if (rt.cursorShopId !== null)
+      for (const table of Object.keys(SYNC_PULL_LIMITS))
+        await setMeta(rt.db, `cursor:${table}`, { updatedAt: 0, id: '' });
+    rt.cursorShopId = shopId;
+  }
+  await pullTablePages(rt, 'items', shopId);
   const remaining = (Object.keys(SYNC_PULL_LIMITS) as SyncPullTable[]).filter(
     (table) => table !== 'items',
   );
-  await Promise.all(remaining.map((table) => pullTablePages(rt, table)));
+  await Promise.all(remaining.map((table) => pullTablePages(rt, table, shopId)));
   await refreshOfflineReturnSources();
   return getSyncCursors(rt.db);
 }
@@ -587,7 +645,9 @@ export async function runSyncNow(): Promise<void> {
           'Authentication session is unavailable. Sign in again before syncing queued work.',
         );
       if (!(await processOutbox(rt))) return;
+      if (runtime !== rt) return;
       const nextCursors = await pullAllPages(rt);
+      if (runtime !== rt) return;
       await ackSync({ deviceId: rt.identity.deviceId, cursors: nextCursors });
       rt.syncedOnce = true;
       rt.lastGoodCycleStartedAt = startedAt;

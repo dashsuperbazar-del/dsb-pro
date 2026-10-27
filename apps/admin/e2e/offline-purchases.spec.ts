@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { swReady } from './sw-ready';
 import { addItemForm, fillBillItem, stockTask } from './design-helpers';
 
 // Offline purchases (docs/OFFLINE_PURCHASES_PLAN.md): bills saved without a connection survive a restart,
@@ -128,6 +129,8 @@ test('offline purchases: saved without a connection, kept over a restart, posted
       });
     return route.continue();
   });
+
+  await swReady(page);
 
   await context.setOffline(true);
   await expect(purchaseSection(page).getByTestId('offline-post')).toContainText('syncs when you');
@@ -259,6 +262,7 @@ test('offline purchases: a connection lost while Purchases is loading falls back
   await page.goto('/purchases?new=1');
   const purchase = purchaseSection(page);
   await expect(purchase.getByTestId('supplier-source')).toHaveText('Loading suppliers and items…');
+  await swReady(page);
   await context.setOffline(true);
   await expect(purchase).toHaveAttribute('data-purchase-ready', 'true');
   // The note says how old the saved list is (saved a moment ago on the visit above) and what sync refuses.

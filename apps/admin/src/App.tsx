@@ -58,18 +58,6 @@ export function App() {
     applyTheme(readTheme());
   }, []);
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
-  // The header's shop name comes from the receipt-profile cache; when nothing usable is cached yet (new
-  // device, or only a placeholder), read it once so the line shows the real name instead of staying empty.
-  const [, refreshName] = useState(0);
-  const activeUser = session.status === 'active' ? session.session.user.id : '';
-  const firstShop = session.status === 'active' ? session.membership.shopIds[0] : undefined;
-  useEffect(() => {
-    if (!activeUser || !firstShop) return;
-    if (readCachedShopName(activeUser, [firstShop])) return;
-    void loadShopProfile(firstShop)
-      .then(() => refreshName((n) => n + 1))
-      .catch(() => undefined);
-  }, [activeUser, firstShop]);
   const testMode = import.meta.env.VITE_TEST_MODE === 'phase4-shop-test';
   return (
     <>
@@ -81,11 +69,7 @@ export function App() {
             <span class="brand-word">
               DSB <span class="brand-pro">Pro</span>
             </span>
-            <small>
-              {(session.status === 'active' &&
-                readCachedShopName(session.session.user.id, session.membership.shopIds)) ||
-                'Your shop workspace'}
-            </small>
+            <ShopName session={session} />
           </span>
         </a>
         {session.status === 'active' && <SyncIndicator />}
@@ -104,7 +88,10 @@ export function App() {
       {session.status === 'active' && session.membership.role !== 'cashier' && (
         <div class="health-container no-print">
           <HealthPanel
-            canAdjustStock={['owner', 'manager'].includes(session.membership.role)}
+            canAdjustStock={
+              ['owner', 'manager'].includes(session.membership.role) &&
+              (session.verified || session.offline)
+            }
             quiet={isCounterEntryPath(currentPath)}
           />
         </div>
@@ -113,7 +100,12 @@ export function App() {
         <Route
           path={appRoute.more}
           component={() => (
-            <MoreScreen role={session.status === 'active' ? session.membership.role : null} />
+            <MoreScreen
+              role={session.status === 'active' ? session.membership.role : null}
+              stockAdjustReady={
+                session.status === 'active' && (session.verified || session.offline)
+              }
+            />
           )}
         />
         <Route path={appRoute.signup} component={SignupScreen} />
@@ -131,7 +123,16 @@ export function App() {
         <Route path={appRoute.settings} component={SettingsScreen} />
         <Route path={appRoute.suppliers} component={SuppliersScreen} />
         <Route path={appRoute.expenses} component={ExpensesScreen} />
-        <Route path={appRoute.stockAdjust} component={StockAdjustScreen} />
+        <Route
+          path={appRoute.stockAdjust}
+          component={() =>
+            session.status === 'active' && !(session.verified || session.offline) ? (
+              <p>Loading…</p>
+            ) : (
+              <StockAdjustScreen />
+            )
+          }
+        />
         <Route path={appRoute.openings} component={OpeningsScreen} />
         <Route path={appRoute.search} component={SearchScreen} />
         <Route path={appRoute.auditLog} component={AuditLogScreen} />
@@ -141,6 +142,30 @@ export function App() {
         <BottomNav role={session.membership.role} currentPath={currentPath} />
       )}
     </>
+  );
+}
+
+// The header's shop name comes from the receipt-profile cache; when nothing usable is cached yet (new
+// device, or only a placeholder), read it once so the line shows the real name instead of staying empty.
+// It owns its refresh state: updating the name must NOT re-render App (that would remount Home and
+// re-fetch every tile just after the first screen).
+function ShopName({ session }: { session: ReturnType<typeof useSession> }) {
+  const [, refreshName] = useState(0);
+  const activeUser = session.status === 'active' ? session.session.user.id : '';
+  const firstShop = session.status === 'active' ? session.membership.shopIds[0] : undefined;
+  useEffect(() => {
+    if (!activeUser || !firstShop) return;
+    if (readCachedShopName(activeUser, [firstShop])) return;
+    void loadShopProfile(firstShop)
+      .then(() => refreshName((n) => n + 1))
+      .catch(() => undefined);
+  }, [activeUser, firstShop]);
+  return (
+    <small>
+      {(session.status === 'active' &&
+        readCachedShopName(session.session.user.id, session.membership.shopIds)) ||
+        'Your shop workspace'}
+    </small>
   );
 }
 
@@ -244,9 +269,10 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
         <details class="card shop-tools">
           <summary>Shop management</summary>
           <nav class="management-links" aria-label="Shop management">
-            {['owner', 'manager'].includes(session.membership.role) && (
-              <a href={appRoute.stockAdjust}>Stock adjust</a>
-            )}
+            {['owner', 'manager'].includes(session.membership.role) &&
+              (session.verified || session.offline) && (
+                <a href={appRoute.stockAdjust}>Stock adjust</a>
+              )}
             <a href={appRoute.team}>Team</a>
             <a href={appRoute.devices}>Devices</a>
             <a href={appRoute.settings}>Settings</a>

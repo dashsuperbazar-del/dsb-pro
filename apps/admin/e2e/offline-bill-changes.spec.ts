@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { swReady } from './sw-ready';
 import { addItemForm, fillBillItem, stockTask } from './design-helpers';
 
 // Offline bill edit / void (mig 0072): saved on the device with the bill's version, applied on reconnect only
@@ -97,6 +98,7 @@ test('offline bill edit and void: applied on reconnect when unchanged; a bill ch
 
   // 1. Edit opened online, saved offline, kept over a restart, applied on reconnect.
   const edit = await openEdit(page, 'ED-1');
+  await swReady(page);
   await context.setOffline(true);
   await edit.getByLabel('Item 1 quantity', { exact: true }).fill('5');
   await edit
@@ -119,6 +121,7 @@ test('offline bill edit and void: applied on reconnect when unchanged; a bill ch
   const detail = await openBill(page, 'VO-1');
   // Explicit ready signal: the void panel has the bill's version, so it can be voided offline.
   await expect(detail.getByTestId('void-offline-ready')).toHaveAttribute('data-state', 'ready');
+  await swReady(page);
   await context.setOffline(true);
   await detail.getByLabel('Reason for voiding').fill('entered twice');
   await detail.getByRole('button', { name: 'Void bill', exact: true }).click();
@@ -136,6 +139,7 @@ test('offline bill edit and void: applied on reconnect when unchanged; a bill ch
   await otherDetail.getByRole('button', { name: 'Void bill', exact: true }).click();
   await expect(other.getByRole('status').filter({ hasText: 'Bill voided' }).first()).toBeVisible();
   await other.close();
+  await swReady(page);
   await context.setOffline(true);
   await staleEdit.getByLabel('Item 1 quantity', { exact: true }).fill('8');
   await staleEdit

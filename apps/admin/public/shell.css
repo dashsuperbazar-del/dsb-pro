@@ -1,0 +1,81 @@
+/* First-paint shell: shown from index.html before any JavaScript arrives, removed by main.tsx once the
+   app has rendered. Plain colours (no tokens.css yet); external file because the CSP forbids inline styles. */
+html,
+body {
+  margin: 0;
+}
+body {
+  background: #f5f7f6;
+}
+#boot-shell {
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+}
+#boot-shell .bar {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  background: #0f6b4f;
+  color: #fff;
+  font-weight: 700;
+  font-size: 1.15rem;
+}
+#boot-shell .bar::after {
+  content: 'DSB Pro';
+}
+#boot-shell .block {
+  height: 72px;
+  margin: 16px;
+  border-radius: 12px;
+  background: #eceeec;
+  animation: boot-pulse 1.4s ease-in-out infinite;
+}
+@keyframes boot-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #0e1411;
+  }
+  #boot-shell .block {
+    background: #1b231f;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #boot-shell .block {
+    animation: none;
+  }
+}
+/* Bounded fallback without script (CSP): if the app has not replaced this shell after ~12 s, say so. */
+#boot-shell .slow {
+  margin: 16px;
+  color: #3a433e;
+  opacity: 0;
+  animation: boot-slow 0.3s ease 12s forwards;
+  pointer-events: none;
+}
+#boot-shell .slow a {
+  color: #0f6b4f;
+  font-weight: 700;
+}
+@keyframes boot-slow {
+  to {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+@media (prefers-color-scheme: dark) {
+  #boot-shell .slow {
+    color: #c8d2cc;
+  }
+  #boot-shell .slow a {
+    color: #4cc497;
+  }
+}

@@ -26,7 +26,7 @@ async function precacheShell() {
   if (!response.ok) throw new Error('Unable to fetch app shell');
   const html = await response.clone().text();
 
-  const refs = [...html.matchAll(/(?:src|href)="([^"]+)"/g)]
+  const refs = [...html.matchAll(/<(?:script|link)\b[^>]*?\b(?:src|href)="([^"]+)"/g)]
     .map((match) => new URL(match[1], scopeRoot))
     .filter((url) => url.origin === self.location.origin)
     .map((url) => url.toString());
@@ -39,9 +39,12 @@ async function precacheShell() {
   const files = (await manifest.json()).map((file) => new URL(file, scopeRoot).toString());
 
   const urls = [...new Set([...refs, ...files])];
+  // Built files are content-hashed, so the browser's own copy (just downloaded by the page) is exactly
+  // right: reuse it instead of downloading ~270 KiB a second time. Only index.html and precache.json
+  // above bypass the cache. The isAsset check below still refuses an HTML fallback under a JS/CSS URL.
   const fetched = await Promise.all(
     urls.map(async (url) => {
-      const res = await fetch(new Request(url, { cache: 'reload' }));
+      const res = await fetch(new Request(url));
       if (!isAsset(res)) throw new Error('Unable to fetch ' + url);
       return [url, res];
     }),

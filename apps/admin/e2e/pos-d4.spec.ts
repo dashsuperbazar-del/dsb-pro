@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { swReady } from './sw-ready';
 import { setupPosShop, addToCart, toPayment, addByTap } from './pos-shop-setup';
 // D4 "Counter: POS sell + pay": the sale-done card (online and saved on the device), the error shown
 // directly above the Finalize bar, the Amount field above that bar, no barcode autofocus on a phone,
@@ -76,6 +77,7 @@ test('sale done card (offline): saved on this device, same Print, friendly saved
   await page.getByRole('button', { name: 'Sync now' }).click();
   await expect(page.getByTestId('sync-outbox-count')).toHaveText('0');
   await openPos(page);
+  await swReady(page);
   await context.setOffline(true);
   await addToCart(page, '1');
   await toPayment(page);
