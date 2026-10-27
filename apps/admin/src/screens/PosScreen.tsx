@@ -2,6 +2,7 @@ import { HomeRow } from '../components/HomeRow';
 import { useUserId } from '../lib/useUserId';
 import { formatQuantity } from '@dsb-pro/core';
 import { CameraScanner } from '../components/CameraScanner';
+import { createBurstDetector, isScanTarget } from '../lib/scanBurst';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   billRoundOff,
@@ -887,7 +888,7 @@ export function PosScreen() {
     await scanCode(barcode);
   }
 
-  async function scanCode(code: string) {
+  async function scanCode(code: string, opts: { burst?: boolean } = {}) {
     // A scan may finish after the cashier moved on (finalizing, checkout, held-cart cleanup); never let it
     // change a cart that is being settled. Read the live state, not this render's closure.
     if (scanBlocked.current) return;
@@ -903,7 +904,19 @@ export function PosScreen() {
           hit = await findOfflineBarcode(code);
         }
       }
-      if (!hit) throw new Error('Barcode not found.');
+      if (!hit) {
+        // A scanner burst may carry an exact SKU; nothing else is guessed. No match adds nothing.
+        const wanted = code.trim().toLowerCase();
+        const bySku =
+          opts.burst && wanted ? items.filter((i) => i.sku?.trim().toLowerCase() === wanted) : [];
+        if (bySku.length === 1) {
+          if (scanBlocked.current) return;
+          await addLine(bySku[0]!, defaultSellLevel(bySku[0]!), 1, 'retail');
+          setBarcode('');
+          return;
+        }
+        throw new Error(opts.burst ? `No item with code ${code}` : 'Barcode not found.');
+      }
       const item = items.find((i) => i.id === hit.item_id);
       if (!item) throw new Error('Barcode item is unavailable.');
       if (scanBlocked.current) return;
@@ -1189,6 +1202,36 @@ export function PosScreen() {
     const onKey = (ev: KeyboardEvent) => keyHandler.current(ev);
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
+  }, []);
+  // A hardware scanner types its code in a burst and ends with Enter, into whatever field has focus. Caught before
+  // the field's own Enter handling (capture phase): the typed characters are taken back out of the field and the
+  // code goes through the same scan path as the barcode box. Numeric quantity/price fields are never touched, and
+  // nothing is intercepted while a sale is being settled. Slow human typing is left alone (Enter highlights, a
+  // second Enter adds).
+  const burst = useRef(createBurstDetector());
+  const scanRef = useRef(scanCode);
+  scanRef.current = scanCode;
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => {
+      const field = ev.target;
+      // Only the Find-product field and the Barcode box: other text fields (hold label, customer, modals) are
+      // never read as scans.
+      if (!isScanTarget(field) || (field !== findRef.current && field !== barcodeRef.current)) {
+        burst.current.reset();
+        return;
+      }
+      const code = burst.current.onKey(ev, field);
+      if (!code || scanBlocked.current) return;
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      // Take the burst back out of the field (anything typed before it stays), as if it was never typed.
+      const before = field.value.endsWith(code) ? field.value.slice(0, -code.length) : field.value;
+      field.value = before;
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+      void scanRef.current(code, { burst: true });
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
   }, []);
   // Up/Down in the search move along the result rows; Enter adds the highlighted row (else the top match)
   // as one tap would. Adding never posts a sale.

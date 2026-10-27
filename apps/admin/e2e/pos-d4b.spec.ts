@@ -154,7 +154,7 @@ test.describe('phone', () => {
 });
 
 test.describe('desktop keyboard and scanner', () => {
-  test('Enter highlights first, then adds; a scanner burst in the search box adds nothing; barcode box adds once', async ({
+  test('Enter highlights first, then adds; barcode box adds once (scanner bursts: pos-scanner.spec.ts)', async ({
     page,
   }) => {
     test.setTimeout(120000);
@@ -189,17 +189,5 @@ test.describe('desktop keyboard and scanner', () => {
     await expect(find).toBeFocused();
     await page.keyboard.type('Bas');
     await expect(find).toHaveValue('Bas');
-
-    // A scanner burst typed into the search box ends in Enter and must add nothing by itself.
-    await find.fill('');
-    await find.pressSequentially('8901234500024', { delay: 0 });
-    await find.press('Enter');
-    await expect(cartQty(page, NAME)).toHaveValue('2');
-    await expect(page.locator('#pos-cart tbody tr')).toHaveCount(1);
-    // A scan-like burst that does match a name is highlighted only, never added.
-    await find.fill('');
-    await find.pressSequentially('Basmati', { delay: 0 });
-    await find.press('Enter');
-    await expect(cartQty(page, NAME)).toHaveValue('2');
   });
 });
