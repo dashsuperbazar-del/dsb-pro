@@ -186,12 +186,12 @@ test('real browser money path posts stock then finalizes a paid sale', async ({
   // Commit at the server, then deliberately lose its response. The retry must
   // reuse the durable intent/client ID, not create another outgoing payment.
   let lostAcknowledgement = false;
+  await swReady(page); // before the handler: the handler runs mid-request and must not navigate
   await page.route('**/rest/v1/rpc/phase65_sync_post_return', async (route) => {
     if (!lostAcknowledgement) {
       const response = await route.fetch();
       expect(response.ok()).toBe(true);
       lostAcknowledgement = true;
-      await swReady(page);
       await context.setOffline(true);
       await route.abort('failed');
     } else await route.continue();
@@ -299,12 +299,12 @@ test('real browser money path posts stock then finalizes a paid sale', async ({
   await page.goto('/returns');
   await expect.poll(() => heldPull).toBe(true);
   let lostVoid = false;
+  await swReady(page); // before the handler: the handler runs mid-request and must not navigate
   await page.route('**/rest/v1/rpc/phase65_sync_void_return', async (route) => {
     if (!lostVoid) {
       const response = await route.fetch();
       expect(response.ok()).toBe(true);
       lostVoid = true;
-      await swReady(page);
       await context.setOffline(true);
       await route.abort('failed');
     } else await route.continue();
