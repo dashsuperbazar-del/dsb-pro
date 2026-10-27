@@ -73,7 +73,8 @@ test('POS is operable from the keyboard and no shortcut posts a sale by itself',
   await expect(page.getByLabel('Cart qty for Key Rice')).toHaveValue('2');
   await expect(page.locator('#pos-cart tbody tr')).toHaveCount(1);
   // After an add the search text is selected: typing replaces it.
-  await page.keyboard.type('Key Ro');
+  // Typed at human speed: a fast 6+ character burst ending in Enter is a scanner (see pos-scanner.spec.ts).
+  await page.keyboard.type('Key Ro', { delay: 120 });
   await expect(find).toHaveValue('Key Ro');
   // Enter with no highlight only highlights the top match; the second Enter adds it.
   await find.press('Enter');
