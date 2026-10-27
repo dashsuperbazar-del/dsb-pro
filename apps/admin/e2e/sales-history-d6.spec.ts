@@ -5,7 +5,7 @@ import { setupPosShop, addToCart, toPayment } from './pos-shop-setup';
 
 async function sell(page: Page) {
   await page.goto('/pos');
-  await expect(page.getByLabel('Item', { exact: true })).toBeEnabled();
+  await expect(page.getByLabel('Find product')).toBeEnabled();
   await addToCart(page, '2');
   await toPayment(page);
   await page.locator('#pos-payment input[type="number"]').first().fill('2400');

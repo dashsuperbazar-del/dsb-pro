@@ -12,7 +12,7 @@ const sizes = [
 
 async function sell(page: Page, qty: string, pay: string, customer?: string) {
   await page.goto('/pos');
-  await expect(page.getByLabel('Item', { exact: true })).toBeEnabled();
+  await expect(page.getByLabel('Find product')).toBeEnabled();
   await addToCart(page, qty);
   await toPayment(page);
   if (customer) {
@@ -39,7 +39,7 @@ test('design screenshots: D6 screens', async ({ page, context }, info) => {
   await setupPosShop(page, 'd6');
   // A customer for the credit sale.
   await page.goto('/pos');
-  await expect(page.getByLabel('Item', { exact: true })).toBeEnabled();
+  await expect(page.getByLabel('Find product')).toBeEnabled();
   await addToCart(page, '1');
   await toPayment(page);
   await page.getByText('Add a new customer').click();
@@ -93,7 +93,7 @@ test('design screenshots: D6 screens', async ({ page, context }, info) => {
     }
   // Offline: one sale saved on the device.
   await page.goto('/pos');
-  await expect(page.getByLabel('Item', { exact: true })).toBeEnabled();
+  await expect(page.getByLabel('Find product')).toBeEnabled();
   await context.setOffline(true);
   await sell(page, '1', '1200');
   for (const theme of themes)
