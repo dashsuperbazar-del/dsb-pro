@@ -100,7 +100,12 @@ export function App() {
         <Route
           path={appRoute.more}
           component={() => (
-            <MoreScreen role={session.status === 'active' ? session.membership.role : null} />
+            <MoreScreen
+              role={session.status === 'active' ? session.membership.role : null}
+              stockAdjustReady={
+                session.status === 'active' && (session.verified || session.offline)
+              }
+            />
           )}
         />
         <Route path={appRoute.signup} component={SignupScreen} />
@@ -118,7 +123,16 @@ export function App() {
         <Route path={appRoute.settings} component={SettingsScreen} />
         <Route path={appRoute.suppliers} component={SuppliersScreen} />
         <Route path={appRoute.expenses} component={ExpensesScreen} />
-        <Route path={appRoute.stockAdjust} component={StockAdjustScreen} />
+        <Route
+          path={appRoute.stockAdjust}
+          component={() =>
+            session.status === 'active' && !(session.verified || session.offline) ? (
+              <p>Loading…</p>
+            ) : (
+              <StockAdjustScreen />
+            )
+          }
+        />
         <Route path={appRoute.openings} component={OpeningsScreen} />
         <Route path={appRoute.search} component={SearchScreen} />
         <Route path={appRoute.auditLog} component={AuditLogScreen} />

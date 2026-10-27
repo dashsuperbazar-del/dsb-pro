@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { swReady } from './sw-ready';
 import { addItemForm, fillBillItem, stockTask } from './design-helpers';
 
 // Offline supplier payments (mig 0074): saved on the device with the supplier/bill versions, applied on
@@ -98,6 +99,7 @@ test('offline supplier payment: saved on the device, applied on reconnect; stale
   // 1. Online load saves the copy; then the device goes offline.
   let pay = await openSuppliersOnline(page);
   await expect(pay.getByLabel('Supplier to pay')).toContainText('owed ₹150.00');
+  await swReady(page);
   await context.setOffline(true);
   await page.goto('/suppliers');
   await expect(page.getByTestId('pay-copy-note')).toContainText('You are offline');
@@ -151,6 +153,7 @@ test('offline supplier payment: saved on the device, applied on reconnect; stale
   await detail.getByRole('button', { name: 'Void bill', exact: true }).click();
   await expect(other.getByRole('status').filter({ hasText: 'Bill voided' }).first()).toBeVisible();
   await other.close();
+  await swReady(page);
   await context.setOffline(true);
   await fillPayment(page, '10', { label: 'PS-2', amount: '10' });
   await pay.getByRole('button', { name: 'Save on this device', exact: true }).click();

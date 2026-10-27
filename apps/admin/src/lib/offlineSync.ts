@@ -41,6 +41,7 @@ import { syncQueuedItem } from './offlineItemSync';
 import { syncQueuedBillChange } from './offlineBillChangeSync';
 import {
   applySyncPull,
+  setMeta,
   completeOfflineSale,
   getCachedBusinessDate,
   getCachedCustomers,
@@ -147,6 +148,8 @@ type Runtime = {
   syncedOnce: boolean;
   /** When the most recent fully successful cycle STARTED (what it pulled is at least this fresh). */
   lastGoodCycleStartedAt: number;
+  /** The shop the stored pull cursors belong to (null until the first cycle). */
+  cursorShopId: string | null;
 };
 type PublicState = {
   online: boolean;
@@ -249,11 +252,22 @@ export async function startOfflineSync(input: {
   // A role downgrade must remove a formerly authorized cost cache even when
   // this device starts offline and cannot yet receive the server capability.
   if (identity.role === 'cashier') await restrictCachedCostPrices(db);
-  if (draining) await draining.catch(() => undefined);
+  // Wait for the old runtime's in-flight cycle, but never forever: after ~20 s skip recovering "sending"
+  // rows (the idempotent client_id protects a re-send; the next start recovers them).
+  let drained = true;
+  if (draining) {
+    drained = await Promise.race([
+      draining.then(
+        () => true,
+        () => true,
+      ),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 20000)),
+    ]);
+  }
   if (superseded()) {
     return;
   }
-  await recoverInterruptedOutbox(db);
+  if (drained) await recoverInterruptedOutbox(db);
   await recoverInterruptedAttempts(db);
   if (superseded()) {
     return;
@@ -266,6 +280,7 @@ export async function startOfflineSync(input: {
     running: null,
     syncedOnce: false,
     lastGoodCycleStartedAt: 0,
+    cursorShopId: null,
   };
   runtime.timer = window.setInterval(() => {
     void runSyncNow();
@@ -572,15 +587,17 @@ async function processOutbox(rt: Runtime) {
   throw new Error('Sync outbox safety limit reached.');
 }
 
-async function pullTablePages(rt: Runtime, table: SyncPullTable) {
+async function pullTablePages(rt: Runtime, table: SyncPullTable, shopId: string) {
   for (let page = 0; page < 100; page++) {
+    if (runtime !== rt) return; // replaced: stop pulling for a runtime that is gone
     const cursors = await getSyncCursors(rt.db);
     const pulled = await pullSyncTable({
       table,
       deviceId: rt.identity.deviceId,
-      shopId: rt.identity.shopId,
+      shopId,
       cursors,
     });
+    if (runtime !== rt) return;
     await applySyncPull(rt.db, asPull(pulled));
     if (pulled[table].length < SYNC_PULL_LIMITS[table]) return;
   }
@@ -592,11 +609,20 @@ async function pullAllPages(rt: Runtime) {
   // link. Sharing the initial bandwidth with four other large tables left a
   // 10k catalog only partially usable at the performance deadline. Once items
   // are complete, drain the dependent/reference caches concurrently.
-  await pullTablePages(rt, 'items');
+  // One shop for the whole cycle. When the shop changed since the last cycle, start every table from the
+  // beginning so rows scoped to the new shop (prices, stock) are not skipped by the old shop's cursors.
+  const shopId = rt.identity.shopId;
+  if (rt.cursorShopId !== shopId) {
+    if (rt.cursorShopId !== null)
+      for (const table of Object.keys(SYNC_PULL_LIMITS))
+        await setMeta(rt.db, `cursor:${table}`, { updatedAt: 0, id: '' });
+    rt.cursorShopId = shopId;
+  }
+  await pullTablePages(rt, 'items', shopId);
   const remaining = (Object.keys(SYNC_PULL_LIMITS) as SyncPullTable[]).filter(
     (table) => table !== 'items',
   );
-  await Promise.all(remaining.map((table) => pullTablePages(rt, table)));
+  await Promise.all(remaining.map((table) => pullTablePages(rt, table, shopId)));
   await refreshOfflineReturnSources();
   return getSyncCursors(rt.db);
 }

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { swReady } from './sw-ready';
 import { fillBillItem, stockTask } from './design-helpers';
 
 // Offline new items (mig 0071): an item created in a bill card while offline is saved on the device under
@@ -117,6 +118,8 @@ test('offline new items: created on the device, synced before their bill, posted
     bills.push(route.request().postData() ?? '');
     return route.continue();
   });
+
+  await swReady(page);
 
   await context.setOffline(true);
   await expect(purchaseSection(page).getByTestId('offline-post')).toContainText('syncs when you');

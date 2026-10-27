@@ -1,4 +1,5 @@
 import { stockTask, addItemForm, reviewPayment, fillBillItem } from './design-helpers';
+import { swReady } from './sw-ready';
 import { test, expect } from '@playwright/test';
 import { addByTap } from './pos-shop-setup';
 
@@ -96,6 +97,7 @@ test('chaos: airplane mode + app restart + logical one-hour outage preserves and
 
   // Begin a real bill while online, then lose the backend before finalization.
   await addOnePaidLine(page);
+  await swReady(page);
   await context.setOffline(true);
   await reviewPayment(page);
   await page.getByRole('button', { name: 'Finalize sale' }).click();

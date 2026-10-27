@@ -30,10 +30,10 @@ if ('serviceWorker' in navigator) {
         requestIdleCallback?: (cb: () => void, opts: { timeout: number }) => void;
       }
     ).requestIdleCallback;
-    if (ric) ric(registerServiceWorker, { timeout: 4000 });
-    else window.setTimeout(registerServiceWorker, 2000);
+    if (ric) ric(registerServiceWorker, { timeout: 1500 });
+    else window.setTimeout(registerServiceWorker, 500);
   };
-  // A hung asset must not delay offline readiness: wait for `load` at most 5 s, then go idle anyway.
+  // A hung asset must not delay offline readiness: wait for `load` at most 1.5 s (worst case ~3 s), then go idle anyway.
   if (document.readyState === 'complete') whenIdle();
   else {
     let done = false;
@@ -43,7 +43,7 @@ if ('serviceWorker' in navigator) {
       whenIdle();
     };
     window.addEventListener('load', go);
-    window.setTimeout(go, 5000);
+    window.setTimeout(go, 1500);
   }
 }
 

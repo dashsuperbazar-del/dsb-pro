@@ -3,7 +3,13 @@ import { appRoute } from '../lib/paths';
 import { LanguageToggle } from '../components/LanguageToggle';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { Icon, type IconName } from '../components/Icon';
-export function MoreScreen({ role }: { role: Role | null }) {
+export function MoreScreen({
+  role,
+  stockAdjustReady = true,
+}: {
+  role: Role | null;
+  stockAdjustReady?: boolean;
+}) {
   if (!role)
     return (
       <main>
@@ -30,7 +36,7 @@ export function MoreScreen({ role }: { role: Role | null }) {
           : []),
         [appRoute.salesHistory, 'Sales history', 'bill'],
         [appRoute.returns, 'Returns', 'bill'],
-        ...(role === 'owner' || role === 'manager'
+        ...((role === 'owner' || role === 'manager') && stockAdjustReady
           ? ([[appRoute.stockAdjust, 'Stock adjust', 'stock']] as Link[])
           : []),
       ],
