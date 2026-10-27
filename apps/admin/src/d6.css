@@ -136,26 +136,33 @@
     padding: 0;
     min-width: 0;
   }
+  .sales-cards tbody tr {
+    grid-template-areas: 'inv total' 'date status' 'act act';
+  }
   .sales-cards .sale-inv {
+    grid-area: inv;
     font-weight: var(--weight-bold);
     overflow-wrap: anywhere;
   }
   .sales-cards .sale-total {
+    grid-area: total;
     text-align: right;
     font-weight: var(--weight-bold);
     font-size: var(--text-lg);
   }
   .sales-cards .sale-date {
+    grid-area: date;
     color: var(--text-muted);
     font-size: var(--text-md);
     min-width: 0;
     overflow-wrap: anywhere;
   }
   .sales-cards .sale-status {
+    grid-area: status;
     text-align: right;
   }
   .sales-cards .sale-actions {
-    grid-column: 1 / -1;
+    grid-area: act;
     padding-top: var(--space-2);
   }
   .sales-cards .sale-actions > div {
@@ -278,4 +285,16 @@
 }
 .plain-list li:last-child {
   border-bottom: 0;
+}
+
+/* A collapsed row sits straight on the page, not in a second card. */
+main > .home-row {
+  padding: 0;
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+
+td.date {
+  white-space: nowrap;
 }

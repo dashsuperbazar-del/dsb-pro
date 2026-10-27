@@ -235,7 +235,7 @@ export function SalesHistoryScreen() {
         class="no-print"
         summary={
           report
-            ? `${report.invoiceCount} invoices · ${money(report.netSalesTotalPaise)} net`
+            ? `${report.invoiceCount} invoices · ${money(report.netSalesTotalPaise)}`
             : 'compare with old DSB at shop close'
         }
       >

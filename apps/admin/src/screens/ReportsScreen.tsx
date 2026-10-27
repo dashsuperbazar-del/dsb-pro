@@ -283,7 +283,7 @@ export function ReportsScreen() {
             <tbody>
               {partyLedger.map((r) => (
                 <tr>
-                  <td>{r.business_date}</td>
+                  <td class="date">{r.business_date}</td>
                   <td>{r.entry_type}</td>
                   <td>{r.document}</td>
                   <td class="num">{rupee(r.debit_paise)}</td>
@@ -338,7 +338,7 @@ export function ReportsScreen() {
             <tbody>
               {day.map((r) => (
                 <tr>
-                  <td>{r.business_date}</td>
+                  <td class="date">{r.business_date}</td>
                   <td class="num">{rupee(r.sales_paise)}</td>
                   <td class="num">{rupee(r.purchases_paise)}</td>
                   <td class="num">{rupee(r.receipts_paise)}</td>
@@ -504,7 +504,7 @@ export function ReportsScreen() {
               {purchaseRegister.map((r) => (
                 <tr>
                   <td>{r.doc_no}</td>
-                  <td>{r.business_date}</td>
+                  <td class="date">{r.business_date}</td>
                   <td>{r.party_name ?? '—'}</td>
                   <td class="num">{rupee(r.subtotal_paise)}</td>
                   <td class="num">{rupee(r.discount_paise)}</td>

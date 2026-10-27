@@ -104,7 +104,8 @@ test('a purchase bill and a sale invoice get a bill code that search, copy and t
   await saleRow.getByRole('button', { name: 'View' }).click();
   await expect(page.locator('section[aria-label="Invoice detail"]')).toContainText(saleCode);
   await expect(page.getByTestId('bill-code')).toContainText(saleCode);
-  await saleRow.getByRole('button', { name: /Print thermal|thermal/i }).click();
+  await saleRow.getByRole('button', { name: /More actions/ }).click();
+  await saleRow.getByRole('menuitem', { name: /Print thermal|thermal/i }).click();
   await expect(page.getByLabel('invoice receipt')).toContainText(`Bill code ${saleCode}`);
 
   // Global search finds either document by a part of its code, in any case, across the dash.

@@ -68,7 +68,8 @@ test('a voided sale is hidden by default, shown with Show voided, and never dele
   const list = page.locator('section.card.no-print').filter({ hasText: 'Show voided' });
   await expect(list.getByRole('cell', { name: 'FINALIZED' })).toHaveCount(1);
   page.once('dialog', (d) => void d.accept());
-  await list.getByRole('button', { name: 'Void sale' }).click();
+  await list.getByRole('button', { name: /More actions/ }).click();
+  await list.getByRole('menuitem', { name: 'Void sale' }).click();
   await expect(page.getByText(/voided\./).first()).toBeVisible();
   await expect(list.getByRole('cell', { name: 'VOID' })).toHaveCount(0);
   await expect(page.getByTestId('sales-list-count')).toContainText(
