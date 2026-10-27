@@ -1,0 +1,151 @@
+/* D4b: POS tap-to-add item list (search box, result rows, unit and price-type chips). */
+.pick-search {
+  position: relative;
+}
+.pick-search .pick-input {
+  width: 100%;
+  min-height: 52px;
+  padding-right: 52px;
+  font-size: var(--text-lg);
+}
+.pick-clear {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 28px;
+  line-height: 1;
+  color: var(--text-muted);
+}
+.pick-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.pick-kind {
+  display: inline-flex;
+  gap: var(--space-1);
+}
+.pick-kind button,
+.pick-units button {
+  min-height: 40px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-sm);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: none;
+}
+.pick-kind button[aria-pressed='true'],
+.pick-units button[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+.pick-hint {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.pick-head {
+  margin: var(--space-3) 0 var(--space-1);
+  font-size: var(--text-sm);
+}
+.pick-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+}
+.pick-row {
+  border-top: 1px solid var(--border);
+  min-height: 56px;
+}
+.pick-row:first-child {
+  border-top: 0;
+}
+.pick-row.active {
+  background: var(--brand-subtle);
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.pick-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 56px;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text);
+  text-align: left;
+}
+.pick-main:hover:not(:disabled),
+.pick-main:active:not(:disabled) {
+  background: var(--surface-sunken);
+}
+.pick-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.pick-name {
+  font-weight: var(--weight-semibold);
+  overflow-wrap: anywhere;
+}
+.pick-sub {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.pick-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.pick-price {
+  flex: none;
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pick-units {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: 0 var(--space-3) var(--space-2);
+}
+.pick-more {
+  width: 100%;
+  min-height: 48px;
+  margin-top: var(--space-2);
+}
+.pick-empty {
+  padding: var(--space-4) var(--space-3);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.pick-barcode {
+  margin-top: var(--space-3);
+}
+@media (max-width: 600px) {
+  .pick-hint {
+    display: none;
+  }
+}

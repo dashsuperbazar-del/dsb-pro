@@ -1,5 +1,6 @@
 import { stockTask, addItemForm, reviewPayment, fillBillItem } from './design-helpers';
 import { test, expect } from '@playwright/test';
+import { addByTap } from './pos-shop-setup';
 
 const PASSWORD = 'TestOnly-2026!pw';
 function uniqueEmail() {
@@ -53,11 +54,7 @@ async function seedOfflineItem(page: import('@playwright/test').Page) {
 }
 
 async function addOnePaidLine(page: import('@playwright/test').Page) {
-  await page.getByLabel('Find product').fill('Offline E2E Item');
-  await expect(page.getByLabel('Item').locator('option')).toHaveCount(2);
-  await page.getByLabel('Item').selectOption({ index: 1 });
-  await page.getByLabel('Quantity').fill('1');
-  await page.getByRole('button', { name: 'Add item', exact: true }).click();
+  await addByTap(page, 'Offline E2E Item', '1');
   await expect(
     page.locator('section').filter({ has: page.getByRole('heading', { name: 'Current bill' }) }),
   ).toContainText('Offline E2E Item');

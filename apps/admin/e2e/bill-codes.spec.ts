@@ -1,5 +1,6 @@
 import { stockTask, addItemForm, fillBillItem, reviewPayment } from './design-helpers';
 import { test, expect } from '@playwright/test';
+import { addByTap } from './pos-shop-setup';
 
 const PASSWORD = 'TestOnly-2026!pw';
 const CODE = /[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}/;
@@ -78,11 +79,7 @@ test('a purchase bill and a sale invoice get a bill code that search, copy and t
 
   // A sale
   await page.goto('/pos');
-  await page.getByLabel('Find product').fill('Code Item');
-  await expect(page.getByLabel('Item').locator('option')).toHaveCount(2);
-  await page.getByLabel('Item').selectOption({ index: 1 });
-  await page.getByLabel('Quantity').fill('1');
-  await page.getByRole('button', { name: 'Add item', exact: true }).click();
+  await addByTap(page, 'Code Item', '1');
   await reviewPayment(page);
   await page.getByLabel('Amount ₹').first().fill('10');
   await reviewPayment(page);
