@@ -30,13 +30,23 @@ export function DayBookTile({ onRefresh, rev = 0 }: { onRefresh?: () => void; re
   const [error, setError] = useState('');
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const [saved, setSaved] = useState(false);
+  const [stale, setStale] = useState(false);
   const [firstRun, setFirstRun] = useState(false);
   const [local, setLocal] = useState(0);
   useEffect(() => {
     let alive = true;
     void (async () => {
       const userId = await snapshotUserId();
-      const snap = peekSnapshot<DaySnapshot>('daybook', userId);
+      let snap = peekSnapshot<DaySnapshot>('daybook', userId);
+      // Last visit's figures show at once (marked as saved) while the fresh read is on its way.
+      if (snap && alive) {
+        setDate(snap.value.date);
+        setRow(snap.value.row);
+        setUpdatedAt(snap.at);
+        setSaved(true);
+        setStale(false);
+        setLoaded(true);
+      }
       try {
         const shop = await getDefaultShopId();
         const d = await getShopBusinessDate(shop);
@@ -46,6 +56,7 @@ export function DayBookTile({ onRefresh, rev = 0 }: { onRefresh?: () => void; re
         setDate(d);
         setRow(r);
         setSaved(false);
+        setStale(false);
         setError('');
         setUpdatedAt(Date.now());
         setLoaded(true);
@@ -60,11 +71,14 @@ export function DayBookTile({ onRefresh, rev = 0 }: { onRefresh?: () => void; re
         } else setFirstRun(false);
       } catch (e) {
         if (!alive) return;
+        // The disk copy may have been read just after the first look: try once more.
+        snap = snap ?? peekSnapshot<DaySnapshot>('daybook', userId);
         if (snap) {
           setDate(snap.value.date);
           setRow(snap.value.row);
           setUpdatedAt(snap.at);
           setSaved(true);
+          setStale(true);
           setError('');
           setLoaded(true);
           setFirstRun(false);
@@ -129,9 +143,14 @@ export function DayBookTile({ onRefresh, rev = 0 }: { onRefresh?: () => void; re
           <dd>{v('net_cashflow_paise')}</dd>
         </div>
       </dl>
-      {saved && updatedAt !== null && (
+      {saved && updatedAt !== null && stale && (
         <p class="banner warning" role="status" data-testid="daybook-saved">
           Showing saved figures from {clock(updatedAt)}. They update when you are back online.
+        </p>
+      )}
+      {saved && updatedAt !== null && !stale && (
+        <p class="muted" role="status" data-testid="daybook-refreshing">
+          Saved figures from {clock(updatedAt)} · updating…
         </p>
       )}
       <div class="daybook-foot">

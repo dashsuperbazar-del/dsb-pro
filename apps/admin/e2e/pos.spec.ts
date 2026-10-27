@@ -1,4 +1,10 @@
-import { stockTask, addItemForm, reviewPayment, fillBillItem } from './design-helpers';
+import {
+  stockTask,
+  addItemForm,
+  reviewPayment,
+  fillBillItem,
+  openAllScreens,
+} from './design-helpers';
 import { swReady } from './sw-ready';
 import { test, expect } from '@playwright/test';
 import { addByTap } from './pos-shop-setup';
@@ -23,6 +29,7 @@ async function createOwnerShop(page: import('@playwright/test').Page) {
 
 test('owner can open the Phase 4 POS and customer payment surface', async ({ page }) => {
   await createOwnerShop(page);
+  await openAllScreens(page);
   await page.getByRole('link', { name: 'Sales POS' }).click();
   await expect(page.getByRole('heading', { name: 'Sales POS' })).toBeVisible();
   await expect(page.getByText('Cart is empty.')).toBeVisible();
@@ -421,6 +428,7 @@ test('bill total rounds to the nearest rupee while the item keeps exact paise (R
 test('phone navigation and checkout stay readable at narrow widths', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 800 });
   await createOwnerShop(page);
+  await openAllScreens(page);
   const actions = page.getByRole('navigation', { name: 'Shop actions' });
   await expect(actions.getByRole('link', { name: /Sales POS/ })).toBeVisible();
   await expect(page.getByText(/Signed in as tenant/)).toHaveCount(0);

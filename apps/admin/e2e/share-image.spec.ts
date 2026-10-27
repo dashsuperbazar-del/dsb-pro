@@ -28,6 +28,7 @@ test('statement "Share as image" falls back to a PNG download and a WhatsApp lin
   await page.getByLabel('Shop name').fill('Share Image Shop');
   await page.getByRole('button', { name: 'Create your shop' }).click();
   await expect(page.getByText(/Overview/)).toBeVisible();
+  await openAllScreens(page);
   await page.getByRole('link', { name: 'Customers & ledger' }).click();
   await page
     .locator('summary')

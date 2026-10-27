@@ -19,6 +19,7 @@ async function createOwnerShop(page: import('@playwright/test').Page) {
 
 test('owner can open customer ledger and allocation workflow', async ({ page }) => {
   await createOwnerShop(page);
+  await openAllScreens(page);
   await page.getByRole('link', { name: 'Customers & ledger' }).click();
   await expect(page.getByRole('heading', { name: 'Customers & ledger' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Customer master' })).toBeVisible();
@@ -47,6 +48,7 @@ test("owner can correct a customer's phone and credit limit and the change survi
   page,
 }) => {
   await createOwnerShop(page);
+  await openAllScreens(page);
   await page.getByRole('link', { name: 'Customers & ledger' }).click();
   await page
     .locator('summary')
@@ -80,6 +82,7 @@ test('a receipt whose answer is lost after commit is reconciled, never recorded 
   page,
 }) => {
   await createOwnerShop(page);
+  await openAllScreens(page);
   await page.getByRole('link', { name: 'Customers & ledger' }).click();
   await page
     .locator('summary')
@@ -119,6 +122,7 @@ test('global search finds a customer by name and says plainly when nothing match
   page,
 }) => {
   await createOwnerShop(page);
+  await openAllScreens(page);
   await page.getByRole('link', { name: 'Customers & ledger' }).click();
   await page
     .locator('summary')

@@ -1,4 +1,10 @@
-import { stockTask, addItemForm, reviewPayment, fillBillItem } from './design-helpers';
+import {
+  stockTask,
+  addItemForm,
+  reviewPayment,
+  fillBillItem,
+  openAllScreens,
+} from './design-helpers';
 import { swReady } from './sw-ready';
 import { test, expect } from '@playwright/test';
 import { addByTap } from './pos-shop-setup';
@@ -172,6 +178,7 @@ test('chaos: airplane mode + app restart + logical one-hour outage preserves and
 
   // Navigate through the running SPA while still offline. This is the real
   // PWA user path; it must not depend on a new network navigation.
+  await openAllScreens(page);
   await page.getByRole('link', { name: 'Sync & offline' }).click();
   await expect(page.getByRole('heading', { name: 'Sync & offline' })).toBeVisible();
   await expect(page.getByTestId('sync-outbox-count')).toHaveText('2');

@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { setupPosShop, addToCart, toPayment } from './pos-shop-setup';
+import { openAllScreens } from './design-helpers';
 // D6 evidence: Sales history, Sync (online + offline queued), Reports, Expenses, Customers, Audit log at
 // phone and desktop size, light and dark. Screenshots only (no assertions about the new UI, so the same
 // spec can be run on the previous build for the "before" set). Set DESIGN_SHOTS_DIR to collect the PNGs.
@@ -101,8 +102,10 @@ test('design screenshots: D6 screens', async ({ page, context }, info) => {
       await page.setViewportSize({ width: size.width, height: size.height });
       await page.evaluate((t) => localStorage.setItem('dsb-pro:appearance', t), theme);
       await page.emulateMedia({ colorScheme: theme });
-      if (!page.url().includes('/sync'))
+      if (!page.url().includes('/sync')) {
+        await openAllScreens(page);
         await page.getByRole('link', { name: 'Sync & offline' }).click();
+      }
       await page.waitForTimeout(800);
       await shoot('04-sync-offline-queued', `${theme}-${size.name}`);
     }
