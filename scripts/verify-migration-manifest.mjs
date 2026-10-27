@@ -62,6 +62,7 @@ export const ALLOWED_GROUPS = Object.freeze([
   'offlinebillchange',
   'itemnamelock',
   'offlinesupplierpay',
+  'supplierbillsearch',
 ]);
 
 const VERSION_RE = /^[0-9]{4}$/;
@@ -247,6 +248,7 @@ const EXPECTED_IN_FLIGHT_GROUP_AND_PATH = Object.freeze({
   '0072': ['offlinebillchange', 'supabase/migrations/0072_offline_bill_changes.sql'],
   '0073': ['itemnamelock', 'supabase/migrations/0073_item_name_lock.sql'],
   '0074': ['offlinesupplierpay', 'supabase/migrations/0074_offline_supplier_payments.sql'],
+  '0075': ['supplierbillsearch', 'supabase/migrations/0075_supplier_bill_duplicates.sql'],
 });
 
 /**

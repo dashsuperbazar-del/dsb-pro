@@ -75,6 +75,7 @@ import {
   type StockRow,
   type BillDocument,
   listSupplierBillsForDuplicateCheck,
+  findSupplierBillDuplicates,
 } from '@dsb-pro/adapters';
 import {
   buildLegacyDsbImportPlan,
@@ -2206,12 +2207,26 @@ export function InventoryScreen({
       let match: DuplicateMatch | null;
       try {
         // An edit replaces its own original (same supplier, bill no., often total): never a duplicate of it.
+        const sameTotal = repeatedClientId.current !== fresh.clientId;
+        // Started now, in parallel with the list read below, so both share the same short wait. It looks past
+        // the latest-1,000 list; a VOID copy it returns outranks a stale cached POSTED one (mergeKnownBills).
+        const deepRead = online
+          ? readServerDuplicates(
+              shopId,
+              fresh.partyId,
+              fresh.billNo ?? null,
+              sameTotal ? payablePaise : null,
+              fresh.businessDate ?? '',
+              DUPLICATE_READ_TIMEOUT_MS,
+            )
+          : Promise.resolve(null);
         const known = mergeKnownBills(
           await knownSupplierBills(
             shopId,
             recentBills,
             online ? supplierBillsRead(shopId, fresh.partyId) : Promise.resolve(null),
           ),
+          (await deepRead) ?? [],
           // Bills saved on this device and not synced yet count too (offline or not).
           await queuedKnownBills(shopId),
         ).filter((b) => !fresh.editOf || b.id !== fresh.editOf);
@@ -2223,7 +2238,7 @@ export function InventoryScreen({
             totalPaise: payablePaise,
           },
           known,
-          { sameTotal: repeatedClientId.current !== fresh.clientId },
+          { sameTotal },
         );
       } finally {
         duplicateCheckBusy.current = false;
@@ -3868,6 +3883,40 @@ async function readSupplierBills(
     }));
   } catch {
     /* offline or refused: no server answer */
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+// Same supplier + same bill number ANYWHERE in history (and, unless this is a deliberate Repeat, the same total
+// within 3 days), looked up on the server beyond the latest-1,000 list above. null = no answer (offline, refused,
+// slow): that is simply no warning. Never rejects, never blocks.
+async function readServerDuplicates(
+  shopId: string,
+  partyId: string,
+  billNo: string | null,
+  totalPaise: number | null,
+  businessDate: string,
+  timeoutMs: number,
+): Promise<KnownBill[] | null> {
+  if (!billNo?.trim() && totalPaise === null) return null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const rows = await Promise.race([
+      findSupplierBillDuplicates(shopId, partyId, billNo ?? null, totalPaise, businessDate || null),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('timeout')), timeoutMs);
+      }),
+    ]);
+    return rows.map((b) => ({
+      id: b.id,
+      partyId,
+      billNo: b.bill_no,
+      businessDate: b.business_date,
+      totalPaise: b.total_paise,
+      status: b.status,
+    }));
+  } catch {
     return null;
   } finally {
     clearTimeout(timer);

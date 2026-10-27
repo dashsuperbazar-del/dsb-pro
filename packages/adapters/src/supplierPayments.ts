@@ -234,6 +234,35 @@ export type DuplicateCheckBill = {
   total_paise: string | number;
   status: string;
 };
+/**
+ * Same-supplier bills with the same bill number ANYWHERE in history (and, when a date is given, the same total
+ * within 3 days), VOID ones included with their status. Read-only, at most 20 rows; used for the duplicate
+ * WARNING only (mig 0075). Throws when the server cannot answer: the caller then simply has no warning.
+ */
+export async function findSupplierBillDuplicates(
+  shopId: string,
+  partyId: string,
+  billNo: string | null,
+  totalPaise: number | null,
+  businessDate: string | null,
+): Promise<DuplicateCheckBill[]> {
+  const { data, error } = await getSupabaseClient().rpc('find_supplier_bill_duplicates', {
+    p_shop_id: shopId,
+    p_party_id: partyId,
+    p_bill_no: billNo ?? '',
+    p_total_paise: totalPaise as number,
+    p_business_date: businessDate as string,
+  });
+  if (error) throw new Error(friendly(error));
+  const rows = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
+  return rows.map((r) => ({
+    id: String(r.id),
+    bill_no: (r.billNo as string | null) ?? null,
+    business_date: String(r.businessDate),
+    total_paise: String(r.totalPaise),
+    status: String(r.status),
+  }));
+}
 export async function listSupplierBillsForDuplicateCheck(
   shopId: string,
   partyId: string,

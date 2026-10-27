@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  findSupplierBillDuplicates,
   getSupplierOutstanding,
   lookupSupplierRequest,
   recordSupplierPayment,
@@ -146,5 +147,30 @@ describe('supplier payment adapter', () => {
       error: null,
     });
     await expect(getSupplierOutstanding(U)).rejects.toThrow(/Malformed/);
+  });
+});
+
+describe('findSupplierBillDuplicates', () => {
+  it('sends the lookup and maps the rows (VOID status kept)', async () => {
+    rpc.mockResolvedValue({
+      data: [
+        { id: B, billNo: 'INV-1', businessDate: '2025-01-01', totalPaise: '500', status: 'VOID' },
+      ],
+      error: null,
+    });
+    await expect(findSupplierBillDuplicates(U, U, 'INV-1', 500, '2026-10-01')).resolves.toEqual([
+      { id: B, bill_no: 'INV-1', business_date: '2025-01-01', total_paise: '500', status: 'VOID' },
+    ]);
+    expect(rpc).toHaveBeenCalledWith('find_supplier_bill_duplicates', {
+      p_shop_id: U,
+      p_party_id: U,
+      p_bill_no: 'INV-1',
+      p_total_paise: 500,
+      p_business_date: '2026-10-01',
+    });
+  });
+  it('throws when the server cannot answer (the caller treats that as no warning)', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'down' } });
+    await expect(findSupplierBillDuplicates(U, U, 'X', null, null)).rejects.toThrow();
   });
 });

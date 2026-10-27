@@ -35,6 +35,7 @@ const api = vi.hoisted(() => ({
   getPurchaseDetail: vi.fn(),
   listSupplierPurchaseLines: vi.fn().mockResolvedValue([]),
   listSupplierBillsForDuplicateCheck: vi.fn().mockResolvedValue([]),
+  findSupplierBillDuplicates: vi.fn().mockResolvedValue([]),
   getPurchaseExtras: vi.fn(),
   postPurchaseOutcome: vi.fn(),
   postPurchaseV2Outcome: vi.fn(),
@@ -75,6 +76,7 @@ beforeEach(() => {
   api.getCurrentMembership.mockResolvedValue({ tenantId: TENANT, role: 'owner' });
   api.getDefaultShopId.mockResolvedValue(SHOP);
   api.listItems.mockResolvedValue([itemA]);
+  api.findSupplierBillDuplicates.mockResolvedValue([]);
   api.listParties.mockResolvedValue([{ id: 'p1', name: 'Acme' }]);
   onLine = true;
   vi.spyOn(navigator, 'onLine', 'get').mockImplementation(() => onLine);
@@ -278,6 +280,64 @@ test('a bill voided on another device does not raise the duplicate warning (back
   await setField('input[name="billNo"]', 'inv-9');
   api.postPurchaseV2Outcome.mockResolvedValue(committed());
   await click(postButton());
+  await vi.waitFor(() => expect(api.postPurchaseV2Outcome).toHaveBeenCalledTimes(1));
+  expect(window.confirm).not.toHaveBeenCalled();
+});
+
+const deepRow = (over = {}) => ({
+  id: 'ancient-1',
+  status: 'POSTED',
+  bill_no: 'INV-9',
+  business_date: '2025-01-10',
+  total_paise: '7777',
+  ...over,
+});
+async function postWithBillNo(no: string) {
+  await mountEditor();
+  await setField('select[name="partyId"]', 'p1', 'change');
+  await vi.waitFor(() => expect(api.listSupplierBillsForDuplicateCheck).toHaveBeenCalled());
+  await item(1, '1', '10');
+  await setField('input[name="billNo"]', no);
+  api.postPurchaseV2Outcome.mockResolvedValue(committed());
+  await click(postButton());
+}
+
+test('the same bill number older than the latest-1,000 list still warns (server lookup), and is only a confirm', async () => {
+  api.listSupplierBillsForDuplicateCheck.mockResolvedValue([]);
+  api.findSupplierBillDuplicates.mockResolvedValue([deepRow()]);
+  await postWithBillNo('inv-9');
+  await vi.waitFor(() => expect(window.confirm).toHaveBeenCalledTimes(1));
+  expect(vi.mocked(window.confirm).mock.calls[0]![0]).toContain('INV-9');
+  expect(vi.mocked(window.confirm).mock.calls[0]![0]).toContain('2025-01-10');
+  // The lookup was asked for this supplier and bill number.
+  expect(api.findSupplierBillDuplicates.mock.calls[0]![1]).toBe('p1');
+  expect(api.findSupplierBillDuplicates.mock.calls[0]![2]).toBe('inv-9');
+  // "Post anyway" posts; nothing was blocked or posted by the check itself.
+  await vi.waitFor(() => expect(api.postPurchaseV2Outcome).toHaveBeenCalledTimes(1));
+});
+
+test('declining the warning posts nothing', async () => {
+  api.listSupplierBillsForDuplicateCheck.mockResolvedValue([]);
+  api.findSupplierBillDuplicates.mockResolvedValue([deepRow()]);
+  vi.mocked(window.confirm).mockReturnValue(false);
+  await postWithBillNo('INV-9');
+  await vi.waitFor(() => expect(window.confirm).toHaveBeenCalledTimes(1));
+  await act(async () => new Promise((r) => setTimeout(r, 50)));
+  expect(api.postPurchaseV2Outcome).not.toHaveBeenCalled();
+});
+
+test('a failed server lookup is no warning and does not block the post', async () => {
+  api.listSupplierBillsForDuplicateCheck.mockResolvedValue([]);
+  api.findSupplierBillDuplicates.mockRejectedValue(new Error('network'));
+  await postWithBillNo('INV-9');
+  await vi.waitFor(() => expect(api.postPurchaseV2Outcome).toHaveBeenCalledTimes(1));
+  expect(window.confirm).not.toHaveBeenCalled();
+});
+
+test('a VOID copy from the server lookup outranks a stale cached POSTED copy', async () => {
+  api.listSupplierBillsForDuplicateCheck.mockResolvedValue([deepRow({ id: 'x-1' })]);
+  api.findSupplierBillDuplicates.mockResolvedValue([deepRow({ id: 'x-1', status: 'VOID' })]);
+  await postWithBillNo('INV-9');
   await vi.waitFor(() => expect(api.postPurchaseV2Outcome).toHaveBeenCalledTimes(1));
   expect(window.confirm).not.toHaveBeenCalled();
 });

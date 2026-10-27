@@ -1256,8 +1256,27 @@ jobs:
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "grant execute on function pay_supplier_if_unchanged(uuid,uuid,date,bigint,text,text,jsonb,text,jsonb) to anon"
           if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Anonymous offline supplier payment accepted'; exit 1; fi
           psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "revoke execute on function pay_supplier_if_unchanged(uuid,uuid,date,bigint,text,text,jsonb,text,jsonb) from anon"
-          grep -Fx 'needs_upgrade=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          grep -Fx 'needs_offlinesupplierpay=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
           echo 'DISPOSABLE OFFLINE SUPPLIER PAYMENTS UPGRADE: PASS'
+      - name: Prove supplierbillsearch upgrade (Supplier bill duplicate search; apply, no-op, tamper/partial refusal)
+        env:
+          PROOF_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          grep -Fx 'needs_supplierbillsearch=true' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" supplierbillsearch
+          grep -Fx 'needs_supplierbillsearch=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          grep -Fx 'needs_offlinesupplierpay=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          scripts/apply-phase6-upgrade.sh "$PROOF_DB_URL" supplierbillsearch
+          expected_checksum=$(sha256sum supabase/migrations/0075_supplier_bill_duplicates.sql | cut -d' ' -f1)
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update app_migration_receipts set checksum_sha256=repeat('0',64) where version='0075'"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo '0075 tamper accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "update app_migration_receipts set checksum_sha256='$expected_checksum' where version='0075'"
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "grant execute on function find_supplier_bill_duplicates(uuid,uuid,text,bigint,date) to anon"
+          if scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL"; then echo 'Anonymous supplier bill search accepted'; exit 1; fi
+          psql "$PROOF_DB_URL" -X -v ON_ERROR_STOP=1 -c "revoke execute on function find_supplier_bill_duplicates(uuid,uuid,text,bigint,date) from anon"
+          grep -Fx 'needs_upgrade=false' <<<"$(scripts/inspect-phase6-upgrade-state.sh "$PROOF_DB_URL")" >/dev/null
+          echo 'DISPOSABLE SUPPLIER BILL SEARCH UPGRADE: PASS'
       - name: Stop and erase the disposable target
         if: always()
         run: supabase stop --workdir "$PROOF_ROOT" --no-backup
@@ -2014,6 +2033,11 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" offlinesupplierpay
+      - name: Apply supplierbillsearch (Supplier bill duplicate search) atomically
+        if: steps.preflight.outputs.needs_supplierbillsearch == 'true'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: scripts/apply-phase6-upgrade.sh "$SUPABASE_DB_URL" supplierbillsearch
       - name: Verify live Batch B contract
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}

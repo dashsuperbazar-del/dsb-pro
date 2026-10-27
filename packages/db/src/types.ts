@@ -3836,6 +3836,16 @@ export type Database = {
           total_paise: number
         }[]
       }
+      find_supplier_bill_duplicates: {
+        Args: {
+          p_bill_no: string
+          p_business_date?: string
+          p_party_id: string
+          p_shop_id: string
+          p_total_paise: number
+        }
+        Returns: Json
+      }
       get_customer_aging_report: {
         Args: { p_as_of: string; p_shop_id: string }
         Returns: {
