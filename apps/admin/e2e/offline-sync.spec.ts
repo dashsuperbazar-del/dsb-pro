@@ -194,8 +194,8 @@ test('chaos: airplane mode + app restart + logical one-hour outage preserves and
   await expect(page.getByTestId('sync-queued-sales')).toHaveText('0');
   const rows = page.locator('section[aria-label="Offline sales"] tbody tr');
   await expect(rows).toHaveCount(2);
-  await expect(rows.nth(0)).toContainText('SYNCED');
-  await expect(rows.nth(1)).toContainText('SYNCED');
+  await expect(rows.nth(0)).toContainText('synced');
+  await expect(rows.nth(1)).toContainText('synced');
 
   await page.goto('/sales-history');
   const reconciliation = page.locator('section[aria-label="Day reconciliation"]');

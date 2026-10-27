@@ -1,5 +1,6 @@
 // Rarely used screens, loaded on demand as ONE chunk (D2): one chunk compresses better than many, and
 // the service worker precaches it (dist/precache.json) so these screens still open offline.
+import './d6.css';
 export { TeamScreen } from './screens/TeamScreen';
 export { DevicesScreen } from './screens/DevicesScreen';
 export { CustomersScreen } from './screens/CustomersScreen';

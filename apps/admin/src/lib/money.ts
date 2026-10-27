@@ -2,8 +2,9 @@
 // so report totals beyond Number.MAX_SAFE_INTEGER stay exact.
 export function rupees(paise: string | number): string {
   const s = typeof paise === 'number' ? BigInt(Math.trunc(paise)).toString() : String(paise).trim();
-  const neg = s.startsWith('-');
-  const digits = (neg ? s.slice(1) : s).padStart(3, '0');
+  const digits = (s.startsWith('-') ? s.slice(1) : s).padStart(3, '0');
+  // Zero is never negative: no "−₹0.00".
+  const neg = s.startsWith('-') && !/^0+$/.test(digits);
   const whole = digits.slice(0, -2).replace(/^0+(?=\d)/, '');
   const last3 = whole.slice(-3);
   const rest = whole.slice(0, -3);

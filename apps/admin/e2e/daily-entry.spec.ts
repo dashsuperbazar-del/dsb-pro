@@ -63,7 +63,7 @@ test('phone-width screens get a bottom navigation bar', async ({ page }) => {
   await expect(nav).toBeVisible();
   await nav.getByRole('link', { name: 'More' }).click();
   await page.getByRole('link', { name: 'Expenses', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Expenses' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Expenses', exact: true })).toBeVisible();
 });
 
 test('an expense whose answer is lost is retried as the same expense, never posted twice', async ({

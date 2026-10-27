@@ -28,8 +28,14 @@ import { BillCodeChip } from '../components/BillCodeChip';
 import { billCodeMatch } from '../lib/billCode';
 import { pendingDocIds } from '../lib/remarkQueue';
 import { shopContext } from '../lib/shopContext';
+import { rupees } from '../lib/money';
+import { HomeRow } from '../components/HomeRow';
+import { MoreMenu } from '../components/MoreMenu';
+import { ScrollTable } from '../components/ScrollTable';
 
-const money = (paise: number) => `₹${(paise / 100).toFixed(2)}`;
+const money = (paise: number) => rupees(paise);
+// A deduction: "−₹10.00", and plain "₹0.00" when there is none (never "−₹0.00").
+const minus = (paise: number) => (paise > 0 ? `−${rupees(paise)}` : rupees(0));
 
 type PrintMode = 'thermal' | 'a4';
 
@@ -219,18 +225,26 @@ export function SalesHistoryScreen() {
           {message}
         </p>
       )}
-      <section class="card no-print" aria-label="Day reconciliation">
-        <div class="row">
-          <div>
-            <h2>Day reconciliation</h2>
-            <p class="muted">
-              Use this at shop close to compare DSB Pro with legacy DSB for the same business date.
-            </p>
-          </div>
-        </div>
-        <div class="row">
+      <HomeRow
+        name="sales-day-reconciliation"
+        title="Day reconciliation"
+        label="Day reconciliation"
+        userId={me?.userId}
+        count={null}
+        tone="neutral"
+        class="no-print"
+        summary={
+          report
+            ? `${report.invoiceCount} invoices · ${money(report.netSalesTotalPaise)}`
+            : 'compare with old DSB at shop close'
+        }
+      >
+        <p class="muted">
+          Use this at shop close to compare DSB Pro with legacy DSB for the same business date.
+        </p>
+        <div class="filter-bar">
           <label>
-            Business date{' '}
+            Business date
             <input
               aria-label="Reconciliation business date"
               type="date"
@@ -248,7 +262,7 @@ export function SalesHistoryScreen() {
         </div>
         {report && (
           <div data-testid="day-reconciliation-summary">
-            <div class="table-wrap">
+            <ScrollTable>
               <table>
                 <tbody>
                   <tr>
@@ -262,7 +276,7 @@ export function SalesHistoryScreen() {
                   <tr>
                     <th>Sale returns</th>
                     <td>
-                      {report.saleReturnCount} · −{money(report.saleReturnTotalPaise)}
+                      {report.saleReturnCount} · {minus(report.saleReturnTotalPaise)}
                     </td>
                   </tr>
                   <tr>
@@ -271,7 +285,7 @@ export function SalesHistoryScreen() {
                   </tr>
                   <tr>
                     <th>Cash refunded</th>
-                    <td>−{money(report.cashRefundPaise)}</td>
+                    <td>{minus(report.cashRefundPaise)}</td>
                   </tr>
                   <tr>
                     <th>Discounts</th>
@@ -309,9 +323,9 @@ export function SalesHistoryScreen() {
                   </tr>
                 </tbody>
               </table>
-            </div>
+            </ScrollTable>
             <h3>Payment modes</h3>
-            <div class="table-wrap">
+            <ScrollTable>
               <table>
                 <thead>
                   <tr>
@@ -332,7 +346,7 @@ export function SalesHistoryScreen() {
                   </tr>
                 </tbody>
               </table>
-            </div>
+            </ScrollTable>
             <p>
               <strong>Current customer outstanding:</strong>{' '}
               {money(report.currentCustomerOutstandingPaise)} ·{' '}
@@ -340,7 +354,7 @@ export function SalesHistoryScreen() {
             </p>
             <h3>Items sold on {report.businessDate}</h3>
             {report.soldItems.length ? (
-              <div class="table-wrap">
+              <ScrollTable>
                 <table>
                   <thead>
                     <tr>
@@ -363,7 +377,7 @@ export function SalesHistoryScreen() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </ScrollTable>
             ) : (
               <p>No finalized sale items for this date.</p>
             )}
@@ -394,7 +408,7 @@ export function SalesHistoryScreen() {
                       : 'MISMATCH — review the rows below'}
                   </strong>
                 </p>
-                <div class="table-wrap">
+                <ScrollTable>
                   <table>
                     <thead>
                       <tr>
@@ -429,7 +443,7 @@ export function SalesHistoryScreen() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </ScrollTable>
                 {legacyComparison.legacy.returnCreditPaise > 0 && (
                   <p>
                     Old DSB sale-return credit: {money(legacyComparison.legacy.returnCreditPaise)}.
@@ -452,7 +466,7 @@ export function SalesHistoryScreen() {
             )}
           </div>
         )}
-      </section>
+      </HomeRow>
 
       {viewing && (
         <section class="card no-print" aria-label="Invoice detail">
@@ -549,27 +563,34 @@ export function SalesHistoryScreen() {
         <p class="muted" data-testid="sales-list-count">
           Showing {listed.length} of {sales.length} loaded items.{hiddenNote(hiddenVoided)}
         </p>
-        <div class="table-wrap">
+        <ScrollTable class="sales-cards">
           <table>
             <thead>
               <tr>
                 <th>Invoice</th>
                 <th>Date</th>
                 <th>Status</th>
-                <th>Total</th>
+                <th class="num">Total</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {listed.map((s) => (
-                <tr>
-                  <td>
+                <tr key={s.id}>
+                  <td class="sale-inv">
                     {s.doc_no}
-                    {s.bill_code && <small class="muted"> · {s.bill_code}</small>}
+                    {s.bill_code && <small class="muted sale-code">{s.bill_code}</small>}
                   </td>
-                  <td>{s.business_date}</td>
-                  <td>
-                    {s.status}
+                  <td class="sale-date">
+                    {s.business_date}
+                    {customerOf(s.customer_id) && ` · ${customerOf(s.customer_id)?.name}`}
+                  </td>
+                  <td class="sale-status">
+                    <span
+                      class={`badge ${s.status === 'FINALIZED' ? 'success' : s.status === 'VOID' ? 'danger' : 'warning'}`}
+                    >
+                      {s.status}
+                    </span>
                     {pending?.has(s.id) && (
                       <>
                         {' '}
@@ -579,30 +600,44 @@ export function SalesHistoryScreen() {
                       </>
                     )}
                   </td>
-                  <td>{money(s.total_paise)}</td>
-                  <td>
-                    <div class="row">
-                      <button disabled={busy} onClick={() => void viewSale(s.id)}>
+                  <td class="num sale-total">{money(s.total_paise)}</td>
+                  <td class="sale-actions">
+                    <div>
+                      <button class="primary" disabled={busy} onClick={() => void viewSale(s.id)}>
                         View
                       </button>
-                      <button disabled={busy} onClick={() => void openReceipt(s, 'thermal')}>
-                        {t('printThermal', locale)}
-                      </button>
-                      <button disabled={busy} onClick={() => void openReceipt(s, 'a4')}>
-                        {t('printA4', locale)}
-                      </button>
-                      {s.status === 'FINALIZED' && (
-                        <button disabled={busy} onClick={() => void doVoid(s)}>
-                          {t('voidSale', locale)}
-                        </button>
-                      )}
+                      <MoreMenu
+                        label={`More actions for ${s.doc_no}`}
+                        items={[
+                          {
+                            label: t('printThermal', locale),
+                            disabled: busy,
+                            onSelect: () => void openReceipt(s, 'thermal'),
+                          },
+                          {
+                            label: t('printA4', locale),
+                            disabled: busy,
+                            onSelect: () => void openReceipt(s, 'a4'),
+                          },
+                          ...(s.status === 'FINALIZED'
+                            ? [
+                                {
+                                  label: t('voidSale', locale),
+                                  danger: true,
+                                  disabled: busy,
+                                  onSelect: () => void doVoid(s),
+                                },
+                              ]
+                            : []),
+                        ]}
+                      />
                     </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollTable>
       </section>
 
       {receipt && <SaleReceiptPrint receipt={receipt} profile={profile} printMode={printMode} />}

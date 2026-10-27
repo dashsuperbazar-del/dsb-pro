@@ -109,13 +109,21 @@ export function RemarkBox(props: {
     else setQueued(queuedRemarks(userId, docKind, docId));
   }
 
+  // The identity the box last showed. State starts empty, so the FIRST run must not reset anything: the
+  // effect runs after paint, and a remark typed in that gap (a fast typist, a test) was wiped, leaving
+  // "Add remark" disabled with nothing to send.
+  const shown = useRef('');
   useEffect(() => {
-    setRemarks(null);
-    setEditing(null);
-    setHistory(null);
-    setNote('');
-    setText('');
-    setBusy(false);
+    const identity = [shopId, docKind, docId, userId].join('|');
+    if (shown.current && shown.current !== identity) {
+      setRemarks(null);
+      setEditing(null);
+      setHistory(null);
+      setNote('');
+      setText('');
+      setBusy(false);
+    }
+    shown.current = identity;
     void load().then(flush);
     const online = () => void flush();
     window.addEventListener('online', online);

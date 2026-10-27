@@ -192,3 +192,48 @@ main > section:has(> .settings-form) {
 .offline-purchases .home-row-body li:last-child {
   border-bottom: 0;
 }
+
+/* D6: tab strips that overflow show a fade at the edge that has more. */
+.task-tabs {
+  position: relative;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 12px,
+    #000 calc(100% - 28px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 12px,
+    #000 calc(100% - 28px),
+    transparent 100%
+  );
+}
+.task-tabs::-webkit-scrollbar {
+  display: none;
+}
+.task-tabs.at-start {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent 100%);
+}
+.task-tabs.at-end {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 12px);
+  mask-image: linear-gradient(to right, transparent 0, #000 12px);
+}
+.task-tabs.fits {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+.task-tabs button {
+  flex: 0 0 auto;
+  scroll-snap-align: center;
+}
+@media (min-width: 700px) {
+  .task-tabs button {
+    flex: 1;
+  }
+}
