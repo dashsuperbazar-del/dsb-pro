@@ -3,29 +3,78 @@ import {
   getDayBook,
   getDefaultShopId,
   getShopBusinessDate,
+  listItems,
   type DayBookRow,
 } from '@dsb-pro/adapters';
 import { appRoute } from '../lib/paths';
+import { rupees } from '../lib/money';
+import { peekSnapshot, putSnapshot, snapshotUserId } from '../lib/routeSnapshot';
 
-const rupee = (p: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(p / 100);
+type DaySnapshot = { date: string; row: DayBookRow | null };
+const clock = (at: number) =>
+  new Date(at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
+const isZero = (r: DayBookRow | null) =>
+  !r ||
+  [r.sales_paise, r.receipts_paise, r.payments_paise, r.expenses_paise, r.net_cashflow_paise].every(
+    (n) => Number(n) === 0,
+  );
 
 // Home tile: today's day book at a glance (server figures; nothing computed locally).
-// Each figure is an old-DSB style stat card; its tone is fixed per figure, never derived from the amount.
-export function DayBookTile() {
+// Each figure is an old-DSB style stat card; its tone is fixed per figure, never derived from the amount,
+// except that a negative net money flow is written in red text on the same neutral panel (never green).
+// When the read fails the last saved figures are shown with a calm amber note and their time.
+export function DayBookTile({ onRefresh, rev = 0 }: { onRefresh?: () => void; rev?: number } = {}) {
   const [date, setDate] = useState('');
   const [row, setRow] = useState<DayBookRow | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState('');
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [firstRun, setFirstRun] = useState(false);
+  const [local, setLocal] = useState(0);
   useEffect(() => {
+    let alive = true;
     void (async () => {
-      const shop = await getDefaultShopId();
-      const d = await getShopBusinessDate(shop);
-      setDate(d);
-      setRow((await getDayBook(shop, d, d))[0] ?? null);
-      setLoaded(true);
-    })().catch((e) => setError(String(e)));
-  }, []);
+      const userId = await snapshotUserId();
+      const snap = peekSnapshot<DaySnapshot>('daybook', userId);
+      try {
+        const shop = await getDefaultShopId();
+        const d = await getShopBusinessDate(shop);
+        const r = (await getDayBook(shop, d, d))[0] ?? null;
+        if (!alive) return;
+        putSnapshot<DaySnapshot>('daybook', userId, shop, { date: d, row: r });
+        setDate(d);
+        setRow(r);
+        setSaved(false);
+        setError('');
+        setUpdatedAt(Date.now());
+        setLoaded(true);
+        // A brand-new shop (no figures today and no items yet) gets a setup checklist, not zero tiles.
+        if (isZero(r)) {
+          try {
+            const items = await listItems();
+            if (alive) setFirstRun(items.length === 0);
+          } catch {
+            if (alive) setFirstRun(false);
+          }
+        } else setFirstRun(false);
+      } catch (e) {
+        if (!alive) return;
+        if (snap) {
+          setDate(snap.value.date);
+          setRow(snap.value.row);
+          setUpdatedAt(snap.at);
+          setSaved(true);
+          setError('');
+          setLoaded(true);
+          setFirstRun(false);
+        } else setError(String(e));
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [rev, local]);
   if (error)
     return (
       <section class="card daybook-tile daybook-error" aria-label="Day book today">
@@ -34,8 +83,27 @@ export function DayBookTile() {
         </p>
       </section>
     );
+  if (loaded && firstRun)
+    return (
+      <section class="card daybook-tile daybook-firstrun" aria-label="Day book today">
+        <h2>Set up your shop</h2>
+        <p class="muted">Nothing recorded yet. Three steps and you are ready for the first bill.</p>
+        <ol class="firstrun-steps">
+          <li>
+            <a href={appRoute.inventory}>Add items</a>
+          </li>
+          <li>
+            <a href={appRoute.suppliers}>Add suppliers</a>
+          </li>
+          <li>
+            <a href={appRoute.pos}>Make your first sale</a>
+          </li>
+        </ol>
+      </section>
+    );
   const v = (k: keyof Omit<DayBookRow, 'business_date'>) =>
-    loaded ? rupee(row ? row[k] : 0) : '—';
+    loaded ? rupees(row ? row[k] : 0) : '—';
+  const negative = Number(row?.net_cashflow_paise ?? 0) < 0;
   return (
     <section class="card daybook-tile" aria-label="Day book today">
       <h2>Today {date && `· ${date}`}</h2>
@@ -56,14 +124,36 @@ export function DayBookTile() {
           <dt>Expenses</dt>
           <dd>{v('expenses_paise')}</dd>
         </div>
-        <div class="stat daybook-net">
+        <div class={`stat daybook-net${negative ? ' negative' : ''}`}>
           <dt>Net money flow</dt>
           <dd>{v('net_cashflow_paise')}</dd>
         </div>
       </dl>
-      <a class="daybook-link" href={appRoute.reports}>
-        Full day book
-      </a>
+      {saved && updatedAt !== null && (
+        <p class="banner warning" role="status" data-testid="daybook-saved">
+          Showing saved figures from {clock(updatedAt)}. They update when you are back online.
+        </p>
+      )}
+      <div class="daybook-foot">
+        <a class="daybook-link" href={appRoute.reports}>
+          Full day book
+        </a>
+        {updatedAt !== null && !saved && (
+          <span class="muted" data-testid="daybook-updated">
+            Updated {clock(updatedAt)}
+          </span>
+        )}
+        <button
+          type="button"
+          class="daybook-refresh"
+          onClick={() => {
+            setLocal((n) => n + 1);
+            onRefresh?.();
+          }}
+        >
+          Refresh
+        </button>
+      </div>
     </section>
   );
 }

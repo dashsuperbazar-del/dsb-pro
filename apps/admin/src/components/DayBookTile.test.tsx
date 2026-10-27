@@ -10,12 +10,14 @@ const api = vi.hoisted(() => ({
   getDefaultShopId: vi.fn().mockResolvedValue('shop'),
   getShopBusinessDate: vi.fn().mockResolvedValue('2026-10-12'),
   getDayBook: vi.fn(),
+  listItems: vi.fn().mockResolvedValue([{ id: 'i1' }]),
 }));
 vi.mock('@dsb-pro/adapters', () => api);
 const host = document.createElement('div');
 afterEach(() => {
   act(() => render(null, host));
   vi.clearAllMocks();
+  api.listItems.mockResolvedValue([{ id: 'i1' }]);
 });
 test('an unresolved day book shows placeholders, then confirmed empty data shows zero', async () => {
   let finish!: (rows: never[]) => void;
@@ -121,4 +123,36 @@ test('figures render as separate stat cards with fixed tones; the link keeps its
   const link = host.querySelector<HTMLAnchorElement>('a.daybook-link');
   expect(link?.textContent).toContain('Full day book');
   expect(link?.getAttribute('href')).toBe(appRoute.reports);
+});
+
+test('a negative net money flow is red text on the neutral panel, never a success panel', async () => {
+  api.getDayBook.mockResolvedValue([
+    {
+      business_date: '2026-10-12',
+      sales_paise: 100,
+      receipts_paise: 100,
+      payments_paise: 1768300,
+      expenses_paise: 0,
+      net_cashflow_paise: -1768200,
+    },
+  ]);
+  await act(async () => {
+    render(<DayBookTile />, host);
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('−₹17,682.00'));
+  const net = host.querySelector('.daybook-net')!;
+  expect(net.classList.contains('negative')).toBe(true);
+  expect(net.classList.contains('tone-success')).toBe(false);
+});
+
+test('a brand-new shop (nothing today, no items) sees the setup checklist, not zero tiles', async () => {
+  api.getDayBook.mockResolvedValue([]);
+  api.listItems.mockResolvedValue([]);
+  await act(async () => {
+    render(<DayBookTile />, host);
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('Add items'));
+  expect(host.textContent).toContain('Add suppliers');
+  expect(host.textContent).toContain('Make your first sale');
+  expect(host.querySelector('.tiles')).toBeNull();
 });

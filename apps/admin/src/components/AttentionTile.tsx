@@ -116,7 +116,8 @@ export function AttentionTile({ userId }: { userId?: string } = {}) {
   const failed = [low, sup, due].some((p) => p.state === 'error');
   const parts: string[] = [];
   if (failed) parts.push('Some checks unavailable');
-  if (supSummary && supSummary.owedCount > 0) parts.push(`${rupees(supSummary.owedPaise)} owed`);
+  if (supSummary && supSummary.owedCount > 0)
+    parts.push(`You owe suppliers ${rupees(supSummary.owedPaise)}`);
   if (dueSummary && dueSummary.count > 0) parts.push(`${dueSummary.count} payment due`);
   if (stranded > 0) parts.push('stranded payments');
   if (lowSummary && lowSummary.count > 0) parts.push(`${lowSummary.count} low stock`);
