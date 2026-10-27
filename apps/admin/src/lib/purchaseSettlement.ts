@@ -5,13 +5,13 @@ import type { PurchaseSettlement } from '@dsb-pro/adapters';
 export function settlementLabel(s: PurchaseSettlement): string {
   switch (s.status) {
     case 'settled':
-      return 'Settled';
+      return 'Paid';
     case 'partial':
       return 'Part paid';
     case 'unpaid':
-      return 'Unpaid';
+      return 'Owed';
     case 'void':
-      return 'Voided';
+      return 'Void';
     default:
       return 'Payment status unavailable';
   }

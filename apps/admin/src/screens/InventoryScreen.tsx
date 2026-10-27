@@ -1597,7 +1597,9 @@ export function InventoryScreen({
       ? lockedPurchase.current
       : null;
   const pendingSummary =
-    purchaseLocked && lockedPurchase.current ? pendingPurchaseSummary(lockedPurchase.current) : null;
+    purchaseLocked && lockedPurchase.current
+      ? pendingPurchaseSummary(lockedPurchase.current)
+      : null;
   const pendingSupplier = (() => {
     const id = lockedPurchase.current?.partyId;
     return id ? (parties.find((p) => p.id === id)?.name ?? '') : '';

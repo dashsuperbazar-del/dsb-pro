@@ -1,0 +1,96 @@
+/* D5: Purchases + Suppliers presentation. Tokens only; no new colours. */
+
+/* Pending purchase: the block is the first thing in the purchase card and scrolls clear of the header
+   and of the sticky bill bar. */
+.pending-purchase {
+  scroll-margin-top: calc(var(--app-bar-h, 70px) + 12px);
+  scroll-margin-bottom: calc(var(--bottom-clear, 64px) + 120px);
+}
+.pending-purchase:focus {
+  outline: 3px solid var(--focus-ring, currentColor);
+  outline-offset: 2px;
+}
+.pending-purchase .pending-summary {
+  font-size: var(--text-lg, 1.05rem);
+  margin: var(--space-2) 0;
+}
+.pending-note button {
+  min-height: 44px;
+}
+
+/* Purchases list: filter row, bill rows. */
+.filter-row {
+  margin: var(--space-2) 0;
+}
+.filter-row .grid-form {
+  margin-top: var(--space-2);
+}
+
+/* Bill detail: the main actions as real buttons, Void behind More. */
+.bill-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+}
+.bill-actions > a,
+.bill-actions > button {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-4);
+}
+.bill-actions .more-menu {
+  margin-left: auto;
+}
+#bill-void,
+#bill-remarks,
+#bill-photos {
+  scroll-margin-top: calc(var(--app-bar-h, 70px) + 12px);
+}
+
+/* Suppliers: one card per supplier (name, what you owe first, last bill). */
+.supplier-cards {
+  list-style: none;
+  margin: var(--space-3) 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.supplier-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 10px);
+  background: var(--surface);
+  padding: var(--space-3);
+}
+.supplier-card.current {
+  border-color: var(--brand);
+}
+.supplier-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.supplier-card-head .link {
+  min-height: 44px;
+  font-weight: var(--weight-bold, 700);
+  text-align: left;
+}
+.supplier-owed {
+  margin: 0;
+  font-size: var(--text-lg, 1.05rem);
+}
+.supplier-meta {
+  margin: var(--space-1) 0 0;
+}
+.empty-state h3 {
+  margin: 0 0 var(--space-2);
+  color: var(--text);
+}
+.empty-state form {
+  text-align: left;
+}

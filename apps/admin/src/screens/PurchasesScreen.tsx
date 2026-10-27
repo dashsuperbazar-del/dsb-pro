@@ -25,13 +25,22 @@ import { appRoute } from '../lib/paths';
 import { roundOffLabel, rupees } from '../lib/money';
 import { PAYMENT_LABEL, percentText } from '../lib/billExtras';
 import { settlementLabel, voidPaidAccess } from '../lib/purchaseSettlement';
-import { filterBills, listBadge, type BillStatusFilter } from '../lib/purchaseListFilter';
+import {
+  filterBills,
+  filterSummaryText,
+  listBadge,
+  type BillStatusFilter,
+} from '../lib/purchaseListFilter';
+import { HomeRow } from '../components/HomeRow';
+import '../d5.css';
+import { MoreMenu } from '../components/MoreMenu';
 import { billCodeMatch } from '../lib/billCode';
 import { BillCodeChip } from '../components/BillCodeChip';
 import {
   CreditVoidPanel,
   VoidReasonNote,
   clearPendingVoid,
+  loadPendingVoid,
   voidBlocker,
 } from '../components/CreditVoidPanel';
 import {
@@ -69,6 +78,9 @@ const billCache = createDetailCache<OpenBill>(async (key) => {
   ]);
   return { detail, extras };
 }, 20);
+
+const isPhoneScreen = () =>
+  typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 640px)').matches;
 
 export function PurchasesScreen({ url }: { url?: string }) {
   const query = new URL(url ?? window.location.href, window.location.origin).searchParams;
@@ -148,6 +160,8 @@ export function PurchasesScreen({ url }: { url?: string }) {
   // Void of a cash/UPI bill: one request id per bill, kept after an unconfirmed answer so a retry can
   // never void twice or act on a different reason.
   const [voidReason, setVoidReason] = useState('');
+  // Void sits behind the bill's More menu. It stays on screen while a void is unconfirmed or just answered.
+  const [voidOpen, setVoidOpen] = useState(false);
   const [voidBusy, setVoidBusy] = useState(false);
   const [voidNote, setVoidNote] = useState('');
   const [creditVoidNote, setCreditVoidNote] = useState('');
@@ -395,6 +409,34 @@ export function PurchasesScreen({ url }: { url?: string }) {
   }
   const name = (id: string | null) =>
     parties.find((p) => p.id === id)?.name ?? (id ? 'Supplier unavailable' : 'No supplier');
+  const billId = detail?.bill.id ?? '';
+  useEffect(() => setVoidOpen(false), [billId]);
+  const voidShown =
+    voidOpen ||
+    voidUnconfirmed ||
+    !!voidNote ||
+    (!!detail && loadPendingVoid(`${userRef.current}:${shop}`, detail.bill.id) !== null);
+  const billPhotos = detail
+    ? (extras?.images ?? (detail.bill.bill_image_path ? [detail.bill.bill_image_path] : []))
+    : [];
+  const canVoidHere = !!detail && !!extras && detail.bill.status === 'POSTED';
+  // Bring a part of the open bill into view and focus it (buttons in the bill's action row).
+  function goTo(id: string) {
+    setTimeout(() => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      el.focus({ preventScroll: true });
+    }, 0);
+  }
+  const filterSummary = filterSummaryText({
+    supplierName: supplier ? name(supplier) : null,
+    status: statusFilter,
+    sort,
+    from: fromDate,
+    to: toDate,
+    showVoided,
+  });
   const matching = filterBills(
     rows,
     { status: statusFilter === 'pending' ? 'all' : statusFilter, from: fromDate, to: toDate },
@@ -472,68 +514,84 @@ export function PurchasesScreen({ url }: { url?: string }) {
               onInput={(e) => setQueryText(e.currentTarget.value)}
             />
           </label>
-          <div class="grid-form">
-            <label>
-              Supplier
-              <select value={supplier} onChange={(e) => setSupplier(e.currentTarget.value)}>
-                <option value="">All suppliers</option>
-                {parties.map((p) => (
-                  <option value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Sort
-              <select value={sort} onChange={(e) => setSort(e.currentTarget.value)}>
-                <option value="date">Bill date</option>
-                <option value="entered">Recently entered</option>
-              </select>
-            </label>
-            <label>
-              Status
-              <select
-                value={statusFilter}
-                onChange={(e) =>
-                  setStatusFilter(e.currentTarget.value as BillStatusFilter | 'pending')
-                }
-              >
-                <option value="all">All bills</option>
-                <option value="posted">Posted</option>
-                <option value="void">Voided</option>
-                <option value="paid">Paid</option>
-                <option value="partial">Partial</option>
-                <option value="unpaid">Unpaid</option>
-                <option value="pending">Pending items</option>
-              </select>
-            </label>
-            <label class="inline-check">
-              <input
-                type="checkbox"
-                checked={voidedShown}
-                disabled={statusFilter === 'void'}
-                onChange={(e) => {
-                  setShowVoided(e.currentTarget.checked);
-                  saveShowVoided('purchases', userRef.current, e.currentTarget.checked);
-                }}
-              />{' '}
-              Show voided
-            </label>
-            <label>
-              From
-              <input
-                type="date"
-                value={fromDate}
-                onInput={(e) => setFromDate(e.currentTarget.value)}
-              />
-            </label>
-            <label>
-              To
-              <input type="date" value={toDate} onInput={(e) => setToDate(e.currentTarget.value)} />
-            </label>
-          </div>
+          <HomeRow
+            name="purchase-filter"
+            title="Filter"
+            userId={userRef.current || undefined}
+            count={null}
+            tone="neutral"
+            summary={filterSummary}
+            class="filter-row"
+          >
+            <div class="grid-form">
+              <label>
+                Supplier
+                <select value={supplier} onChange={(e) => setSupplier(e.currentTarget.value)}>
+                  <option value="">All suppliers</option>
+                  {parties.map((p) => (
+                    <option value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Sort
+                <select value={sort} onChange={(e) => setSort(e.currentTarget.value)}>
+                  <option value="date">Bill date</option>
+                  <option value="entered">Recently entered</option>
+                </select>
+              </label>
+              <label>
+                Status
+                <select
+                  value={statusFilter}
+                  onChange={(e) =>
+                    setStatusFilter(e.currentTarget.value as BillStatusFilter | 'pending')
+                  }
+                >
+                  <option value="all">All bills</option>
+                  <option value="posted">Posted</option>
+                  <option value="void">Voided</option>
+                  <option value="paid">Paid</option>
+                  <option value="partial">Part paid</option>
+                  <option value="unpaid">Owed</option>
+                  <option value="pending">Pending items</option>
+                </select>
+              </label>
+              <label class="inline-check">
+                <input
+                  type="checkbox"
+                  checked={voidedShown}
+                  disabled={statusFilter === 'void'}
+                  onChange={(e) => {
+                    setShowVoided(e.currentTarget.checked);
+                    saveShowVoided('purchases', userRef.current, e.currentTarget.checked);
+                  }}
+                />{' '}
+                Show voided
+              </label>
+              <label>
+                From
+                <input
+                  type="date"
+                  value={fromDate}
+                  onInput={(e) => setFromDate(e.currentTarget.value)}
+                />
+              </label>
+              <label>
+                To
+                <input
+                  type="date"
+                  value={toDate}
+                  onInput={(e) => setToDate(e.currentTarget.value)}
+                />
+              </label>
+            </div>
+            <p class="muted">
+              Filters apply to loaded bills; load older bills to search more history.
+            </p>
+          </HomeRow>
           <p class="muted">
-            Showing {visible.length} of {rows.length} loaded bills.{hiddenNote(hiddenVoided)}{' '}
-            Filters apply to loaded bills; load older bills to search more history.
+            Showing {visible.length} of {rows.length} loaded bills.{hiddenNote(hiddenVoided)}
           </p>
           <div class="record-list">
             {visible.map((b) => (
@@ -552,16 +610,18 @@ export function PurchasesScreen({ url }: { url?: string }) {
                 <span>
                   <strong>{name(b.party_id)}</strong>
                   <small>
-                    {b.bill_no || b.bill_code || b.id.slice(0, 8)}
-                    {b.bill_no && b.bill_code ? ` · ${b.bill_code}` : ''} · {b.business_date} ·{' '}
-                    {b.status === 'VOID' ? 'Voided' : 'Posted'}
+                    {b.bill_no || b.bill_code || b.id.slice(0, 8)} · {b.business_date}
                   </small>
-                  {listBadge(settlements.get(b.id)) && (
+                  {listBadge(settlements.get(b.id)) ? (
                     <span
                       class={`badge settle-${settlements.get(b.id)!.status}`}
                       data-testid="list-settlement"
                     >
                       {listBadge(settlements.get(b.id))}
+                    </span>
+                  ) : (
+                    <span class={`badge ${b.status === 'VOID' ? 'settle-void' : 'settle-posted'}`}>
+                      {b.status === 'VOID' ? 'Void' : 'Posted'}
                     </span>
                   )}
                   {pending?.has(b.id) && (
@@ -706,6 +766,56 @@ export function PurchasesScreen({ url }: { url?: string }) {
                 {extrasError}
               </p>
             )}
+            <div class="bill-actions" role="group" aria-label="Bill actions">
+              {canPost && detail.bill.party_id && detail.bill.status === 'POSTED' && (
+                <a
+                  class="button-link primary"
+                  href={
+                    appRoute.suppliers +
+                    '?supplier=' +
+                    encodeURIComponent(detail.bill.party_id) +
+                    '&view=payment&bill=' +
+                    encodeURIComponent(detail.bill.id)
+                  }
+                >
+                  Pay
+                </a>
+              )}
+              {canPost && detail.bill.status === 'POSTED' && links && !links.replacedById && (
+                <a
+                  class="button-link"
+                  data-testid="edit-bill"
+                  href={appRoute.purchases + '?new=1&edit=' + encodeURIComponent(detail.bill.id)}
+                >
+                  Edit bill
+                </a>
+              )}
+              {shop && userRef.current && (
+                <button type="button" onClick={() => goTo('bill-remarks')}>
+                  Remarks
+                </button>
+              )}
+              {billPhotos.length > 0 && (
+                <button type="button" onClick={() => goTo('bill-photos')}>
+                  Photos ({billPhotos.length})
+                </button>
+              )}
+              {canVoidHere && (
+                <MoreMenu
+                  label="More actions for this bill"
+                  items={[
+                    {
+                      label: 'Void bill…',
+                      danger: true,
+                      onSelect: () => {
+                        setVoidOpen(true);
+                        goTo('bill-void');
+                      },
+                    },
+                  ]}
+                />
+              )}
+            </div>
             {creditVoidNote && <p role="status">{creditVoidNote}</p>}
             {links?.replacedById && (
               <p data-testid="bill-replaced">
@@ -738,45 +848,59 @@ export function PurchasesScreen({ url }: { url?: string }) {
             )}
             {extras?.notes && <p data-testid="bill-notes">Notes: {extras.notes}</p>}
             {shop && userRef.current && (
-              <RemarkBox
-                shopId={shop}
-                docKind="purchase"
-                docId={detail.bill.id}
-                userId={userRef.current}
-                role={role}
-                onLoaded={(list) => {
-                  const id = detail.bill.id;
-                  const has = list.some((r) => r.status === 'OPEN');
-                  // A void bill is never ADDED to the badges from its own remark list: a bill replaced by an
-                  // edit shows its open remarks under the corrected bill (server list), so marking the void
-                  // original "Pending" would show them twice. Removing a badge is always safe.
-                  if (has && detail.bill.status !== 'POSTED') return;
-                  setPending((old) => {
-                    if (!old || old.has(id) === has) return old;
-                    const next = new Set(old);
-                    if (has) next.add(id);
-                    else next.delete(id);
-                    return next;
-                  });
-                }}
-              />
+              <div id="bill-remarks" tabIndex={-1}>
+                <RemarkBox
+                  shopId={shop}
+                  docKind="purchase"
+                  docId={detail.bill.id}
+                  userId={userRef.current}
+                  role={role}
+                  onLoaded={(list) => {
+                    const id = detail.bill.id;
+                    const has = list.some((r) => r.status === 'OPEN');
+                    // A void bill is never ADDED to the badges from its own remark list: a bill replaced by an
+                    // edit shows its open remarks under the corrected bill (server list), so marking the void
+                    // original "Pending" would show them twice. Removing a badge is always safe.
+                    if (has && detail.bill.status !== 'POSTED') return;
+                    setPending((old) => {
+                      if (!old || old.has(id) === has) return old;
+                      const next = new Set(old);
+                      if (has) next.add(id);
+                      else next.delete(id);
+                      return next;
+                    });
+                  }}
+                />
+              </div>
             )}
             {detail.balance && (
-              <p>
-                Paid {rupees(detail.balance.allocated_paise)} · Returned{' '}
-                {rupees(detail.balance.returned_paise)} · Due{' '}
-                {rupees(detail.balance.outstanding_paise)}
-              </p>
+              <HomeRow
+                name="purchase-payments"
+                title="Payments"
+                userId={userRef.current || undefined}
+                count={null}
+                tone="neutral"
+                summary={`Paid ${rupees(detail.balance.allocated_paise)} · Due ${rupees(detail.balance.outstanding_paise)}`}
+                defaultOpen={!isPhoneScreen()}
+              >
+                <p data-testid="bill-balance">
+                  Paid {rupees(detail.balance.allocated_paise)} · Returned{' '}
+                  {rupees(detail.balance.returned_paise)} · Due{' '}
+                  {rupees(detail.balance.outstanding_paise)}
+                </p>
+              </HomeRow>
             )}
-            {(
-              extras?.images ?? (detail.bill.bill_image_path ? [detail.bill.bill_image_path] : [])
-            ).map((path, i) => (
-              <BillDocumentPreview
-                key={`${detail.bill.id}:${path}`}
-                path={path}
-                name={`${detail.bill.bill_no || 'Purchase bill'}${i ? `-${i + 1}` : ''}.${path.endsWith('.pdf') ? 'pdf' : 'webp'}`}
-              />
-            ))}
+            {billPhotos.length > 0 && (
+              <div id="bill-photos" tabIndex={-1}>
+                {billPhotos.map((path, i) => (
+                  <BillDocumentPreview
+                    key={`${detail.bill.id}:${path}`}
+                    path={path}
+                    name={`${detail.bill.bill_no || 'Purchase bill'}${i ? `-${i + 1}` : ''}.${path.endsWith('.pdf') ? 'pdf' : 'webp'}`}
+                  />
+                ))}
+              </div>
+            )}
             <div class="record-list">
               {detail.lines.map((l) => {
                 const x = extras?.lines.find((e) => e.lineNo === l.line_no);
@@ -808,83 +932,76 @@ export function PurchasesScreen({ url }: { url?: string }) {
               {roundOffLabel(detail.bill.round_off_paise) &&
                 ` · ${roundOffLabel(detail.bill.round_off_paise)}`}
             </p>
-            {extras && detail.bill.status === 'POSTED' && extras.paymentType !== 'credit' && (
-              <section class="void-paid" aria-label="Void bill">
-                {voidPaidAccess(role) ? (
-                  <>
-                    <label>
-                      Reason for voiding
-                      <input
-                        value={voidReason}
-                        readOnly={voidUnconfirmed}
-                        disabled={voidBusy || detailLoading || !!detailError}
-                        placeholder="e.g. entered twice"
-                        onInput={(e) => setVoidReason(e.currentTarget.value)}
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      class="danger"
-                      disabled={voidBusy || detailLoading || !!detailError || !voidReason.trim()}
-                      onClick={() => void voidPaid(detail.bill.id)}
-                    >
-                      {voidBusy
-                        ? 'Voiding…'
-                        : voidUnconfirmed
-                          ? 'Retry void (same request)'
-                          : 'Void bill and its payment'}
-                    </button>
-                    <small class="muted">
-                      Voids this {PAYMENT_LABEL[extras.paymentType]} bill, its stock and the{' '}
-                      {PAYMENT_LABEL[extras.paymentType]} payment of{' '}
-                      {rupees(detail.bill.total_paise)} together.
-                    </small>
-                  </>
-                ) : (
-                  <p class="muted" data-testid="void-not-allowed">
-                    Only the owner can void a {PAYMENT_LABEL[extras.paymentType]} bill, because it
-                    also voids the supplier payment. Ask the owner.
-                  </p>
-                )}
-                {voidNote && <p role="status">{voidNote}</p>}
-              </section>
-            )}
-            {extras && detail.bill.status === 'POSTED' && extras.paymentType === 'credit' && (
-              <>
-                {canPost ? (
-                  <CreditVoidPanel
-                    shopId={shop}
-                    offlineCapable={canPost}
-                    billId={detail.bill.id}
-                    label={detail.bill.bill_no || 'this bill'}
-                    scope={`${userRef.current}:${shop}`}
-                    disabled={detailLoading || !!detailError}
-                    blocked={voidBlocker(detail.balance)}
-                    onVoided={(note) => {
-                      void refresh();
-                      void open(detail.bill.id, true).then(() => setCreditVoidNote(note));
-                    }}
-                  />
-                ) : (
-                  <p class="muted" data-testid="void-not-allowed">
-                    Only the owner or a manager can void a bill. Ask them.
-                  </p>
-                )}
-              </>
-            )}
-            <nav class="context-actions" aria-label="Bill actions">
-              {canPost && detail.bill.status === 'POSTED' && links && !links.replacedById && (
-                <a
-                  class="button-link"
-                  data-testid="edit-bill"
-                  href={appRoute.purchases + '?new=1&edit=' + encodeURIComponent(detail.bill.id)}
-                >
-                  Edit bill
-                </a>
+            <div id="bill-void" tabIndex={-1} hidden={!voidShown}>
+              {extras && detail.bill.status === 'POSTED' && extras.paymentType !== 'credit' && (
+                <section class="void-paid" aria-label="Void bill">
+                  {voidPaidAccess(role) ? (
+                    <>
+                      <label>
+                        Reason for voiding
+                        <input
+                          value={voidReason}
+                          readOnly={voidUnconfirmed}
+                          disabled={voidBusy || detailLoading || !!detailError}
+                          placeholder="e.g. entered twice"
+                          onInput={(e) => setVoidReason(e.currentTarget.value)}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        class="danger"
+                        disabled={voidBusy || detailLoading || !!detailError || !voidReason.trim()}
+                        onClick={() => void voidPaid(detail.bill.id)}
+                      >
+                        {voidBusy
+                          ? 'Voiding…'
+                          : voidUnconfirmed
+                            ? 'Retry void (same request)'
+                            : 'Void bill and its payment'}
+                      </button>
+                      <small class="muted">
+                        Voids this {PAYMENT_LABEL[extras.paymentType]} bill, its stock and the{' '}
+                        {PAYMENT_LABEL[extras.paymentType]} payment of{' '}
+                        {rupees(detail.bill.total_paise)} together.
+                      </small>
+                    </>
+                  ) : (
+                    <p class="muted" data-testid="void-not-allowed">
+                      Only the owner can void a {PAYMENT_LABEL[extras.paymentType]} bill, because it
+                      also voids the supplier payment. Ask the owner.
+                    </p>
+                  )}
+                  {voidNote && <p role="status">{voidNote}</p>}
+                </section>
               )}
+              {extras && detail.bill.status === 'POSTED' && extras.paymentType === 'credit' && (
+                <>
+                  {canPost ? (
+                    <CreditVoidPanel
+                      shopId={shop}
+                      offlineCapable={canPost}
+                      billId={detail.bill.id}
+                      label={detail.bill.bill_no || 'this bill'}
+                      scope={`${userRef.current}:${shop}`}
+                      disabled={detailLoading || !!detailError}
+                      blocked={voidBlocker(detail.balance)}
+                      onVoided={(note) => {
+                        void refresh();
+                        void open(detail.bill.id, true).then(() => setCreditVoidNote(note));
+                      }}
+                    />
+                  ) : (
+                    <p class="muted" data-testid="void-not-allowed">
+                      Only the owner or a manager can void a bill. Ask them.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+            <nav class="context-actions" aria-label="Related">
               {canPost && detail.bill.status === 'POSTED' && (
                 <a
-                  class="button-link primary"
+                  class="button-link"
                   href={appRoute.purchases + '?new=1&repeat=' + encodeURIComponent(detail.bill.id)}
                 >
                   Repeat into new draft
@@ -900,17 +1017,6 @@ export function PurchasesScreen({ url }: { url?: string }) {
                     }
                   >
                     New purchase · same supplier
-                  </a>
-                  <a
-                    href={
-                      appRoute.suppliers +
-                      '?supplier=' +
-                      encodeURIComponent(detail.bill.party_id) +
-                      '&view=payment&bill=' +
-                      encodeURIComponent(detail.bill.id)
-                    }
-                  >
-                    Record payment
                   </a>
                   <a
                     href={

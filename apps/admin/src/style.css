@@ -1926,8 +1926,20 @@ body {
 }
 .badge.settle-unpaid,
 .badge.settle-partial {
-  border-color: var(--danger);
+  /* Credit is normal business: owed money is amber, never the red of an error. */
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+.badge.settle-void {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
   color: var(--danger);
+}
+.badge.settle-posted {
+  border-color: var(--success-border);
+  background: var(--success-bg);
+  color: var(--success);
 }
 .badge.remark-open,
 .badge.remark-waiting {

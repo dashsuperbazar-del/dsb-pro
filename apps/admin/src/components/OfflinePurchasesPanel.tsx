@@ -226,9 +226,7 @@ export function OfflinePurchasesPanel({
                       onClick={() =>
                         void closeRejectedBillChange(r.clientId)
                           .then(load)
-                          .catch((e: unknown) =>
-                            setNote(errorText(e)),
-                          )
+                          .catch((e: unknown) => setNote(errorText(e)))
                       }
                     >
                       Dismiss
