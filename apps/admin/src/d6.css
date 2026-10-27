@@ -288,7 +288,7 @@
 }
 
 /* A collapsed row sits straight on the page, not in a second card. */
-main > .home-row {
+main > section.home-row:not(.receipt-print) {
   padding: 0;
   background: none;
   border: 0;
@@ -303,4 +303,8 @@ td.date {
 .scroll-table > .table-wrap:not(.sales-cards):not(.mobile-records) > table {
   display: table;
   overflow: visible;
+}
+
+main > .row.no-print select {
+  max-width: 220px;
 }
