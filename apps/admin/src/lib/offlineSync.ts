@@ -30,8 +30,12 @@ import {
   plainEditRefusal,
   voidPurchaseIfUnchangedOutcome,
   plainOfflineVoidRefusal,
+  getSupplierPayContext,
+  paySupplierIfUnchangedOutcome,
+  plainOfflineSupplierPaymentRefusal,
 } from '@dsb-pro/adapters';
 import { readLocalDocument, removeLocalDocument } from './billDocumentStore';
+import { syncQueuedSupplierPayment } from './offlineSupplierPaymentSync';
 import { syncQueuedPurchase } from './offlinePurchaseSync';
 import { syncQueuedItem } from './offlineItemSync';
 import { syncQueuedBillChange } from './offlineBillChangeSync';
@@ -121,6 +125,16 @@ import {
   closeRejectedOfflineBillChange,
   type OfflineBillChangeRecord,
   type QueueOfflineBillChangeInput,
+  SUPPLIER_PAYMENT_OUTBOX_TARGET,
+  queueOfflineSupplierPayment,
+  listOfflineSupplierPaymentRecords,
+  closeRejectedOfflineSupplierPayment,
+  queuedSupplierPaymentTotals,
+  saveSupplierPayCopy,
+  getSupplierPayCopy,
+  type OfflineSupplierPaymentRecord,
+  type QueueOfflineSupplierPaymentInput,
+  type SupplierPayCopy,
 } from '@dsb-pro/sync';
 
 type Runtime = {
@@ -348,6 +362,36 @@ async function processOutbox(rt: Runtime) {
       }
       if (typeof window !== 'undefined')
         window.dispatchEvent(new CustomEvent('dsb-offline-purchases'));
+      continue;
+    }
+    if (sending.kind === 'financial-rpc' && sending.target === SUPPLIER_PAYMENT_OUTBOX_TARGET) {
+      // Offline supplier payment: applied only if the supplier and its bills are unchanged since the device
+      // read them; otherwise visibly refused with the form kept, never moved to another bill or supplier.
+      try {
+        const done = await syncQueuedSupplierPayment(rt.db, sending, {
+          pay: paySupplierIfUnchangedOutcome,
+          plain: plainOfflineSupplierPaymentRefusal,
+        });
+        if (done.kind === 'rejected')
+          void recordServerSyncConflict({
+            deviceId: rt.identity.deviceId,
+            opClientId: sending.clientId,
+            kind: 'financial-rejection',
+            target: sending.target,
+            reason: done.reason,
+            payload: sending.payload,
+            serverRef: null,
+            clientId: crypto.randomUUID(),
+          }).catch(() => undefined);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await rt.db.outbox.put(
+          markOutboxRetry(sending, message, Date.now() + retryDelayMs(sending.attempts + 1)),
+        );
+        throw error;
+      }
+      if (typeof window !== 'undefined')
+        window.dispatchEvent(new CustomEvent('dsb-offline-supplier-payments'));
       continue;
     }
     if (sending.kind === 'financial-rpc' && sending.target === ITEM_OUTBOX_TARGET) {
@@ -1121,4 +1165,55 @@ export async function listOfflineBillChanges(shopId: string): Promise<OfflineBil
 export async function closeRejectedBillChange(clientId: string): Promise<void> {
   await closeRejectedOfflineBillChange(requireRuntime().db, clientId);
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('dsb-offline-purchases'));
+}
+
+// Offline supplier payments (mig 0074): saved on this device, sent in order, applied only if unchanged.
+export type { OfflineSupplierPaymentRecord, QueueOfflineSupplierPaymentInput, SupplierPayCopy };
+const supplierPaymentsChanged = () => {
+  if (typeof window !== 'undefined')
+    window.dispatchEvent(new CustomEvent('dsb-offline-supplier-payments'));
+};
+export async function queueSupplierPaymentOffline(
+  input: QueueOfflineSupplierPaymentInput,
+): Promise<OfflineSupplierPaymentRecord> {
+  const record = await queueOfflineSupplierPayment(requireRuntime().db, input);
+  supplierPaymentsChanged();
+  void runSyncNow().catch(() => undefined);
+  return record;
+}
+export async function listOfflineSupplierPayments(
+  shopId: string,
+): Promise<OfflineSupplierPaymentRecord[]> {
+  const rt = runtime;
+  if (!rt) return [];
+  return listOfflineSupplierPaymentRecords(rt.db, shopId);
+}
+export async function closeRejectedSupplierPayment(clientId: string): Promise<void> {
+  await closeRejectedOfflineSupplierPayment(requireRuntime().db, clientId);
+  supplierPaymentsChanged();
+}
+/** Queued (unconfirmed) payment totals per supplier and per bill, for the form's local limits. */
+export async function getQueuedSupplierPaymentTotals(shopId: string) {
+  const rt = runtime;
+  if (!rt)
+    return { bySupplier: {} as Record<string, bigint>, byBill: {} as Record<string, bigint> };
+  return queuedSupplierPaymentTotals(rt.db, shopId);
+}
+/** The device copy of suppliers, owed amounts, open bills and their versions (saved on the last online load). */
+export async function getSavedSupplierPayCopy(shopId: string): Promise<SupplierPayCopy | null> {
+  await waitForOfflineRuntime();
+  return getSupplierPayCopy(requireRuntime().db, shopId);
+}
+/** Reads the live context and saves it on the device; returns it. Throws when offline (the saved copy stays). */
+export async function refreshSupplierPayCopy(shopId: string): Promise<SupplierPayCopy> {
+  await waitForOfflineRuntime();
+  const ctx = await getSupplierPayContext(shopId);
+  const copy: SupplierPayCopy = {
+    shopId,
+    savedAt: Date.now(),
+    businessDate: ctx.businessDate,
+    suppliers: ctx.suppliers,
+  };
+  await saveSupplierPayCopy(requireRuntime().db, copy);
+  return copy;
 }

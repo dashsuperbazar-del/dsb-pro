@@ -38,6 +38,7 @@ import { SupplierStatement } from '../components/SupplierStatement';
 import { SupplierSchedulePanel } from '../components/SupplierSchedulePanel';
 import { DuplicateBillsCheck, PartyMergePanel } from '../components/PartyMergePanel';
 import { BulkSupplierPayments } from '../components/BulkSupplierPayments';
+import { PaySupplierPanel } from '../components/PaySupplierPanel';
 import { SnapshotNote } from '../components/SnapshotNote';
 import {
   dropSnapshot,
@@ -196,7 +197,11 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
     void refreshBase(true).catch((e) => {
       snapshotRefreshFailed('suppliers', e);
       setSnapshotFailed(true);
-      setError(String(e));
+      setError(
+        typeof navigator !== 'undefined' && navigator.onLine === false
+          ? 'You are offline. Balances and bills load when you are back online. Pay supplier below works from what is saved on this device.'
+          : String(e),
+      );
     });
   }, []);
   useEffect(() => {
@@ -409,6 +414,7 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
         </p>
       )}
       {message && <p role="status">{message}</p>}
+      <PaySupplierPanel />
       <SnapshotNote at={snapshotAt} failed={snapshotFailed} />
       {canPost && shopId && businessDate && snapshotAt === null && (
         <BulkSupplierPayments

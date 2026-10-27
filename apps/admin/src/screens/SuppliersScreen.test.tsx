@@ -25,8 +25,10 @@ const api = vi.hoisted(() => ({
   onAuthStateChange: vi.fn(),
 }));
 vi.mock('@dsb-pro/adapters', () => api);
+vi.mock('../lib/useUserId', () => ({ useUserId: () => undefined }));
 vi.mock('../lib/offlineSync', () => ({
   waitForOfflineRuntime: vi.fn().mockResolvedValue(undefined),
+  getOfflineRuntimeIdentity: vi.fn(() => null),
   listOpenFinancialAttempts: vi.fn().mockResolvedValue([]),
   listFinancialDrafts: vi.fn().mockResolvedValue([]),
 }));
