@@ -130,7 +130,6 @@ import {
   queueOfflineSupplierPayment,
   listOfflineSupplierPaymentRecords,
   closeRejectedOfflineSupplierPayment,
-  queuedSupplierPaymentTotals,
   saveSupplierPayCopy,
   getSupplierPayCopy,
   type OfflineSupplierPaymentRecord,
@@ -1252,13 +1251,6 @@ export async function closeRejectedSupplierPayment(clientId: string): Promise<vo
   await closeRejectedOfflineSupplierPayment(requireRuntime().db, clientId);
   supplierPaymentsChanged();
 }
-/** Queued (unconfirmed) payment totals per supplier and per bill, for the form's local limits. */
-export async function getQueuedSupplierPaymentTotals(shopId: string) {
-  const rt = runtime;
-  if (!rt)
-    return { bySupplier: {} as Record<string, bigint>, byBill: {} as Record<string, bigint> };
-  return queuedSupplierPaymentTotals(rt.db, shopId);
-}
 /** The device copy of suppliers, owed amounts, open bills and their versions (saved on the last online load). */
 export async function getSavedSupplierPayCopy(shopId: string): Promise<SupplierPayCopy | null> {
   await waitForOfflineRuntime();
@@ -1267,10 +1259,12 @@ export async function getSavedSupplierPayCopy(shopId: string): Promise<SupplierP
 /** Reads the live context and saves it on the device; returns it. Throws when offline (the saved copy stays). */
 export async function refreshSupplierPayCopy(shopId: string): Promise<SupplierPayCopy> {
   await waitForOfflineRuntime();
+  // Stamped BEFORE the server read: a payment that synced while it ran is counted as not yet in the copy.
+  const savedAt = Date.now();
   const ctx = await getSupplierPayContext(shopId);
   const copy: SupplierPayCopy = {
     shopId,
-    savedAt: Date.now(),
+    savedAt,
     businessDate: ctx.businessDate,
     suppliers: ctx.suppliers,
   };

@@ -107,11 +107,24 @@ test('offline supplier payment: saved on the device, applied on reconnect; stale
   pay = panel(page);
   await expect(pay.getByLabel('Supplier to pay')).toContainText('Pay Supplier Co — owed ₹150.00');
 
+  // 1b. A payment dated before the bill it is assigned to is refused inline, before anything is saved.
+  await pay.getByLabel('Supplier to pay').selectOption({ index: 1 });
+  await pay.getByLabel('Amount to pay').fill('10');
+  await pay.getByLabel(/Assign to bill PS-1/).fill('10');
+  await pay.getByLabel('Date paid').fill('2000-01-01');
+  await pay.getByRole('button', { name: 'Check and save', exact: true }).click();
+  await expect(pay.getByText(/earlier than bill PS-1/)).toBeVisible();
+  await expect(pay.getByTestId('pay-review')).toHaveCount(0);
+  await expect(rows(page, 'QUEUED')).toHaveCount(0);
+  await page.goto('/suppliers');
+  pay = panel(page);
+
   // 2. A payment saved offline: review says it is not in the balance yet; the double tap saves once.
   await fillPayment(page, '60', { label: 'PS-1', amount: '60' });
   const review = pay.getByTestId('pay-review');
   await expect(review).toContainText('Saved on this device, not yet in the supplier’s balance.');
   await expect(review).toContainText('PS-1 ₹60.00');
+  await expect(review.getByTestId('pay-review-date')).toHaveText(/^\d{4}-\d{2}-\d{2}$/);
   await review.getByRole('button', { name: 'Save on this device', exact: true }).dblclick();
   await expect(rows(page, 'QUEUED')).toHaveCount(1);
   await expect(rows(page, 'QUEUED').first()).toContainText('Saved on this device — will sync');
