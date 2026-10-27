@@ -4,6 +4,7 @@ import { App } from './App';
 import './tokens.css';
 import './style.css';
 import './d3.css';
+import './pickList.css';
 import './d3-screens.css';
 
 const dsn = import.meta.env.VITE_SENTRY_DSN;

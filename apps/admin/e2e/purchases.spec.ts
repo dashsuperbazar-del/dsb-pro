@@ -237,11 +237,14 @@ test('a bill card shows the unit conversion and sets a retail price that POS the
   page.on('dialog', (d) => void d.accept());
   await page.goto('/pos');
   await page.getByLabel('Find product').fill('Card Biscuit');
-  await expect(page.getByLabel('Item').locator('option')).toHaveCount(2);
-  await page.getByLabel('Item').selectOption({ index: 1 });
-  await page.locator('select[name="unitLevel"]').selectOption('2');
-  await page.getByLabel('Quantity').fill('3');
-  await page.getByRole('button', { name: 'Add item', exact: true }).click();
+  // The row's own unit chips (second unit), then one tap, then the quantity in the cart.
+  await page
+    .getByRole('group', { name: 'Unit for Card Biscuit' })
+    .getByRole('button')
+    .nth(1)
+    .click();
+  await page.getByRole('button', { name: 'Add Card Biscuit', exact: true }).click();
+  await page.getByLabel('Cart qty for Card Biscuit').fill('3');
   const row = page.locator('#pos-cart tr').filter({ hasText: 'Card Biscuit' });
   await expect(row).toContainText('₹10.00');
   await expect(row).toContainText('₹30.00');

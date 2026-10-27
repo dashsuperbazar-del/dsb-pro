@@ -27,7 +27,7 @@ async function shoot(
     await page.evaluate((t) => localStorage.setItem('dsb-pro:appearance', t), theme);
     await page.goto('/pos');
     await expect(page.getByRole('heading', { name: 'Sales POS', exact: true })).toBeVisible();
-    await expect(page.getByLabel('Item', { exact: true })).toBeEnabled();
+    await expect(page.locator('.pick-list')).toBeVisible();
     await shot(`01-pos-empty-${tag}`);
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await shot(`02-pos-empty-bottom-${tag}`);
@@ -75,7 +75,7 @@ async function shoot(
     // Offline: the same flow is saved on this device.
     await context.setOffline(true);
     await page.reload();
-    await expect(page.getByLabel('Item', { exact: true })).toBeEnabled();
+    await expect(page.locator('.pick-list')).toBeVisible();
     await addToCart(page, '1');
     await toPayment(page);
     await page.locator('#pos-payment input[type="number"]').first().fill('1200');
@@ -105,7 +105,7 @@ async function shoot(
     await page.setViewportSize({ width: 195, height: 422 });
     await page.evaluate(() => localStorage.setItem('dsb-pro:appearance', 'light'));
     await page.goto('/pos');
-    await expect(page.getByLabel('Item', { exact: true })).toBeEnabled();
+    await expect(page.locator('.pick-list')).toBeVisible();
     await shot('10-zoom200-pos-empty');
     await addToCart(page, '2');
     await shot('11-zoom200-pos-cart');

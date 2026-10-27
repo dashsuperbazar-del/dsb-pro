@@ -53,10 +53,18 @@ export async function setupPosShop(page: Page, tag = 'pos') {
 }
 
 export async function addToCart(page: Page, qty: string) {
-  await page.getByLabel('Item', { exact: true }).selectOption({ label: 'Basmati rice 1kg' });
-  await page.getByLabel('Quantity', { exact: true }).fill(qty);
-  await page.getByRole('button', { name: 'Add item', exact: true }).click();
-  await expect(page.locator('.pos-cart')).toContainText('Basmati rice 1kg');
+  await addByTap(page, 'Basmati rice 1kg', qty);
+}
+
+/** D4b: add an item the way the owner does now - search, then tap its row (qty 1); a bigger qty is typed in the cart. */
+export async function addByTap(page: Page, name: string, qty = '1') {
+  await page.getByLabel('Find product').fill(name);
+  await page.getByRole('button', { name: `Add ${name}`, exact: true }).click();
+  // The line appears, or (no list price) the owner is asked for a price / a cashier is told.
+  await expect(
+    page.locator('.pos-cart, .price-prompt, [role="alert"]').filter({ hasText: name }).first(),
+  ).toBeVisible();
+  if (qty !== '1') await page.getByLabel(`Cart qty for ${name}`).first().fill(qty);
 }
 export async function toPayment(page: Page) {
   if (!(await page.locator('#pos-payment').isVisible()))

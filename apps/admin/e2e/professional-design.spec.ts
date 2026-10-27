@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { addByTap } from './pos-shop-setup';
 import { addItemForm, reviewPayment, stockTask, fillBillItem } from './design-helpers';
 test('professional phone workspace preserves drafts across task views and has reachable controls', async ({
   page,
@@ -73,9 +74,7 @@ test('professional phone workspace preserves drafts across task views and has re
     page.getByRole('status').filter({ hasText: 'Purchase posted' }).first(),
   ).toBeVisible();
   await nav.getByRole('link', { name: 'Sales', exact: true }).click();
-  await page.getByLabel('Item', { exact: true }).selectOption({ label: 'Daily rice' });
-  await page.getByLabel('Quantity', { exact: true }).fill('2');
-  await page.getByRole('button', { name: 'Add item', exact: true }).click();
+  await addByTap(page, 'Daily rice', '2');
   await expect(page.locator('.pos-cart')).toContainText('₹40.00');
   await capture('03-billing-phone');
   await reviewPayment(page);

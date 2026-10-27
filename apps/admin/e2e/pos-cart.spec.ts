@@ -6,6 +6,7 @@ import {
   openBillOptions,
 } from './design-helpers';
 import { test, expect } from '@playwright/test';
+import { addByTap } from './pos-shop-setup';
 
 const PASSWORD = 'TestOnly-2026!pw';
 function uniqueEmail() {
@@ -70,11 +71,7 @@ test('cart lines edit in place, and a held cart survives being parked and comes 
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Current bill' }) });
 
-  await page.getByLabel('Find product').fill('Cart Edit Item A');
-  await expect(page.getByLabel('Item').locator('option')).toHaveCount(2);
-  await page.getByLabel('Item').selectOption({ index: 1 });
-  await page.getByTestId('pos-add-quantity').fill('2');
-  await page.getByRole('button', { name: 'Add item', exact: true }).click();
+  await addByTap(page, 'Cart Edit Item A', '2');
   await expect(page.getByRole('cell', { name: /Cart Edit Item A/ })).toBeVisible();
   await expect(cartSection).toContainText('₹20.00');
 
@@ -103,11 +100,9 @@ test('cart lines edit in place, and a held cart survives being parked and comes 
 
   // A second, throwaway hold proves discard removes only the intended one.
   await page.getByLabel('Find product').fill('Cart Edit Item B');
-  await page.getByLabel('Item').selectOption({ index: 1 });
-  await page.getByTestId('pos-add-quantity').fill('1');
   const holdLabel = page.getByTestId('pos-hold-label');
   await holdLabel.evaluate((node) => node.setAttribute('data-race-sentinel', 'same-node'));
-  await page.getByRole('button', { name: 'Add item', exact: true }).click();
+  await page.getByRole('button', { name: 'Add Cart Edit Item B', exact: true }).click();
   await holdLabel.fill('Temp Cart');
   // The add-line price lookup resolves asynchronously. Its later cart render
   // must preserve the same input node and its freshly typed label.
@@ -125,10 +120,7 @@ test('cart lines edit in place, and a held cart survives being parked and comes 
   await expect(heldSection).toContainText('Table 3');
 
   // A held cart does not block billing a different customer in the meantime.
-  await page.getByLabel('Find product').fill('Cart Edit Item B');
-  await page.getByLabel('Item').selectOption({ index: 1 });
-  await page.getByTestId('pos-add-quantity').fill('1');
-  await page.getByRole('button', { name: 'Add item', exact: true }).click();
+  await addByTap(page, 'Cart Edit Item B', '1');
   await reviewPayment(page);
   await page.getByLabel('Amount ₹').first().fill('20');
   await reviewPayment(page);
@@ -171,11 +163,7 @@ test('an online sale finalized during an in-flight sync cycle is posted, not lef
   await expect(page.getByTestId('sync-outbox-count')).toHaveText('0');
   await page.waitForTimeout(2000);
   await page.goto('/pos');
-  await page.getByLabel('Find product').fill('Race Item');
-  await expect(page.getByLabel('Item').locator('option')).toHaveCount(2);
-  await page.getByLabel('Item').selectOption({ index: 1 });
-  await page.getByTestId('pos-add-quantity').fill('1');
-  await page.getByRole('button', { name: 'Add item', exact: true }).click();
+  await addByTap(page, 'Race Item', '1');
   await expect(page.getByRole('cell', { name: /Race Item/ })).toBeVisible();
   await reviewPayment(page);
   await page.getByLabel('Amount ₹').first().fill('10');

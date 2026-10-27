@@ -16,6 +16,15 @@ import {
 import { route } from 'preact-router';
 import { isTypingField, posShortcut, stepIndex } from '../lib/shortcuts';
 import {
+  addQuantity,
+  defaultSellLevel,
+  pickPrice,
+  pushRecent,
+  readRecent,
+  stockState,
+  writeRecent,
+} from '../lib/posPicker';
+import {
   createCustomer,
   findItemByBarcode,
   getShopBusinessDate,
@@ -24,6 +33,7 @@ import {
   listCustomers,
   listItems,
   listRecentSales,
+  listStock,
   recordCustomerPayment,
   getSaleReceipt,
   type Customer,
@@ -46,6 +56,7 @@ import {
   getOfflineItems,
   getOfflineItemCount,
   getOfflinePrices,
+  getOfflineStock,
   getOfflineRuntimeIdentity,
   getOfflineSaleStatus,
   listOfflineSales,
@@ -74,6 +85,11 @@ import {
 } from '../lib/saleDone';
 import { loadShopProfile, type ProfileLoad } from '../lib/shopProfile';
 import { addSalePricePlans, flushSalePricePlans, type SalePricePlan } from '../lib/salePricePlans';
+
+/** The price fields the list rows need (a server row and a device row both have them). */
+type PriceLite = { kind: string; unit_level: number; shop_id: string | null; price_paise: number };
+const PICK_PAGE = 8;
+const PICK_MORE = 20;
 
 type CartLine = {
   item: Item;
@@ -240,8 +256,18 @@ export function PosScreen() {
   const [phone] = useState(isPhoneScreen);
   const [barcode, setBarcode] = useState('');
   const [itemQuery, setItemQuery] = useState('');
-  const [manualItemId, setManualItemId] = useState('');
-  const [manualUnitLevel, setManualUnitLevel] = useState<1 | 2 | 3>(1);
+  // D4b: the tap-to-add list (which row the arrow keys are on, how many rows are shown, per-row unit,
+  // retail/wholesale, prices and stock read for the rows, recently added items on this device).
+  const [activeId, setActiveId] = useState('');
+  const [shownRows, setShownRows] = useState(PICK_PAGE);
+  const [rowLevel, setRowLevel] = useState<Record<string, 1 | 2 | 3>>({});
+  const [pickKind, setPickKind] = useState<'retail' | 'wholesale'>('retail');
+  const [rowPrices, setRowPrices] = useState<Map<string, PriceLite[]>>(new Map());
+  const [stockMap, setStockMap] = useState<Map<string, number> | null>(null);
+  const [recentIds, setRecentIds] = useState<string[]>([]);
+  const [lastAdded, setLastAdded] = useState<{ id: string; name: string } | null>(null);
+  const pricesAsked = useRef(new Set<string>());
+  const [listTick, setListTick] = useState(0);
   const [saleClientId, setSaleClientId] = useState(() => crypto.randomUUID());
   const [paymentClientId, setPaymentClientId] = useState(() => crypto.randomUUID());
   const [paymentCustomer, setPaymentCustomer] = useState('');
@@ -271,9 +297,6 @@ export function PosScreen() {
   const errorRef = useRef<HTMLParagraphElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const paymentRef = useRef<HTMLElement>(null);
-  // The item whose manual add is in flight: Enter pressed again for the SAME item while its price lookup
-  // runs must not add it twice (another item may still be added meanwhile).
-  const addingManual = useRef<string | null>(null);
   const customerRef = useRef<HTMLSelectElement>(null);
   const resumeLock = useRef(false);
 
@@ -298,6 +321,19 @@ export function PosScreen() {
     return d;
   }
 
+  async function loadStock(forShop: string, useOffline: boolean) {
+    const toMap = (rows: { item_id: string; qty_base: number | string }[]) =>
+      new Map(rows.map((r) => [r.item_id, Number(r.qty_base)]));
+    try {
+      setStockMap(toMap(useOffline ? await getOfflineStock(forShop) : await listStock(forShop)));
+    } catch {
+      try {
+        setStockMap(toMap(await getOfflineStock(forShop)));
+      } catch {
+        // Keep what was last known; with nothing known the rows show no stock figure and no stock chip.
+      }
+    }
+  }
   async function refresh() {
     await waitForOfflineRuntime();
     const identity = getOfflineRuntimeIdentity();
@@ -361,6 +397,10 @@ export function PosScreen() {
         setBalances({});
       }
     }
+    // Row figures are read again after every refresh (a sale changes stock; prices may have changed).
+    pricesAsked.current.clear();
+    setListTick((t) => t + 1);
+    void loadStock(identity.shopId, useOffline);
     setOfflineSales(await listOfflineSales());
     setHeldCarts(await listHeldCartsForShop());
     if (!useOffline) void savePlannedPrices(identity.shopId);
@@ -417,7 +457,7 @@ export function PosScreen() {
   }, [heldCleanup?.id, heldCleanup?.token]);
   // The barcode box takes focus only where that cannot raise a phone keyboard over the form.
   useEffect(() => {
-    if (catalogReady && hasFinePointer()) barcodeRef.current?.focus();
+    if (catalogReady && hasFinePointer()) barcodeRef.current?.focus({ preventScroll: true });
   }, [catalogReady]);
   // A message must be seen: in checkout it sits just above the Finalize bar and is brought into view.
   useEffect(() => {
@@ -450,8 +490,39 @@ export function PosScreen() {
     saleDoneRef.current?.scrollIntoView?.({ block: 'start' });
     saleDoneRef.current?.focus?.({ preventScroll: true });
   }, [saleDone?.clientId]);
-  const manualItem = items.find((i) => i.id === manualItemId);
-  const visibleItems = useMemo(() => searchCatalogItems(items, itemQuery, 50), [items, itemQuery]);
+  // The result rows: matches while typing; recent items (else the first items) while the box is empty.
+  const pickRows = useMemo(() => {
+    if (itemQuery.trim()) return searchCatalogItems(items, itemQuery, 300);
+    const byId = new Map(items.map((i) => [i.id, i]));
+    const recent = recentIds.map((id) => byId.get(id)).filter((i): i is Item => !!i);
+    return recent.length ? recent : items.slice(0, PICK_PAGE);
+  }, [items, itemQuery, recentIds]);
+  const pickShown = pickRows.slice(0, shownRows);
+  const inBill = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const l of cart) if (!l.freeText) m.set(l.item.id, (m.get(l.item.id) ?? 0) + 1);
+    return m;
+  }, [cart]);
+  // The spoken note changes with every add (a repeat tap says the new quantity), so it is announced again.
+  const pickNote = lastAdded
+    ? `Added ${lastAdded.name} (qty ${cart.find((l) => !l.freeText && l.item.id === lastAdded.id)?.qty ?? '?'})`
+    : '';
+  const pickIds = pickShown.map((i) => i.id).join(',');
+  // Prices for the rows on screen only (cached; a price is never worked out here, see pickPrice).
+  useEffect(() => {
+    if (!shopId || !catalogReady) return;
+    const t = window.setTimeout(() => {
+      for (const id of pickIds.split(',')) {
+        if (!id || pricesAsked.current.has(id)) continue;
+        pricesAsked.current.add(id);
+        void currentPrices(id).catch(() => pricesAsked.current.delete(id));
+      }
+    }, 120);
+    return () => window.clearTimeout(t);
+  }, [pickIds, shopId, catalogReady, listTick]);
+  useEffect(() => {
+    if (userId && shopId) setRecentIds(readRecent(userId, shopId));
+  }, [userId, shopId]);
   const preview = useMemo(
     () =>
       cart.reduce((sum, l) => sum + lineGross(l.qty, l.unitPricePaise) - l.discountPaise, 0) -
@@ -532,6 +603,8 @@ export function PosScreen() {
         prices = await getOfflinePrices(itemId);
       }
     }
+    // The rows show the same figures the cart used (a fresh read replaces what a row showed).
+    setRowPrices((m) => new Map(m).set(itemId, prices as PriceLite[]));
     return prices;
   }
   async function addLine(
@@ -540,12 +613,12 @@ export function PosScreen() {
     rawQty: string | number,
     priceKind: 'retail' | 'wholesale',
     discountPaise = 0,
+    /** A tap on a list row: the same item/unit/price with no discount just gets one more. */
+    merge = false,
   ): Promise<boolean> {
     const qty = canonicalQuantity(rawQty);
     const prices = await currentPrices(item.id);
-    const matching = prices.filter((p) => p.kind === priceKind && p.unit_level === unitLevel);
-    const chosen =
-      matching.find((p) => p.shop_id === shopId) ?? matching.find((p) => p.shop_id === null);
+    const chosen = pickPrice(prices, shopId, priceKind, unitLevel);
     if (!chosen) {
       // Owner decision 2026-10-20: an owner/manager types the price; a cashier cannot sell an unpriced item.
       if (canTypePrice) {
@@ -558,18 +631,33 @@ export function PosScreen() {
         `No ${priceKind} price for ${item.name} / ${unitName(item, unitLevel)}. Ask the owner or a manager to enter a price.`,
       );
     }
-    setCart((v) => [
-      ...v,
-      {
-        item,
-        unitLevel,
-        qty,
-        priceKind,
-        unitPricePaise: chosen.price_paise,
-        discountPaise,
-        listPricePaise: chosen.price_paise,
-      },
-    ]);
+    const line: CartLine = {
+      item,
+      unitLevel,
+      qty,
+      priceKind,
+      unitPricePaise: chosen.price_paise,
+      discountPaise,
+      listPricePaise: chosen.price_paise,
+    };
+    setCart((v) => {
+      if (merge) {
+        // Decided inside the update so two quick taps both count (never two lines for one tap pair).
+        const at = v.findIndex(
+          (l) =>
+            !l.freeText &&
+            l.item.id === item.id &&
+            l.unitLevel === unitLevel &&
+            l.priceKind === priceKind &&
+            l.priceSource === undefined &&
+            l.discountPaise === 0 &&
+            l.unitPricePaise === chosen.price_paise,
+        );
+        const sum = at >= 0 ? addQuantity(v[at]!.qty, qty) : null;
+        if (at >= 0 && sum) return v.map((l, i) => (i === at ? { ...l, qty: sum } : l));
+      }
+      return [...v, line];
+    });
     return true;
   }
   function confirmPendingPrice(ev: Event) {
@@ -762,46 +850,33 @@ export function PosScreen() {
     }
   }
 
-  async function addManual(ev: Event) {
-    ev.preventDefault();
+  // One tap on a result row: quantity 1 in the row's unit (default: as the old Add), same price rules.
+  async function tapAdd(item: Item) {
     setError('');
-    const addForm = ev.currentTarget as HTMLFormElement;
-    const f = new FormData(addForm);
-    const item = items.find((i) => i.id === String(f.get('itemId')));
-    if (!item || addingManual.current === item.id) return;
-    addingManual.current = item.id;
     try {
-      const added = await addLine(
-        item,
-        manualUnitLevel,
-        String(f.get('qty')),
-        String(f.get('priceKind')) as 'retail' | 'wholesale',
-        paise(String(f.get('lineDiscount') || '0')),
-      );
-      // Ready for the next product: back to the search box with its text selected (typing replaces it).
-      // Only when focus is still in this form: the price lookup is async and the cashier may have moved on.
-      const at = document.activeElement;
-      // The choice is cleared so a second Enter (or a held key) picks again instead of adding the item twice.
+      const level = rowLevel[item.id] ?? defaultSellLevel(item);
+      const added = await addLine(item, level, 1, pickKind, 0, true);
       if (added) {
-        setManualItemId('');
-        // The add form's quantity and discount boxes are not controlled (a redraw must not overwrite what is
-        // typed), so they go back to 1 / 0 here, after a successful add.
-        for (const [name, start] of [
-          ['qty', '1'],
-          ['lineDiscount', '0'],
-        ] as const) {
-          const box = addForm.elements.namedItem(name);
-          if (box instanceof HTMLInputElement) box.value = start;
+        setLastAdded({ id: item.id, name: item.name });
+        // Ready for the next search: on a desktop the text is selected so typing replaces it; on a phone
+        // the keyboard is not raised.
+        // Only while focus is still in the item area: the add finishes asynchronously and the cashier may
+        // already be typing elsewhere (e.g. the hold label), which must never lose its keystrokes.
+        const at = document.activeElement;
+        const inItems =
+          !at || at === document.body || !!document.getElementById('pos-items')?.contains(at);
+        if (hasFinePointer() && inItems) {
+          findRef.current?.focus({ preventScroll: true });
+          findRef.current?.select();
         }
-      }
-      if (added && (!at || at === document.body || addForm.contains(at))) {
-        findRef.current?.focus();
-        findRef.current?.select();
+        setRecentIds((list) => {
+          const next = pushRecent(list, item.id);
+          if (userId && shopId) writeRecent(userId, shopId, next);
+          return next;
+        });
       }
     } catch (e) {
       setError(String(e));
-    } finally {
-      if (addingManual.current === item.id) addingManual.current = null;
     }
   }
 
@@ -974,7 +1049,7 @@ export function PosScreen() {
         setSaleDoneSale({ saleId: '', customerId: soldCustomerId, receipt: null, record: saved });
       }
       setItemQuery('');
-      setManualItemId('');
+      setActiveId('');
       setBarcode('');
       setSaleClientId(crypto.randomUUID());
       setCart([]);
@@ -1003,7 +1078,7 @@ export function PosScreen() {
     setSaleDone(null);
     setSaleDoneSale(null);
     setItemQuery('');
-    setManualItemId('');
+    setActiveId('');
     setBarcode('');
     setMessage('');
     setError('');
@@ -1115,32 +1190,33 @@ export function PosScreen() {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, []);
-  // Up/Down in the product search move the choice in the Item list; Enter picks the first match, and
-  // Enter again (with a choice) adds it. Adding is the form's own submit, never a sale post.
+  // Up/Down in the search move along the result rows; Enter adds the highlighted row (else the top match)
+  // as one tap would. Adding never posts a sale.
   function findKeyDown(ev: KeyboardEvent) {
     if (ev.isComposing || ev.ctrlKey || ev.altKey || ev.metaKey) return;
     if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
-      if (!visibleItems.length) return;
+      if (!pickShown.length) return;
       ev.preventDefault();
       const at = stepIndex(
-        visibleItems.findIndex((i) => i.id === manualItemId),
-        visibleItems.length,
+        pickShown.findIndex((i) => i.id === activeId),
+        pickShown.length,
         ev.key,
       );
-      const item = visibleItems[at]!;
-      setManualItemId(item.id);
-      setManualUnitLevel(item.unit3 ? 3 : item.unit2 ? 2 : 1);
+      const id = pickShown[at]!.id;
+      setActiveId(id);
+      document.getElementById(`pick-${id}`)?.scrollIntoView?.({ block: 'nearest' });
     } else if (ev.key === 'Enter') {
       ev.preventDefault();
       ev.stopPropagation();
-      // A held Enter auto-repeats: ignore the repeats (no pick, no add); each add needs its own key press.
+      // A held Enter auto-repeats: each add needs its own key press.
       if (ev.repeat) return;
-      if (manualItemId && visibleItems.some((i) => i.id === manualItemId)) {
-        (ev.currentTarget as HTMLInputElement).form?.requestSubmit();
-      } else if (visibleItems.length) {
-        const item = visibleItems[0]!;
-        setManualItemId(item.id);
-        setManualUnitLevel(item.unit3 ? 3 : item.unit2 ? 2 : 1);
+      // Two steps, so nothing unseen is ever added (a scanner burst typed into this box ends in Enter):
+      // Enter adds ONLY a highlighted row; with none, it just highlights the top match (visible).
+      const row = pickShown.find((i) => i.id === activeId);
+      if (row) void tapAdd(row);
+      else if (itemQuery.trim() && pickShown[0]) {
+        setActiveId(pickShown[0].id);
+        document.getElementById(`pick-${pickShown[0].id}`)?.scrollIntoView?.({ block: 'nearest' });
       }
     }
   }
@@ -1275,9 +1351,164 @@ export function PosScreen() {
         />
       )}
 
-      <section class="card pos-items" id="pos-items" hidden={checkout}>
+      <section
+        class="card pos-items"
+        id="pos-items"
+        data-catalog-count={items.length}
+        hidden={checkout}
+      >
         <h2>Find products</h2>
-        <form onSubmit={scan} class="row">
+        <div class="pick-search">
+          <input
+            ref={findRef}
+            class="pick-input"
+            type="text"
+            enterKeyHint="search"
+            autoComplete="off"
+            aria-label="Find product"
+            aria-controls="pos-pick-list"
+            aria-activedescendant={activeId ? `pick-${activeId}` : undefined}
+            value={itemQuery}
+            onKeyDown={findKeyDown}
+            placeholder="Search by name or SKU"
+            onInput={(e) => {
+              setItemQuery((e.currentTarget as HTMLInputElement).value);
+              setActiveId('');
+              setShownRows(PICK_PAGE);
+            }}
+          />
+          {itemQuery && (
+            <button
+              type="button"
+              class="pick-clear"
+              aria-label="Clear search"
+              onClick={() => {
+                setItemQuery('');
+                setActiveId('');
+                setShownRows(PICK_PAGE);
+                findRef.current?.focus();
+              }}
+            >
+              ×
+            </button>
+          )}
+        </div>
+        <div class="pick-tools">
+          <div class="pick-kind" role="group" aria-label="Price type">
+            {(['retail', 'wholesale'] as const).map((k) => (
+              <button
+                type="button"
+                key={k}
+                aria-pressed={pickKind === k}
+                onClick={() => setPickKind(k)}
+              >
+                {k === 'retail' ? 'Retail' : 'Wholesale'}
+              </button>
+            ))}
+          </div>
+          <small class="pick-hint">↑ ↓ move, Enter adds</small>
+        </div>
+        <p class="pick-head muted" id="pos-pick-head">
+          {itemQuery.trim()
+            ? pickRows.length
+              ? `${pickRows.length >= 300 ? '300+' : pickRows.length} matching ${pickRows.length === 1 ? 'item' : 'items'}`
+              : ''
+            : recentIds.length && pickRows.length
+              ? 'Recent items'
+              : 'Items'}
+        </p>
+        <p class="sr-only" role="status" aria-live="polite">
+          {pickNote}
+        </p>
+        {!catalogReady ? (
+          <p class="muted">Loading items…</p>
+        ) : pickRows.length === 0 ? (
+          <p class="pick-empty" role="status">
+            {itemQuery.trim()
+              ? `No item matches “${itemQuery.trim()}”. Check the spelling, try the SKU or scan the barcode.`
+              : 'No items yet. Add items in Stock first.'}
+          </p>
+        ) : (
+          <ul class="pick-list" id="pos-pick-list" aria-labelledby="pos-pick-head">
+            {pickShown.map((i) => {
+              const level = rowLevel[i.id] ?? defaultSellLevel(i);
+              const unit = unitName(i, level);
+              const prices = rowPrices.get(i.id);
+              const price = prices ? pickPrice(prices, shopId, pickKind, level) : undefined;
+              const stock = stockMap ? (stockMap.get(i.id) ?? 0) : null;
+              const state = stockState(stock, i.min_stock ?? 0);
+              const levels = [1, i.unit2 ? 2 : 0, i.unit3 ? 3 : 0].filter(Boolean) as (1 | 2 | 3)[];
+              const count = inBill.get(i.id) ?? 0;
+              return (
+                <li
+                  key={i.id}
+                  id={`pick-${i.id}`}
+                  class={`pick-row${activeId === i.id ? ' active' : ''}`}
+                >
+                  <button
+                    type="button"
+                    class="pick-main"
+                    aria-label={`Add ${i.name}`}
+                    aria-describedby={`pick-info-${i.id}`}
+                    onClick={() => {
+                      setActiveId(i.id);
+                      void tapAdd(i);
+                    }}
+                  >
+                    <span class="pick-text">
+                      <span class="pick-name">{i.name}</span>
+                      <span class="pick-sub" id={`pick-info-${i.id}`}>
+                        {[
+                          i.sku,
+                          `per ${unit}`,
+                          stock === null
+                            ? ''
+                            : `${formatQuantity(stock) || '0'} ${i.unit1} in stock`,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </span>
+                      {(state || count > 0) && (
+                        <span class="pick-chips">
+                          {state === 'out' && <span class="chip danger">Out of stock</span>}
+                          {state === 'low' && <span class="chip warning">Low stock</span>}
+                          {count > 0 && <span class="chip success">In bill</span>}
+                        </span>
+                      )}
+                    </span>
+                    <span class="pick-price">
+                      {price ? money(price.price_paise) : prices ? 'No price' : '…'}
+                    </span>
+                  </button>
+                  {levels.length > 1 && (
+                    <div class="pick-units" role="group" aria-label={`Unit for ${i.name}`}>
+                      {levels.map((lv) => (
+                        <button
+                          type="button"
+                          key={lv}
+                          aria-pressed={level === lv}
+                          onClick={() => setRowLevel((m) => ({ ...m, [i.id]: lv }))}
+                        >
+                          {unitName(i, lv)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {pickRows.length > pickShown.length && (
+          <button
+            type="button"
+            class="pick-more"
+            onClick={() => setShownRows((n) => n + PICK_MORE)}
+          >
+            Show more ({pickRows.length - pickShown.length} more)
+          </button>
+        )}
+        <form onSubmit={scan} class="row pick-barcode">
           <label>
             Barcode{' '}
             <input
@@ -1291,98 +1522,6 @@ export function PosScreen() {
             disabled={busy || checkout || !!heldCleanup}
             onCode={(code) => void scanCode(code)}
           />
-        </form>
-        <form onSubmit={addManual} class="grid-form">
-          <label>
-            Find product{' '}
-            <input
-              ref={findRef}
-              value={itemQuery}
-              onKeyDown={findKeyDown}
-              placeholder="Name or SKU"
-              onInput={(e) => {
-                setItemQuery((e.currentTarget as HTMLInputElement).value);
-                setManualItemId('');
-              }}
-            />
-          </label>
-          <label>
-            Item{' '}
-            <select
-              name="itemId"
-              aria-label="Item"
-              required
-              value={manualItemId}
-              onChange={(e) => {
-                const id = (e.currentTarget as HTMLSelectElement).value;
-                setManualItemId(id);
-                const item = items.find((i) => i.id === id);
-                setManualUnitLevel(item?.unit3 ? 3 : item?.unit2 ? 2 : 1);
-              }}
-            >
-              <option value="">Choose…</option>
-              {visibleItems.map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.name}
-                  {i.sku ? ` · ${i.sku}` : ''}
-                </option>
-              ))}
-            </select>
-            <small>
-              Showing up to 50 matches from {items.length} items. In the search box: ↑ ↓ choose,
-              Enter to pick, Enter again to add.
-            </small>
-          </label>
-          <label>
-            Unit{' '}
-            <select
-              name="unitLevel"
-              value={manualUnitLevel}
-              disabled={!manualItem}
-              onChange={(e) =>
-                setManualUnitLevel(
-                  Number((e.currentTarget as HTMLSelectElement).value) as 1 | 2 | 3,
-                )
-              }
-            >
-              <option value="1">{manualItem?.unit1 || 'Unit 1'}</option>
-              {manualItem?.unit2 && <option value="2">{manualItem.unit2}</option>}
-              {manualItem?.unit3 && <option value="3">{manualItem.unit3}</option>}
-            </select>
-          </label>
-          <label>
-            Quantity{' '}
-            <input
-              key="pos-add-quantity"
-              data-testid="pos-add-quantity"
-              name="qty"
-              type="number"
-              inputMode="decimal"
-              min="0.000001"
-              step="0.000001"
-              defaultValue="1"
-              required
-            />
-          </label>
-          <label>
-            Price{' '}
-            <select name="priceKind">
-              <option value="retail">Retail</option>
-              <option value="wholesale">Wholesale</option>
-            </select>
-          </label>
-          <label>
-            Discount ₹{' '}
-            <input
-              name="lineDiscount"
-              type="number"
-              inputMode="decimal"
-              min="0"
-              step="0.01"
-              defaultValue="0"
-            />
-          </label>
-          <button>Add item</button>
         </form>
         {canTypePrice && (
           <details class="optional-control">

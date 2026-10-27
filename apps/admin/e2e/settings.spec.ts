@@ -1,5 +1,6 @@
 import { stockTask, addItemForm, reviewPayment, fillBillItem } from './design-helpers';
 import { test, expect } from '@playwright/test';
+import { addByTap } from './pos-shop-setup';
 
 const PASSWORD = 'TestOnly-2026!pw';
 function uniqueEmail() {
@@ -75,13 +76,9 @@ test('owner can edit shop profile and it survives a reload, and the invoice pref
     'Purchase posted (1 item) and stock updated',
   );
   await page.goto('/pos');
-  await page.getByLabel('Find product').fill('Settings E2E Item');
-  await expect(page.getByLabel('Item').locator('option')).toHaveCount(2);
-  await page.getByLabel('Item').selectOption({ index: 1 });
   // Only 5 are in stock. Sell 6 to prove the override set above actually
   // reaches post_sale(), not just that the checkbox itself saves.
-  await page.getByLabel('Quantity').fill('6');
-  await page.getByRole('button', { name: 'Add item', exact: true }).click();
+  await addByTap(page, 'Settings E2E Item', '6');
   await reviewPayment(page);
   await page.getByLabel('Amount ₹').first().fill('60');
   await reviewPayment(page);

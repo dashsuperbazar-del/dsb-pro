@@ -27,7 +27,7 @@ async function ready(page: Page, path: string) {
   const main = page.locator('main');
   if (path === '/pos') {
     await check(main.getByRole('heading', { name: 'Sales POS', exact: true })).toBeVisible();
-    await check(main.getByText('Showing up to 50 matches from 10000 items.')).toBeVisible();
+    await check(main.locator('#pos-items[data-catalog-count="10000"]')).toBeVisible();
     await check(main.getByLabel('Find product', { exact: true })).toBeEnabled();
   } else if (path === '/inventory') {
     await check(
