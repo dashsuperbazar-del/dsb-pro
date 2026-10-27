@@ -116,8 +116,7 @@ export function AttentionTile({ userId }: { userId?: string } = {}) {
   const failed = [low, sup, due].some((p) => p.state === 'error');
   const parts: string[] = [];
   if (failed) parts.push('Some checks unavailable');
-  if (supSummary && supSummary.owedCount > 0)
-    parts.push(`You owe suppliers ${rupees(supSummary.owedPaise)}`);
+  if (supSummary && supSummary.owedCount > 0) parts.push(`You owe ${rupees(supSummary.owedPaise)}`);
   if (dueSummary && dueSummary.count > 0) parts.push(`${dueSummary.count} payment due`);
   if (stranded > 0) parts.push('stranded payments');
   if (lowSummary && lowSummary.count > 0) parts.push(`${lowSummary.count} low stock`);
@@ -168,7 +167,7 @@ export function AttentionTile({ userId }: { userId?: string } = {}) {
           {supSummary && supSummary.owedCount === 0 && <span>No supplier balance is owed.</span>}
           {supSummary && supSummary.owedCount > 0 && (
             <span>
-              <strong>{rupees(supSummary.owedPaise)}</strong> owed to {supSummary.owedCount}{' '}
+              You owe <strong>{rupees(supSummary.owedPaise)}</strong> to {supSummary.owedCount}{' '}
               supplier
               {supSummary.owedCount === 1 ? '' : 's'}.{' '}
               <a href={appRoute.suppliers}>Review supplier balances</a>

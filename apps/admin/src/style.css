@@ -742,7 +742,7 @@ body {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
 }
-.dashboard > .daybook-tile:not(.daybook-error) {
+.dashboard > .daybook-tile:not(.daybook-error):not(.daybook-firstrun) {
   padding: 0;
   background: none;
   border: 0;
@@ -824,11 +824,17 @@ body {
   margin: var(--space-2) 0 0;
   font-size: var(--text-sm);
 }
+.daybook-firstrun h2 {
+  font-size: var(--text-lg, 18px);
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text);
+}
 .firstrun-steps {
   margin: var(--space-2) 0 0;
   padding-left: var(--space-5, 20px);
   display: grid;
-  gap: var(--space-1);
+  gap: 0;
 }
 .firstrun-steps a {
   display: inline-flex;

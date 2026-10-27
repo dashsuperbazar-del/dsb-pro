@@ -30,7 +30,9 @@ async function shootAll(page: Page, name: string, info: { outputPath: (f: string
       await page.setViewportSize({ width: size.width, height: size.height });
       await page.evaluate((t) => localStorage.setItem('dsb-pro:appearance', t), theme);
       await page.emulateMedia({ colorScheme: theme });
-      await page.waitForTimeout(500);
+      await page.reload();
+      await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible({ timeout: 20000 });
+      await page.waitForTimeout(1500);
       const file = `${name}-${theme}-${size.name}.png`;
       await page.screenshot({
         path: dir ? `${dir}/${file}` : info.outputPath(file),
