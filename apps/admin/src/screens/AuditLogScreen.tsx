@@ -12,6 +12,7 @@ import {
   type TenantUser,
 } from '@dsb-pro/adapters';
 import { useSession } from '../lib/useSession';
+import { ScrollTable } from '../components/ScrollTable';
 import { appRoute } from '../lib/paths';
 import { auditType, describeAudit } from '../lib/auditLog';
 
@@ -140,7 +141,7 @@ function AuditList() {
       {loading && <p role="status">Loading audit log…</p>}
       {!loading && !error && !rows.length && <p class="muted">No events match.</p>}
       {rows.length > 0 && (
-        <div class="table-wrap">
+        <ScrollTable>
           <table>
             <thead>
               <tr>
@@ -170,7 +171,7 @@ function AuditList() {
               })}
             </tbody>
           </table>
-        </div>
+        </ScrollTable>
       )}
       <div class="row">
         <button type="button" disabled={page === 0 || loading} onClick={() => setPage(page - 1)}>

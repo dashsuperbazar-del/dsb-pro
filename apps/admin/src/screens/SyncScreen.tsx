@@ -1,4 +1,7 @@
 import { HomeRow } from '../components/HomeRow';
+import { ScrollTable } from '../components/ScrollTable';
+import { rupees } from '../lib/money';
+import { friendlySaleName, saleStateLabel } from '../lib/saleDone';
 import { useUserId } from '../lib/useUserId';
 import { useEffect, useState } from 'preact/hooks';
 import type { LocalSyncConflict } from '@dsb-pro/sync';
@@ -55,16 +58,29 @@ export function SyncScreen() {
   async function resolve(conflict: LocalSyncConflict) {
     await act(() => resolveConflictLocally(conflict));
   }
+  const waiting = dashboard?.health.outboxCount ?? 0;
+  const attention = dashboard
+    ? dashboard.conflicts.filter((c) => c.status === 'OPEN').length +
+      dashboard.serverConflicts.filter((c) => c.status === 'OPEN').length
+    : 0;
+  const online = dashboard?.state.online ?? true;
+  const headline = !dashboard
+    ? ''
+    : attention > 0
+      ? `${attention} ${attention === 1 ? 'item needs' : 'items need'} your attention`
+      : !online
+        ? waiting > 0
+          ? `Offline. ${waiting} waiting to send — saved on this device.`
+          : 'Offline. Sales are saved on this device and sent when you are back online.'
+        : waiting > 0
+          ? `${waiting} waiting to send.`
+          : 'All saved. Nothing waiting.';
   return (
     <main class="page wide">
       <p>
         <a href={appRoute.home}>← Home</a>
       </p>
       <h1>Sync & offline</h1>
-      <p class="muted">
-        Queued financial work stays in IndexedDB until the server confirms it. Rejected work stays
-        visible for review.
-      </p>
       {error && (
         <p role="alert" class="alert">
           {error}
@@ -74,46 +90,33 @@ export function SyncScreen() {
         <p>Loading sync state…</p>
       ) : (
         <>
-          <section class="card" aria-label="Sync health">
-            <h2>Sync health</h2>
-            <div class="sync-grid">
-              <div>
-                <strong>Network</strong>
-                <br />
-                {dashboard.state.online ? 'Online' : 'Offline'}
-              </div>
-              <div>
-                <strong>Outbox</strong>
-                <br />
-                <span data-testid="sync-outbox-count">{dashboard.health.outboxCount}</span>
-              </div>
-              <div>
-                <strong>Queued sales</strong>
-                <br />
-                <span data-testid="sync-queued-sales">{dashboard.health.queuedSales}</span>
-              </div>
-              <div>
-                <strong>Open conflicts</strong>
-                <br />
-                <span data-testid="sync-conflict-count">{dashboard.health.conflictCount}</span>
-              </div>
-              <div>
-                <strong>Last clean sync</strong>
-                <br />
-                {when(dashboard.health.lastSyncAt)}
-              </div>
-              <div>
-                <strong>Clock drift</strong>
-                <br />
-                {dashboard.health.clockDriftMs === null
-                  ? 'Unknown'
-                  : Math.round(dashboard.health.clockDriftMs / 1000) + ' sec'}
-              </div>
+          <section
+            class={`sync-summary ${attention > 0 ? 'attention' : waiting > 0 || !online ? 'waiting' : ''}`}
+            aria-label="Sync health"
+          >
+            <h2 data-testid="sync-headline">{headline}</h2>
+            <div class="sync-chips">
+              <span class={`badge ${online ? 'success' : 'warning'}`}>
+                {online ? 'Online' : 'Offline'}
+              </span>
+              <span class={`badge ${waiting > 0 ? 'warning' : ''}`} data-testid="sync-chip-waiting">
+                {waiting} waiting
+              </span>
+              <span
+                class={`badge ${attention > 0 ? 'danger' : ''}`}
+                data-testid="sync-chip-attention"
+              >
+                {attention} need attention
+              </span>
             </div>
+            <p class="muted">
+              Sales and bills saved on this device are sent to the shop when you are online.
+              Anything the shop refuses stays here until you have looked at it.
+            </p>
             {dashboard.health.clockDriftMs !== null && dashboard.health.clockDriftMs > 300000 && (
               <p class="alert">
-                Device clock differs from server by more than 5 minutes. Fix the device clock before
-                relying on business dates.
+                This device's clock is more than 5 minutes different from the shop's. Fix the device
+                clock before relying on business dates.
               </p>
             )}
             {dashboard.state.lastError && (
@@ -121,6 +124,7 @@ export function SyncScreen() {
             )}
             <div class="row">
               <button
+                class="primary"
                 disabled={busy || dashboard.state.running}
                 onClick={() => void act(runSyncNow)}
               >
@@ -131,10 +135,61 @@ export function SyncScreen() {
               </button>
             </div>
           </section>
-          <section class="card" aria-label="Offline finalization policy">
-            <h2>Offline finalization policy</h2>
+          <HomeRow
+            name="sync-details"
+            title="Details"
+            label="Sync details"
+            userId={userId}
+            count={null}
+            tone="neutral"
+            summary="counts, last sync, device clock"
+          >
+            <div class="sync-grid">
+              <div>
+                <strong>Network</strong>
+                <br />
+                {dashboard.state.online ? 'Online' : 'Offline'}
+              </div>
+              <div>
+                <strong>Waiting to send</strong>
+                <br />
+                <span data-testid="sync-outbox-count">{dashboard.health.outboxCount}</span>
+              </div>
+              <div>
+                <strong>Sales waiting</strong>
+                <br />
+                <span data-testid="sync-queued-sales">{dashboard.health.queuedSales}</span>
+              </div>
+              <div>
+                <strong>Need review</strong>
+                <br />
+                <span data-testid="sync-conflict-count">{dashboard.health.conflictCount}</span>
+              </div>
+              <div>
+                <strong>Last successful sync</strong>
+                <br />
+                {when(dashboard.health.lastSyncAt)}
+              </div>
+              <div>
+                <strong>Device clock difference</strong>
+                <br />
+                {dashboard.health.clockDriftMs === null
+                  ? 'Unknown'
+                  : Math.round(dashboard.health.clockDriftMs / 1000) + ' sec'}
+              </div>
+            </div>
+          </HomeRow>
+          <HomeRow
+            name="sync-cashier-policy"
+            title="Cashiers billing offline"
+            label="Offline billing for cashiers"
+            userId={userId}
+            count={null}
+            tone="neutral"
+            summary={dashboard.policy.allowCashierOfflineFinalization ? 'allowed' : 'not allowed'}
+          >
             <p>
-              Owner and manager billing may be queued offline. Cashier offline finalization is{' '}
+              Owner and manager billing may be saved offline. Cashier offline billing is{' '}
               <strong>
                 {dashboard.policy.allowCashierOfflineFinalization ? 'allowed' : 'disabled'}
               </strong>
@@ -154,10 +209,10 @@ export function SyncScreen() {
                 Allow cashiers to finalize sales while offline
               </label>
             )}
-          </section>
+          </HomeRow>
           <HomeRow
             name="sync-offline-sales"
-            title="Offline sales"
+            title="Sales saved on this device"
             label="Offline sales"
             userId={userId}
             count={dashboard.sales.length}
@@ -167,44 +222,59 @@ export function SyncScreen() {
                 ? `${dashboard.sales.filter((s) => s.status !== 'SYNCED').length} not synced`
                 : 'none on this device'
             }
+            forceOpen={dashboard.sales.some((s) => saleStateLabel(s) === 'needs review')}
           >
             {dashboard.sales.length ? (
-              <div class="table-wrap">
+              <ScrollTable class="mobile-records">
                 <table>
                   <thead>
                     <tr>
-                      <th>Number</th>
-                      <th>Date</th>
-                      <th>Total</th>
+                      <th>Sale</th>
                       <th>Status</th>
-                      <th>Official</th>
+                      <th class="num">Total</th>
+                      <th>Invoice</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {dashboard.sales.map((s) => (
-                      <tr>
-                        <td>{s.provisionalDocNo}</td>
-                        <td>{s.businessDate}</td>
-                        <td>{'₹' + (s.totalPaise / 100).toFixed(2)}</td>
-                        <td>{s.status}</td>
-                        <td>{s.officialDocNo ?? '—'}</td>
-                      </tr>
-                    ))}
+                    {dashboard.sales.map((s) => {
+                      const state = saleStateLabel(s);
+                      return (
+                        <tr key={s.clientId}>
+                          <td class="record-title">
+                            {friendlySaleName(s)}
+                            <small class="muted" title={s.provisionalDocNo}>
+                              {s.businessDate} · ref {s.provisionalDocNo.slice(0, 10)}
+                            </small>
+                          </td>
+                          <td data-label="Status">
+                            <span
+                              class={`badge ${state === 'synced' ? 'success' : state === 'waiting' ? 'warning' : 'danger'}`}
+                            >
+                              {state}
+                            </span>
+                          </td>
+                          <td data-label="Total" class="num">
+                            {rupees(s.totalPaise)}
+                          </td>
+                          <td data-label="Invoice">{s.officialDocNo ?? 'Numbered after sync'}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
-              </div>
+              </ScrollTable>
             ) : (
               <p>No offline sales on this device.</p>
             )}
           </HomeRow>
           <HomeRow
             name="sync-local-conflicts"
-            title="Needs review"
+            title="Needs review on this device"
             label="Sync conflicts"
             userId={userId}
             count={dashboard.conflicts.filter((c) => c.status === 'OPEN').length}
             tone={dashboard.conflicts.some((c) => c.status === 'OPEN') ? 'danger' : 'neutral'}
-            summary="on this device"
+            summary="refused or changed after saving"
             forceOpen={dashboard.conflicts.some((c) => c.status === 'OPEN')}
           >
             {dashboard.conflicts.filter((c) => c.status === 'OPEN').length ? (
@@ -227,8 +297,16 @@ export function SyncScreen() {
               <p>No open local conflicts.</p>
             )}
           </HomeRow>
-          <section class="card" aria-label="Server sync conflicts">
-            <h2>Shop-wide sync conflicts</h2>
+          <HomeRow
+            name="sync-server-conflicts"
+            title="Shop-wide conflicts"
+            label="Server sync conflicts"
+            userId={userId}
+            count={dashboard.serverConflicts.filter((c) => c.status === 'OPEN').length}
+            tone={dashboard.serverConflicts.some((c) => c.status === 'OPEN') ? 'danger' : 'neutral'}
+            summary="seen by every device"
+            forceOpen={dashboard.serverConflicts.some((c) => c.status === 'OPEN')}
+          >
             {dashboard.serverConflicts.filter((c) => c.status === 'OPEN').length ? (
               <ul>
                 {dashboard.serverConflicts
@@ -251,7 +329,7 @@ export function SyncScreen() {
             ) : (
               <p>No open server conflicts visible to this account.</p>
             )}
-          </section>
+          </HomeRow>
         </>
       )}
     </main>
