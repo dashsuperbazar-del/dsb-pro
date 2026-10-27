@@ -860,7 +860,12 @@ export function PosScreen() {
         setLastAdded({ id: item.id, name: item.name });
         // Ready for the next search: on a desktop the text is selected so typing replaces it; on a phone
         // the keyboard is not raised.
-        if (hasFinePointer()) {
+        // Only while focus is still in the item area: the add finishes asynchronously and the cashier may
+        // already be typing elsewhere (e.g. the hold label), which must never lose its keystrokes.
+        const at = document.activeElement;
+        const inItems =
+          !at || at === document.body || !!document.getElementById('pos-items')?.contains(at);
+        if (hasFinePointer() && inItems) {
           findRef.current?.focus({ preventScroll: true });
           findRef.current?.select();
         }
