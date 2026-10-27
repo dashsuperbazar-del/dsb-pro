@@ -105,7 +105,8 @@ export function checkPayForm(
     // The server refuses a payment dated before a bill it is assigned to (DSB_FUTURE_BILL); stop it here.
     const effective = date;
     const early = s.bills.find(
-      (b) => (i.allocTexts[b.billId] ?? '').trim() && effective < b.businessDate,
+      (b) =>
+        (rupeesTextToPaise(i.allocTexts[b.billId] ?? '') ?? 0n) > 0n && effective < b.businessDate,
     );
     if (early)
       errors.date = `The payment date (${effective}) is earlier than bill ${billLabel(early)} (${early.businessDate}). Use a date on or after the bill date, or do not assign it to that bill.`;

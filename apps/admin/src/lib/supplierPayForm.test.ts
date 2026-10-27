@@ -164,6 +164,13 @@ describe('payment date against the chosen bill', () => {
     const e = errors({ dateText: '2026-10-03', allocTexts: { b2: '100' } });
     expect(e.date).toContain('earlier than bill A-2 (2026-10-05)');
   });
+  it('a zero or blank amount on a bill is not an assignment', () => {
+    expect(run({ dateText: '2026-10-03', allocTexts: { b2: '0' } }).ok).toBe(true);
+    expect(run({ dateText: '2026-10-03', allocTexts: { b2: '0.00' } }).ok).toBe(true);
+    expect(errors({ dateText: '2026-10-03', allocTexts: { b2: '0.01' } }).date).toContain(
+      'earlier',
+    );
+  });
   it('allows the bill date itself, a later date, or an earlier date when that bill is not assigned', () => {
     expect(run({ dateText: '2026-10-05', allocTexts: { b2: '100' } }).ok).toBe(true);
     expect(run({ dateText: '2026-10-20', allocTexts: { b2: '100' } }).ok).toBe(true);
