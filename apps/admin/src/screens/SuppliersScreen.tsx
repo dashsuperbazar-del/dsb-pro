@@ -208,8 +208,8 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
       clientId: crypto.randomUUID(),
     });
     await refreshBase();
-    setMessage(`Created supplier ${made.name}.`);
     await changeParty(made.id);
+    setMessage(`Created supplier ${made.name}.`);
   }
   async function refreshParty(shop = shopId, party = partyRef.current) {
     if (party !== partyRef.current) return;
