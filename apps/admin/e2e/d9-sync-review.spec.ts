@@ -233,6 +233,8 @@ test('a cashier clears the device entry only and is told so (the shop record is 
   await expect(cards(cashier)).toHaveCount(1, { timeout: 10000 });
   const card = cards(cashier).first();
   await expect(card).toContainText('supplier payment');
+  // Wait until the device alert AND the shop record are both merged in (the shop record can arrive first).
+  await expect(card).toContainText('On this device and recorded for the shop', { timeout: 15000 });
   await expect(card).toContainText('this clears it on this device only');
   await card.getByRole('button', { name: 'Mark reviewed', exact: true }).click();
   await expect(cashier.getByTestId('review-note')).toContainText('on this device only');

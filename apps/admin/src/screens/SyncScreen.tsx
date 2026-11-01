@@ -343,6 +343,7 @@ export function SyncScreen() {
                         onReview={(c) => void review([c])}
                         onUseExisting={(c, e, ok) => void useExisting(c, e, ok)}
                         onRename={(c, n, ids) => void rename(c, n, ids)}
+                        onNeedExisting={() => void runSyncNow().catch(() => undefined)}
                       />
                     ))}
                   </div>

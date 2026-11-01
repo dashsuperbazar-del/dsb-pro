@@ -1,4 +1,4 @@
-import { useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { unitDifferences, type SyncedItem } from '@dsb-pro/sync';
 import { sameName, suggestRename, type ReviewCard } from '../lib/syncReview';
 import './d9.css';
@@ -37,6 +37,8 @@ export function ReviewCardView(props: {
   onReview: (card: ReviewCard) => void;
   onUseExisting: (card: ReviewCard, existing: SyncedItem, confirmed: boolean) => void;
   onRename: (card: ReviewCard, name: string, ids: { clientId: string; itemId: string }) => void;
+  /** The existing item is not on this device yet: ask for a sync. */
+  onNeedExisting?: () => void;
 }) {
   const { card, busy, canShop } = props;
   const [panel, setPanel] = useState<'' | 'use' | 'rename'>('');
@@ -46,6 +48,14 @@ export function ReviewCardView(props: {
     ? (props.catalog.find((c) => c.is_active && sameName(c.name, item.fields.name)) ?? null)
     : null;
   const diffs = item && existing ? unitDifferences(item.fields, existing) : [];
+  const missing = panel === 'use' && Boolean(item) && !existing;
+  useEffect(() => {
+    // While the panel waits for the existing item, ask for a sync now and then (never a tight loop).
+    if (!missing || !props.onNeedExisting) return;
+    props.onNeedExisting();
+    const timer = window.setInterval(() => props.onNeedExisting?.(), 4000);
+    return () => window.clearInterval(timer);
+  }, [missing]);
   const held = card.state === 'held';
   const [name, setName] = useState(item ? suggestRename(item) : '');
   const ids = useRef<{ clientId: string; itemId: string } | null>(null);
