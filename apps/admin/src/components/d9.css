@@ -42,10 +42,8 @@
   margin: var(--space-1) 0;
   padding-left: var(--space-5);
 }
-.review-affected a {
-  display: inline-block;
-  min-height: 28px;
-  padding: 2px 0;
+.review-affected li {
+  padding: 4px 0;
 }
 .review-actions {
   display: flex;

@@ -34,6 +34,7 @@ import {
   paySupplierIfUnchangedOutcome,
   plainOfflineSupplierPaymentRefusal,
 } from '@dsb-pro/adapters';
+import { buildReviewCards } from './syncReview';
 import { readLocalDocument, removeLocalDocument } from './billDocumentStore';
 import { syncQueuedSupplierPayment } from './offlineSupplierPaymentSync';
 import { syncQueuedPurchase } from './offlinePurchaseSync';
@@ -771,13 +772,22 @@ export type LocalSyncSummary = {
 export async function getLocalSyncSummary(): Promise<LocalSyncSummary> {
   const online = typeof navigator === 'undefined' ? true : navigator.onLine;
   if (!runtime) return { online, running: false, pending: 0, conflicts: 0 };
-  const health = await getSyncHealth(runtime.db);
-  return {
-    online,
-    running: state.running,
-    pending: health.outboxCount,
-    conflicts: health.conflictCount,
-  };
+  const rt = runtime;
+  const health = await getSyncHealth(rt.db);
+  // One count per event, as the Sync screen shows it (a refused item and the bills it holds are one).
+  let conflicts = health.conflictCount;
+  try {
+    conflicts = buildReviewCards({
+      conflicts: await rt.db.conflicts.toArray(),
+      serverConflicts: [],
+      items: await listOfflineItemRecords(rt.db, rt.identity.tenantId),
+      purchases: await listOfflinePurchaseRecords(rt.db, rt.identity.shopId),
+      billChanges: await listOfflineBillChangeRecords(rt.db, rt.identity.shopId),
+    }).length;
+  } catch {
+    /* keep the plain count */
+  }
+  return { online, running: state.running, pending: health.outboxCount, conflicts };
 }
 export async function refreshOfflineReturnSources(): Promise<void> {
   const rt = requireRuntime();
