@@ -97,10 +97,47 @@ describe('buildReviewCards', () => {
       buildReviewCards({
         conflicts: [local({ status: 'RESOLVED' })],
         serverConflicts: [shop({}), shop({ id: 's9', status: 'RESOLVED' })],
-        items: [item],
         hiddenServerIds: new Set(['s1']),
       }),
     ).toEqual([]);
+  });
+  it('after Mark reviewed a refused item and its held bill stay on screen as ON HOLD with the fix', () => {
+    const cards = buildReviewCards({
+      conflicts: [local({ status: 'RESOLVED' })],
+      serverConflicts: [],
+      items: [item],
+      purchases: [
+        { ...bill, closedAt: null, heldBeforeSend: true } as unknown as OfflinePurchaseRecord,
+      ],
+    });
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({ state: 'held', fix: 'item-name', money: true });
+    expect(cards[0]!.affected[0]!.label).toContain('Purchase 12');
+    expect(cards[0]!.localIds).toEqual([]);
+  });
+  it('a closed or renamed refusal and a bill waiting for its new item are not on hold', () => {
+    expect(
+      buildReviewCards({
+        conflicts: [],
+        serverConflicts: [],
+        items: [{ ...item, replacedBy: 'new' }],
+        purchases: [
+          { ...bill, closedAt: 5 } as unknown as OfflinePurchaseRecord,
+          {
+            ...bill,
+            clientId: 'w',
+            releaseWithItem: 'new-item',
+          } as unknown as OfflinePurchaseRecord,
+        ],
+      }),
+    ).toEqual([]);
+  });
+  it('the same request id for two different targets is two cards', () => {
+    const cards = buildReviewCards({
+      conflicts: [local({}), local({ id: 2, target: 'supplier_payment', clientId: REQ })],
+      serverConflicts: [],
+    });
+    expect(cards).toHaveLength(2);
   });
   it('groups by kind and flags money', () => {
     const cards = buildReviewCards({

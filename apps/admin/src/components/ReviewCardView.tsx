@@ -1,5 +1,5 @@
 import { useRef, useState } from 'preact/hooks';
-import type { SyncedItem } from '@dsb-pro/sync';
+import { unitDifferences, type SyncedItem } from '@dsb-pro/sync';
 import { sameName, suggestRename, type ReviewCard } from '../lib/syncReview';
 import './d9.css';
 
@@ -35,7 +35,7 @@ export function ReviewCardView(props: {
   canShop: boolean;
   catalog: readonly SyncedItem[];
   onReview: (card: ReviewCard) => void;
-  onUseExisting: (card: ReviewCard, existing: SyncedItem) => void;
+  onUseExisting: (card: ReviewCard, existing: SyncedItem, confirmed: boolean) => void;
   onRename: (card: ReviewCard, name: string, ids: { clientId: string; itemId: string }) => void;
 }) {
   const { card, busy, canShop } = props;
@@ -45,6 +45,8 @@ export function ReviewCardView(props: {
   const existing = item
     ? (props.catalog.find((c) => c.is_active && sameName(c.name, item.fields.name)) ?? null)
     : null;
+  const diffs = item && existing ? unitDifferences(item.fields, existing) : [];
+  const held = card.state === 'held';
   const [name, setName] = useState(item ? suggestRename(item) : '');
   const ids = useRef<{ clientId: string; itemId: string } | null>(null);
   const clash = props.catalog.some((c) => c.is_active && sameName(c.name, name));
@@ -70,6 +72,7 @@ export function ReviewCardView(props: {
         {card.money && <span class="badge warning review-money">Involves money</span>}
       </p>
       <p class="review-meta">
+        {held ? 'Reviewed. Still on hold: nothing was posted. ' : ''}
         {when(card.happenedAt)} · {WHERE[card.where]}
       </p>
       {card.affected.length > 0 && (
@@ -120,15 +123,19 @@ export function ReviewCardView(props: {
             {card.link.label}
           </a>
         )}
-        <button type="button" disabled={busy} onClick={() => props.onReview(card)}>
-          Mark reviewed
-        </button>
+        {!held && (
+          <button type="button" disabled={busy} onClick={() => props.onReview(card)}>
+            Mark reviewed
+          </button>
+        )}
       </div>
-      <p class="review-hint">
-        Mark reviewed only hides this alert. Nothing is deleted, changed or posted.
-        {shopNote &&
-          ' Only the owner or a manager can clear it for the shop: this clears it on this device only.'}
-      </p>
+      {!held && (
+        <p class="review-hint">
+          Mark reviewed only hides this alert. Nothing is deleted, changed or posted.
+          {shopNote &&
+            ' Only the owner or a manager can clear it for the shop: this clears it on this device only.'}
+        </p>
+      )}
       {panel === 'use' && item && (
         <div class="review-panel" role="group" aria-label="Use the existing item">
           {existing ? (
@@ -147,26 +154,43 @@ export function ReviewCardView(props: {
                   <dd>GST {gst(existing.tax_rate_bp)}</dd>
                 </dl>
               </div>
-              <label class="review-confirm">
-                <input
-                  type="checkbox"
-                  checked={same}
-                  onChange={(e) => setSame((e.currentTarget as HTMLInputElement).checked)}
-                />{' '}
-                These are the same product
-              </label>
-              <p class="review-hint">
-                Waiting bills will use the existing item and its units. Check the quantities on
-                those bills match the existing item&apos;s units.
-              </p>
-              <button
-                type="button"
-                class="primary"
-                disabled={busy || !same}
-                onClick={() => props.onUseExisting(card, existing)}
-              >
-                Use this item
-              </button>
+              {diffs.length > 0 ? (
+                <div role="alert" class="alert" data-testid="units-differ">
+                  <strong>
+                    The units are different, so these bills cannot use the existing item.
+                  </strong>
+                  <ul>
+                    {diffs.map((d) => (
+                      <li key={d}>{d}</li>
+                    ))}
+                  </ul>
+                  A quantity entered in the new item&apos;s unit would be posted in the existing
+                  item&apos;s unit. Use &quot;Rename and create&quot; to keep your units, or correct
+                  the bills in Purchases.
+                </div>
+              ) : (
+                <>
+                  <label class="review-confirm">
+                    <input
+                      type="checkbox"
+                      checked={same}
+                      onChange={(e) => setSame((e.currentTarget as HTMLInputElement).checked)}
+                    />{' '}
+                    These are the same product
+                  </label>
+                  <p class="review-hint">
+                    The units match. Waiting bills will use the existing item.
+                  </p>
+                  <button
+                    type="button"
+                    class="primary"
+                    disabled={busy || !same}
+                    onClick={() => props.onUseExisting(card, existing, same)}
+                  >
+                    Use this item
+                  </button>
+                </>
+              )}
             </>
           ) : (
             <p class="review-hint">

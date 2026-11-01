@@ -133,6 +133,7 @@ import {
   closeRejectedOfflineSupplierPayment,
   resolveLocalConflicts,
   useExistingItemForRefused,
+  type UseExistingResult,
   renameRefusedItem,
   saveSupplierPayCopy,
   getSupplierPayCopy,
@@ -1157,33 +1158,56 @@ export async function markReviewed(input: {
   return { shopNotCleared: left };
 }
 
-/** "Use the existing item" for a refused item create (see packages/sync/src/offlineItemFix.ts). */
+/**
+ * "Use the existing item" for a refused item create (see packages/sync/src/offlineItemFix.ts). The existing
+ * item's real units are passed in; the package refuses unless they are identical (and confirmed).
+ */
 export async function useExistingItem(
   clientId: string,
-  existing: { itemId: string; name: string },
+  existing: {
+    itemId: string;
+    name: string;
+    unit1: string;
+    unit2: string | null;
+    unit3: string | null;
+    conv1: number | null;
+    conv2: number | null;
+  },
   confirmedSameProduct: boolean,
-): Promise<{ requeued: string[] }> {
+): Promise<UseExistingResult> {
   const rt = requireRuntime();
   const done = await useExistingItemForRefused(
     rt.db,
     clientId,
-    { itemId: existing.itemId, fields: { name: existing.name } },
+    {
+      itemId: existing.itemId,
+      fields: {
+        name: existing.name,
+        unit1: existing.unit1,
+        unit2: existing.unit2,
+        unit3: existing.unit3,
+        conv1: existing.conv1,
+        conv2: existing.conv2,
+      },
+    },
     confirmedSameProduct,
   );
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('dsb-offline-items'));
-    window.dispatchEvent(new CustomEvent('dsb-offline-purchases'));
+  if (done.kind === 'done') {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('dsb-offline-items'));
+      window.dispatchEvent(new CustomEvent('dsb-offline-purchases'));
+    }
+    emit();
+    if (done.requeued.length) void runSyncNow().catch(() => undefined);
   }
-  emit();
-  if (done.requeued.length) void runSyncNow().catch(() => undefined);
   return done;
 }
 
-/** "Rename and create": one new create under another name; the held bills follow it. */
+/** "Rename and create": one new create under another name; the held bills wait for it. */
 export async function renameAndCreateItem(
   clientId: string,
   next: { clientId: string; itemId: string; name: string },
-): Promise<{ requeued: string[] }> {
+): Promise<{ held: string[] }> {
   const rt = requireRuntime();
   const done = await renameRefusedItem(rt.db, clientId, next);
   if (typeof window !== 'undefined') {
@@ -1192,7 +1216,7 @@ export async function renameAndCreateItem(
   }
   emit();
   void runSyncNow().catch(() => undefined);
-  return { requeued: done.requeued };
+  return { held: done.held };
 }
 
 // C2 durable online money attempts, scoped to the runtime identity (tenant/user/device DB).

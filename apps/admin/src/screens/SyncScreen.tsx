@@ -91,6 +91,8 @@ export function SyncScreen() {
     void getOfflineItems().then(setCatalog, () => undefined);
     // Read again after each sync cycle: the existing item may arrive with the next pull.
   }, [needsCatalog, dashboard?.health.lastSyncAt]);
+  const open = cards.filter((c) => c.state === 'open');
+  const onHold = cards.filter((c) => c.state === 'held');
   async function clear(card: ReviewCard) {
     const r = await markReviewed({
       localIds: card.localIds,
@@ -100,36 +102,74 @@ export function SyncScreen() {
     hideServerIds(dashboard?.identity.userId, r.shopNotCleared);
     return r.shopNotCleared.length;
   }
+  /** Reviews each card on its own: one failure never stops or hides the others. */
   async function review(list: readonly ReviewCard[]) {
-    let notCleared = 0;
+    let cleared = 0;
+    let failed = 0;
+    let deviceOnly = 0;
     await act(async () => {
-      for (const card of list) notCleared += await clear(card);
+      for (const card of list) {
+        try {
+          if (await clear(card)) deviceOnly++;
+          cleared++;
+        } catch {
+          failed++;
+        }
+      }
     });
     setHiddenTick((n) => n + 1);
+    const base = failed
+      ? `${cleared} cleared, ${failed} failed (still listed: try again).`
+      : list.length === 1
+        ? 'Marked reviewed.'
+        : `Marked ${cleared} reviewed.`;
     setNote(
-      !notCleared
-        ? list.length === 1
-          ? 'Marked reviewed. Nothing was changed or posted.'
-          : `Marked ${list.length} reviewed. Nothing was changed or posted.`
-        : canShop
-          ? 'Marked reviewed on this device. The shop-wide record could not be cleared (no connection); it is hidden here.'
-          : 'Marked reviewed on this device only. Only the owner or a manager can clear it for the shop.',
+      `${base} Nothing was changed or posted.${
+        deviceOnly
+          ? canShop
+            ? ' The shop-wide record could not be cleared (no connection); it is hidden here.'
+            : ' Cleared on this device only: only the owner or a manager can clear it for the shop.'
+          : ''
+      }`,
     );
   }
-  async function useExisting(card: ReviewCard, existing: SyncedItem) {
+  async function useExisting(card: ReviewCard, existing: SyncedItem, confirmed: boolean) {
     if (!card.clientId) return;
     const clientId = card.clientId;
     await act(async () => {
       const done = await useExistingItem(
         clientId,
-        { itemId: existing.id, name: existing.name },
-        true,
+        {
+          itemId: existing.id,
+          name: existing.name,
+          unit1: existing.unit1,
+          unit2: existing.unit2,
+          unit3: existing.unit3,
+          conv1: existing.conv1,
+          conv2: existing.conv2,
+        },
+        confirmed,
       );
+      if (done.kind === 'refused') {
+        setNote(
+          done.reason === 'units-differ'
+            ? 'Not changed: the existing item has different units, so the bills stay on hold.'
+            : 'Not changed: confirm that these are the same product first.',
+        );
+        return;
+      }
       await clear(card);
+      const moved = done.requeued.length;
       setNote(
-        done.requeued.length
-          ? `Using '${existing.name}'. ${done.requeued.length} waiting ${done.requeued.length === 1 ? 'bill was' : 'bills were'} sent to sync again.`
-          : `Using '${existing.name}'.`,
+        `Using '${existing.name}'. ${
+          moved
+            ? `${moved} waiting ${moved === 1 ? 'bill was' : 'bills were'} sent to sync again.`
+            : ''
+        }${
+          done.notMoved.length
+            ? ` ${done.notMoved.length} bill(s) may already have reached the server and were left as they are: check Purchases.`
+            : ''
+        }`.trim(),
       );
     });
     setHiddenTick((n) => n + 1);
@@ -141,25 +181,31 @@ export function SyncScreen() {
       const done = await renameAndCreateItem(clientId, { ...ids, name });
       await clear(card);
       setNote(
-        `Creating '${name}'. ${done.requeued.length ? 'The waiting bills follow it.' : 'It syncs next.'}`,
+        `Creating '${name}'. ${
+          done.held.length
+            ? 'The waiting bills stay on hold and are sent once it is created.'
+            : 'It syncs next.'
+        }`,
       );
     });
     setHiddenTick((n) => n + 1);
   }
   const waiting = dashboard?.health.outboxCount ?? 0;
-  const attention = cards.length;
+  const attention = open.length;
   const online = dashboard?.state.online ?? true;
   const headline = !dashboard
     ? ''
     : attention > 0
       ? `${attention} ${attention === 1 ? 'needs' : 'need'} your attention`
-      : !online
-        ? waiting > 0
-          ? `Offline. ${waiting} waiting to send — saved on this device.`
-          : 'Offline. Sales are saved on this device and sent when you are back online.'
-        : waiting > 0
-          ? `${waiting} waiting to send.`
-          : 'All saved. Nothing waiting.';
+      : onHold.length > 0
+        ? `${onHold.length} on hold: reviewed, but still refused`
+        : !online
+          ? waiting > 0
+            ? `Offline. ${waiting} waiting to send — saved on this device.`
+            : 'Offline. Sales are saved on this device and sent when you are back online.'
+          : waiting > 0
+            ? `${waiting} waiting to send.`
+            : 'All saved. Nothing waiting.';
   return (
     <main class="page wide">
       <p>
@@ -191,7 +237,7 @@ export function SyncScreen() {
                 class={`badge ${attention > 0 ? 'danger' : ''}`}
                 data-testid="sync-chip-attention"
               >
-                {attention} need attention
+                {attention + onHold.length} need attention
               </span>
             </div>
             <p class="muted">
@@ -228,17 +274,23 @@ export function SyncScreen() {
           {cards.length > 0 ? (
             <>
               <div class="review-bar">
-                <strong>{cards.length} to look at</strong>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={(e) => {
-                    bulkOpener.current = e.currentTarget as HTMLElement;
-                    setBulk(cards);
-                  }}
-                >
-                  Mark all reviewed ({cards.length})
-                </button>
+                <strong data-testid="review-count">
+                  {open.length} to look at
+                  {onHold.length > 0 &&
+                    ` · ${onHold.length} on hold (${onHold.length === 1 ? 'bill or item is' : 'bills or items are'} still refused)`}
+                </strong>
+                {open.length > 0 && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={(e) => {
+                      bulkOpener.current = e.currentTarget as HTMLElement;
+                      setBulk(open);
+                    }}
+                  >
+                    Mark all reviewed ({open.length})
+                  </button>
+                )}
               </div>
               {groupReviewCards(cards).map((g) => (
                 <HomeRow
@@ -261,7 +313,7 @@ export function SyncScreen() {
                         canShop={Boolean(canShop)}
                         catalog={catalog}
                         onReview={(c) => void review([c])}
-                        onUseExisting={(c, e) => void useExisting(c, e)}
+                        onUseExisting={(c, e, ok) => void useExisting(c, e, ok)}
                         onRename={(c, n, ids) => void rename(c, n, ids)}
                       />
                     ))}

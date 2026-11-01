@@ -4,7 +4,6 @@ import {
   queueOfflineItem,
   requeueHeldPurchase,
   swapIds,
-  type OfflineItemFields,
   type OfflineItemRecord,
 } from './offlineItem';
 
