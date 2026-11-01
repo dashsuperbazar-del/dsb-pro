@@ -1,4 +1,4 @@
-import { addItemForm, fillBillItem, stockTask } from './design-helpers';
+import { addItemForm, fillBillItem, stockTask, openPurchaseFilter } from './design-helpers';
 import { test, expect } from '@playwright/test';
 
 // 0066 billedit: "Edit bill" opens the posted bill in the entry card; saving posts the corrected bill and
@@ -87,6 +87,7 @@ test('editing a posted bill replaces it: original void, corrected bill posted, s
   // The replaced original is void, so it is hidden by default; "Show voided" lists it.
   await expect(page.getByTestId('list-settlement')).toHaveCount(1);
   await expect(page.getByText(/1 voided item hidden\./)).toBeVisible();
+  await openPurchaseFilter(page);
   await page.getByLabel('Show voided').check();
   await expect(page.getByTestId('list-settlement')).toHaveCount(2);
   await expect(page.getByTestId('list-settlement')).toContainText(['Void']);

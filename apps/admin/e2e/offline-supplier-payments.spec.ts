@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { swReady } from './sw-ready';
-import { addItemForm, fillBillItem, stockTask } from './design-helpers';
+import { addItemForm, fillBillItem, stockTask, openVoidPanel } from './design-helpers';
 
 // Offline supplier payments (mig 0074): saved on the device with the supplier/bill versions, applied on
 // reconnect only if unchanged; a bill changed elsewhere meanwhile is refused with the full form; a double tap
@@ -162,6 +162,7 @@ test('offline supplier payment: saved on the device, applied on reconnect; stale
   await other.goto('/purchases');
   await other.getByRole('button', { name: /Pay Supplier Co.*PS-2/ }).click();
   const detail = other.getByLabel('Purchase detail');
+  await openVoidPanel(detail);
   await detail.getByLabel('Reason for voiding').fill('wrong supplier');
   await detail.getByRole('button', { name: 'Void bill', exact: true }).click();
   await expect(other.getByRole('status').filter({ hasText: 'Bill voided' }).first()).toBeVisible();

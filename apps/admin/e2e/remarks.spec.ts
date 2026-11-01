@@ -1,4 +1,10 @@
-import { addItemForm, fillBillItem, reviewPayment, stockTask } from './design-helpers';
+import {
+  addItemForm,
+  fillBillItem,
+  reviewPayment,
+  stockTask,
+  openPurchaseFilter,
+} from './design-helpers';
 import { test, expect } from '@playwright/test';
 import { addByTap } from './pos-shop-setup';
 
@@ -77,6 +83,7 @@ test('remarks on a purchase bill and a sale invoice: add, settle, reopen, badges
   // Pending badge and filter on the list.
   await page.goto('/purchases');
   await expect(page.getByTestId('list-pending')).toHaveCount(1);
+  await openPurchaseFilter(page);
   await page.getByLabel('Status').selectOption('pending');
   await expect(page.getByRole('button', { name: /REM-1/ })).toBeVisible();
 

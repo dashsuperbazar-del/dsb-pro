@@ -31,6 +31,17 @@ export async function openBillOptions(page: Page) {
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
 }
+// D5: the Purchases list filters sit behind a collapsed "Filter" row; open it before using them.
+export async function openPurchaseFilter(page: Page) {
+  const toggle = page.locator('.home-row-toggle').filter({ hasText: /^Filter/ });
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+}
+// D5: Void sits behind the bill's More menu; open the void panel (reason + Void bill).
+export async function openVoidPanel(detail: Locator) {
+  await detail.getByRole('button', { name: 'More actions for this bill' }).click();
+  await detail.getByRole('menuitem', { name: 'Void bill…' }).click();
+}
 export async function addCustomerForm(page: Page) {
   const details = page
     .locator('details')

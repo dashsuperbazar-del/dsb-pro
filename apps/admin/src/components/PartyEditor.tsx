@@ -1,3 +1,4 @@
+import { errorText } from '../lib/friendlyError';
 import { useState } from 'preact/hooks';
 import { parseRupeesToPaise } from '@dsb-pro/core';
 import { paiseToDecimal } from '../lib/money';
@@ -65,7 +66,7 @@ export function PartyEditor({
     try {
       await onArchive!();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -95,7 +96,7 @@ export function PartyEditor({
       await onSave(values);
       setSaved('Details saved.');
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }

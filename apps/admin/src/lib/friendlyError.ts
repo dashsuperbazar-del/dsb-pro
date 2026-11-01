@@ -42,6 +42,26 @@ const BY_SENTENCE: [RegExp, string][] = [
 
 const CODE = /\bDSB_[A-Z0-9_]+\b/;
 
+// Anything that is not a string or an Error (a PostgREST error object, a bare {}) must never print as
+// "[object Object]": take its details/hint/error text, else say so plainly.
+function readable(raw: unknown): string {
+  if (raw && typeof raw === 'object') {
+    const o = raw as Record<string, unknown>;
+    for (const key of ['details', 'hint', 'error_description', 'error', 'code'])
+      if (typeof o[key] === 'string' && (o[key] as string).trim()) return o[key] as string;
+    return '';
+  }
+  return raw === null || raw === undefined ? '' : String(raw);
+}
+
+/** Just the sentence, for places that keep one string (never "[object Object]", never a raw DSB_ code). */
+export function errorText(raw: unknown): string {
+  const f = friendlyError(raw);
+  return f.text.startsWith('Something went wrong. Check Sales history')
+    ? 'Something went wrong. Please try again.'
+    : f.text;
+}
+
 export function friendlyError(raw: unknown): FriendlyError {
   const message =
     raw instanceof Error
@@ -50,7 +70,7 @@ export function friendlyError(raw: unknown): FriendlyError {
         ? raw
         : raw && typeof (raw as { message?: unknown }).message === 'string'
           ? (raw as { message: string }).message
-          : String(raw);
+          : readable(raw);
   const cleaned = message.replace(/^(?:Error: )+/, '').trim();
   const code = cleaned.match(CODE)?.[0] ?? null;
   if (code && BY_CODE[code]) return { text: BY_CODE[code], code };

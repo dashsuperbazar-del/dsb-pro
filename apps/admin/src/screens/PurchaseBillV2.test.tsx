@@ -463,7 +463,7 @@ test('a lost reply is retried as the same v2 request (same id, same payload), ev
   await act(async () => {
     render(<InventoryScreen purchaseOnly />, host);
   });
-  await vi.waitFor(() => expect(postButton().textContent).toBe('Retry same purchase'));
+  await vi.waitFor(() => expect(postButton().textContent).toMatch(/^Retry same purchase · ₹/));
   api.postPurchaseV2Outcome.mockResolvedValueOnce(committed(3200, 4, 'pay-1'));
   await click(postButton());
   await vi.waitFor(() => expect(host.textContent).toContain('Purchase posted (1 item)'));
@@ -509,7 +509,7 @@ test('a v1 purchase left unconfirmed by the previous version is retried as v1, u
   await act(async () => {
     render(<InventoryScreen purchaseOnly />, host);
   });
-  await vi.waitFor(() => expect(postButton().textContent).toBe('Retry same purchase'));
+  await vi.waitFor(() => expect(postButton().textContent).toMatch(/^Retry same purchase · ₹/));
   api.postPurchaseOutcome.mockResolvedValue({ kind: 'committed', value: 'bill-v1' });
   await click(postButton());
   await vi.waitFor(() => expect(api.postPurchaseOutcome).toHaveBeenCalledTimes(1));

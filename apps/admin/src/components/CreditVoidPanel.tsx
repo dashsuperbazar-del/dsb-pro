@@ -1,3 +1,4 @@
+import { errorText } from '../lib/friendlyError';
 import { useEffect, useState } from 'preact/hooks';
 import {
   VOID_REASON_MAX,
@@ -146,7 +147,7 @@ export function CreditVoidPanel({
         'Void saved on this device — will sync. The bill, stock and supplier balance change only after it syncs.',
       );
     } catch (e) {
-      setNote(`Not saved on this device: ${e instanceof Error ? e.message : String(e)}`);
+      setNote(`Not saved on this device: ${errorText(e)}`);
     }
   }
   useEffect(() => {
@@ -171,7 +172,7 @@ export function CreditVoidPanel({
       try {
         clientId = purchaseVoidRequestId(crypto.randomUUID(), { reason });
       } catch (e) {
-        setNote(e instanceof Error ? e.message : String(e));
+        setNote(errorText(e));
         return;
       }
       if (
@@ -184,7 +185,7 @@ export function CreditVoidPanel({
       try {
         localStorage.setItem(pendingKey(scope, billId), JSON.stringify(req));
       } catch (e) {
-        setNote(`Not sent: the void could not be kept on this device (${String(e)}).`);
+        setNote(`Not sent: the void could not be kept on this device (${errorText(e)}).`);
         return;
       }
       setPending(req);

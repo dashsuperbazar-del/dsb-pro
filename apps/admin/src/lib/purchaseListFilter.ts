@@ -29,18 +29,48 @@ export function filterBills(
   });
 }
 
-/** List badge: Paid / Partial / Unpaid / Void; null when the settlement is not known. */
+/** List badge: Paid / Part paid / Owed / Void; null when the settlement is not known. */
 export function listBadge(s: PurchaseSettlement | undefined): string | null {
   switch (s?.status) {
     case 'settled':
       return 'Paid';
     case 'partial':
-      return 'Partial';
+      return 'Part paid';
     case 'unpaid':
-      return 'Unpaid';
+      return 'Owed';
     case 'void':
       return 'Void';
     default:
       return null;
   }
+}
+
+const STATUS_WORDS: Record<string, string> = {
+  posted: 'Posted',
+  void: 'Void',
+  paid: 'Paid',
+  partial: 'Part paid',
+  unpaid: 'Owed',
+  pending: 'Pending items',
+};
+
+/** One short line saying which filters are on ("All bills" when none), shown on the collapsed Filter row. */
+export function filterSummaryText(f: {
+  supplierName: string | null;
+  status: string;
+  sort: string;
+  from: string;
+  to: string;
+  showVoided: boolean;
+}): string {
+  const parts: string[] = [];
+  if (f.supplierName) parts.push(f.supplierName);
+  const word = STATUS_WORDS[f.status];
+  if (word) parts.push(word);
+  if (f.from && f.to) parts.push(`${f.from} to ${f.to}`);
+  else if (f.from) parts.push(`from ${f.from}`);
+  else if (f.to) parts.push(`until ${f.to}`);
+  if (f.sort === 'entered') parts.push('Recently entered first');
+  if (f.showVoided && f.status !== 'void') parts.push('Voided shown');
+  return parts.length ? parts.join(' · ') : 'All bills';
 }

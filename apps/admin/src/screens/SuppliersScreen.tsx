@@ -1,3 +1,4 @@
+import { errorText } from '../lib/friendlyError';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { withAccountLock } from '../lib/accountLock';
 import {
@@ -9,6 +10,9 @@ import {
   archiveParty,
   type Party,
   getSupplierOutstanding,
+  createParty,
+  getSupplierPaymentsDue,
+  listPurchaseHistory,
   listSupplierAllocations,
   listSupplierBills,
   listSupplierPayments,
@@ -39,6 +43,8 @@ import { SupplierSchedulePanel } from '../components/SupplierSchedulePanel';
 import { DuplicateBillsCheck, PartyMergePanel } from '../components/PartyMergePanel';
 import { BulkSupplierPayments } from '../components/BulkSupplierPayments';
 import { PaySupplierPanel } from '../components/PaySupplierPanel';
+import { SupplierEmptyState } from '../components/SupplierEmptyState';
+import '../d5.css';
 import { SnapshotNote } from '../components/SnapshotNote';
 import {
   dropSnapshot,
@@ -79,6 +85,13 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
   const [role, setRole] = useState<Role | null>(null);
   const [shopId, setShopId] = useState('');
   const [businessDate, setBusinessDate] = useState('');
+  const [tenantId, setTenantId] = useState('');
+  // The first read of the supplier list has finished (the empty state shows only then, never while loading).
+  const [baseLoaded, setBaseLoaded] = useState(false);
+  // Display-only hints for the cards: latest bill date per supplier and who has a payment overdue.
+  // Read separately and ignored on any failure; they never change a figure or a payment.
+  const [lastBill, setLastBill] = useState<Map<string, string>>(new Map());
+  const [overdue, setOverdue] = useState<Map<string, number>>(new Map());
   const [summary, setSummary] = useState<SupplierOutstandingRow[]>([]);
   const [partyId, setPartyId] = useState('');
   // The supplier on screen right now; refreshes from actions that started under another supplier are
@@ -134,6 +147,7 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
       throw new Error('No tenant membership.');
     }
     setRole(m.role);
+    setTenantId(m.tenantId);
     if (m.role === 'cashier') {
       forgetBase();
       return;
@@ -151,8 +165,53 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
     setSummary(s);
     setAllParties(parties);
     setBusinessDate(d);
+    setBaseLoaded(true);
+    void loadCardHints(shop, d, m.role);
     setSnapshotAt(null);
     putSnapshot<SupplierBaseSnapshot>('suppliers', userId, shop, { summary: s, parties });
+  }
+  function loadCardHints(shop: string, date: string, r: Role) {
+    if (r !== 'owner' && r !== 'manager') return Promise.resolve();
+    const hints = [
+      // The list is newest first (business date), so a supplier's first posted bill found in this page is its
+      // true latest bill; a supplier with none in the page gets no date (never a wrong, older one).
+      Promise.resolve()
+        .then(() => listPurchaseHistory(shop, 0))
+        .then((bills) => {
+          const next = new Map<string, string>();
+          for (const b of bills)
+            if (
+              b.status === 'POSTED' &&
+              b.party_id &&
+              (next.get(b.party_id) ?? '') < b.business_date
+            )
+              next.set(b.party_id, b.business_date);
+          setLastBill(next);
+        }),
+      Promise.resolve()
+        .then(() => getSupplierPaymentsDue(shop, date))
+        .then((due) => {
+          const next = new Map<string, number>();
+          for (const d of due)
+            if (d.daysOverdue > 0)
+              next.set(d.partyId, Math.max(next.get(d.partyId) ?? 0, d.daysOverdue));
+          setOverdue(next);
+        }),
+    ];
+    return Promise.allSettled(hints).then(() => undefined);
+  }
+  async function createSupplier(v: { name: string; phone: string; gstin: string }) {
+    if (!tenantId) throw new Error('Shop data is still loading. Try again in a moment.');
+    const made = await createParty({
+      tenantId,
+      name: v.name,
+      phone: v.phone || undefined,
+      gstin: v.gstin || undefined,
+      clientId: crypto.randomUUID(),
+    });
+    await refreshBase();
+    await changeParty(made.id);
+    setMessage(`Created supplier ${made.name}.`);
   }
   async function refreshParty(shop = shopId, party = partyRef.current) {
     if (party !== partyRef.current) return;
@@ -200,12 +259,12 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
       setError(
         typeof navigator !== 'undefined' && navigator.onLine === false
           ? 'You are offline. Balances and bills load when you are back online. Pay supplier below works from what is saved on this device.'
-          : String(e),
+          : errorText(e),
       );
     });
   }, []);
   useEffect(() => {
-    void refreshParty().catch((e) => setError(String(e)));
+    void refreshParty().catch((e) => setError(errorText(e)));
   }, [shopId, partyId]);
 
   useEffect(() => {
@@ -221,7 +280,7 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
     contextUsed.current = key;
     void changeParty(contextSupplier)
       .then(() => setView(contextView))
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(errorText(e)));
   }, [shopId, allParties, snapshotAt, contextSupplier, contextBill, contextView]);
   useEffect(() => {
     if (!contextBill || loadedParty !== contextSupplier || targetBillUsed.current === contextBill)
@@ -249,7 +308,7 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
         'Oldest-first allocation prepared. Review before recording; any remainder stays as advance.',
       );
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   }
   function payload(): RecordPayload {
@@ -315,7 +374,7 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
     try {
       await fn();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -403,7 +462,6 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
           </a>
           <a href={appRoute.customers}>Customers</a>
         </nav>
-        <a href={appRoute.home}>{t('home')}</a>
       </div>
       <p class="hint">
         This app records money you have already paid a supplier. It does not send money.
@@ -428,7 +486,7 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
               setAlloc({});
               setConfirming(false);
             }
-            void Promise.all([refreshParty(), refreshBase()]).catch((e) => setError(String(e)));
+            void Promise.all([refreshParty(), refreshBase()]).catch((e) => setError(errorText(e)));
           }}
         />
       )}
@@ -443,43 +501,67 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
             placeholder="Supplier name"
           />
         </label>
-        <table>
-          <thead>
-            <tr>
-              <th>Supplier</th>
-              <th>Open bills</th>
-              <th>Unallocated advances</th>
-              <th>Return credits</th>
-              <th>Net balance</th>
-            </tr>
-          </thead>
-          <tbody>
-            {summary
-              .filter((s) => s.partyName.toLowerCase().includes(supplierSearch.toLowerCase()))
-              .map((s) => (
-                <tr key={s.partyId}>
-                  <td class="record-title" data-label="Supplier">
+        {baseLoaded && snapshotAt === null && summary.length === 0 && (
+          <SupplierEmptyState
+            canAdd={canPost}
+            title={allParties.length ? 'No supplier bills yet' : 'No suppliers yet'}
+            onCreate={createSupplier}
+          />
+        )}
+        <ul class="supplier-cards">
+          {summary
+            .filter((s) => s.partyName.toLowerCase().includes(supplierSearch.toLowerCase()))
+            .map((s) => {
+              const net = BigInt(s.netLedgerBalance);
+              const late = overdue.get(s.partyId);
+              const last = lastBill.get(s.partyId);
+              return (
+                <li
+                  key={s.partyId}
+                  class={`supplier-card${partyId === s.partyId ? ' current' : ''}`}
+                >
+                  <div class="supplier-card-head">
                     <button class="link" onClick={() => void changeParty(s.partyId)}>
                       {s.partyName}
                     </button>
-                    {s.strandedAllocationsOnVoidBills > 0 && (
-                      <span class="alert">
-                        {' '}
-                        ⚠ {s.strandedAllocationsOnVoidBills} payment(s) on void bills — owner must
-                        release
+                    {late !== undefined && (
+                      <span class="badge settle-unpaid" data-testid="supplier-overdue">
+                        Payment overdue · {late} day{late === 1 ? '' : 's'}
                       </span>
                     )}
-                  </td>
-                  <td data-label="Open bills">{rupees(s.grossOpenBills)}</td>
-                  <td data-label="Advance available">{rupees(s.unallocatedCashAdvances)}</td>
-                  <td data-label="Return credits">{rupees(s.returnCredits)}</td>
-                  <td data-label={Number(s.netLedgerBalance) < 0 ? 'Net credit' : 'You owe'}>
-                    {rupees(s.netLedgerBalance)}
-                  </td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
+                  </div>
+                  <p class="supplier-owed">
+                    <span class="muted">{net < 0n ? 'Credit with supplier' : 'You owe'}</span>{' '}
+                    <strong class="num">
+                      {rupees(net < 0n ? (-net).toString() : s.netLedgerBalance)}
+                    </strong>
+                  </p>
+                  <p class="muted supplier-meta">
+                    {[
+                      last ? `Last bill ${last}` : '',
+                      s.grossOpenBills !== s.netLedgerBalance
+                        ? `Open bills ${rupees(s.grossOpenBills)}`
+                        : '',
+                      BigInt(s.unallocatedCashAdvances) > 0n
+                        ? `Advance ${rupees(s.unallocatedCashAdvances)}`
+                        : '',
+                      BigInt(s.returnCredits) > 0n
+                        ? `Return credits ${rupees(s.returnCredits)}`
+                        : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </p>
+                  {s.strandedAllocationsOnVoidBills > 0 && (
+                    <p class="alert">
+                      ⚠ {s.strandedAllocationsOnVoidBills} payment(s) on void bills — owner must
+                      release
+                    </p>
+                  )}
+                </li>
+              );
+            })}
+        </ul>
         <label>
           Supplier{' '}
           <select
@@ -690,7 +772,7 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
                                     'Full bill allocation selected. Enter or check the amount you actually paid.',
                                   );
                                 } catch (e) {
-                                  setError(String(e));
+                                  setError(errorText(e));
                                 }
                               }}
                             >
@@ -984,7 +1066,7 @@ function RejectedCopy(props: { shopId: string; partyId: string; onCopied: () => 
           onClick={() =>
             void copyRejectedFinancialAttempt(hint.trim())
               .then(props.onCopied)
-              .catch((e) => alert(String(e)))
+              .catch((e) => alert(errorText(e)))
           }
         >
           Copy to new draft
