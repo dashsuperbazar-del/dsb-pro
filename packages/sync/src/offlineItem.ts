@@ -42,6 +42,8 @@ export type OfflineItemRecord = Readonly<{
   mapped: boolean;
   rejectionCode: string | null;
   rejectionReason: string | null;
+  /** Set when a refused create was redone under another name: the request id of the new create. */
+  replacedBy?: string | null;
 }>;
 export type OfflineItemRequest = Readonly<{
   itemId: string;
@@ -149,6 +151,45 @@ async function queuedEditsUsing(db: DsbSyncDb, itemId: string) {
   );
 }
 
+/**
+ * Points every never-sent queued bill (and bill edit) that names a device item at `toId`. A bill already
+ * sent (attempts > 0, or not pending) is never rewritten: the server may hold it under the old payload.
+ * Runs inside the caller's transaction.
+ */
+async function repointNeverSentBills(db: DsbSyncDb, fromId: string, toId: string) {
+  for (const row of await queuedPurchasesUsing(db, fromId)) {
+    if (row.attempts > 0 || row.state !== 'pending') continue;
+    const payload = row.payload as Record<string, unknown>;
+    const next = {
+      ...payload,
+      lines: linesOf(payload).map((l) => (l.itemId === fromId ? { ...l, itemId: toId } : l)),
+    };
+    await db.outbox.put({ ...row, payload: next });
+    const bill = await db.offlinePurchases.get(row.clientId);
+    if (bill && bill.status === 'QUEUED')
+      await db.offlinePurchases.put({
+        ...bill,
+        request: next as unknown as typeof bill.request,
+        lines: bill.lines.map((l) => (l.itemId === fromId ? { ...l, itemId: toId } : l)),
+      });
+  }
+  // Never-sent queued bill edits that use the device item: their corrected bill names the server item.
+  for (const row of await queuedEditsUsing(db, fromId)) {
+    if (row.attempts > 0 || row.state !== 'pending') continue;
+    const payload = row.payload as { request: Record<string, unknown> };
+    const request = {
+      ...payload.request,
+      lines: linesOf(payload.request).map((l) =>
+        l.itemId === fromId ? { ...l, itemId: toId } : l,
+      ),
+    };
+    await db.outbox.put({ ...row, payload: { ...payload, request } });
+    const change = await db.offlineBillChanges.get(row.clientId);
+    if (change && change.status === 'QUEUED')
+      await db.offlineBillChanges.put({ ...change, request });
+  }
+}
+
 /** The server confirmed the item (created, replayed or matched). Idempotent. */
 export async function completeOfflineItem(
   db: DsbSyncDb,
@@ -165,45 +206,9 @@ export async function completeOfflineItem(
       return record;
     }
     if (record.status === 'REJECTED') throw new Error('A refused item cannot be confirmed.');
-    if (result.itemId !== record.itemId) {
-      // Matched to an existing item: point every never-sent queued bill at it. A bill already sent
-      // cannot be changed (the server may hold it under the old payload); it is left to the server.
-      for (const row of await queuedPurchasesUsing(db, record.itemId)) {
-        if (row.attempts > 0 || row.state !== 'pending') continue;
-        const payload = row.payload as Record<string, unknown>;
-        const next = {
-          ...payload,
-          lines: linesOf(payload).map((l) =>
-            l.itemId === record.itemId ? { ...l, itemId: result.itemId } : l,
-          ),
-        };
-        await db.outbox.put({ ...row, payload: next });
-        const bill = await db.offlinePurchases.get(row.clientId);
-        if (bill && bill.status === 'QUEUED')
-          await db.offlinePurchases.put({
-            ...bill,
-            request: next as unknown as typeof bill.request,
-            lines: bill.lines.map((l) =>
-              l.itemId === record.itemId ? { ...l, itemId: result.itemId } : l,
-            ),
-          });
-      }
-      // Never-sent queued bill edits that use the device item: their corrected bill names the server item.
-      for (const row of await queuedEditsUsing(db, record.itemId)) {
-        if (row.attempts > 0 || row.state !== 'pending') continue;
-        const payload = row.payload as { request: Record<string, unknown> };
-        const request = {
-          ...payload.request,
-          lines: linesOf(payload.request).map((l) =>
-            l.itemId === record.itemId ? { ...l, itemId: result.itemId } : l,
-          ),
-        };
-        await db.outbox.put({ ...row, payload: { ...payload, request } });
-        const change = await db.offlineBillChanges.get(row.clientId);
-        if (change && change.status === 'QUEUED')
-          await db.offlineBillChanges.put({ ...change, request });
-      }
-    }
+    // Matched to an existing item: point every never-sent queued bill at it.
+    if (result.itemId !== record.itemId)
+      await repointNeverSentBills(db, record.itemId, result.itemId);
     const next: OfflineItemRecord = {
       ...record,
       status: 'SYNCED',

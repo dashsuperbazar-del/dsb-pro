@@ -517,3 +517,22 @@ export async function resolveLocalConflict(db: DsbSyncDb, id: number): Promise<v
   if (!row) return;
   await db.conflicts.put({ ...row, id, status: 'RESOLVED' });
 }
+
+/**
+ * "Mark reviewed" for several device alerts at once. Only hides the alert: the underlying record is never
+ * changed and nothing is posted. Records who/when on the first review; reviewing again changes nothing.
+ */
+export async function resolveLocalConflicts(
+  db: DsbSyncDb,
+  ids: readonly number[],
+  resolvedBy: string,
+  now = Date.now(),
+): Promise<void> {
+  await db.transaction('rw', [db.conflicts], async () => {
+    for (const id of ids) {
+      const row = await db.conflicts.get(id);
+      if (!row || row.status === 'RESOLVED') continue;
+      await db.conflicts.put({ ...row, id, status: 'RESOLVED', resolvedAt: now, resolvedBy });
+    }
+  });
+}

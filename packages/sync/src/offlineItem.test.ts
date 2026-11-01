@@ -6,12 +6,16 @@ import {
   ITEM_OUTBOX_TARGET,
   ITEM_REJECTED_CODE,
   completeOfflineItem,
+
+
   listOfflineItemRecords,
   purchaseItemGate,
   queueOfflineItem,
   rejectOfflineItem,
 } from './offlineItem';
 import { PURCHASE_OUTBOX_TARGET, queueOfflinePurchase } from './offlinePurchase';
+import { resolveLocalConflicts } from './offlineSale';
+import { renameRefusedItem, useExistingItemForRefused } from './offlineItemFix';
 import { queueOfflineBillChange } from './offlineBillChange';
 
 const open: DsbSyncDb[] = [];
@@ -208,5 +212,88 @@ describe('offline new items', () => {
         rejectionCode: ITEM_REJECTED_CODE,
       });
     });
+  });
+});
+
+describe('fix a refused item in place (D9)', () => {
+  const EXISTING = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  const NEW_REQ = 'f1f1f1f1-f1f1-41f1-81f1-f1f1f1f1f1f1';
+  const NEW_ITEM = 'f2f2f2f2-f2f2-42f2-82f2-f2f2f2f2f2f2';
+  const existing = { itemId: EXISTING, fields: { name: 'ATTA', unit1: 'kg' } };
+  async function refused() {
+    const db = await newDb();
+    await queueOfflineItem(db, item(), 1);
+    await queueOfflinePurchase(db, bill(), 2);
+    await rejectOfflineItem(db, REQ, 'DSB_ITEM_NAME_TAKEN', 'name taken', 3);
+    return db;
+  }
+  it('use existing: needs the explicit confirm, re-points the held bill and queues it again once', async () => {
+    const db = await refused();
+    await expect(useExistingItemForRefused(db, REQ, existing, false)).rejects.toThrow(/same product/);
+    const before = await db.offlinePurchases.get(BILL);
+    expect(before!.status).toBe('REJECTED');
+    const done = await useExistingItemForRefused(db, REQ, existing, true, 10);
+    expect(done.requeued).toEqual([BILL]);
+    const bill1 = await db.offlinePurchases.get(BILL);
+    expect(bill1!.status).toBe('QUEUED');
+    expect(JSON.stringify(bill1!.request)).toContain(EXISTING);
+    expect(JSON.stringify(bill1!.request)).not.toContain(ITEM);
+    const rows = await db.outbox.toArray();
+    expect(rows.map((r) => r.clientId)).toEqual([BILL]);
+    expect(rows[0]!.attempts).toBe(0);
+    const rec = await db.offlineItems.get(REQ);
+    expect(rec).toMatchObject({ status: 'SYNCED', serverItemId: EXISTING, mapped: true });
+    // Double tap: nothing is queued twice.
+    const again = await useExistingItemForRefused(db, REQ, existing, true, 11);
+    expect(again.requeued).toEqual([]);
+    expect(await db.outbox.count()).toBe(1);
+    // The alerts about the item and its held bill are closed, with who/when.
+    const open = (await db.conflicts.toArray()).filter((c) => c.status === 'OPEN');
+    expect(open).toEqual([]);
+  });
+  it('use existing: refuses another name, a bill already sent, and an item that is not refused', async () => {
+    const db = await refused();
+    await expect(
+      useExistingItemForRefused(db, REQ, { itemId: EXISTING, fields: { name: 'Dal', unit1: 'kg' } }, true),
+    ).rejects.toThrow(/name/);
+    const q = await newDb();
+    await queueOfflineItem(q, item(), 1);
+    await expect(useExistingItemForRefused(q, REQ, existing, true)).rejects.toThrow(/refused/);
+  });
+  it('use existing never touches a bill that is not held by the item gate', async () => {
+    const db = await refused();
+    const held = await db.offlinePurchases.get(BILL);
+    // The bill was refused by the server for another reason after being re-saved: not re-pointed.
+    await db.offlinePurchases.put({ ...held!, rejectionCode: 'DSB_SOMETHING_ELSE' });
+    const done = await useExistingItemForRefused(db, REQ, existing, true, 10);
+    expect(done.requeued).toEqual([]);
+    expect(JSON.stringify((await db.offlinePurchases.get(BILL))!.request)).toContain(ITEM);
+    expect(await db.outbox.count()).toBe(0);
+  });
+  it('rename: one new item and request, held bill queued behind it, idempotent, syncs and re-points', async () => {
+    const db = await refused();
+    const input = { clientId: NEW_REQ, itemId: NEW_ITEM, name: 'Atta 12 pcs' };
+    const first = await renameRefusedItem(db, REQ, input, 10);
+    expect(first.record.fields.name).toBe('Atta 12 pcs');
+    expect(first.record.fields.unit1).toBe('bag');
+    const again = await renameRefusedItem(db, REQ, { ...input, clientId: crypto.randomUUID(), itemId: crypto.randomUUID() }, 11);
+    expect(again.record.clientId).toBe(NEW_REQ);
+    expect(await db.offlineItems.count()).toBe(2);
+    const rows = await db.outbox.orderBy('sequence').toArray();
+    expect(rows.map((r) => r.target)).toEqual([ITEM_OUTBOX_TARGET, PURCHASE_OUTBOX_TARGET]);
+    // The bill waits for the new item (gate) and then follows a match.
+    const gate = await purchaseItemGate(db, rows[1]!.payload);
+    expect(gate).toMatchObject({ kind: 'wait' });
+    await completeOfflineItem(db, NEW_REQ, { itemId: SERVER, mapped: true }, 20);
+    expect(JSON.stringify((await db.offlinePurchases.get(BILL))!.request)).toContain(SERVER);
+    expect((await db.conflicts.toArray()).filter((c) => c.status === 'OPEN')).toEqual([]);
+  });
+  it('resolveLocalConflicts records who and when and is safe twice', async () => {
+    const db = await refused();
+    const ids = (await db.conflicts.toArray()).map((c) => c.id!);
+    await resolveLocalConflicts(db, ids, 'user-1', 50);
+    await resolveLocalConflicts(db, ids, 'user-2', 60);
+    const rows = await db.conflicts.toArray();
+    expect(rows.every((c) => c.status === 'RESOLVED' && c.resolvedBy === 'user-1' && c.resolvedAt === 50)).toBe(true);
   });
 });
