@@ -1,12 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { addByTap } from './pos-shop-setup';
-import {
-  addItemForm,
-  reviewPayment,
-  stockTask,
-  fillBillItem,
-  openAllScreens,
-} from './design-helpers';
+import { addItemForm, reviewPayment, stockTask, fillBillItem } from './design-helpers';
 test('professional phone workspace preserves drafts across task views and has reachable controls', async ({
   page,
 }, testInfo) => {
@@ -140,7 +134,6 @@ test('professional phone workspace preserves drafts across task views and has re
   await expect(page.getByLabel('Appearance')).toHaveValue('dark');
   await capture('08-dark-phone');
   await page.getByLabel('Appearance').selectOption('light');
-  await openAllScreens(page);
   await page.getByRole('link', { name: 'Reports & recovery', exact: true }).click();
   for (const date of ['From', 'To'])
     expect(
