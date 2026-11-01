@@ -39,7 +39,16 @@ export function SyncIndicator() {
   if (!summary) return null;
   const { text, tone } = syncLabel(summary);
   return (
-    <a class="sync-pill" data-tone={tone} href={appRoute.sync} title="Sync & offline status">
+    <a
+      class="sync-pill"
+      data-tone={tone}
+      href={appRoute.sync}
+      title={
+        tone === 'attention'
+          ? 'Needs attention on this device. Open Sync & offline for shop-wide alerts.'
+          : 'Sync & offline status'
+      }
+    >
       <span class="dot" aria-hidden="true" />
       <span>{text}</span>
     </a>

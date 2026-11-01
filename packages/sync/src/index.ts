@@ -13,5 +13,6 @@ export * from './financialAttempts';
 export * from './routeSnapshotDb';
 export * from './offlinePurchase';
 export * from './offlineItem';
+export * from './offlineItemFix';
 export * from './offlineBillChange';
 export * from './offlineSupplierPayment';

@@ -52,6 +52,10 @@ export type OfflinePurchaseRecord = Readonly<{
   reconciliationWarning?: string | null;
   /** Set when the user turned a refused bill into a draft or dismissed it. */
   closedAt: number | null;
+  /** Refused by the new-item gate BEFORE any send (the server never saw this request id). */
+  heldBeforeSend?: boolean;
+  /** Held on purpose until this device item is created; then queued again (D9 rename). */
+  releaseWithItem?: string | null;
 }>;
 export type QueueOfflinePurchaseInput = Omit<
   OfflinePurchaseRecord,
@@ -209,6 +213,7 @@ export async function rejectOfflinePurchase(
   code: string,
   reason: string,
   now = Date.now(),
+  heldBeforeSend = false,
 ): Promise<void> {
   await db.transaction('rw', [db.outbox, db.offlinePurchases, db.conflicts], async () => {
     const record = await db.offlinePurchases.get(clientId);
@@ -219,6 +224,7 @@ export async function rejectOfflinePurchase(
         status: 'REJECTED',
         rejectionCode: code,
         rejectionReason: reason,
+        ...(heldBeforeSend ? { heldBeforeSend: true } : {}),
       });
     const outbox = await db.outbox.where('clientId').equals(clientId).first();
     if (outbox) await db.outbox.delete(outbox.sequence);

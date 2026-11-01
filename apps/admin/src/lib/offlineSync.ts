@@ -34,6 +34,7 @@ import {
   paySupplierIfUnchangedOutcome,
   plainOfflineSupplierPaymentRefusal,
 } from '@dsb-pro/adapters';
+import { buildReviewCards } from './syncReview';
 import { readLocalDocument, removeLocalDocument } from './billDocumentStore';
 import { syncQueuedSupplierPayment } from './offlineSupplierPaymentSync';
 import { syncQueuedPurchase } from './offlinePurchaseSync';
@@ -130,6 +131,10 @@ import {
   queueOfflineSupplierPayment,
   listOfflineSupplierPaymentRecords,
   closeRejectedOfflineSupplierPayment,
+  resolveLocalConflicts,
+  useExistingItemForRefused,
+  type UseExistingResult,
+  renameRefusedItem,
   saveSupplierPayCopy,
   getSupplierPayCopy,
   type OfflineSupplierPaymentRecord,
@@ -768,13 +773,22 @@ export type LocalSyncSummary = {
 export async function getLocalSyncSummary(): Promise<LocalSyncSummary> {
   const online = typeof navigator === 'undefined' ? true : navigator.onLine;
   if (!runtime) return { online, running: false, pending: 0, conflicts: 0 };
-  const health = await getSyncHealth(runtime.db);
-  return {
-    online,
-    running: state.running,
-    pending: health.outboxCount,
-    conflicts: health.conflictCount,
-  };
+  const rt = runtime;
+  const health = await getSyncHealth(rt.db);
+  // One count per event, as the Sync screen shows it (a refused item and the bills it holds are one).
+  let conflicts = health.conflictCount;
+  try {
+    conflicts = buildReviewCards({
+      conflicts: await rt.db.conflicts.toArray(),
+      serverConflicts: [],
+      items: await listOfflineItemRecords(rt.db, rt.identity.tenantId),
+      purchases: await listOfflinePurchaseRecords(rt.db, rt.identity.shopId),
+      billChanges: await listOfflineBillChangeRecords(rt.db, rt.identity.shopId),
+    }).length;
+  } catch {
+    /* keep the plain count */
+  }
+  return { online, running: state.running, pending: health.outboxCount, conflicts };
 }
 export async function refreshOfflineReturnSources(): Promise<void> {
   const rt = requireRuntime();
@@ -1045,17 +1059,34 @@ export async function getSyncDashboard() {
     typeof navigator !== 'undefined' && !navigator.onLine
       ? Promise.resolve([])
       : listServerSyncConflicts().catch(() => []);
-  const [health, conflicts, sales, serverConflicts] = await Promise.all([
+  const [
+    health,
+    conflicts,
+    sales,
+    serverConflicts,
+    offlineItems,
+    purchases,
+    billChanges,
+    payments,
+  ] = await Promise.all([
     getSyncHealth(rt.db),
     rt.db.conflicts.orderBy('createdAt').reverse().toArray(),
     listOfflineSales(),
     serverConflictPromise,
+    listOfflineItemRecords(rt.db, rt.identity.tenantId),
+    listOfflinePurchaseRecords(rt.db, rt.identity.shopId),
+    listOfflineBillChangeRecords(rt.db, rt.identity.shopId),
+    listOfflineSupplierPaymentRecords(rt.db, rt.identity.shopId),
   ]);
   return {
     health,
     conflicts,
     sales,
     serverConflicts,
+    offlineItems,
+    purchases,
+    billChanges,
+    payments,
     state: getOfflineRuntimeState(),
     identity: rt.identity,
     policy: (await getCachedPolicy(rt.db)) ?? {
@@ -1097,6 +1128,95 @@ export async function resolveConflictOnServer(id: string): Promise<void> {
   const rt = requireRuntime();
   await resolveServerSyncConflict({ deviceId: rt.identity.deviceId, id });
   emit();
+}
+
+/**
+ * One-click "Mark reviewed": hides the device alerts (who/when kept) and, when allowed, the shop-wide
+ * records of the same events. Only hides alerts: no record is changed and nothing is posted. Safe to repeat.
+ * Returns the shop records that were NOT cleared (not allowed, or no connection).
+ */
+export async function markReviewed(input: {
+  localIds: readonly number[];
+  serverIds: readonly string[];
+  includeShop: boolean;
+}): Promise<{ shopNotCleared: string[] }> {
+  const rt = requireRuntime();
+  await resolveLocalConflicts(rt.db, input.localIds, rt.identity.userId);
+  const left: string[] = [];
+  for (const id of input.serverIds) {
+    if (!input.includeShop) {
+      left.push(id);
+      continue;
+    }
+    try {
+      await resolveServerSyncConflict({ deviceId: rt.identity.deviceId, id });
+    } catch {
+      left.push(id);
+    }
+  }
+  emit();
+  return { shopNotCleared: left };
+}
+
+/**
+ * "Use the existing item" for a refused item create (see packages/sync/src/offlineItemFix.ts). The existing
+ * item's real units are passed in; the package refuses unless they are identical (and confirmed).
+ */
+export async function useExistingItem(
+  clientId: string,
+  existing: {
+    itemId: string;
+    name: string;
+    unit1: string;
+    unit2: string | null;
+    unit3: string | null;
+    conv1: number | null;
+    conv2: number | null;
+  },
+  confirmedSameProduct: boolean,
+): Promise<UseExistingResult> {
+  const rt = requireRuntime();
+  const done = await useExistingItemForRefused(
+    rt.db,
+    clientId,
+    {
+      itemId: existing.itemId,
+      fields: {
+        name: existing.name,
+        unit1: existing.unit1,
+        unit2: existing.unit2,
+        unit3: existing.unit3,
+        conv1: existing.conv1,
+        conv2: existing.conv2,
+      },
+    },
+    confirmedSameProduct,
+  );
+  if (done.kind === 'done') {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('dsb-offline-items'));
+      window.dispatchEvent(new CustomEvent('dsb-offline-purchases'));
+    }
+    emit();
+    if (done.requeued.length) void runSyncNow().catch(() => undefined);
+  }
+  return done;
+}
+
+/** "Rename and create": one new create under another name; the held bills wait for it. */
+export async function renameAndCreateItem(
+  clientId: string,
+  next: { clientId: string; itemId: string; name: string },
+): Promise<{ held: string[] }> {
+  const rt = requireRuntime();
+  const done = await renameRefusedItem(rt.db, clientId, next);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('dsb-offline-items'));
+    window.dispatchEvent(new CustomEvent('dsb-offline-purchases'));
+  }
+  emit();
+  void runSyncNow().catch(() => undefined);
+  return { held: done.held };
 }
 
 // C2 durable online money attempts, scoped to the runtime identity (tenant/user/device DB).
