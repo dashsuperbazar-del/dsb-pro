@@ -130,6 +130,9 @@ import {
   queueOfflineSupplierPayment,
   listOfflineSupplierPaymentRecords,
   closeRejectedOfflineSupplierPayment,
+  resolveLocalConflicts,
+  useExistingItemForRefused,
+  renameRefusedItem,
   saveSupplierPayCopy,
   getSupplierPayCopy,
   type OfflineSupplierPaymentRecord,
@@ -1045,17 +1048,34 @@ export async function getSyncDashboard() {
     typeof navigator !== 'undefined' && !navigator.onLine
       ? Promise.resolve([])
       : listServerSyncConflicts().catch(() => []);
-  const [health, conflicts, sales, serverConflicts] = await Promise.all([
+  const [
+    health,
+    conflicts,
+    sales,
+    serverConflicts,
+    offlineItems,
+    purchases,
+    billChanges,
+    payments,
+  ] = await Promise.all([
     getSyncHealth(rt.db),
     rt.db.conflicts.orderBy('createdAt').reverse().toArray(),
     listOfflineSales(),
     serverConflictPromise,
+    listOfflineItemRecords(rt.db, rt.identity.tenantId),
+    listOfflinePurchaseRecords(rt.db, rt.identity.shopId),
+    listOfflineBillChangeRecords(rt.db, rt.identity.shopId),
+    listOfflineSupplierPaymentRecords(rt.db, rt.identity.shopId),
   ]);
   return {
     health,
     conflicts,
     sales,
     serverConflicts,
+    offlineItems,
+    purchases,
+    billChanges,
+    payments,
     state: getOfflineRuntimeState(),
     identity: rt.identity,
     policy: (await getCachedPolicy(rt.db)) ?? {
@@ -1097,6 +1117,72 @@ export async function resolveConflictOnServer(id: string): Promise<void> {
   const rt = requireRuntime();
   await resolveServerSyncConflict({ deviceId: rt.identity.deviceId, id });
   emit();
+}
+
+/**
+ * One-click "Mark reviewed": hides the device alerts (who/when kept) and, when allowed, the shop-wide
+ * records of the same events. Only hides alerts: no record is changed and nothing is posted. Safe to repeat.
+ * Returns the shop records that were NOT cleared (not allowed, or no connection).
+ */
+export async function markReviewed(input: {
+  localIds: readonly number[];
+  serverIds: readonly string[];
+  includeShop: boolean;
+}): Promise<{ shopNotCleared: string[] }> {
+  const rt = requireRuntime();
+  await resolveLocalConflicts(rt.db, input.localIds, rt.identity.userId);
+  const left: string[] = [];
+  for (const id of input.serverIds) {
+    if (!input.includeShop) {
+      left.push(id);
+      continue;
+    }
+    try {
+      await resolveServerSyncConflict({ deviceId: rt.identity.deviceId, id });
+    } catch {
+      left.push(id);
+    }
+  }
+  emit();
+  return { shopNotCleared: left };
+}
+
+/** "Use the existing item" for a refused item create (see packages/sync/src/offlineItemFix.ts). */
+export async function useExistingItem(
+  clientId: string,
+  existing: { itemId: string; name: string },
+  confirmedSameProduct: boolean,
+): Promise<{ requeued: string[] }> {
+  const rt = requireRuntime();
+  const done = await useExistingItemForRefused(
+    rt.db,
+    clientId,
+    { itemId: existing.itemId, fields: { name: existing.name } },
+    confirmedSameProduct,
+  );
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('dsb-offline-items'));
+    window.dispatchEvent(new CustomEvent('dsb-offline-purchases'));
+  }
+  emit();
+  if (done.requeued.length) void runSyncNow().catch(() => undefined);
+  return done;
+}
+
+/** "Rename and create": one new create under another name; the held bills follow it. */
+export async function renameAndCreateItem(
+  clientId: string,
+  next: { clientId: string; itemId: string; name: string },
+): Promise<{ requeued: string[] }> {
+  const rt = requireRuntime();
+  const done = await renameRefusedItem(rt.db, clientId, next);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('dsb-offline-items'));
+    window.dispatchEvent(new CustomEvent('dsb-offline-purchases'));
+  }
+  emit();
+  void runSyncNow().catch(() => undefined);
+  return { requeued: done.requeued };
 }
 
 // C2 durable online money attempts, scoped to the runtime identity (tenant/user/device DB).

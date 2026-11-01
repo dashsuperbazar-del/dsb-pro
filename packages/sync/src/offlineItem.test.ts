@@ -6,8 +6,6 @@ import {
   ITEM_OUTBOX_TARGET,
   ITEM_REJECTED_CODE,
   completeOfflineItem,
-
-
   listOfflineItemRecords,
   purchaseItemGate,
   queueOfflineItem,
@@ -219,7 +217,7 @@ describe('fix a refused item in place (D9)', () => {
   const EXISTING = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
   const NEW_REQ = 'f1f1f1f1-f1f1-41f1-81f1-f1f1f1f1f1f1';
   const NEW_ITEM = 'f2f2f2f2-f2f2-42f2-82f2-f2f2f2f2f2f2';
-  const existing = { itemId: EXISTING, fields: { name: 'ATTA', unit1: 'kg' } };
+  const existing = { itemId: EXISTING, fields: { name: 'ATTA' } };
   async function refused() {
     const db = await newDb();
     await queueOfflineItem(db, item(), 1);
@@ -229,7 +227,9 @@ describe('fix a refused item in place (D9)', () => {
   }
   it('use existing: needs the explicit confirm, re-points the held bill and queues it again once', async () => {
     const db = await refused();
-    await expect(useExistingItemForRefused(db, REQ, existing, false)).rejects.toThrow(/same product/);
+    await expect(useExistingItemForRefused(db, REQ, existing, false)).rejects.toThrow(
+      /same product/,
+    );
     const before = await db.offlinePurchases.get(BILL);
     expect(before!.status).toBe('REJECTED');
     const done = await useExistingItemForRefused(db, REQ, existing, true, 10);
@@ -254,7 +254,12 @@ describe('fix a refused item in place (D9)', () => {
   it('use existing: refuses another name, a bill already sent, and an item that is not refused', async () => {
     const db = await refused();
     await expect(
-      useExistingItemForRefused(db, REQ, { itemId: EXISTING, fields: { name: 'Dal', unit1: 'kg' } }, true),
+      useExistingItemForRefused(
+        db,
+        REQ,
+        { itemId: EXISTING, fields: { name: 'Dal' } },
+        true,
+      ),
     ).rejects.toThrow(/name/);
     const q = await newDb();
     await queueOfflineItem(q, item(), 1);
@@ -276,7 +281,12 @@ describe('fix a refused item in place (D9)', () => {
     const first = await renameRefusedItem(db, REQ, input, 10);
     expect(first.record.fields.name).toBe('Atta 12 pcs');
     expect(first.record.fields.unit1).toBe('bag');
-    const again = await renameRefusedItem(db, REQ, { ...input, clientId: crypto.randomUUID(), itemId: crypto.randomUUID() }, 11);
+    const again = await renameRefusedItem(
+      db,
+      REQ,
+      { ...input, clientId: crypto.randomUUID(), itemId: crypto.randomUUID() },
+      11,
+    );
     expect(again.record.clientId).toBe(NEW_REQ);
     expect(await db.offlineItems.count()).toBe(2);
     const rows = await db.outbox.orderBy('sequence').toArray();
@@ -294,6 +304,10 @@ describe('fix a refused item in place (D9)', () => {
     await resolveLocalConflicts(db, ids, 'user-1', 50);
     await resolveLocalConflicts(db, ids, 'user-2', 60);
     const rows = await db.conflicts.toArray();
-    expect(rows.every((c) => c.status === 'RESOLVED' && c.resolvedBy === 'user-1' && c.resolvedAt === 50)).toBe(true);
+    expect(
+      rows.every(
+        (c) => c.status === 'RESOLVED' && c.resolvedBy === 'user-1' && c.resolvedAt === 50,
+      ),
+    ).toBe(true);
   });
 });

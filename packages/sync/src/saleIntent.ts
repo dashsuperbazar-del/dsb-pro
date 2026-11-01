@@ -5,7 +5,10 @@ function stable(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
   const row = value as Record<string, unknown>;
-  return `{${Object.keys(row).sort().map(key => `${JSON.stringify(key)}:${stable(row[key])}`).join(',')}}`;
+  return `{${Object.keys(row)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stable(row[key])}`)
+    .join(',')}}`;
 }
 
 /**
@@ -13,15 +16,20 @@ function stable(value: unknown): string {
  * exact queued payload. It is not an authorization primitive; the server
  * still re-resolves permissions, prices, stock, and idempotency.
  */
-export function saleIntentFingerprint(payload: Omit<OfflineSalePayload, 'intentFingerprint'>): string {
+export function saleIntentFingerprint(
+  payload: Omit<OfflineSalePayload, 'intentFingerprint'>,
+): string {
   const { intentFingerprint: _ignored, ...intent } = payload as OfflineSalePayload;
   void _ignored;
   const normalized = {
     ...intent,
     customerId: intent.customerId ?? null,
     notes: intent.notes ?? null,
-    lines: intent.lines.map(line => ({ ...line, qty: canonicalQuantity(line.qty) })),
-    payments: intent.payments.map(payment => ({ ...payment, reference: payment.reference ?? null })),
+    lines: intent.lines.map((line) => ({ ...line, qty: canonicalQuantity(line.qty) })),
+    payments: intent.payments.map((payment) => ({
+      ...payment,
+      reference: payment.reference ?? null,
+    })),
   };
   const input = stable(normalized);
   let first = 0xcbf29ce484222325n;

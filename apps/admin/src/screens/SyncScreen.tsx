@@ -3,15 +3,26 @@ import { ScrollTable } from '../components/ScrollTable';
 import { rupees } from '../lib/money';
 import { friendlySaleName, saleStateLabel } from '../lib/saleDone';
 import { useUserId } from '../lib/useUserId';
-import { useEffect, useState } from 'preact/hooks';
-import type { LocalSyncConflict } from '@dsb-pro/sync';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import type { SyncedItem } from '@dsb-pro/sync';
 import { appRoute } from '../lib/paths';
+import { ReviewCardView } from '../components/ReviewCardView';
+import { BulkReviewDialog } from '../components/BulkReviewDialog';
+import {
+  buildReviewCards,
+  groupReviewCards,
+  hideServerIds,
+  readHiddenServerIds,
+  type ReviewCard,
+} from '../lib/syncReview';
 import {
   forceRetryNow,
+  getOfflineItems,
   getSyncDashboard,
-  resolveConflictLocally,
-  resolveConflictOnServer,
+  markReviewed,
+  renameAndCreateItem,
   runSyncNow,
+  useExistingItem,
   updateCashierOfflinePolicy,
   waitForOfflineRuntime,
 } from '../lib/offlineSync';
@@ -55,19 +66,92 @@ export function SyncScreen() {
       setBusy(false);
     }
   }
-  async function resolve(conflict: LocalSyncConflict) {
-    await act(() => resolveConflictLocally(conflict));
+  const [note, setNote] = useState('');
+  const [catalog, setCatalog] = useState<SyncedItem[]>([]);
+  const [bulk, setBulk] = useState<ReviewCard[] | null>(null);
+  const [hiddenTick, setHiddenTick] = useState(0);
+  const bulkOpener = useRef<HTMLElement | null>(null);
+  const canShop = dashboard?.identity.role === 'owner' || dashboard?.identity.role === 'manager';
+  const cards = dashboard
+    ? buildReviewCards({
+        conflicts: dashboard.conflicts,
+        serverConflicts: dashboard.serverConflicts,
+        items: dashboard.offlineItems,
+        purchases: dashboard.purchases,
+        billChanges: dashboard.billChanges,
+        payments: dashboard.payments,
+        sales: dashboard.sales,
+        hiddenServerIds: readHiddenServerIds(userId),
+      })
+    : [];
+  void hiddenTick;
+  const needsCatalog = cards.some((c) => c.fix === 'item-name');
+  useEffect(() => {
+    if (!needsCatalog) return;
+    void getOfflineItems().then(setCatalog, () => undefined);
+  }, [needsCatalog]);
+  async function clear(card: ReviewCard) {
+    const r = await markReviewed({
+      localIds: card.localIds,
+      serverIds: card.serverIds,
+      includeShop: Boolean(canShop),
+    });
+    hideServerIds(userId, r.shopNotCleared);
+    return r.shopNotCleared.length;
+  }
+  async function review(list: readonly ReviewCard[]) {
+    let notCleared = 0;
+    await act(async () => {
+      for (const card of list) notCleared += await clear(card);
+    });
+    setHiddenTick((n) => n + 1);
+    setNote(
+      !notCleared
+        ? list.length === 1
+          ? 'Marked reviewed. Nothing was changed or posted.'
+          : `Marked ${list.length} reviewed. Nothing was changed or posted.`
+        : canShop
+          ? 'Marked reviewed on this device. The shop-wide record could not be cleared (no connection); it is hidden here.'
+          : 'Marked reviewed on this device only. Only the owner or a manager can clear it for the shop.',
+    );
+  }
+  async function useExisting(card: ReviewCard, existing: SyncedItem) {
+    if (!card.clientId) return;
+    const clientId = card.clientId;
+    await act(async () => {
+      const done = await useExistingItem(
+        clientId,
+        { itemId: existing.id, name: existing.name },
+        true,
+      );
+      await clear(card);
+      setNote(
+        done.requeued.length
+          ? `Using '${existing.name}'. ${done.requeued.length} waiting ${done.requeued.length === 1 ? 'bill was' : 'bills were'} sent to sync again.`
+          : `Using '${existing.name}'.`,
+      );
+    });
+    setHiddenTick((n) => n + 1);
+  }
+  async function rename(card: ReviewCard, name: string, ids: { clientId: string; itemId: string }) {
+    if (!card.clientId) return;
+    const clientId = card.clientId;
+    await act(async () => {
+      const done = await renameAndCreateItem(clientId, { ...ids, name });
+      await clear(card);
+      setNote(
+        `Creating '${name}'. ${done.requeued.length ? 'The waiting bills follow it.' : 'It syncs next.'}`,
+      );
+    });
+    setHiddenTick((n) => n + 1);
   }
   const waiting = dashboard?.health.outboxCount ?? 0;
-  const attention = dashboard
-    ? dashboard.conflicts.filter((c) => c.status === 'OPEN').length +
-      dashboard.serverConflicts.filter((c) => c.status === 'OPEN').length
-    : 0;
+  const attention = cards.length;
   const online = dashboard?.state.online ?? true;
   const headline = !dashboard
     ? ''
     : attention > 0
-      ? `${attention} ${attention === 1 ? 'item needs' : 'items need'} your attention`
+      ? `${attention} ${attention === 1 ? 'needs' : 'need'} your attention`
       : !online
         ? waiting > 0
           ? `Offline. ${waiting} waiting to send — saved on this device.`
@@ -135,6 +219,77 @@ export function SyncScreen() {
               </button>
             </div>
           </section>
+          {note && (
+            <p role="status" class="alert success-note" data-testid="review-note">
+              {note}
+            </p>
+          )}
+          {cards.length > 0 ? (
+            <>
+              <div class="review-bar">
+                <strong>{cards.length} to look at</strong>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={(e) => {
+                    bulkOpener.current = e.currentTarget as HTMLElement;
+                    setBulk(cards);
+                  }}
+                >
+                  Mark all reviewed ({cards.length})
+                </button>
+              </div>
+              {groupReviewCards(cards).map((g) => (
+                <HomeRow
+                  key={g.kind}
+                  name={`sync-review-${g.kind}`}
+                  title={g.title}
+                  label={`Needs review: ${g.title}`}
+                  userId={userId}
+                  count={g.cards.length}
+                  tone="danger"
+                  summary="needs your attention"
+                  forceOpen
+                >
+                  <div class="review-list">
+                    {g.cards.map((card) => (
+                      <ReviewCardView
+                        key={card.key}
+                        card={card}
+                        busy={busy}
+                        canShop={Boolean(canShop)}
+                        catalog={catalog}
+                        onReview={(c) => void review([c])}
+                        onUseExisting={(c, e) => void useExisting(c, e)}
+                        onRename={(c, n, ids) => void rename(c, n, ids)}
+                      />
+                    ))}
+                  </div>
+                </HomeRow>
+              ))}
+            </>
+          ) : (
+            <p class="review-empty" data-testid="review-empty">
+              <strong>Nothing needs review</strong>
+              Refused or changed items will show here with a way to fix them.
+            </p>
+          )}
+          {bulk && (
+            <BulkReviewDialog
+              cards={bulk}
+              busy={busy}
+              canShop={Boolean(canShop)}
+              onCancel={() => {
+                setBulk(null);
+                bulkOpener.current?.focus();
+              }}
+              onConfirm={() => {
+                const list = bulk;
+                setBulk(null);
+                void review(list);
+              }}
+            />
+          )}
           <HomeRow
             name="sync-details"
             title="Details"
@@ -265,69 +420,6 @@ export function SyncScreen() {
               </ScrollTable>
             ) : (
               <p>No offline sales on this device.</p>
-            )}
-          </HomeRow>
-          <HomeRow
-            name="sync-local-conflicts"
-            title="Needs review on this device"
-            label="Sync conflicts"
-            userId={userId}
-            count={dashboard.conflicts.filter((c) => c.status === 'OPEN').length}
-            tone={dashboard.conflicts.some((c) => c.status === 'OPEN') ? 'danger' : 'neutral'}
-            summary="refused or changed after saving"
-            forceOpen={dashboard.conflicts.some((c) => c.status === 'OPEN')}
-          >
-            {dashboard.conflicts.filter((c) => c.status === 'OPEN').length ? (
-              <ul>
-                {dashboard.conflicts
-                  .filter((c) => c.status === 'OPEN')
-                  .map((c) => (
-                    <li>
-                      <strong>{c.kind}</strong> · {c.target}
-                      {c.clientId ? ' · ' + c.clientId : ''}
-                      <br />
-                      {c.reason}{' '}
-                      <button disabled={busy} onClick={() => void resolve(c)}>
-                        Mark reviewed locally
-                      </button>
-                    </li>
-                  ))}
-              </ul>
-            ) : (
-              <p>No open local conflicts.</p>
-            )}
-          </HomeRow>
-          <HomeRow
-            name="sync-server-conflicts"
-            title="Shop-wide conflicts"
-            label="Server sync conflicts"
-            userId={userId}
-            count={dashboard.serverConflicts.filter((c) => c.status === 'OPEN').length}
-            tone={dashboard.serverConflicts.some((c) => c.status === 'OPEN') ? 'danger' : 'neutral'}
-            summary="seen by every device"
-            forceOpen={dashboard.serverConflicts.some((c) => c.status === 'OPEN')}
-          >
-            {dashboard.serverConflicts.filter((c) => c.status === 'OPEN').length ? (
-              <ul>
-                {dashboard.serverConflicts
-                  .filter((c) => c.status === 'OPEN')
-                  .map((c) => (
-                    <li>
-                      <strong>{c.kind}</strong> · {c.target}
-                      {c.op_client_id ? ' · ' + c.op_client_id : ''}
-                      <br />
-                      {c.reason}{' '}
-                      <button
-                        disabled={busy}
-                        onClick={() => void act(() => resolveConflictOnServer(c.id))}
-                      >
-                        Mark reviewed for shop
-                      </button>
-                    </li>
-                  ))}
-              </ul>
-            ) : (
-              <p>No open server conflicts visible to this account.</p>
             )}
           </HomeRow>
         </>
