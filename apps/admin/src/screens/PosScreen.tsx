@@ -1309,7 +1309,10 @@ export function PosScreen() {
   return (
     <main class="page wide pos-page">
       <p>
-        <a href={appRoute.home}>← Home</a> ·{' '}
+        <a class="back-home" href={appRoute.home}>
+          ← Home
+        </a>{' '}
+        ·{' '}
         <a
           href={appRoute.sync}
           onClick={(e) => {

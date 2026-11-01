@@ -178,7 +178,9 @@ export function ReportsScreen() {
   return (
     <main class="wide">
       <p>
-        <a href={appRoute.home}>← Home</a>
+        <a class="back-home" href={appRoute.home}>
+          ← Home
+        </a>
       </p>
       <h1>Reports & recovery</h1>
       <p class="muted">Choose a category and date range, then Refresh to load server figures.</p>

@@ -120,3 +120,54 @@ test('a check that could not run is not a FAIL banner on a counter screen', asyn
   await settle();
   expect(host.textContent).toBe('');
 });
+
+// D7: offline is a normal state for a shop: a check that could not run because the phone is offline is a
+// calm note, never a red alert; a real FAILED financial check is red and open even offline.
+function setNavigatorOnline(value: boolean) {
+  Object.defineProperty(window.navigator, 'onLine', { configurable: true, get: () => value });
+}
+afterEach(() => setNavigatorOnline(true));
+
+test('offline: checks that could not run show a calm note, no red alert, panel stays closed', async () => {
+  setNavigatorOnline(false);
+  api.getLatestBackupHealth.mockRejectedValue(new Error('Failed to fetch'));
+  api.checkInvariants.mockRejectedValue(new Error('Failed to fetch'));
+  await act(async () => {
+    render(<HealthPanel />, host);
+  });
+  await settle();
+  expect(host.querySelector('[data-testid="health-offline"]')!.textContent).toContain(
+    'saved on this device',
+  );
+  expect(host.querySelector('[data-testid="health-offline-badge"]')!.textContent).toBe('Offline');
+  expect(host.querySelector('.alert')).toBeNull();
+  expect(host.textContent).not.toContain('UNKNOWN');
+  expect(host.querySelector<HTMLDetailsElement>('.health-summary')!.open).toBe(false);
+});
+
+test('online: a check that could not run is still UNKNOWN and red (not softened)', async () => {
+  setNavigatorOnline(true);
+  api.getLatestBackupHealth.mockResolvedValue(healthyBackup);
+  api.checkInvariants.mockRejectedValue(new Error('boom'));
+  await act(async () => {
+    render(<HealthPanel />, host);
+  });
+  await settle();
+  expect(host.querySelector('[data-testid="health-offline"]')).toBeNull();
+  expect(host.querySelector('[data-testid="invariants-status"]')!.textContent).toContain('UNKNOWN');
+});
+
+test('offline: a cached FAILED financial check is never calm', async () => {
+  setNavigatorOnline(false);
+  api.getLatestBackupHealth.mockResolvedValue(healthyBackup);
+  api.checkInvariants.mockResolvedValue({
+    ok: false,
+    checks: [{ code: 'stock_negative', count: 2 }],
+  });
+  await act(async () => {
+    render(<HealthPanel />, host);
+  });
+  await settle();
+  expect(host.querySelector('[data-testid="health-offline"]')).toBeNull();
+  expect(host.textContent).toContain('Stop financial posting');
+});

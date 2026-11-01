@@ -17,6 +17,21 @@ type Integrity = { ok: boolean; rows: { code: string; count: number }[]; checked
 
 export function HealthPanel(props: { canAdjustStock?: boolean; quiet?: boolean } = {}) {
   const [expanded, setExpanded] = useState(false);
+  // D7: offline is a normal state for a shop. A check that could not run BECAUSE the phone is offline is a calm
+  // note, not a red alert; a real FAILED financial check is still red and still opens the panel by itself.
+  const [offline, setOffline] = useState(
+    typeof navigator !== 'undefined' && navigator.onLine === false,
+  );
+  useEffect(() => {
+    const goOnline = () => setOffline(false);
+    const goOffline = () => setOffline(true);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
   const [backup, setBackup] = useState<BackupHealth | null | undefined>(undefined);
   const [integrity, setIntegrity] = useState<Integrity | null | undefined>(undefined);
   const [backupError, setBackupError] = useState<string | null>(null);
@@ -90,9 +105,12 @@ export function HealthPanel(props: { canAdjustStock?: boolean; quiet?: boolean }
   // D1 (owner): the panel starts collapsed so money figures come first; its title chip shows the state.
   // A failed financial invariant check ("Stop financial posting") still opens it by itself.
   const integrityFailed = integrity !== undefined && !integrity?.ok;
+  // A check that only could not run while offline is calm (D7); a FAIL is never calm.
+  const integrityRealFail = integrity !== undefined && integrity !== null && !integrity.ok;
+  const offlineCalm = offline && !integrityRealFail;
   useEffect(() => {
-    if (integrityFailed) setExpanded(true);
-  }, [integrityFailed]);
+    if (integrityFailed && !offlineCalm) setExpanded(true);
+  }, [integrityFailed, offlineCalm]);
   // D4: on the counter screens (POS, purchase entry) the panel stays out of the way; the checks still run.
   // Only a financial invariant that FAILED (not one that could not run) is shown, as a clear banner.
   if (props.quiet) {
@@ -117,10 +135,20 @@ export function HealthPanel(props: { canAdjustStock?: boolean; quiet?: boolean }
             <span class="badge">Checking…</span>
           ) : backupOk && integrity?.ok && Array.isArray(belowZero) && !belowZero.length ? (
             <span class="badge success">All clear</span>
+          ) : offlineCalm ? (
+            <span class="badge" data-testid="health-offline-badge">
+              Offline
+            </span>
           ) : (
             <span class={`badge ${integrityFailed ? 'danger' : 'warning'}`}>Needs attention</span>
           )}
         </summary>
+        {offlineCalm && (
+          <p class="health-offline-note" data-testid="health-offline">
+            Health checks need a connection. You are offline: sales and purchases are saved on this
+            device and sync when you are back online.
+          </p>
+        )}
         {belowZero === 'error' && <p class="alert">Below-zero stock check unavailable.</p>}
         {Array.isArray(belowZero) && belowZero.length > 0 && (
           <p class="alert" data-testid="below-zero-warning">
@@ -136,12 +164,12 @@ export function HealthPanel(props: { canAdjustStock?: boolean; quiet?: boolean }
             )}
           </p>
         )}
-        {backupError && (
+        {backupError && !offlineCalm && (
           <p role="alert" class="alert">
             Backup status unavailable: {backupError}
           </p>
         )}
-        {integrityError && (
+        {integrityError && !offlineCalm && (
           <p role="alert" class="alert">
             Invariant check unavailable: {integrityError}
           </p>
@@ -172,9 +200,11 @@ export function HealthPanel(props: { canAdjustStock?: boolean; quiet?: boolean }
         {integrity === undefined ? (
           <p>Loading invariant health…</p>
         ) : integrity === null ? (
-          <p class="alert" data-testid="invariants-status">
-            <strong>Financial invariants:</strong> UNKNOWN — the check could not run.
-          </p>
+          offlineCalm ? null : (
+            <p class="alert" data-testid="invariants-status">
+              <strong>Financial invariants:</strong> UNKNOWN — the check could not run.
+            </p>
+          )
         ) : (
           <>
             <p class={integrity.ok ? 'success' : 'alert'} data-testid="invariants-status">

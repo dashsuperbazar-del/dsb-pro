@@ -53,6 +53,30 @@ const onPath = (path: string, route: string) => path === route || path.startsWit
 export const isCounterEntryPath = (path: string) =>
   onPath(path, appRoute.pos) || onPath(path, appRoute.purchases);
 
+// D7: an unknown address used to show Home silently, so a stale or mistyped link looked like it worked.
+// Home itself (and the install/start addresses that always meant Home) still open Home.
+const trimSlash = (p: string) => p.replace(/\/+$/, '');
+const HOME_ALIASES = ['/index.html', '/login'].map((a) => trimSlash(appRoute.home) + a);
+const isHomePath = (path: string) =>
+  trimSlash(path) === trimSlash(appRoute.home) || HOME_ALIASES.includes(trimSlash(path));
+
+function NotFound() {
+  return (
+    <main class="not-found" data-testid="not-found">
+      <h1>Page not found</h1>
+      <p>This address does not exist in DSB Pro. Nothing was changed.</p>
+      <div class="not-found-actions">
+        <a class="button primary" href={appRoute.home}>
+          Go to Home
+        </a>
+        <a class="button" href={appRoute.search}>
+          Search
+        </a>
+      </div>
+    </main>
+  );
+}
+
 export function App() {
   const session = useSession();
   useEffect(() => {
@@ -137,7 +161,10 @@ export function App() {
         <Route path={appRoute.openings} component={OpeningsScreen} />
         <Route path={appRoute.search} component={SearchScreen} />
         <Route path={appRoute.auditLog} component={AuditLogScreen} />
-        <Route default component={() => <Home session={session} />} />
+        <Route
+          default
+          component={() => (isHomePath(currentPath) ? <Home session={session} /> : <NotFound />)}
+        />
       </Router>
       {session.status === 'active' && (
         <BottomNav role={session.membership.role} currentPath={currentPath} />

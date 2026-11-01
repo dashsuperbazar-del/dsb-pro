@@ -198,7 +198,9 @@ export function ExpensesScreen() {
     <main class="page wide">
       <div class="page-head">
         <h1>Expenses</h1>
-        <a href={appRoute.home}>← Home</a>
+        <a class="back-home" href={appRoute.home}>
+          ← Home
+        </a>
       </div>
       {msg && <p role="status">{msg}</p>}
       <div class="money-first" aria-label="Spent today">
