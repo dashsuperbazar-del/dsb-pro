@@ -81,7 +81,7 @@ export function SyncScreen() {
         billChanges: dashboard.billChanges,
         payments: dashboard.payments,
         sales: dashboard.sales,
-        hiddenServerIds: readHiddenServerIds(userId),
+        hiddenServerIds: readHiddenServerIds(dashboard.identity.userId),
       })
     : [];
   void hiddenTick;
@@ -97,7 +97,7 @@ export function SyncScreen() {
       serverIds: card.serverIds,
       includeShop: Boolean(canShop),
     });
-    hideServerIds(userId, r.shopNotCleared);
+    hideServerIds(dashboard?.identity.userId, r.shopNotCleared);
     return r.shopNotCleared.length;
   }
   async function review(list: readonly ReviewCard[]) {
