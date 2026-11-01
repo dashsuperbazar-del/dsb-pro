@@ -10,14 +10,14 @@ const api = vi.hoisted(() => ({
   getDefaultShopId: vi.fn().mockResolvedValue('shop'),
   getShopBusinessDate: vi.fn().mockResolvedValue('2026-10-12'),
   getDayBook: vi.fn(),
-  listItems: vi.fn().mockResolvedValue([{ id: 'i1' }]),
+  hasAnyItem: vi.fn().mockResolvedValue(true),
 }));
 vi.mock('@dsb-pro/adapters', () => api);
 const host = document.createElement('div');
 afterEach(() => {
   act(() => render(null, host));
   vi.clearAllMocks();
-  api.listItems.mockResolvedValue([{ id: 'i1' }]);
+  api.hasAnyItem.mockResolvedValue(true);
 });
 test('an unresolved day book shows placeholders, then confirmed empty data shows zero', async () => {
   let finish!: (rows: never[]) => void;
@@ -147,7 +147,7 @@ test('a negative net money flow is red text on the neutral panel, never a succes
 
 test('a brand-new shop (nothing today, no items) sees the setup checklist, not zero tiles', async () => {
   api.getDayBook.mockResolvedValue([]);
-  api.listItems.mockResolvedValue([]);
+  api.hasAnyItem.mockResolvedValue(false);
   await act(async () => {
     render(<DayBookTile />, host);
   });
@@ -155,4 +155,14 @@ test('a brand-new shop (nothing today, no items) sees the setup checklist, not z
   expect(host.textContent).toContain('Add suppliers');
   expect(host.textContent).toContain('Make your first sale');
   expect(host.querySelector('.tiles')).toBeNull();
+});
+
+test('a failed items check falls back to the normal tiles, not the checklist', async () => {
+  api.getDayBook.mockResolvedValue([]);
+  api.hasAnyItem.mockRejectedValue(new Error('offline'));
+  await act(async () => {
+    render(<DayBookTile />, host);
+  });
+  await vi.waitFor(() => expect(host.textContent).toContain('₹0.00'));
+  expect(host.textContent).not.toContain('Set up your shop');
 });

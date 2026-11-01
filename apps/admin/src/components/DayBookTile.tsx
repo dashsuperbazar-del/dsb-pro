@@ -3,7 +3,7 @@ import {
   getDayBook,
   getDefaultShopId,
   getShopBusinessDate,
-  listItems,
+  hasAnyItem,
   type DayBookRow,
 } from '@dsb-pro/adapters';
 import { appRoute } from '../lib/paths';
@@ -13,6 +13,12 @@ import { peekSnapshot, putSnapshot, snapshotUserId } from '../lib/routeSnapshot'
 type DaySnapshot = { date: string; row: DayBookRow | null };
 const clock = (at: number) =>
   new Date(at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
+export const isOld = (at: number, now = Date.now()) =>
+  new Date(at).toDateString() !== new Date(now).toDateString() || now - at > 3 * 3600_000;
+export const stamp = (at: number, now = Date.now()) =>
+  isOld(at, now)
+    ? `${new Date(at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}, ${clock(at)}`
+    : clock(at);
 const isZero = (r: DayBookRow | null) =>
   !r ||
   [r.sales_paise, r.receipts_paise, r.payments_paise, r.expenses_paise, r.net_cashflow_paise].every(
@@ -63,8 +69,8 @@ export function DayBookTile({ onRefresh, rev = 0 }: { onRefresh?: () => void; re
         // A brand-new shop (no figures today and no items yet) gets a setup checklist, not zero tiles.
         if (isZero(r)) {
           try {
-            const items = await listItems();
-            if (alive) setFirstRun(items.length === 0);
+            const any = await hasAnyItem();
+            if (alive) setFirstRun(!any);
           } catch {
             if (alive) setFirstRun(false);
           }
@@ -113,6 +119,9 @@ export function DayBookTile({ onRefresh, rev = 0 }: { onRefresh?: () => void; re
             <a href={appRoute.pos}>Make your first sale</a>
           </li>
         </ol>
+        <button type="button" class="daybook-refresh" onClick={() => setLocal((n) => n + 1)}>
+          Refresh
+        </button>
       </section>
     );
   const v = (k: keyof Omit<DayBookRow, 'business_date'>) =>
@@ -120,7 +129,10 @@ export function DayBookTile({ onRefresh, rev = 0 }: { onRefresh?: () => void; re
   const negative = Number(row?.net_cashflow_paise ?? 0) < 0;
   return (
     <section class="card daybook-tile" aria-label="Day book today">
-      <h2>Today {date && `· ${date}`}</h2>
+      <h2>
+        {saved && updatedAt !== null && isOld(updatedAt) ? 'Saved figures' : 'Today'}{' '}
+        {date && `· ${date}`}
+      </h2>
       <dl class="tiles">
         <div class="stat tone-accent">
           <dt>Net sales</dt>
@@ -145,12 +157,12 @@ export function DayBookTile({ onRefresh, rev = 0 }: { onRefresh?: () => void; re
       </dl>
       {saved && updatedAt !== null && stale && (
         <p class="banner warning" role="status" data-testid="daybook-saved">
-          Showing saved figures from {clock(updatedAt)}. They update when you are back online.
+          Showing saved figures from {stamp(updatedAt)}. They update when you are back online.
         </p>
       )}
       {saved && updatedAt !== null && !stale && (
         <p class="muted" role="status" data-testid="daybook-refreshing">
-          Saved figures from {clock(updatedAt)} · updating…
+          Saved figures from {stamp(updatedAt)} · updating…
         </p>
       )}
       <div class="daybook-foot">
