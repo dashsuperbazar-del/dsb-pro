@@ -150,32 +150,44 @@ export const cards = (page: Page) => page.getByTestId('review-card');
 export async function seedLocalConflict(page: Page, target: string, clientId: string) {
   await page.evaluate(
     async ({ target, clientId }) => {
-      const dbs = await indexedDB.databases();
-      for (const info of dbs) {
-        if (!info.name) continue;
-        const db = await new Promise<IDBDatabase>((resolve, reject) => {
-          const req = indexedDB.open(info.name!);
-          req.onsuccess = () => resolve(req.result);
-          req.onerror = () => reject(req.error);
-        });
-        if (db.objectStoreNames.contains('conflicts') && db.objectStoreNames.contains('outbox')) {
-          await new Promise<void>((resolve, reject) => {
-            const tx = db.transaction('conflicts', 'readwrite');
-            tx.objectStore('conflicts').add({
-              createdAt: Date.now(),
-              status: 'OPEN',
-              kind: 'financial-rejection',
-              target,
-              clientId,
-              reason: 'DSB_PAYLOAD_MISMATCH: seeded for the test',
-              payload: null,
-              serverRef: null,
-            });
-            tx.oncomplete = () => resolve();
-            tx.onerror = () => reject(tx.error);
+      // The runtime database may not exist yet (first boot): wait for it, never seed into nothing.
+      let seeded = 0;
+      for (let attempt = 0; attempt < 40 && !seeded; attempt++) {
+        if (attempt) await new Promise((r) => setTimeout(r, 500));
+        seeded = await seedOnce(target, clientId);
+      }
+      if (!seeded) throw new Error('no sync database to seed');
+      async function seedOnce(target: string, clientId: string) {
+        let count = 0;
+        const dbs = await indexedDB.databases();
+        for (const info of dbs) {
+          if (!info.name) continue;
+          const db = await new Promise<IDBDatabase>((resolve, reject) => {
+            const req = indexedDB.open(info.name!);
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
           });
+          if (db.objectStoreNames.contains('conflicts') && db.objectStoreNames.contains('outbox')) {
+            await new Promise<void>((resolve, reject) => {
+              const tx = db.transaction('conflicts', 'readwrite');
+              tx.objectStore('conflicts').add({
+                createdAt: Date.now(),
+                status: 'OPEN',
+                kind: 'financial-rejection',
+                target,
+                clientId,
+                reason: 'DSB_PAYLOAD_MISMATCH: seeded for the test',
+                payload: null,
+                serverRef: null,
+              });
+              tx.oncomplete = () => resolve();
+              tx.onerror = () => reject(tx.error);
+            });
+            count++;
+          }
+          db.close();
         }
-        db.close();
+        return count;
       }
     },
     { target, clientId },
