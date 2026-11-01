@@ -1,4 +1,4 @@
-import { stockTask } from './design-helpers';
+import { stockTask, openAllScreens } from './design-helpers';
 // O1: opening balances at cutover feed the account balances; a wrong one is voided and re-entered.
 import { test, expect, type Page } from '@playwright/test';
 
@@ -94,6 +94,7 @@ test('owner records a supplier opening, sees it in balances, voids it and re-ent
 
   // O2: pay the supplier 300, settle it against the opening; the opening has 150 left.
   await page.goto('/');
+  await openAllScreens(page);
   await page.getByRole('link', { name: 'Suppliers & payments' }).click();
   await page.getByLabel('Supplier', { exact: true }).selectOption({ label: 'Opening Traders' });
   await page
@@ -127,6 +128,7 @@ test('owner records a supplier opening, sees it in balances, voids it and re-ent
 
   // O3: the supplier's payment history counts the settled cash as assigned (nothing left to allocate).
   await page.goto('/');
+  await openAllScreens(page);
   await page.getByRole('link', { name: 'Suppliers & payments' }).click();
   await page.getByLabel('Supplier', { exact: true }).selectOption({ label: 'Opening Traders' });
   await page

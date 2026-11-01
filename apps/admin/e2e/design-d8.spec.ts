@@ -32,7 +32,16 @@ async function shootAll(page: Page, name: string, info: { outputPath: (f: string
       await page.emulateMedia({ colorScheme: theme });
       await page.reload();
       await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible({ timeout: 20000 });
-      await page.waitForTimeout(1500);
+      await page
+        .waitForFunction(
+          () => !document.querySelector('.tiles dd')?.textContent?.includes('—'),
+          null,
+          {
+            timeout: 40000,
+          },
+        )
+        .catch(() => undefined);
+      await page.waitForTimeout(1000);
       const file = `${name}-${theme}-${size.name}.png`;
       await page.screenshot({
         path: dir ? `${dir}/${file}` : info.outputPath(file),

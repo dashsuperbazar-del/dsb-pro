@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { openAllScreens } from './design-helpers';
 
 const PASSWORD = 'TestOnly-2026!pw';
 function uniqueEmail() {

@@ -36,7 +36,9 @@ test('professional phone workspace preserves drafts across task views and has re
     if (resetScroll) await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: testInfo.outputPath(`${name}.png`), fullPage: false });
   }
-  await expect(page.getByRole('region', { name: 'Day book today' })).toContainText('₹0.00');
+  await expect(page.getByRole('region', { name: 'Day book today' })).toContainText(
+    'Set up your shop',
+  );
   const health = page.locator('.health-summary');
   await expect(health.locator('summary').first()).not.toContainText('Checking…');
   if ((await health.getAttribute('open')) !== null) await health.locator('summary').first().click();
