@@ -89,7 +89,8 @@ export function SyncScreen() {
   useEffect(() => {
     if (!needsCatalog) return;
     void getOfflineItems().then(setCatalog, () => undefined);
-  }, [needsCatalog]);
+    // Read again after each sync cycle: the existing item may arrive with the next pull.
+  }, [needsCatalog, dashboard?.health.lastSyncAt]);
   async function clear(card: ReviewCard) {
     const r = await markReviewed({
       localIds: card.localIds,

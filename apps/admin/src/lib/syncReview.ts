@@ -86,8 +86,7 @@ export function billLabel(p: OfflinePurchaseRecord) {
 /** A name hint for "Rename and create", e.g. "Camel match box 12 pcs". */
 export function suggestRename(item: OfflineItemRecord) {
   const f = item.fields;
-  const size = f.conv1 && f.unit2 ? `${f.conv1} ${f.unit2}` : f.unit1;
-  return `${f.name} ${size}`.trim();
+  return f.conv1 && f.unit2 ? `${f.name} ${f.conv1} ${f.unit2}` : `${f.name} (${f.unit1})`;
 }
 
 export function sameName(a: string, b: string) {
@@ -146,7 +145,14 @@ export function buildReviewCards(input: ReviewInput): ReviewCard[] {
     const clientId = g.local[0]?.clientId ?? g.server[0]?.op_client_id ?? null;
     const target = first.target;
     const rawReason = first.reason;
-    const friendly = friendlyError(rawReason);
+    // The central mapping (friendlyError). Its payload-mismatch sentence is about sales, so for other
+    // kinds the reason is kept and only the code is moved aside.
+    const central = friendlyError(rawReason);
+    const friendly =
+      central.code === 'DSB_PAYLOAD_MISMATCH' &&
+      !/^(post_sale|post_return|void_return)$/.test(target)
+        ? { text: rawReason.replace(/\bDSB_[A-Z0-9_]+:?\s*/, '').trim(), code: central.code }
+        : central;
     const card: ReviewCard = {
       key: g.key,
       kind: 'other',
