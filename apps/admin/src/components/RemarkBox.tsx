@@ -1,3 +1,4 @@
+import { errorText } from '../lib/friendlyError';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   addRemarkOutcome,
@@ -94,7 +95,7 @@ export function RemarkBox(props: {
       props.onLoaded?.(list);
     } catch (e) {
       if (token !== generation.current) return;
-      setLoadError(e instanceof Error ? e.message : String(e));
+      setLoadError(errorText(e));
     }
   }
 
@@ -195,7 +196,7 @@ export function RemarkBox(props: {
       setHistory({ id, events });
     } catch (e) {
       setHistory(null);
-      setNote(e instanceof Error ? e.message : String(e));
+      setNote(errorText(e));
     }
   }
 

@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { swReady } from './sw-ready';
-import { addItemForm, fillBillItem, stockTask } from './design-helpers';
+import { addItemForm, fillBillItem, stockTask, openVoidPanel } from './design-helpers';
 
 // Offline bill edit / void (mig 0072): saved on the device with the bill's version, applied on reconnect only
 // if the bill is unchanged; a bill changed elsewhere meanwhile is refused and shown with the full form.
@@ -123,6 +123,7 @@ test('offline bill edit and void: applied on reconnect when unchanged; a bill ch
   await expect(detail.getByTestId('void-offline-ready')).toHaveAttribute('data-state', 'ready');
   await swReady(page);
   await context.setOffline(true);
+  await openVoidPanel(detail);
   await detail.getByLabel('Reason for voiding').fill('entered twice');
   await detail.getByRole('button', { name: 'Void bill', exact: true }).click();
   await expect(detail.getByText('Void saved on this device — will sync')).toBeVisible();
@@ -135,6 +136,7 @@ test('offline bill edit and void: applied on reconnect when unchanged; a bill ch
   const other = await context.newPage();
   other.on('dialog', (d) => void d.accept());
   const otherDetail = await openBill(other, 'ST-1');
+  await openVoidPanel(otherDetail);
   await otherDetail.getByLabel('Reason for voiding').fill('wrong supplier');
   await otherDetail.getByRole('button', { name: 'Void bill', exact: true }).click();
   await expect(other.getByRole('status').filter({ hasText: 'Bill voided' }).first()).toBeVisible();

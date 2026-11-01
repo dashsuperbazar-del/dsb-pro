@@ -1,3 +1,4 @@
+import { errorText } from '../lib/friendlyError';
 import { useEffect, useState } from 'preact/hooks';
 import type { BillDocument, Party } from '@dsb-pro/adapters';
 import { buildQuickBillDraft } from '../lib/quickBill';
@@ -76,7 +77,7 @@ export function QuickBillEntry({
         billNo: d.draft.billNo,
       }));
     } catch (e) {
-      setErrors([`Saved drafts could not be checked: ${String(e)}. Nothing was saved.`]);
+      setErrors([`Saved drafts could not be checked: ${errorText(e)}. Nothing was saved.`]);
       return;
     }
     const result = buildQuickBillDraft({ supplierId, billNo, date, total }, parties, {
@@ -93,7 +94,7 @@ export function QuickBillEntry({
     try {
       savePurchaseDraft(draftPrefix, writer, result.draft);
     } catch (e) {
-      setErrors([`The quick bill could not be saved: ${String(e)}.`]);
+      setErrors([`The quick bill could not be saved: ${errorText(e)}.`]);
       return;
     }
     setErrors([]);

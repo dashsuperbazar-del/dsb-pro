@@ -185,3 +185,43 @@ export function postButtonText(type: PurchasePaymentType, totalPaise: number | n
   if (type === 'credit' || totalPaise === null || totalPaise <= 0) return 'Post purchase';
   return `Post and pay ${rupees(totalPaise)} by ${PAYMENT_LABEL[type]}`;
 }
+
+/**
+ * What the frozen (sent, not yet confirmed) purchase says, for the pending-purchase block and the retry
+ * button. Display only: computed from the stored request, never sent. null total = could not be computed.
+ */
+export function pendingPurchaseSummary(p: PendingPurchase): {
+  totalPaise: number | null;
+  items: number;
+  billNo: string | null;
+} {
+  // v2 bills are rounded to the rupee by post_purchase_v2, so the posted total is totalPaise. A legacy (v1,
+  // post_purchase) retry is NOT rounded: it posts subtotal - discount + extra charges exactly, which is
+  // totalBeforeRoundOffPaise. Each branch below uses the figure the server will actually post.
+  const total = (): number | null => {
+    try {
+      return isV2Pending(p)
+        ? purchaseBillTotals({
+            lines: p.lines,
+            discountPaise: p.discountPaise ?? 0,
+            charges: p.charges ?? [],
+          }).totalPaise
+        : purchaseBillTotals({
+            lines: p.lines,
+            discountPaise: p.discountPaise ?? 0,
+            charges: p.extraChargesPaise
+              ? [{ label: 'Extra', amountPaise: p.extraChargesPaise }]
+              : [],
+          }).totalBeforeRoundOffPaise;
+    } catch {
+      return null;
+    }
+  };
+  const totalPaise = total();
+  return { totalPaise, items: p.lines.length, billNo: p.billNo?.trim() || null };
+}
+
+export function retryPurchaseText(edit: boolean, totalPaise: number | null): string {
+  const base = edit ? 'Retry same edit' : 'Retry same purchase';
+  return totalPaise !== null && totalPaise > 0 ? `${base} · ${rupees(totalPaise)}` : base;
+}

@@ -133,7 +133,9 @@ async function setField(sel: string, value: string, event = 'input') {
 const label = (text: string) => `[aria-label="${text}"]`;
 const input = (text: string) => host.querySelector<HTMLInputElement>(label(text))!;
 const button = (text: string, root: ParentNode = host) =>
-  [...root.querySelectorAll('button')].find((b) => b.textContent === text)!;
+  [...root.querySelectorAll('button')].find(
+    (b) => b.textContent === text || b.textContent?.startsWith(`${text} · ₹`),
+  )!;
 const click = (el: HTMLElement) => act(async () => el.click());
 async function mountEditor() {
   await act(async () => {
