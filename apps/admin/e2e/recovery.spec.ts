@@ -1,4 +1,10 @@
-import { stockTask, addItemForm, addCustomerForm, fillBillItem } from './design-helpers';
+import {
+  stockTask,
+  addItemForm,
+  addCustomerForm,
+  fillBillItem,
+  openAllScreens,
+} from './design-helpers';
 // V002 verifier findings VF-005/006/007: a write whose outcome is unknown is stored on the device
 // before it is sent, survives reload, is retried with the same request id, and is never replaced by
 // a new id. Each case commits on the real local database and then loses or withholds the answer.
@@ -178,6 +184,7 @@ test('customer receipt: switching to a customer with an unresolved receipt canno
   page,
 }) => {
   await createOwnerShop(page);
+  await openAllScreens(page);
   await page.getByRole('link', { name: 'Customers & ledger' }).click();
   await addCustomerForm(page);
   await page.getByLabel('Name').fill('Customer B');
@@ -260,6 +267,7 @@ test('customer receipt: a second window waits for the first and then refuses to 
   page,
 }) => {
   await createOwnerShop(page);
+  await openAllScreens(page);
   await page.getByRole('link', { name: 'Customers & ledger' }).click();
   await addCustomerForm(page);
   await page.getByLabel('Name').fill('Two Window Customer');
@@ -302,6 +310,7 @@ test('customer receipt: when the first window succeeds, the waiting window does 
   page,
 }) => {
   await createOwnerShop(page);
+  await openAllScreens(page);
   await page.getByRole('link', { name: 'Customers & ledger' }).click();
   await addCustomerForm(page);
   await page.getByLabel('Name').fill('Success Window Customer');
@@ -386,6 +395,7 @@ test('customer receipt: finishing customer A’s receipt after switching to B ne
   page,
 }) => {
   await createOwnerShop(page);
+  await openAllScreens(page);
   await page.getByRole('link', { name: 'Customers & ledger' }).click();
   await addCustomerForm(page);
   await page.getByLabel('Name').fill('Customer B');

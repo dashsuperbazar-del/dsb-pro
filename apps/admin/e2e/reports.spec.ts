@@ -1,4 +1,10 @@
-import { stockTask, addItemForm, reviewPayment, fillBillItem } from './design-helpers';
+import {
+  stockTask,
+  addItemForm,
+  reviewPayment,
+  fillBillItem,
+  openAllScreens,
+} from './design-helpers';
 import { test, expect } from '@playwright/test';
 import { addByTap } from './pos-shop-setup';
 
@@ -36,6 +42,7 @@ test('Phase 6 reports and recovery surface loads and invariant check passes', as
   await expect(page.getByRole('list', { name: 'Invariant checks' })).toContainText(
     'Opening settlements: 0',
   );
+  await openAllScreens(page);
   await page.getByRole('link', { name: 'Reports & recovery' }).click();
   await expect(page.getByRole('heading', { name: 'Reports & recovery' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Daily entry' })).toBeVisible();

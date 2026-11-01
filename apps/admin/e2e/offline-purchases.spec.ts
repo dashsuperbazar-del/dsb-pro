@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { swReady } from './sw-ready';
-import { addItemForm, fillBillItem, stockTask } from './design-helpers';
+import { addItemForm, fillBillItem, stockTask, openAllScreens } from './design-helpers';
 
 // Offline purchases (docs/OFFLINE_PURCHASES_PLAN.md): bills saved without a connection survive a restart,
 // post exactly once when the connection returns (credit and cash), upload their photo once, and a bill the
@@ -216,6 +216,7 @@ test('offline purchases: saved without a connection, kept over a restart, posted
 
   // Supplier balance: the credit bill is open (₹15); the cash bill was paid with it.
   await page.goto('/');
+  await openAllScreens(page);
   await page.getByRole('link', { name: 'Suppliers & payments' }).click();
   await page.getByLabel('Supplier', { exact: true }).selectOption({ label: 'Offline Supplier' });
   const openBills = page

@@ -1,4 +1,10 @@
-import { stockTask, addItemForm, reviewPayment, fillBillItem } from './design-helpers';
+import {
+  stockTask,
+  addItemForm,
+  reviewPayment,
+  fillBillItem,
+  openAllScreens,
+} from './design-helpers';
 import { test, expect } from '@playwright/test';
 import { addByTap } from './pos-shop-setup';
 
@@ -82,6 +88,7 @@ test('a voided sale is hidden by default, shown with Show voided, and never dele
 
 test('sales history exposes print/void surface and language scaffold', async ({ page }) => {
   await createOwnerShop(page);
+  await openAllScreens(page);
   await page.getByRole('link', { name: 'Sales history' }).click();
   await expect(page.getByRole('heading', { name: 'Sales history' })).toBeVisible();
   await expect(page.getByLabel('Language')).toBeVisible();

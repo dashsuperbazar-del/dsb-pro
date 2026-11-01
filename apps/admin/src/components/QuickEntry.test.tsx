@@ -16,9 +16,9 @@ const links = () => [
 test('owner sees all four entries and only New sale is the filled primary action', () => {
   act(() => render(<QuickEntry role="owner" />, host));
   expect(links().map((a) => a.textContent)).toEqual([
+    'New sale',
     'Purchase',
     'Pay supplier',
-    'New sale',
     'Stock',
   ]);
   const primary = links().filter((a) => a.classList.contains('quick-primary'));
