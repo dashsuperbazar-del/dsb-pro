@@ -1,4 +1,4 @@
-import { stockTask, addItemForm, fillBillItem } from './design-helpers';
+import { stockTask, addItemForm, fillBillItem, openAllScreens } from './design-helpers';
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
@@ -42,6 +42,7 @@ async function ownerWithBill(page: Page) {
     page.getByRole('status').filter({ hasText: 'Purchase posted' }).first(),
   ).toBeVisible();
   await page.goto('/');
+  await openAllScreens(page);
   await page.getByRole('link', { name: 'Suppliers & payments' }).click();
   await page.getByLabel('Supplier', { exact: true }).selectOption({ label: 'Acme Traders' });
   // Finish the initial account reads before a case enables write-failure interception.

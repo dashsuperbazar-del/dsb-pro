@@ -1,4 +1,4 @@
-import { addItemForm } from './design-helpers';
+import { addItemForm, openAllScreens } from './design-helpers';
 import { test, expect } from '@playwright/test';
 
 const PASSWORD = 'TestOnly-2026!pw';
@@ -24,6 +24,7 @@ test('expenses, stock adjust and the day book tile work as daily-entry screens',
   await createOwnerShop(page);
   await expect(page.getByRole('region', { name: 'Day book today' })).toContainText('Expenses');
 
+  await openAllScreens(page);
   await page.getByRole('link', { name: 'Expenses', exact: true }).first().click();
   await page.getByLabel('Category').fill('Tea & snacks');
   await page.getByLabel('Amount ₹').fill('45.50');

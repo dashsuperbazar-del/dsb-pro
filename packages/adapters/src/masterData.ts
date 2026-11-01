@@ -53,6 +53,12 @@ export async function collectPaginatedRows<T>(
   }
 }
 
+// True when the shop has at least one item. One row only (RLS-scoped), never the whole catalogue.
+export async function hasAnyItem(): Promise<boolean> {
+  const { data, error } = await getSupabaseClient().from('items').select('id').limit(1);
+  if (error) throw new Error(friendly(error));
+  return (data ?? []).length > 0;
+}
 export async function listItems(): Promise<Item[]> {
   const client = getSupabaseClient();
   return collectPaginatedRows<Item>(async (from, to) => {

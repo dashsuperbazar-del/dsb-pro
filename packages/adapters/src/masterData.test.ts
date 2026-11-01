@@ -4,6 +4,18 @@ import { collectPaginatedRows, createItem } from './masterData';
 const client = vi.hoisted(() => ({ from: vi.fn(), rpc: vi.fn() }));
 vi.mock('./client', () => ({ getSupabaseClient: () => client }));
 
+describe('hasAnyItem reads at most one row', () => {
+  it('limits the read to one row and reports presence', async () => {
+    const limit = vi.fn().mockResolvedValue({ data: [{ id: 'i' }], error: null });
+    client.from.mockReturnValue({ select: () => ({ limit }) });
+    const { hasAnyItem } = await import('./masterData');
+    expect(await hasAnyItem()).toBe(true);
+    expect(limit).toHaveBeenCalledWith(1);
+    limit.mockResolvedValue({ data: [], error: null });
+    expect(await hasAnyItem()).toBe(false);
+  });
+});
+
 describe('collectPaginatedRows', () => {
   it('loads all 10,000 rows instead of stopping at the API response cap', async () => {
     const source = Array.from({ length: 10_000 }, (_, i) => i);
