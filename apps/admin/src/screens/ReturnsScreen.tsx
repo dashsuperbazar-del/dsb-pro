@@ -1,4 +1,3 @@
-import { errorText } from '../lib/friendlyError';
 import { formatQuantity } from '@dsb-pro/core';
 import { useEffect, useState } from 'preact/hooks';
 import {
@@ -91,7 +90,7 @@ export function ReturnsScreen() {
           }
         await Promise.all([refreshSources('SALE'), refreshRecent(shop)]);
       } catch (e) {
-        setError(errorText(e));
+        setError(String(e));
       }
     })();
   }, []);
@@ -136,7 +135,7 @@ export function ReturnsScreen() {
     try {
       await loadLines(next);
     } catch (e) {
-      setError(errorText(e));
+      setError(String(e));
     }
   }
   function patchLine(id: string, change: Partial<DraftLine>) {
@@ -198,7 +197,7 @@ export function ReturnsScreen() {
       );
       await Promise.all([loadLines(sourceId), refreshRecent(shopId)]);
     } catch (e) {
-      setError(errorText(e));
+      setError(String(e));
     } finally {
       setBusy(false);
     }
@@ -224,7 +223,7 @@ export function ReturnsScreen() {
       await refreshRecent(shopId);
       if (sourceId) await loadLines(sourceId);
     } catch (e) {
-      setError(errorText(e));
+      setError(String(e));
     } finally {
       setBusy(false);
     }

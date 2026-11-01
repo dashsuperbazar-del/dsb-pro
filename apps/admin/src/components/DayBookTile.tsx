@@ -1,4 +1,3 @@
-import { errorText } from '../lib/friendlyError';
 import { useEffect, useState } from 'preact/hooks';
 import {
   getDayBook,
@@ -25,7 +24,7 @@ export function DayBookTile() {
       setDate(d);
       setRow((await getDayBook(shop, d, d))[0] ?? null);
       setLoaded(true);
-    })().catch((e) => setError(errorText(e)));
+    })().catch((e) => setError(String(e)));
   }, []);
   if (error)
     return (

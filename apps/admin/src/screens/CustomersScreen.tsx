@@ -1,4 +1,3 @@
-import { errorText } from '../lib/friendlyError';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { withAccountLock } from '../lib/accountLock';
 import {
@@ -188,14 +187,12 @@ export function CustomersScreen() {
     void refreshBase(true).catch((e) => {
       snapshotRefreshFailed('customers', e);
       setSnapshotFailed(true);
-      setError(errorText(e));
+      setError(String(e));
     });
   }, []);
   useEffect(() => {
     void refreshCustomer(selectedRef.current, shopId).catch((e) =>
-      setError(
-        `Could not load this customer (${errorText(e)}). Choose the customer again to retry.`,
-      ),
+      setError(`Could not load this customer (${String(e)}). Choose the customer again to retry.`),
     );
   }, [selected, shopId]);
   const allocated = useMemo(
@@ -226,7 +223,7 @@ export function CustomersScreen() {
       form.reset();
       setMessage(`Customer ${c.name} created.`);
     } catch (e) {
-      setError(errorText(e));
+      setError(String(e));
     }
   }
 
@@ -303,7 +300,7 @@ export function CustomersScreen() {
       await refreshBase();
       await refreshCustomer();
     } catch (e) {
-      setError(errorText(e));
+      setError(String(e));
     } finally {
       setBusy(false);
     }
@@ -322,7 +319,7 @@ export function CustomersScreen() {
       await refreshBase();
       await refreshCustomer();
     } catch (e) {
-      setError(errorText(e));
+      setError(String(e));
     } finally {
       setBusy(false);
     }
@@ -352,7 +349,7 @@ export function CustomersScreen() {
       await refreshBase();
       await refreshCustomer();
     } catch (e) {
-      setError(errorText(e));
+      setError(String(e));
     } finally {
       setBusy(false);
     }

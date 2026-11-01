@@ -1,4 +1,3 @@
-import { errorText } from '../lib/friendlyError';
 import { HomeRow } from '../components/HomeRow';
 import { useUserId } from '../lib/useUserId';
 import { formatQuantity } from '@dsb-pro/core';
@@ -420,7 +419,7 @@ export function PosScreen() {
     }
   }
   useEffect(() => {
-    void refresh().catch((e) => setError(errorText(e)));
+    void refresh().catch((e) => setError(String(e)));
   }, []);
   // A catalog still syncing when POS opened is re-read from the device as it grows (display only).
   useEffect(
@@ -783,7 +782,7 @@ export function PosScreen() {
       setHeldCarts(await listHeldCartsForShop());
       setMessage('Cart held. Start a new sale, or resume it later.');
     } catch (e) {
-      setError(errorText(e));
+      setError(String(e));
     }
   }
   async function resumeCart(id: string) {
@@ -819,7 +818,7 @@ export function PosScreen() {
     } catch (e) {
       if (claimed) await releaseHeldCartForResume(id, token).catch(() => false);
       setHeldCarts(await listHeldCartsForShop().catch(() => heldCarts));
-      setError(errorText(e));
+      setError(String(e));
     } finally {
       resumeLock.current = false;
       setResumeBusyId('');
@@ -838,7 +837,7 @@ export function PosScreen() {
         .catch(() => undefined);
     } catch (e) {
       setError(
-        `Held-copy cleanup still failed; the active cart and held copy are both preserved: ${errorText(e)}`,
+        `Held-copy cleanup still failed; the active cart and held copy are both preserved: ${String(e)}`,
       );
     }
   }
@@ -848,7 +847,7 @@ export function PosScreen() {
       await discardHeldCartById(id);
       setHeldCarts(await listHeldCartsForShop());
     } catch (e) {
-      setError(errorText(e));
+      setError(String(e));
     }
   }
 
@@ -878,7 +877,7 @@ export function PosScreen() {
         });
       }
     } catch (e) {
-      setError(errorText(e));
+      setError(String(e));
     }
   }
 
@@ -924,7 +923,7 @@ export function PosScreen() {
       await addLine(item, hit.unit_level, 1, 'retail');
       setBarcode('');
     } catch (e) {
-      setError(errorText(e));
+      setError(String(e));
     }
   }
 
@@ -1077,7 +1076,7 @@ export function PosScreen() {
       // The sale is done; a failed screen refresh must never look like a failed sale.
       await refresh().catch(() => undefined);
     } catch (e) {
-      const text = errorText(e);
+      const text = String(e);
       if (/DSB_CREDIT_LIMIT_EXCEEDED/.test(text)) setCreditRefused(true);
       // A sale the server refused is final: the next attempt is a new sale (new request id).
       if (isDefinitiveFinancialRejectionMessage(text)) setSaleClientId(crypto.randomUUID());
@@ -1149,7 +1148,7 @@ export function PosScreen() {
       form.reset();
       setMessage(`Customer ${c.name} created.`);
     } catch (e) {
-      setError(errorText(e));
+      setError(String(e));
     }
   }
 
@@ -1301,7 +1300,7 @@ export function PosScreen() {
       setPaymentAmount('');
       await refresh();
     } catch (e) {
-      setError(errorText(e));
+      setError(String(e));
     } finally {
       setBusy(false);
     }

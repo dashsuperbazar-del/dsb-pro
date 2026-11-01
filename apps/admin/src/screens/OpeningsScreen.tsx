@@ -1,4 +1,3 @@
-import { errorText } from '../lib/friendlyError';
 import { useEffect, useState } from 'preact/hooks';
 import {
   getCurrentMembership,
@@ -68,7 +67,7 @@ export function OpeningsScreen() {
         setMsg('An earlier opening was not confirmed. Press "Retry same opening" to finish it.');
       } else if (!saved.ok) setMsg(saved.message);
       await load(s);
-    })().catch((e) => setMsg(errorText(e)));
+    })().catch((e) => setMsg(String(e)));
   }, []);
 
   const names = new Map([...customers, ...parties].map((a) => [a.id, a.name]));

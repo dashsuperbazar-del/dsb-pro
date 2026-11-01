@@ -173,6 +173,8 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
   function loadCardHints(shop: string, date: string, r: Role) {
     if (r !== 'owner' && r !== 'manager') return Promise.resolve();
     const hints = [
+      // The list is newest first (business date), so a supplier's first posted bill found in this page is its
+      // true latest bill; a supplier with none in the page gets no date (never a wrong, older one).
       Promise.resolve()
         .then(() => listPurchaseHistory(shop, 0))
         .then((bills) => {

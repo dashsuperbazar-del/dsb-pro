@@ -1337,8 +1337,10 @@ export function InventoryScreen({
       reloadSalePrices();
       setMessage(`Sale price updated for ${w.itemName}.`);
     } catch (e) {
+      // The raw text decides (permanent refusal or not); only the shown message is the friendly one.
+      const raw = e instanceof Error ? e.message : String(e);
       const message = errorText(e);
-      const permanent = isPermanentPriceError(message);
+      const permanent = isPermanentPriceError(raw);
       if (permanent) dropFromPlan(entry);
       setPriceRetries((r) =>
         r.map((x) =>

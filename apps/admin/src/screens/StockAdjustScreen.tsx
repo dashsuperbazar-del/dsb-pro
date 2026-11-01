@@ -1,4 +1,3 @@
-import { errorText } from '../lib/friendlyError';
 import { useEffect, useState } from 'preact/hooks';
 import {
   getDefaultShopId,
@@ -59,7 +58,7 @@ export function StockAdjustScreen() {
         );
       }
       await load(s);
-    })().catch((e) => setMsg(errorText(e)));
+    })().catch((e) => setMsg(String(e)));
   }, []);
 
   function startOver() {

@@ -571,6 +571,23 @@ test('bill codes: the list shows them, search finds a bill by its code (case, da
   expect(host.textContent).toContain('SUP-1');
   expect(host.textContent).not.toContain('OLD-3');
   expect(host.textContent).not.toContain('ZZ4W-HH8N');
+  // The code of a bill that has a bill no. is shown in its DETAIL (the list row keeps only the bill no.).
+  api.getPurchaseDetail.mockResolvedValueOnce({
+    bill: { ...bill('c1', 'SUP-1'), bill_code: 'K7M2-QX9P', bill_image_path: null },
+    lines: [],
+    balance: null,
+  });
+  await act(async () => {
+    [...host.querySelectorAll('button')].find((b) => b.textContent?.includes('SUP-1'))!.click();
+  });
+  await vi.waitFor(() =>
+    expect(host.querySelector('[aria-label="Purchase detail"]')?.textContent).toContain(
+      'K7M2-QX9P',
+    ),
+  );
+  await act(async () => {
+    [...host.querySelectorAll('button')].find((b) => b.textContent === 'Close detail')!.click();
+  });
   await type('zz4w-hh');
   expect(host.textContent).toContain('ZZ4W-HH8N');
   expect(host.textContent).not.toContain('SUP-1');

@@ -195,6 +195,9 @@ export function pendingPurchaseSummary(p: PendingPurchase): {
   items: number;
   billNo: string | null;
 } {
+  // v2 bills are rounded to the rupee by post_purchase_v2, so the posted total is totalPaise. A legacy (v1,
+  // post_purchase) retry is NOT rounded: it posts subtotal - discount + extra charges exactly, which is
+  // totalBeforeRoundOffPaise. Each branch below uses the figure the server will actually post.
   const total = (): number | null => {
     try {
       return isV2Pending(p)

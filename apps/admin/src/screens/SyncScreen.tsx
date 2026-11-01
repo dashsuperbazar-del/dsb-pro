@@ -1,4 +1,3 @@
-import { errorText } from '../lib/friendlyError';
 import { HomeRow } from '../components/HomeRow';
 import { ScrollTable } from '../components/ScrollTable';
 import { rupees } from '../lib/money';
@@ -31,7 +30,7 @@ export function SyncScreen() {
       setDashboard(await getSyncDashboard());
       setError('');
     } catch (e) {
-      setError(errorText(e));
+      setError(e instanceof Error ? e.message : String(e));
     }
   }
   useEffect(() => {
@@ -51,7 +50,7 @@ export function SyncScreen() {
       await fn();
       await refresh();
     } catch (e) {
-      setError(errorText(e));
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }

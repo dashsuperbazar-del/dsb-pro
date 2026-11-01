@@ -1,4 +1,3 @@
-import { errorText } from '../lib/friendlyError';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   findBillsByCode,
@@ -250,7 +249,7 @@ export function SearchScreen() {
         setRecent(readRecent(session.user.id));
         setShopId(shop);
       } catch (e) {
-        if (alive.current) setError(errorText(e));
+        if (alive.current) setError(String(e));
       } finally {
         if (alive.current) setLoading(false);
       }

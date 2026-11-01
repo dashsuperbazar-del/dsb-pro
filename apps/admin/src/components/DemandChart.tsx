@@ -1,4 +1,3 @@
-import { errorText } from '../lib/friendlyError';
 import { useEffect, useState } from 'preact/hooks';
 import { listItemSaleMovements, type ItemSaleMovements } from '@dsb-pro/adapters';
 import { formatQty, sinceDate, weeklyDemand } from '../lib/demand';
@@ -25,7 +24,7 @@ export function DemandChart(props: {
     if (!shopId || !itemId) return;
     listItemSaleMovements(shopId, itemId, sinceDate(today, WEEKS), canReadReturns).then(
       (r) => alive && setData(r),
-      (e) => alive && setError(errorText(e)),
+      (e) => alive && setError(e instanceof Error ? e.message : String(e)),
     );
     return () => {
       alive = false;

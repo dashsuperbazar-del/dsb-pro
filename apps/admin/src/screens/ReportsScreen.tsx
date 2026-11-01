@@ -1,4 +1,3 @@
-import { errorText } from '../lib/friendlyError';
 import { formatQuantity } from '@dsb-pro/core';
 import { useEffect, useState } from 'preact/hooks';
 import {
@@ -91,7 +90,7 @@ export function ReportsScreen() {
         setFrom(d.slice(0, 8) + '01');
         setTo(d);
       } catch (e) {
-        setMsg(errorText(e));
+        setMsg(String(e));
       }
     })();
   }, []);
@@ -126,7 +125,7 @@ export function ReportsScreen() {
       if (partyId) setPartyLedger(await labelPartyLedger(await getPartyLedger(partyId, from, to)));
       setMsg(i.ok ? 'Invariant check: PASS' : 'Invariant check: FAIL — stop and investigate');
     } catch (e) {
-      setMsg(errorText(e));
+      setMsg(String(e));
     }
   }
 
@@ -141,7 +140,7 @@ export function ReportsScreen() {
       setMsg('');
     } catch (e) {
       setProfit(null);
-      setMsg(errorText(e));
+      setMsg(e instanceof Error ? e.message : String(e));
     } finally {
       setProfitBusy(false);
     }
@@ -157,7 +156,7 @@ export function ReportsScreen() {
         'Full device backup saved as one ZIP: portable JSON, every exported table as CSV, and one PDF per invoice. Keep an encrypted copy off-device too.',
       );
     } catch (e) {
-      setMsg(errorText(e));
+      setMsg(String(e));
     }
   }
   async function saveOfflineSnapshot() {
@@ -172,7 +171,7 @@ export function ReportsScreen() {
         'Offline billing-continuity snapshot saved. It includes the local catalog, stock, queued sales and conflicts—not full accounting history.',
       );
     } catch (e) {
-      setMsg(errorText(e));
+      setMsg(String(e));
     }
   }
 
