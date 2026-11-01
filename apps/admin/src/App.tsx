@@ -15,6 +15,7 @@ import { DayBookTile } from './components/DayBookTile';
 import { AttentionTile } from './components/AttentionTile';
 import { OpenRemarksTile } from './components/OpenRemarksTile';
 import { QuickEntry } from './components/QuickEntry';
+import { HomeRow } from './components/HomeRow';
 import { BottomNav } from './components/BottomNav';
 import { t } from './lib/i18n';
 import { VerificationBanner } from './components/VerificationBanner';
@@ -170,6 +171,7 @@ function ShopName({ session }: { session: ReturnType<typeof useSession> }) {
 }
 
 function Home({ session }: { session: ReturnType<typeof useSession> }) {
+  const [rev, setRev] = useState(0);
   if (session.status === 'loading') return <p>Loading…</p>;
   if (session.status === 'error')
     return (
@@ -200,72 +202,82 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
           </a>
         </div>
         {session.offline && (
-          <p class="alert" role="status">
-            Backend unavailable — using the last verified local shop snapshot. Sales can be queued
-            safely for sync.
+          <p class="banner warning" role="status">
+            Offline: showing the last saved shop data. Sales can be queued safely and will sync
+            later.
           </p>
         )}
-        {session.membership.role !== 'cashier' && <DayBookTile />}
         {session.membership.role !== 'cashier' && (
-          <AttentionTile userId={session.session.user.id} />
+          <DayBookTile rev={rev} onRefresh={() => setRev((n) => n + 1)} />
+        )}
+        {session.membership.role !== 'cashier' && (
+          <AttentionTile key={rev} userId={session.session.user.id} />
         )}
         <OpenRemarksTile userId={session.session.user.id} />
         <h2 class="section-label">Quick entry</h2>
         <QuickEntry role={session.membership.role} />
-        <h2 class="section-label">Workspace</h2>
-        <nav class="workspace-list" aria-label="Shop actions">
-          <a href={appRoute.pos}>
-            <Icon name="bill" />
-            <strong>Sales POS</strong>
-            <Icon name="arrow" />
-          </a>
-          {session.membership.role !== 'cashier' && (
-            <a href={appRoute.purchases}>
-              <Icon name="purchase" />
-              <strong>Purchase bills</strong>
+        <HomeRow
+          name="all-screens"
+          title="All screens"
+          userId={session.session.user.id}
+          count={null}
+          tone="neutral"
+          summary="Sales, purchases, ledger, reports"
+        >
+          <nav class="workspace-list" aria-label="Shop actions">
+            <a href={appRoute.pos}>
+              <Icon name="bill" />
+              <strong>Sales POS</strong>
               <Icon name="arrow" />
             </a>
-          )}
-          <a href={appRoute.customers}>
-            <Icon name="people" />
-            <strong>Customers & ledger</strong>
-            <Icon name="arrow" />
-          </a>
-          {session.membership.role !== 'cashier' && (
-            <>
-              <a href={appRoute.suppliers}>
-                <Icon name="people" />
-                <strong>{t('suppliers')}</strong>
+            {session.membership.role !== 'cashier' && (
+              <a href={appRoute.purchases}>
+                <Icon name="purchase" />
+                <strong>Purchase bills</strong>
                 <Icon name="arrow" />
               </a>
-              <a href={appRoute.expenses} aria-label="Expenses">
-                <Icon name="expense" />
-                <strong>Expenses</strong>
-                <Icon name="arrow" />
-              </a>
-              <a href={appRoute.reports}>
-                <Icon name="report" />
-                <strong>Reports & recovery</strong>
-                <Icon name="arrow" />
-              </a>
-            </>
-          )}
-          <a href={appRoute.salesHistory}>
-            <Icon name="bill" />
-            <strong>Sales history</strong>
-            <Icon name="arrow" />
-          </a>
-          <a href={appRoute.returns}>
-            <Icon name="bill" />
-            <strong>Returns</strong>
-            <Icon name="arrow" />
-          </a>
-          <a href={appRoute.sync}>
-            <Icon name="sync" />
-            <strong>Sync & offline</strong>
-            <Icon name="arrow" />
-          </a>
-        </nav>
+            )}
+            <a href={appRoute.customers}>
+              <Icon name="people" />
+              <strong>Customers & ledger</strong>
+              <Icon name="arrow" />
+            </a>
+            {session.membership.role !== 'cashier' && (
+              <>
+                <a href={appRoute.suppliers}>
+                  <Icon name="people" />
+                  <strong>{t('suppliers')}</strong>
+                  <Icon name="arrow" />
+                </a>
+                <a href={appRoute.expenses} aria-label="Expenses">
+                  <Icon name="expense" />
+                  <strong>Expenses</strong>
+                  <Icon name="arrow" />
+                </a>
+                <a href={appRoute.reports}>
+                  <Icon name="report" />
+                  <strong>Reports & recovery</strong>
+                  <Icon name="arrow" />
+                </a>
+              </>
+            )}
+            <a href={appRoute.salesHistory}>
+              <Icon name="bill" />
+              <strong>Sales history</strong>
+              <Icon name="arrow" />
+            </a>
+            <a href={appRoute.returns}>
+              <Icon name="bill" />
+              <strong>Returns</strong>
+              <Icon name="arrow" />
+            </a>
+            <a href={appRoute.sync}>
+              <Icon name="sync" />
+              <strong>Sync & offline</strong>
+              <Icon name="arrow" />
+            </a>
+          </nav>
+        </HomeRow>
         <details class="card shop-tools">
           <summary>Shop management</summary>
           <nav class="management-links" aria-label="Shop management">

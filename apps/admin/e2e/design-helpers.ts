@@ -12,6 +12,12 @@ export async function addItemForm(page: Page) {
     .filter({ has: page.locator('summary').filter({ hasText: /^Add item$/ }) });
   if ((await details.getAttribute('open')) === null) await details.locator('summary').click();
 }
+// D8: Home's workspace link list lives in the collapsed "All screens" row; open it (idempotent).
+export async function openAllScreens(page: Page) {
+  const toggle = page.locator('.home-row-toggle').filter({ hasText: /^All screens/ });
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+}
 export async function reviewPayment(page: Page) {
   await expect(page.getByRole('heading', { name: 'Sales POS', exact: true })).toBeVisible();
   const payment = page.locator('#pos-payment');
