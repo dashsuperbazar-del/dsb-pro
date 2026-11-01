@@ -101,9 +101,8 @@ test('design screenshots: D6 screens', async ({ page, context }, info) => {
       await page.setViewportSize({ width: size.width, height: size.height });
       await page.evaluate((t) => localStorage.setItem('dsb-pro:appearance', t), theme);
       await page.emulateMedia({ colorScheme: theme });
-      if (!page.url().includes('/sync')) {
+      if (!page.url().includes('/sync'))
         await page.getByRole('link', { name: 'Sync & offline' }).click();
-      }
       await page.waitForTimeout(800);
       await shoot('04-sync-offline-queued', `${theme}-${size.name}`);
     }
