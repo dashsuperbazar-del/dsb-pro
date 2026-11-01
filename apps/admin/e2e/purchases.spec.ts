@@ -4,6 +4,8 @@ import {
   fillBillItem,
   openBillDetails,
   openItemMore,
+  openPurchaseFilter,
+  openVoidPanel,
 } from './design-helpers';
 import { test, expect } from '@playwright/test';
 
@@ -456,12 +458,13 @@ test('a cash bill with item discount/GST and a named charge posts with its round
   await page.getByRole('link', { name: 'Bill list', exact: true }).click();
   await page.getByRole('button', { name: /Counter Supplier.*CASH-1/ }).click();
   const detail = page.getByLabel('Purchase detail');
-  await expect(detail.getByTestId('settlement-badge')).toHaveText('Settled');
+  await expect(detail.getByTestId('settlement-badge')).toHaveText('Paid');
   await expect(detail).toContainText('₹114.00 · Cash bill');
   await expect(detail).toContainText('Round off +₹0.49');
   await expect(detail).toContainText('Notes: Paid at the counter');
   await expect(detail).toContainText('Extra charges: Transport ₹10.00');
   await expect(detail).toContainText('− 2% discount + 5% GST');
+  await openVoidPanel(detail);
   await expect(detail.getByRole('button', { name: 'Void bill and its payment' })).toBeVisible();
   await detail.scrollIntoViewIfNeeded();
   await page.screenshot({
@@ -651,7 +654,7 @@ test('fast bill: the supplier is remembered, its usual items are added in one go
   await expect(purchase.getByLabel('Item 1 name', { exact: true })).toHaveValue('');
 });
 
-test('voiding a credit bill needs a reason, reverses its stock and supplier balance, and the list shows Unpaid/Void', async ({
+test('voiding a credit bill needs a reason, reverses its stock and supplier balance, and the list shows Owed/Void', async ({
   page,
 }) => {
   test.setTimeout(90000);
@@ -688,6 +691,7 @@ test('voiding a credit bill needs a reason, reverses its stock and supplier bala
   await page.getByRole('link', { name: 'Bill list', exact: true }).click();
   await page.getByRole('button', { name: /Void Supplier.*VOID-1/ }).click();
   const detail = page.getByLabel('Purchase detail');
+  await openVoidPanel(detail);
   const voidButton = detail.getByRole('button', { name: 'Void bill', exact: true });
   await expect(voidButton).toBeDisabled();
   await detail.getByLabel('Reason for voiding').fill('entered twice');
@@ -699,14 +703,15 @@ test('voiding a credit bill needs a reason, reverses its stock and supplier bala
   await expect(detail).toContainText('Bill voided. Stock and supplier balance reversed.');
   await expect(detail.getByTestId('void-reason')).toHaveText('Void reason: entered twice');
   // Voided bills are hidden by default (never deleted) and say how many are hidden.
-  await expect(page.getByTestId('list-settlement')).toHaveText(['Unpaid']);
+  await expect(page.getByTestId('list-settlement')).toHaveText(['Owed']);
   await expect(
     page.getByText(/Showing 1 of 2 loaded bills\. 1 voided item hidden\./),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: /VOID-1/ })).toHaveCount(0);
+  await openPurchaseFilter(page);
   const showVoided = page.getByLabel('Show voided');
   await showVoided.check();
-  await expect(page.getByTestId('list-settlement')).toHaveText(['Unpaid', 'Void']);
+  await expect(page.getByTestId('list-settlement')).toHaveText(['Owed', 'Void']);
   await expect(page.getByText(/Showing 2 of 2 loaded bills\./)).toBeVisible();
   // The choice is remembered per user; the Voided status filter shows them even when unticked.
   await page.reload();
