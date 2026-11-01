@@ -202,6 +202,7 @@ test('a cashier clears the device entry only and is told so (the shop record is 
   await expect(card).toContainText('this clears it on this device only');
   await card.getByRole('button', { name: 'Mark reviewed', exact: true }).click();
   await expect(cashier.getByTestId('review-note')).toContainText('on this device only');
+  await expect(cards(cashier)).toHaveCount(0, { timeout: 20000 });
   await expect(cashier.getByTestId('review-empty')).toBeVisible();
   expect(resolves).toBe(0);
 });

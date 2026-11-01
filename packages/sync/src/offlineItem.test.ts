@@ -254,12 +254,7 @@ describe('fix a refused item in place (D9)', () => {
   it('use existing: refuses another name, a bill already sent, and an item that is not refused', async () => {
     const db = await refused();
     await expect(
-      useExistingItemForRefused(
-        db,
-        REQ,
-        { itemId: EXISTING, fields: { name: 'Dal' } },
-        true,
-      ),
+      useExistingItemForRefused(db, REQ, { itemId: EXISTING, fields: { name: 'Dal' } }, true),
     ).rejects.toThrow(/name/);
     const q = await newDb();
     await queueOfflineItem(q, item(), 1);
