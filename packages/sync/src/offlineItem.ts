@@ -2,6 +2,7 @@ import { getMeta, setMeta, type DsbSyncDb } from './db';
 import { PURCHASE_OUTBOX_TARGET, rejectOfflinePurchase } from './offlinePurchase';
 import { BILL_CHANGE_OUTBOX_TARGET, rejectOfflineBillChange } from './offlineBillChange';
 import type { LocalSyncConflict, OutboxEntry } from './types';
+import type { OfflinePurchaseRecord } from './offlinePurchase';
 
 // Offline new items (owner/manager). The device generates the item id; the item create goes into the SAME
 // ordered outbox as purchases and sales, so it is always sent before any bill queued after it that uses
@@ -190,6 +191,55 @@ async function repointNeverSentBills(db: DsbSyncDb, fromId: string, toId: string
   }
 }
 
+export function swapIds(value: unknown, from: string, to: string): unknown {
+  if (value === from) return to;
+  if (Array.isArray(value)) return value.map((v) => swapIds(v, from, to));
+  if (value && typeof value === 'object')
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, swapIds(v, from, to)]),
+    );
+  return value;
+}
+
+/** Puts a held bill (never sent) back in the outbox under its own request id, behind everything queued. */
+export async function requeueHeldPurchase(
+  db: DsbSyncDb,
+  bill: OfflinePurchaseRecord,
+  now: number,
+  fromId?: string,
+  toId?: string,
+) {
+  const swap = (v: unknown) => (fromId && toId ? swapIds(v, fromId, toId) : v);
+  const request = swap(bill.request) as typeof bill.request;
+  const sequence = ((await getMeta<number>(db, 'outboxSeq')) ?? 0) + 1;
+  await setMeta(db, 'outboxSeq', sequence);
+  await db.offlinePurchases.put({
+    ...bill,
+    request,
+    draft: swap(bill.draft),
+    lines: bill.lines.map((l) => (fromId && l.itemId === fromId ? { ...l, itemId: toId! } : l)),
+    status: 'QUEUED',
+    syncedAt: null,
+    billId: null,
+    paymentId: null,
+    rejectionCode: null,
+    rejectionReason: null,
+    releaseWithItem: null,
+  });
+  await db.outbox.put({
+    sequence,
+    clientId: bill.clientId,
+    kind: 'financial-rpc',
+    target: PURCHASE_OUTBOX_TARGET,
+    payload: request,
+    createdAt: now,
+    attempts: 0,
+    state: 'pending',
+    nextAttemptAt: 0,
+    lastError: null,
+  });
+}
+
 /** The server confirmed the item (created, replayed or matched). Idempotent. */
 export async function completeOfflineItem(
   db: DsbSyncDb,
@@ -197,7 +247,7 @@ export async function completeOfflineItem(
   result: { itemId: string; mapped: boolean },
   now = Date.now(),
 ): Promise<OfflineItemRecord> {
-  const tables = [db.outbox, db.offlineItems, db.offlinePurchases, db.offlineBillChanges];
+  const tables = [db.outbox, db.meta, db.offlineItems, db.offlinePurchases, db.offlineBillChanges];
   return db.transaction('rw', tables, async () => {
     const record = await db.offlineItems.get(clientId);
     if (!record) throw new Error('Offline item record is missing.');
@@ -218,6 +268,15 @@ export async function completeOfflineItem(
     };
     await db.offlineItems.put(next);
     await db.outbox.where('clientId').equals(clientId).delete();
+    // Bills held on purpose until THIS item exists (rename): queued again, naming the server's item. A
+    // match is made by the server only for the same units and conversions (0071).
+    for (const bill of await db.offlinePurchases.toArray())
+      if (
+        bill.status === 'REJECTED' &&
+        bill.heldBeforeSend &&
+        bill.releaseWithItem === record.itemId
+      )
+        await requeueHeldPurchase(db, bill, now, record.itemId, result.itemId);
     return next;
   });
 }
@@ -291,6 +350,7 @@ export async function holdBillsOfRejectedItem(
       ITEM_REJECTED_CODE,
       itemRejectedReason(record.fields.name, record.rejectionReason ?? 'refused'),
       now,
+      true,
     );
     held.push(row.clientId);
   }
@@ -301,6 +361,7 @@ export async function holdBillsOfRejectedItem(
       ITEM_REJECTED_CODE,
       itemRejectedReason(record.fields.name, record.rejectionReason ?? 'refused'),
       now,
+      true,
     );
     held.push(row.clientId);
   }

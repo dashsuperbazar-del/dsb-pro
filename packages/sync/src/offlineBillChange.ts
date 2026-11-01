@@ -32,6 +32,8 @@ export type OfflineBillChangeRecord = Readonly<{
   rejectionCode: string | null;
   rejectionReason: string | null;
   closedAt: number | null;
+  /** Refused by the new-item gate BEFORE any send (the server never saw this request id). */
+  heldBeforeSend?: boolean;
 }>;
 export type QueueOfflineBillChangeInput = Pick<
   OfflineBillChangeRecord,
@@ -127,6 +129,7 @@ export async function rejectOfflineBillChange(
   code: string,
   reason: string,
   now = Date.now(),
+  heldBeforeSend = false,
 ): Promise<void> {
   await db.transaction('rw', [db.outbox, db.offlineBillChanges, db.conflicts], async () => {
     const record = await db.offlineBillChanges.get(clientId);
@@ -137,6 +140,7 @@ export async function rejectOfflineBillChange(
         status: 'REJECTED',
         rejectionCode: code,
         rejectionReason: reason,
+        ...(heldBeforeSend ? { heldBeforeSend: true } : {}),
       });
     const outbox = await db.outbox.where('clientId').equals(clientId).first();
     if (outbox) await db.outbox.delete(outbox.sequence);
