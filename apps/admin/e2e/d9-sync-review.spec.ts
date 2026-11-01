@@ -15,7 +15,7 @@ import type { Page } from '@playwright/test';
 // fixes in place for a refused item (use the existing item / rename and create), one-click "Mark reviewed"
 // and a confirmed bulk "Mark all reviewed". The refusal is the same fault injection offline-new-items uses.
 
-test('one refused item shows ONE merged card with plain words; Mark reviewed clears device and shop together', async ({
+test('one refused item shows ONE merged card with plain words; Mark reviewed hides the alert but keeps the fix', async ({
   page,
   context,
 }) => {
@@ -40,14 +40,24 @@ test('one refused item shows ONE merged card with plain words; Mark reviewed cle
   await expect(page.getByRole('button', { name: 'Mark reviewed for shop' })).toHaveCount(0);
   await expect(card.getByRole('button', { name: 'Mark reviewed', exact: true })).toHaveCount(1);
 
-  // Double tap is safe; the alert disappears on the device AND for the shop (it does not come back).
-  const mark = card.getByRole('button', { name: 'Mark reviewed', exact: true });
-  await mark.dblclick();
-  await expect(page.getByTestId('review-empty')).toBeVisible();
+  // Double tap is safe. The ALERT is gone on the device and for the shop, but the item and its bill are
+  // still refused: the card stays as "on hold" with the fix buttons, and the empty state is NOT shown.
+  await card.getByRole('button', { name: 'Mark reviewed', exact: true }).dblclick();
   await expect(page.getByTestId('review-note')).toContainText('Nothing was changed or posted');
+  await expect(card).toContainText('Still on hold');
+  await expect(card.getByRole('button', { name: 'Mark reviewed', exact: true })).toHaveCount(0);
+  await expect(card.getByRole('button', { name: 'Use the existing item' })).toBeVisible();
+  await expect(card.getByRole('button', { name: 'Rename and create' })).toBeVisible();
+  await expect(page.getByTestId('review-empty')).toHaveCount(0);
+  await expect(page.getByTestId('sync-headline')).toContainText('1 on hold');
+  await expect(page.getByRole('button', { name: /Mark all reviewed/ })).toHaveCount(0);
   await page.reload();
-  await expect(page.getByTestId('review-empty')).toBeVisible();
-  await expect(page.getByTestId('sync-chip-attention')).toHaveText('0 need attention');
+  await expect(cards(page)).toHaveCount(1);
+  await expect(cards(page).first()).toContainText('Still on hold');
+  await expect(page.getByTestId('sync-chip-attention')).toHaveText('1 need attention');
+  // The alert did not come back from the shop side either (still one card, still on hold).
+  await page.waitForTimeout(2500);
+  await expect(cards(page).first()).toContainText('Still on hold');
   // The underlying records stay: the refused item and its held bill are still listed in Purchases.
   await page.goto('/purchases?new=1');
   const pending = page.getByLabel('Purchases saved on this device');
@@ -59,27 +69,47 @@ test('one refused item shows ONE merged card with plain words; Mark reviewed cle
   ).toContainText('BAD-12');
 });
 
-test('Use the existing item: side by side, explicit confirm, the held bill posts once against the existing item', async ({
+test('Use the existing item with DIFFERENT units is refused: side by side, exact differences, bills stay held', async ({
   page,
   context,
 }) => {
   test.setTimeout(150000);
   const seen = await seedRefusedItem(page, context);
-  await createExistingItem(page);
+  await createExistingItem(page, 'pcs');
   const card = cards(page).first();
   await expect(card).toBeVisible({ timeout: 20000 });
   await card.getByRole('button', { name: 'Use the existing item' }).click();
   const panel = card.getByRole('group', { name: 'Use the existing item' });
   await expect(panel).toContainText('Your new item (refused)');
   await expect(panel).toContainText('Existing item in the shop');
-  await expect(panel).toContainText('box only');
-  await expect(panel).toContainText('pcs only');
+  await expect(panel.getByTestId('units-differ')).toContainText('Big unit: box (new) vs pcs');
+  // No way to confirm: the use button does not exist.
+  await expect(panel.getByRole('button', { name: 'Use this item' })).toHaveCount(0);
+  await expect(panel.getByLabel('These are the same product')).toHaveCount(0);
+  // Nothing was posted or queued: the bill is still refused.
+  await expect(page.getByTestId('sync-outbox-count')).toHaveText('0');
+  expect(seen.bills.filter((b) => b.includes('BAD-12'))).toHaveLength(0);
+  await expect(card).toContainText('Purchase BAD-12 for Item Supplier');
+});
+
+test('Use the existing item with the SAME units: explicit confirm, the held bill posts once against it', async ({
+  page,
+  context,
+}) => {
+  test.setTimeout(150000);
+  const seen = await seedRefusedItem(page, context);
+  await createExistingItem(page, 'box');
+  const card = cards(page).first();
+  await expect(card).toBeVisible({ timeout: 20000 });
+  await card.getByRole('button', { name: 'Use the existing item' }).click();
+  const panel = card.getByRole('group', { name: 'Use the existing item' });
+  await expect(panel).toContainText('The units match');
   const use = panel.getByRole('button', { name: 'Use this item' });
   await expect(use).toBeDisabled();
   await panel.getByLabel('These are the same product').check();
   await use.dblclick();
   await expect(page.getByTestId('review-note')).toContainText("Using 'Camel match box'");
-  await expect(page.getByTestId('review-empty')).toBeVisible();
+  await expect(page.getByTestId('review-empty')).toBeVisible({ timeout: 20000 });
   await expect(page.getByTestId('sync-outbox-count')).toHaveText('0', { timeout: 20000 });
   await expect.poll(() => seen.bills.filter((b) => b.includes('BAD-12')).length).toBeGreaterThan(0);
   // Exactly one bill exists on the server; the refused item was never created.
@@ -88,7 +118,7 @@ test('Use the existing item: side by side, explicit confirm, the held bill posts
   await expect(page.getByRole('button', { name: /Item Supplier.*BAD-12/ })).toHaveCount(1);
 });
 
-test('Rename and create: one new item, the held bill follows it and posts', async ({
+test('Rename and create: one new item, the held bill waits for it, then posts', async ({
   page,
   context,
 }) => {
@@ -104,7 +134,7 @@ test('Rename and create: one new item, the held bill follows it and posts', asyn
   await panel.getByRole('button', { name: 'Create with this name' }).dblclick();
   await expect(page.getByTestId('review-note')).toContainText("Creating 'Camel match box 12 pcs'");
   await expect(page.getByTestId('sync-outbox-count')).toHaveText('0', { timeout: 20000 });
-  await expect(page.getByTestId('review-empty')).toBeVisible();
+  await expect(page.getByTestId('review-empty')).toBeVisible({ timeout: 20000 });
   await expect.poll(() => seen.bills.filter((b) => b.includes('BAD-12')).length).toBeGreaterThan(0);
   // One create under the new name (a resend after a lost answer would carry the same ids).
   const renamed = seen.creates.filter((b) => b.includes('Camel match box 12 pcs'));
@@ -138,12 +168,16 @@ test('Mark all reviewed: the dialog lists each item, flags money, and only marks
   await dialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(cards(page)).toHaveCount(2);
   // An alert that arrives while the dialog is open is NOT marked by it.
-  await page.getByRole('button', { name: 'Mark all reviewed (2)' }).click();
+  await page.getByRole('button', { name: /Mark all reviewed \(2\)/ }).click();
   await seedLocalConflict(page, 'late_target', 'late-1');
   await expect(page.getByRole('dialog')).toContainText('Mark 2 reviewed?');
   await page.getByRole('dialog').getByRole('button', { name: 'Mark 2 reviewed' }).click();
-  await expect(cards(page)).toHaveCount(1, { timeout: 10000 });
   await expect(page.getByTestId('review-note')).toContainText('Marked 2 reviewed');
+  // Left: the late alert (still to review) and the refused item (reviewed, still on hold).
+  await expect(cards(page)).toHaveCount(2, { timeout: 10000 });
+  await expect(page.getByRole('button', { name: 'Mark all reviewed (1)' })).toBeVisible();
+  await expect(page.getByTestId('review-count')).toContainText('1 to look at');
+  await expect(page.getByTestId('review-count')).toContainText('1 on hold');
 });
 
 async function joinAsCashier(browser: Browser, owner: Page) {

@@ -343,12 +343,13 @@ export function buildReviewCards(input: ReviewInput): ReviewCard[] {
     owner.money = true;
     owner.details.push(...card.details);
     if (card.state === 'open') owner.state = 'open';
-    owner.where =
-      owner.localIds.length && owner.serverIds.length
-        ? 'both'
-        : owner.localIds.length
-          ? 'device'
-          : 'shop';
+    if (owner.localIds.length || owner.serverIds.length)
+      owner.where =
+        owner.localIds.length && owner.serverIds.length
+          ? 'both'
+          : owner.localIds.length
+            ? 'device'
+            : 'shop';
     owner.happenedAt = Math.max(owner.happenedAt, card.happenedAt);
   }
   return result.sort((a, b) => b.happenedAt - a.happenedAt);

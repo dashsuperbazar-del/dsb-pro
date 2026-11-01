@@ -95,15 +95,23 @@ export async function seedRefusedItem(page: Page, context: BrowserContext): Prom
   await expect(purchaseSection(page).locator('input[name="date"]')).not.toHaveValue('');
 
   const seen: Seen = { bills: [], creates: [] };
+  let refusedClient: string | null = null;
   await page.route('**/rest/v1/rpc/create_item_v2', (route) => {
     const body = route.request().postData() ?? '';
     seen.creates.push(body);
-    if (body.includes('"name":"Camel match box"') && body.includes('"unit1":"box"'))
+    // Only the first create of this name is refused, and its resends (same request id); a later "existing" item of the same name is not.
+    if (
+      (refusedClient === null || body.includes(refusedClient)) &&
+      body.includes('"name":"Camel match box"') &&
+      body.includes('"unit1":"box"')
+    ) {
+      refusedClient ??= (JSON.parse(body) as { p_client_id: string }).p_client_id;
       return route.fulfill({
         status: 400,
         contentType: 'application/json',
         body: JSON.stringify({ code: 'P0001', message: NAME_TAKEN }),
       });
+    }
     return route.continue();
   });
   await page.route('**/rest/v1/rpc/post_purchase_v2', (route) => {
@@ -123,11 +131,11 @@ export async function seedRefusedItem(page: Page, context: BrowserContext): Prom
 }
 
 /** The shop's own item with the same name and other units (what the server clash is about). */
-export async function createExistingItem(page: Page) {
+export async function createExistingItem(page: Page, unit = 'pcs') {
   await page.goto('/inventory');
   await addItemForm(page);
   await page.getByPlaceholder('Item name').fill('Camel match box');
-  await page.getByPlaceholder('Big unit (e.g. case)').fill('pcs');
+  await page.getByPlaceholder('Big unit (e.g. case)').fill(unit);
   await page.getByRole('button', { name: 'Create item' }).click();
   await expect(
     page.getByRole('status').filter({ hasText: 'Created Camel match box' }).first(),

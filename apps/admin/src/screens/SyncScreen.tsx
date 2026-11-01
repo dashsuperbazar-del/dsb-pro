@@ -68,6 +68,7 @@ export function SyncScreen() {
   }
   const [note, setNote] = useState('');
   const [catalog, setCatalog] = useState<SyncedItem[]>([]);
+  const [catalogReady, setCatalogReady] = useState(false);
   const [bulk, setBulk] = useState<ReviewCard[] | null>(null);
   const [hiddenTick, setHiddenTick] = useState(0);
   const bulkOpener = useRef<HTMLElement | null>(null);
@@ -88,9 +89,32 @@ export function SyncScreen() {
   const needsCatalog = cards.some((c) => c.fix === 'item-name');
   useEffect(() => {
     if (!needsCatalog) return;
-    void getOfflineItems().then(setCatalog, () => undefined);
-    // Read again after each sync cycle: the existing item may arrive with the next pull.
-  }, [needsCatalog, dashboard?.health.lastSyncAt]);
+    void getOfflineItems().then(
+      (rows) => {
+        setCatalog(rows);
+        setCatalogReady(true);
+      },
+      () => undefined,
+    );
+    // Read again with every refresh: the existing item may arrive with the next pull.
+  }, [needsCatalog, dashboard]);
+  // The existing item may not have reached this device yet: ask for one sync per card (never a loop).
+  const pulled = useRef(new Set<string>());
+  useEffect(() => {
+    for (const c of cards) {
+      const item = c.item;
+      if (!catalogReady || c.fix !== 'item-name' || !item || pulled.current.has(c.key)) continue;
+      if (
+        catalog.some(
+          (x) =>
+            x.is_active && x.name.trim().toLowerCase() === item.fields.name.trim().toLowerCase(),
+        )
+      )
+        continue;
+      pulled.current.add(c.key);
+      void runSyncNow().catch(() => undefined);
+    }
+  });
   const open = cards.filter((c) => c.state === 'open');
   const onHold = cards.filter((c) => c.state === 'held');
   async function clear(card: ReviewCard) {
@@ -300,8 +324,12 @@ export function SyncScreen() {
                   label={`Needs review: ${g.title}`}
                   userId={userId}
                   count={g.cards.length}
-                  tone="danger"
-                  summary="needs your attention"
+                  tone={g.cards.every((c) => c.state === 'held') ? 'warning' : 'danger'}
+                  summary={
+                    g.cards.every((c) => c.state === 'held')
+                      ? 'reviewed, still on hold'
+                      : 'needs your attention'
+                  }
                   forceOpen
                 >
                   <div class="review-list">
