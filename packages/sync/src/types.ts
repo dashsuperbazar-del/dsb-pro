@@ -231,6 +231,9 @@ export type LocalSyncConflict = Readonly<{
   reason: string;
   payload: unknown;
   serverRef: unknown;
+  /** Audit trail of "Mark reviewed" (device side): when and by whom. Hiding only; the record stays. */
+  resolvedAt?: number;
+  resolvedBy?: string;
 }>;
 
 export type CachedOfflineMembership = Readonly<{
