@@ -3,6 +3,7 @@ import { useEffect, useState } from 'preact/hooks';
 import {
   closeRejectedPurchase,
   closeRejectedBillChange,
+  hideOfflineItem,
   listOfflineBillChanges,
   listOfflineItems,
   listOfflinePurchases,
@@ -110,8 +111,9 @@ export function OfflinePurchasesPanel({
   const items = itemRows.filter(
     (r) =>
       r.status === 'QUEUED' ||
-      (r.status === 'REJECTED' && now - r.createdAt < 7 * DAY_MS) ||
-      (r.status === 'SYNCED' && r.syncedAt !== null && now - r.syncedAt < DAY_MS),
+      (!r.closedAt &&
+        ((r.status === 'REJECTED' && now - r.createdAt < 7 * DAY_MS) ||
+          (r.status === 'SYNCED' && r.syncedAt !== null && now - r.syncedAt < DAY_MS))),
   );
   // Offline bill edits/voids: waiting, refused (kept until dismissed, with the full form), synced today.
   const changes = changeRows.filter(
@@ -259,6 +261,20 @@ export function OfflinePurchasesPanel({
                   {r.rejectionReason} Bills that use it were not posted: use "Correct this bill" on
                   each and pick the existing item.
                 </p>
+              )}
+              {r.status !== 'QUEUED' && (
+                <div class="context-actions">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void hideOfflineItem(r.clientId)
+                        .then(load)
+                        .catch((e: unknown) => setNote(errorText(e)))
+                    }
+                  >
+                    Hide
+                  </button>
+                </div>
               )}
             </li>
           ))}

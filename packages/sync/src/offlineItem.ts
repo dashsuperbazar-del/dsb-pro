@@ -45,6 +45,8 @@ export type OfflineItemRecord = Readonly<{
   rejectionReason: string | null;
   /** Set when a refused create was redone under another name: the request id of the new create. */
   replacedBy?: string | null;
+  /** Set when the user hid this entry from the Purchases panel. Display only: nothing else changes. */
+  closedAt?: number | null;
 }>;
 export type OfflineItemRequest = Readonly<{
   itemId: string;
@@ -407,4 +409,18 @@ export async function listOfflineItemRecords(
 ): Promise<OfflineItemRecord[]> {
   const rows = await db.offlineItems.where('tenantId').equals(tenantId).toArray();
   return rows.sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/** Hide a finished (synced or refused) entry from the Purchases panel. Never touches the outbox, bills or items. */
+export async function closeOfflineItemRecord(
+  db: DsbSyncDb,
+  clientId: string,
+  now = Date.now(),
+): Promise<void> {
+  await db.transaction('rw', [db.offlineItems], async () => {
+    const record = await db.offlineItems.get(clientId);
+    if (!record) throw new Error('Offline item record is missing.');
+    if (record.status === 'QUEUED') throw new Error('A waiting item cannot be hidden.');
+    await db.offlineItems.put({ ...record, closedAt: record.closedAt ?? now });
+  });
 }
