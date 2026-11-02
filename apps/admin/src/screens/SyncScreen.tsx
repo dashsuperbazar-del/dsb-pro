@@ -233,7 +233,9 @@ export function SyncScreen() {
   return (
     <main class="page wide">
       <p>
-        <a href={appRoute.home}>← Home</a>
+        <a class="back-home" href={appRoute.home}>
+          ← Home
+        </a>
       </p>
       <h1>Sync & offline</h1>
       {error && (

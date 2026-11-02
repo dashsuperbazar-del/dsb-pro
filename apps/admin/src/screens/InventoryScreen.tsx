@@ -2751,7 +2751,9 @@ export function InventoryScreen({
   return (
     <Container>
       <p hidden={purchaseOnly}>
-        <a href={appRoute.home}>← Home</a>
+        <a class="back-home" href={appRoute.home}>
+          ← Home
+        </a>
       </p>
       {!purchaseOnly && <h1>Inventory & purchases</h1>}
       {!purchaseOnly && (

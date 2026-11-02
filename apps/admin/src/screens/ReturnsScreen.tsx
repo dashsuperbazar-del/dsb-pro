@@ -232,7 +232,9 @@ export function ReturnsScreen() {
   return (
     <main class="page wide">
       <p>
-        <a href={appRoute.home}>← Home</a>
+        <a class="back-home" href={appRoute.home}>
+          ← Home
+        </a>
       </p>
       <h1>Returns</h1>
       <p class="muted">

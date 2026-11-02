@@ -2774,3 +2774,77 @@ kbd {
     bottom: 0;
   }
 }
+
+/* D7: back-to-Home links are real tap targets (they were ~15px tall). */
+.back-home {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch);
+  padding-right: var(--space-3);
+}
+
+/* D7: 200% text zoom on a phone (about 195-280px of layout width): the header wraps instead of
+   overlapping, money figures stay on one line (and shrink a little instead of breaking per digit),
+   and nothing forces a sideways scroll. */
+@media (max-width: 280px) {
+  .app-bar {
+    flex-wrap: wrap;
+    row-gap: var(--space-2);
+  }
+  .app-brand {
+    flex: 1 1 100%;
+  }
+  .app-brand small {
+    max-width: 100%;
+  }
+  .brand-word {
+    font-size: 18px;
+  }
+  .sync-pill {
+    min-height: var(--touch);
+    padding: 0 var(--space-2);
+  }
+  .stat dd,
+  .daybook-net dd {
+    white-space: nowrap;
+    font-size: clamp(14px, 7vw, 20px);
+  }
+  .tiles {
+    grid-template-columns: 1fr;
+  }
+  .bottom-nav a,
+  .bottom-nav button {
+    min-width: 0;
+    font-size: var(--text-xs);
+  }
+  html,
+  body {
+    overflow-x: hidden;
+  }
+}
+
+/* D7: the "Page not found" screen. */
+.not-found {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: start;
+  padding: var(--space-6) var(--space-4);
+}
+.not-found h1 {
+  margin: 0;
+}
+.not-found .not-found-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* D7: offline is a normal state for a shop, not an error: calm amber note on the health panel. */
+.health-offline-note {
+  margin: var(--space-2) 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--warning-border, var(--border));
+  background: var(--warning-bg, var(--surface-2, transparent));
+  color: var(--text);
+}

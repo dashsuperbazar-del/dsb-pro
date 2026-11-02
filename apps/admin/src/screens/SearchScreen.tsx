@@ -515,7 +515,9 @@ export function SearchScreen() {
   return (
     <main class="page wide search-page">
       <p>
-        <a href={appRoute.home}>← Home</a>
+        <a class="back-home" href={appRoute.home}>
+          ← Home
+        </a>
       </p>
       <h1>Search</h1>
       <form

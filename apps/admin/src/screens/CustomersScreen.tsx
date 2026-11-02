@@ -359,7 +359,9 @@ export function CustomersScreen() {
   return (
     <main class="page wide customer-screen">
       <p>
-        <a href={appRoute.home}>← Home</a>
+        <a class="back-home" href={appRoute.home}>
+          ← Home
+        </a>
       </p>
       <h1>Customers & ledger</h1>
       <nav class="party-tabs" aria-label="Party type">

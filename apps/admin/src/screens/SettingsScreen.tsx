@@ -143,7 +143,9 @@ export function SettingsScreen() {
     return (
       <main>
         <p>
-          <a href={appRoute.home}>← Home</a>
+          <a class="back-home" href={appRoute.home}>
+            ← Home
+          </a>
         </p>
         <h1>Settings</h1>
         {error ? <p role="alert">{error}</p> : <p>Loading…</p>}
@@ -153,7 +155,9 @@ export function SettingsScreen() {
   return (
     <main>
       <p>
-        <a href={appRoute.home}>← Home</a>
+        <a class="back-home" href={appRoute.home}>
+          ← Home
+        </a>
       </p>
       <h1>Settings</h1>
       {error && <p role="alert">{error}</p>}
