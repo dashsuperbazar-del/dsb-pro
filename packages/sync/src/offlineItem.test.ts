@@ -5,6 +5,7 @@ import { nextOutboxEntry } from './outbox';
 import {
   ITEM_OUTBOX_TARGET,
   ITEM_REJECTED_CODE,
+  closeOfflineItemRecord,
   completeOfflineItem,
   listOfflineItemRecords,
   purchaseItemGate,
@@ -364,5 +365,18 @@ describe('fix a refused item in place (D9)', () => {
         (c) => c.status === 'RESOLVED' && c.resolvedBy === 'user-1' && c.resolvedAt === 50,
       ),
     ).toBe(true);
+  });
+});
+
+describe('hiding a finished item entry', () => {
+  it('hides a refused entry from display only; a waiting one cannot be hidden', async () => {
+    const db = await newDb();
+    await queueOfflineItem(db, item());
+    await expect(closeOfflineItemRecord(db, REQ)).rejects.toThrow('waiting');
+    await rejectOfflineItem(db, REQ, ITEM_REJECTED_CODE, 'refused');
+    await closeOfflineItemRecord(db, REQ, 5);
+    const [r] = await listOfflineItemRecords(db, 't');
+    expect(r?.status).toBe('REJECTED');
+    expect(r?.closedAt).toBe(5);
   });
 });

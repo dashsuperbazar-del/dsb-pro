@@ -125,6 +125,7 @@ import {
   queueOfflineBillChange,
   listOfflineBillChangeRecords,
   closeRejectedOfflineBillChange,
+  closeOfflineItemRecord,
   type OfflineBillChangeRecord,
   type QueueOfflineBillChangeInput,
   SUPPLIER_PAYMENT_OUTBOX_TARGET,
@@ -1340,6 +1341,10 @@ export async function listOfflineBillChanges(shopId: string): Promise<OfflineBil
   const rt = runtime;
   if (!rt) return [];
   return listOfflineBillChangeRecords(rt.db, shopId);
+}
+export async function hideOfflineItem(clientId: string): Promise<void> {
+  await closeOfflineItemRecord(requireRuntime().db, clientId);
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('dsb-offline-purchases'));
 }
 export async function closeRejectedBillChange(clientId: string): Promise<void> {
   await closeRejectedOfflineBillChange(requireRuntime().db, clientId);
