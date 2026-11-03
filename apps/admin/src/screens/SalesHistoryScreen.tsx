@@ -32,12 +32,19 @@ import { rupees } from '../lib/money';
 import { HomeRow } from '../components/HomeRow';
 import { MoreMenu } from '../components/MoreMenu';
 import { ScrollTable } from '../components/ScrollTable';
+import { SnapshotNote } from '../components/SnapshotNote';
+import { peekSnapshot, putSnapshot, snapshotUserId } from '../lib/routeSnapshot';
 
 const money = (paise: number) => rupees(paise);
 // A deduction: "−₹10.00", and plain "₹0.00" when there is none (never "−₹0.00").
 const minus = (paise: number) => (paise > 0 ? `−${rupees(paise)}` : rupees(0));
 
 type PrintMode = 'thermal' | 'a4';
+type SalesSnap = {
+  sales: SaleInvoice[];
+  report: Awaited<ReturnType<typeof getShopDayReconciliation>>;
+  date: string;
+};
 
 export function SalesHistoryScreen() {
   const [sales, setSales] = useState<SaleInvoice[]>([]);
@@ -73,7 +80,26 @@ export function SalesHistoryScreen() {
       setReportBusy(false);
     }
   }
-  async function refresh() {
+  const [snapshotAt, setSnapshotAt] = useState<number | null>(null);
+  const [snapshotFailed, setSnapshotFailed] = useState(false);
+  async function refresh(showSaved = false) {
+    // Speed: on open, the last list shows at once (display only); voids wait for the fresh list.
+    const userId = await snapshotUserId().catch(() => '');
+    const snap = showSaved && userId ? peekSnapshot<SalesSnap>('sales-history', userId) : null;
+    if (snap) {
+      setSales(snap.value.sales);
+      setReport(snap.value.report);
+      setReportDate(snap.value.date);
+      setSnapshotAt(snap.at);
+    }
+    try {
+      await refreshFresh(userId);
+    } catch (e) {
+      if (snap) setSnapshotFailed(true);
+      throw e;
+    }
+  }
+  async function refreshFresh(userId: string) {
     const shop = await getDefaultShopId();
     setShopId(shop);
     const date = reportDate || (await getShopBusinessDate(shop));
@@ -84,6 +110,10 @@ export function SalesHistoryScreen() {
     ]);
     setSales(recent);
     setReport(day);
+    setSnapshotAt(null);
+    setSnapshotFailed(false);
+    if (userId && !reportDate)
+      putSnapshot<SalesSnap>('sales-history', userId, shop, { sales: recent, report: day, date });
     const token = ++pendingGen.current;
     void listOpenRemarks(shop).then(
       (r) => token === pendingGen.current && setPending(pendingDocIds(r, 'sale')),
@@ -93,7 +123,7 @@ export function SalesHistoryScreen() {
   useEffect(() => {
     // Global search opens an invoice directly: /sales-history?sale=<id>.
     const saleParam = new URLSearchParams(window.location.search).get('sale');
-    void refresh()
+    void refresh(true)
       .then(() => (saleParam ? viewSale(saleParam) : undefined))
       .catch((e) => setError(String(e)));
     void listCustomers()
@@ -140,6 +170,8 @@ export function SalesHistoryScreen() {
     }
   }
   async function doVoid(sale: SaleInvoice) {
+    if (snapshotAt !== null)
+      return setError('Still loading the latest invoices. Try again in a moment.');
     if (
       !confirm(
         `Void invoice ${sale.doc_no}? This creates reversing stock movements; history is retained.`,
@@ -215,6 +247,7 @@ export function SalesHistoryScreen() {
         <LanguageToggle />
       </div>
       <h1 class="no-print">{t('salesHistory', locale)}</h1>
+      <SnapshotNote at={snapshotAt} failed={snapshotFailed} />
       {error && (
         <p role="alert" class="alert no-print">
           {error}

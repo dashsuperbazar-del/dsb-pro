@@ -83,6 +83,14 @@ export function App() {
     applyTheme(readTheme());
   }, []);
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
+  // Speed: load the rarely used screens in the background once signed in, so their first open is instant.
+  const active = session.status === 'active';
+  useEffect(() => {
+    if (!active) return;
+    const idle = (cb: () => void) =>
+      'requestIdleCallback' in window ? window.requestIdleCallback(cb) : setTimeout(cb, 1500);
+    idle(() => void import('./rareScreens').catch(() => undefined));
+  }, [active]);
   const testMode = import.meta.env.VITE_TEST_MODE === 'phase4-shop-test';
   return (
     <>

@@ -102,8 +102,37 @@ export function BatchPurchaseEntry({
     onSaved();
   }
 
+  // Old DSB: Enter moves to the next field; Enter on the last field of the last bill adds a bill.
+  function enterToNext(e: KeyboardEvent) {
+    const el = e.target as HTMLElement;
+    if (
+      e.key !== 'Enter' ||
+      e.shiftKey ||
+      !(el instanceof HTMLInputElement || el instanceof HTMLSelectElement)
+    )
+      return;
+    if (el instanceof HTMLInputElement && el.type === 'file') return;
+    const root = e.currentTarget as HTMLElement;
+    const fields = [
+      ...root.querySelectorAll<HTMLElement>('fieldset input:not([type=file]), fieldset select'),
+    ].filter((f) => !(f as HTMLInputElement).disabled);
+    const at = fields.indexOf(el);
+    if (at < 0) return;
+    e.preventDefault();
+    if (at < fields.length - 1) return fields[at + 1]?.focus();
+    setRows((v) => [...v, blankRow(today, v[v.length - 1])]);
+    setTimeout(() => {
+      const next = [
+        ...root.querySelectorAll<HTMLElement>(
+          'fieldset:last-of-type select, fieldset:last-of-type input',
+        ),
+      ];
+      next[0]?.focus();
+    }, 0);
+  }
+
   return (
-    <details class="card" aria-label="Batch bill entry" onToggle={onToggle}>
+    <details class="card" aria-label="Batch bill entry" onToggle={onToggle} onKeyDown={enterToNext}>
       <summary>Batch entry (save several bills as drafts)</summary>
       <p class="muted">
         One row per bill. Bills are saved as drafts and nothing posts until you review and post each

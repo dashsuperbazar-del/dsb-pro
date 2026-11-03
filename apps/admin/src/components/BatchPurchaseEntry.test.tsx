@@ -205,3 +205,23 @@ test('N08: closing with a typed entry asks first; declining keeps it, confirming
   expect(after.defaultPrevented).toBe(false);
   ask.mockRestore();
 });
+
+test('Enter moves to the next field and adds a bill after the last field', async () => {
+  await mount();
+  const fields = () => [
+    ...host.querySelectorAll<HTMLElement>('fieldset input:not([type=file]), fieldset select'),
+  ];
+  const first = fields();
+  first[0]!.focus();
+  await act(async () => {
+    first[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  });
+  expect(document.activeElement).toBe(first[1]);
+  const last = first[first.length - 1]!;
+  last.focus();
+  await act(async () => {
+    last.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+  });
+  expect(host.querySelectorAll('fieldset').length).toBe(2);
+});
