@@ -4,12 +4,15 @@ import {
   getDefaultShopId,
   getShopSettings,
   updateShopSettings,
+  getShopContact,
+  updateShopContact,
   type PrinterWidth,
 } from '@dsb-pro/adapters';
 import { BuildVersion } from '../components/BuildVersion';
 import { appRoute } from '../lib/paths';
 import { useDirtyGuard } from '../lib/dirtyGuard';
 import { rememberShopSettings } from '../lib/shopProfile';
+import { errorText } from '../lib/friendlyError';
 
 const MONTHS = [
   'January',
@@ -52,6 +55,8 @@ export function SettingsScreen() {
   const [allowNegativeStock, setAllowNegativeStock] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [phone, setPhone] = useState('');
+  const [footer, setFooter] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   // What the server holds, so unsaved typing can be flagged (and guarded when leaving the page).
@@ -78,8 +83,10 @@ export function SettingsScreen() {
     setIsOwner(membership.role === 'owner');
     const shop = await getDefaultShopId();
     setShopId(shop);
-    const s = await getShopSettings(shop);
-    void rememberShopSettings(shop, s);
+    const [s, contact] = await Promise.all([getShopSettings(shop), getShopContact(shop)]);
+    void rememberShopSettings(shop, { ...s, ...contact });
+    setPhone(contact.phone ?? '');
+    setFooter(contact.receiptFooter ?? '');
     setName(s.name);
     setAddress(s.address ?? '');
     setGstin(s.gstin ?? '');
@@ -106,6 +113,29 @@ export function SettingsScreen() {
     void refresh().catch((e) => setError(String(e)));
   }, []);
 
+  async function saveContact(ev: Event) {
+    ev.preventDefault();
+    if (busy || !shopId) return;
+    setError('');
+    setMessage('');
+    setBusy(true);
+    try {
+      await updateShopContact({ shopId, phone, receiptFooter: footer });
+      void rememberShopSettings(shopId, {
+        name,
+        address: address || null,
+        gstin: gstin || null,
+        printerWidth,
+        phone: phone.trim() || null,
+        receiptFooter: footer.trim() || null,
+      });
+      setMessage('Receipt contact saved.');
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
   async function saveProfile(ev: Event) {
     ev.preventDefault();
     if (busy) return;
@@ -280,6 +310,34 @@ export function SettingsScreen() {
             </button>
             {unsaved && !busy && <span class="muted"> Unsaved changes</span>}
           </p>
+        </form>
+        <form onSubmit={saveContact} class="settings-form" data-testid="shop-contact-form">
+          <fieldset>
+            <legend>Receipt contact</legend>
+            <label>
+              Shop phone{' '}
+              <input
+                type="tel"
+                inputMode="tel"
+                maxLength={20}
+                value={phone}
+                onInput={(e) => setPhone((e.currentTarget as HTMLInputElement).value)}
+              />
+            </label>{' '}
+            <label>
+              Receipt footer{' '}
+              <input
+                maxLength={200}
+                value={footer}
+                placeholder="Thank you, visit again"
+                onInput={(e) => setFooter((e.currentTarget as HTMLInputElement).value)}
+              />
+            </label>
+            <p class="muted">Printed on receipts and shared invoice images.</p>
+            <button type="submit" disabled={busy || !shopId}>
+              Save receipt contact
+            </button>
+          </fieldset>
         </form>
       </section>
       <p class="muted">

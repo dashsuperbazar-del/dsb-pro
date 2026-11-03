@@ -1,4 +1,4 @@
-import { getSession, getShopSettings, type PrinterWidth } from '@dsb-pro/adapters';
+import { getSession, getShopContact, getShopSettings, type PrinterWidth } from '@dsb-pro/adapters';
 
 // D2a: the issuer details printed on receipts. Read from the server when online and cached per
 // user and shop (a shop id belongs to exactly one tenant) so an offline receipt can still show
@@ -9,6 +9,9 @@ export type ShopProfile = {
   address: string | null;
   gstin: string | null;
   printerWidth: PrinterWidth;
+  /** mig 0076 (optional: older caches and a not-yet-upgraded server have none). */
+  phone?: string | null;
+  receiptFooter?: string | null;
   fetchedAt: string;
 };
 export type ProfileLoad = { profile: ShopProfile | null; fromCache: boolean };
@@ -45,17 +48,28 @@ export function readCachedShopName(userId: string, shopIds: string[]): string | 
 /** Settings just read the shop's profile: keep the receipt/header cache in step (a convenience only). */
 export async function rememberShopSettings(
   shopId: string,
-  s: { name: string; address: string | null; gstin: string | null; printerWidth: PrinterWidth },
+  s: {
+    name: string;
+    address: string | null;
+    gstin: string | null;
+    printerWidth: PrinterWidth;
+    phone?: string | null;
+    receiptFooter?: string | null;
+  },
 ): Promise<void> {
   try {
     const session = await getSession();
     if (!session || !shopId) return;
+    const prev = readCache(cacheKey(session.user.id, shopId));
     const profile: ShopProfile = {
       shopId,
       name: s.name,
       address: s.address,
       gstin: s.gstin,
       printerWidth: s.printerWidth,
+      phone: s.phone !== undefined ? s.phone : (prev?.phone ?? null),
+      receiptFooter:
+        s.receiptFooter !== undefined ? s.receiptFooter : (prev?.receiptFooter ?? null),
       fetchedAt: new Date().toISOString(),
     };
     localStorage.setItem(cacheKey(session.user.id, shopId), JSON.stringify(profile));
@@ -75,8 +89,8 @@ export async function loadShopProfile(shopId: string): Promise<ProfileLoad> {
   if (!shopId) return { profile: null, fromCache: false };
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const s = await Promise.race([
-      getShopSettings(shopId),
+    const [s, contact] = await Promise.race([
+      Promise.all([getShopSettings(shopId), getShopContact(shopId)]),
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => reject(new Error('timeout')), SERVER_TIMEOUT_MS);
       }),
@@ -87,6 +101,8 @@ export async function loadShopProfile(shopId: string): Promise<ProfileLoad> {
       address: s.address,
       gstin: s.gstin,
       printerWidth: s.printerWidth,
+      phone: contact.phone,
+      receiptFooter: contact.receiptFooter,
       fetchedAt: new Date().toISOString(),
     };
     if (key) {
