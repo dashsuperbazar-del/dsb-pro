@@ -206,8 +206,13 @@ export {
   pushSyncedReturnVoid,
 } from './returns';
 
-export type { PrinterWidth, ShopSettings, ShopSettingsInput } from './shopSettings';
-export { getShopSettings, updateShopSettings } from './shopSettings';
+export type { PrinterWidth, ShopSettings, ShopSettingsInput, ShopContact } from './shopSettings';
+export {
+  getShopSettings,
+  updateShopSettings,
+  getShopContact,
+  updateShopContact,
+} from './shopSettings';
 
 export type {
   SupplierOperation,

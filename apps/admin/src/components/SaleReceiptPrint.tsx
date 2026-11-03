@@ -131,6 +131,7 @@ export function SaleReceiptPrint({
       )}
       {receipt.invoice.notes && <p>Notes: {receipt.invoice.notes}</p>}
       <footer>
+        {profile?.profile?.receiptFooter && <p>{profile.profile.receiptFooter}</p>}
         <p>Thank you · Powered by DSB Pro</p>
       </footer>
     </article>

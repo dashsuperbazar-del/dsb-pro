@@ -2784,7 +2784,9 @@ export type Database = {
           invoice_prefix: string | null
           is_default: boolean
           name: string
+          phone: string | null
           printer_width: string
+          receipt_footer: string | null
           tenant_id: string
           timezone: string
           updated_at: number
@@ -2803,7 +2805,9 @@ export type Database = {
           invoice_prefix?: string | null
           is_default?: boolean
           name: string
+          phone?: string | null
           printer_width?: string
+          receipt_footer?: string | null
           tenant_id: string
           timezone?: string
           updated_at?: number
@@ -2822,7 +2826,9 @@ export type Database = {
           invoice_prefix?: string | null
           is_default?: boolean
           name?: string
+          phone?: string | null
           printer_width?: string
+          receipt_footer?: string | null
           tenant_id?: string
           timezone?: string
           updated_at?: number
@@ -4532,6 +4538,10 @@ export type Database = {
           p_shop_id: string
         }
         Returns: Json
+      }
+      update_shop_contact: {
+        Args: { p_footer: string; p_phone: string; p_shop_id: string }
+        Returns: undefined
       }
       update_shop_settings: {
         Args: {

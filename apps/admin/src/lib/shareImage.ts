@@ -24,7 +24,13 @@ export type ReceiptDoc = {
   /** Digits only, with country code (wa.me form), or null when unknown. */
   phone: string | null;
 };
-export type ShopLine = { name: string; address?: string | null; gstin?: string | null } | null;
+export type ShopLine = {
+  name: string;
+  address?: string | null;
+  gstin?: string | null;
+  phone?: string | null;
+  receiptFooter?: string | null;
+} | null;
 export type PartyRef = { name: string; phone?: string | null } | null;
 
 /** Max statement rows drawn; the rest are summarised (the full statement stays downloadable). */
@@ -35,9 +41,12 @@ const safeName = (s: string) =>
 
 function header(shop: ShopLine): string[] {
   if (!shop) return ['Shop'];
-  return [shop.name, shop.address ?? null, shop.gstin ? `GSTIN ${shop.gstin}` : null].filter(
-    (v): v is string => Boolean(v && v.trim()),
-  );
+  return [
+    shop.name,
+    shop.address ?? null,
+    shop.phone ? `Phone ${shop.phone}` : null,
+    shop.gstin ? `GSTIN ${shop.gstin}` : null,
+  ].filter((v): v is string => Boolean(v && v.trim()));
 }
 
 /** Indian mobile → wa.me digits ("91" + 10 digits); anything unrecognised → null (generic share link). */
@@ -106,9 +115,11 @@ export function saleInvoiceDoc(
       right: rupees(l.line_total_paise - (l.tax_paise ?? 0)),
     })),
     totals,
-    footer: [inv.notes ? `Notes: ${inv.notes}` : '', 'Thank you · Powered by DSB Pro'].filter(
-      Boolean,
-    ),
+    footer: [
+      inv.notes ? `Notes: ${inv.notes}` : '',
+      shop?.receiptFooter ?? '',
+      'Thank you · Powered by DSB Pro',
+    ].filter(Boolean),
     summary: `${shopName}: invoice ${inv.doc_no} dated ${inv.business_date}, total ${rupees(inv.total_paise)}.`,
     fileName: `invoice-${safeName(inv.doc_no)}.png`,
     phone: whatsappPhone(customer?.phone),
