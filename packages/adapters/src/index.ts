@@ -356,3 +356,5 @@ export type {
   SupplierPayContextBill,
   SupplierPayContextSupplier,
 } from './offlineSupplierPayments';
+export { listItemStockTimeline } from './stockTimeline';
+export type { StockTimelineRow } from './stockTimeline';

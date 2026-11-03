@@ -35,6 +35,7 @@ import {
   type BillCard,
 } from '../lib/billCards';
 import { SnapshotNote } from '../components/SnapshotNote';
+import { StockTimeline } from '../components/StockTimeline';
 import {
   peekSnapshot,
   putSnapshot,
@@ -3039,6 +3040,12 @@ export function InventoryScreen({
                 parties={parties}
               />
             )}
+            <StockTimeline
+              key={`timeline:${selectedItem.id}`}
+              shopId={shopId}
+              itemId={selectedItem.id}
+              baseUnit={selectedItem.unit3 || selectedItem.unit2 || selectedItem.unit1}
+            />
             {shopToday && (
               <DemandChart
                 key={`demand:${selectedItem.id}`}

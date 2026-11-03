@@ -25,6 +25,7 @@ import {
   stockState,
   writeRecent,
 } from '../lib/posPicker';
+import { BelowCostNote } from '../components/BelowCostNote';
 import {
   createCustomer,
   findItemByBarcode,
@@ -1726,6 +1727,14 @@ export function PosScreen() {
                             </button>
                           )}
                         </>
+                      )}
+                      {canTypePrice && !l.freeText && (
+                        <BelowCostNote
+                          shopId={shopId}
+                          item={l.item}
+                          unitLevel={l.unitLevel}
+                          unitPricePaise={l.unitPricePaise}
+                        />
                       )}
                       {l.freeText ? (
                         <small class="typed-price">
