@@ -4344,6 +4344,15 @@ export type Database = {
         }
         Returns: Json
       }
+      fulfil_order: {
+        Args: {
+          p_customer_id?: string
+          p_order_id: string
+          p_payments: Json
+          p_revision: number
+        }
+        Returns: Json
+      }
       get_customer_aging_report: {
         Args: { p_as_of: string; p_shop_id: string }
         Returns: {
