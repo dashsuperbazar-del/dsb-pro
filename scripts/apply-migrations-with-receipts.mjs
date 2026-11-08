@@ -70,6 +70,7 @@ const GROUP_ORDER = [
   'shopcontact',
   'storefront',
   'publiccatalog',
+  'orders',
 ];
 
 /**

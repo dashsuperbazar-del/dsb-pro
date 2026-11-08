@@ -29,6 +29,7 @@ select is((select on_hand from stock_current where tenant_id=current_tenant_id()
 select ok((check_invariants()->>'ok')::boolean,'check_invariants treats owner-permitted negative stock as healthy');
 select is((check_invariants()->>'negativeStock')::bigint,0::bigint,'negativeStock excludes shops with the override on');
 
+-- SF2 (0079) supersedes this for stock HELD for online orders (owner informed 8 Nov 2026).
 -- "Silently allow it" was asked without carving out an exception for a unit
 -- reserved by a concurrent offline device (Phase 8 work; server-side
 -- `reserved` is always 0 today). Seed it directly to prove the override
@@ -38,8 +39,8 @@ reset role;
 update stock_current set reserved=1 where tenant_id=current_setting('ns.tenant')::uuid and shop_id=current_setting('ns.shop')::uuid and item_id=current_setting('ns.item')::uuid;
 set role authenticated;
 select set_config('request.jwt.claims','{"sub":"b6530000-0000-0000-0000-000000000001","role":"authenticated"}',true);
-select lives_ok($$select post_sale(current_setting('ns.shop')::uuid,null,'2026-09-18',0,0,'ns-reserved-override',jsonb_build_array(jsonb_build_object('item_id',current_setting('ns.item'),'unit_level',1,'qty',1,'price_kind','retail')),jsonb_build_array(jsonb_build_object('amount_paise',100,'mode','cash')),null)$$,'override has no hidden exception for a unit reserved by another device');
-select is((select on_hand from stock_current where tenant_id=current_tenant_id() and shop_id=current_setting('ns.shop')::uuid and item_id=current_setting('ns.item')::uuid),(-4)::numeric,'stock still moves exactly by the sold amount past the reservation');
+select throws_like($$select post_sale(current_setting('ns.shop')::uuid,null,'2026-09-18',0,0,'ns-reserved-override',jsonb_build_array(jsonb_build_object('item_id',current_setting('ns.item'),'unit_level',1,'qty',1,'price_kind','retail')),jsonb_build_array(jsonb_build_object('amount_paise',100,'mode','cash')),null)$$,'%DSB_STOCK_RESERVED%','SF2 (0079): the override never sells stock held for an online order');
+select is((select on_hand from stock_current where tenant_id=current_tenant_id() and shop_id=current_setting('ns.shop')::uuid and item_id=current_setting('ns.item')::uuid),(-3)::numeric,'a refused sale moves no stock');
 
 select * from finish();
 rollback;

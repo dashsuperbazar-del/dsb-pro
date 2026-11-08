@@ -1175,6 +1175,250 @@ export type Database = {
           },
         ]
       }
+      order_events: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          created_by: string | null
+          deleted_at: number | null
+          from_status: string | null
+          id: string
+          order_id: string
+          reason: string | null
+          tenant_id: string
+          to_status: string
+          updated_at: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: number | null
+          from_status?: string | null
+          id?: string
+          order_id: string
+          reason?: string | null
+          tenant_id: string
+          to_status: string
+          updated_at?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: number | null
+          from_status?: string | null
+          id?: string
+          order_id?: string
+          reason?: string | null
+          tenant_id?: string
+          to_status?: string
+          updated_at?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_events_tenant_id_order_id_fkey"
+            columns: ["tenant_id", "order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["tenant_id", "id"]
+          },
+        ]
+      }
+      order_items: {
+        Row: {
+          base_qty: number
+          client_id: string
+          created_at: string
+          created_by: string | null
+          deleted_at: number | null
+          id: string
+          item_id: string
+          item_name: string
+          line_no: number
+          line_total_paise: number
+          order_id: string
+          qty: number
+          tenant_id: string
+          unit_level: number
+          unit_name: string
+          unit_price_paise: number
+          updated_at: number
+        }
+        Insert: {
+          base_qty: number
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: number | null
+          id?: string
+          item_id: string
+          item_name: string
+          line_no: number
+          line_total_paise: number
+          order_id: string
+          qty: number
+          tenant_id: string
+          unit_level: number
+          unit_name: string
+          unit_price_paise: number
+          updated_at?: number
+        }
+        Update: {
+          base_qty?: number
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: number | null
+          id?: string
+          item_id?: string
+          item_name?: string
+          line_no?: number
+          line_total_paise?: number
+          order_id?: string
+          qty?: number
+          tenant_id?: string
+          unit_level?: number
+          unit_name?: string
+          unit_price_paise?: number
+          updated_at?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_items_tenant_id_item_id_fkey"
+            columns: ["tenant_id", "item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "order_items_tenant_id_order_id_fkey"
+            columns: ["tenant_id", "order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["tenant_id", "id"]
+          },
+        ]
+      }
+      orders: {
+        Row: {
+          caller_digest: string
+          cancel_reason: string | null
+          client_id: string
+          contact_address: string | null
+          contact_name: string
+          contact_phone: string
+          created_at: string
+          created_by: string | null
+          customer_note: string | null
+          deleted_at: number | null
+          delivery_fee_paise: number
+          delivery_slot: string | null
+          fulfilment: string
+          id: string
+          public_ref: string
+          request_id: string
+          reservation_expires_at: string
+          revision: number
+          sale_invoice_id: string | null
+          shop_id: string
+          status: string
+          subtotal_paise: number
+          tenant_id: string
+          token_digest: string
+          total_paise: number
+          updated_at: number
+        }
+        Insert: {
+          caller_digest: string
+          cancel_reason?: string | null
+          client_id: string
+          contact_address?: string | null
+          contact_name: string
+          contact_phone: string
+          created_at?: string
+          created_by?: string | null
+          customer_note?: string | null
+          deleted_at?: number | null
+          delivery_fee_paise?: number
+          delivery_slot?: string | null
+          fulfilment: string
+          id?: string
+          public_ref: string
+          request_id: string
+          reservation_expires_at: string
+          revision?: number
+          sale_invoice_id?: string | null
+          shop_id: string
+          status?: string
+          subtotal_paise: number
+          tenant_id: string
+          token_digest: string
+          total_paise: number
+          updated_at?: number
+        }
+        Update: {
+          caller_digest?: string
+          cancel_reason?: string | null
+          client_id?: string
+          contact_address?: string | null
+          contact_name?: string
+          contact_phone?: string
+          created_at?: string
+          created_by?: string | null
+          customer_note?: string | null
+          deleted_at?: number | null
+          delivery_fee_paise?: number
+          delivery_slot?: string | null
+          fulfilment?: string
+          id?: string
+          public_ref?: string
+          request_id?: string
+          reservation_expires_at?: string
+          revision?: number
+          sale_invoice_id?: string | null
+          shop_id?: string
+          status?: string
+          subtotal_paise?: number
+          tenant_id?: string
+          token_digest?: string
+          total_paise?: number
+          updated_at?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_tenant_id_shop_id_fkey"
+            columns: ["tenant_id", "shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["tenant_id", "id"]
+          },
+        ]
+      }
       parties: {
         Row: {
           address: string | null
@@ -3115,6 +3359,96 @@ export type Database = {
           },
         ]
       }
+      stock_reservations: {
+        Row: {
+          client_id: string
+          created_at: string
+          created_by: string | null
+          deleted_at: number | null
+          expires_at: string
+          id: string
+          item_id: string
+          order_id: string
+          order_item_id: string
+          qty_base: number
+          release_reason: string | null
+          released_at: string | null
+          shop_id: string
+          tenant_id: string
+          updated_at: number
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: number | null
+          expires_at: string
+          id?: string
+          item_id: string
+          order_id: string
+          order_item_id: string
+          qty_base: number
+          release_reason?: string | null
+          released_at?: string | null
+          shop_id: string
+          tenant_id: string
+          updated_at?: number
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: number | null
+          expires_at?: string
+          id?: string
+          item_id?: string
+          order_id?: string
+          order_item_id?: string
+          qty_base?: number
+          release_reason?: string | null
+          released_at?: string | null
+          shop_id?: string
+          tenant_id?: string
+          updated_at?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_reservations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_reservations_tenant_id_item_id_fkey"
+            columns: ["tenant_id", "item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "stock_reservations_tenant_id_order_id_fkey"
+            columns: ["tenant_id", "order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "stock_reservations_tenant_id_order_item_id_fkey"
+            columns: ["tenant_id", "order_item_id"]
+            isOneToOne: false
+            referencedRelation: "order_items"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "stock_reservations_tenant_id_shop_id_fkey"
+            columns: ["tenant_id", "shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["tenant_id", "id"]
+          },
+        ]
+      }
       storefront_items: {
         Row: {
           client_id: string
@@ -3986,6 +4320,7 @@ export type Database = {
         }
         Returns: Json
       }
+      expire_due_orders: { Args: { p_shop_id: string }; Returns: number }
       find_bills_by_code: {
         Args: { p_query: string; p_shop_id: string }
         Returns: {
@@ -4252,6 +4587,16 @@ export type Database = {
         Args: { p_party: string; p_tenant: string }
         Returns: string
       }
+      order_caller_digest: { Args: never; Returns: string }
+      order_expire_due: {
+        Args: { p_limit?: number; p_shop: string }
+        Returns: number
+      }
+      order_expire_one: { Args: { p_order: string }; Returns: boolean }
+      order_release_holds: {
+        Args: { p_order: string; p_reason: string }
+        Returns: undefined
+      }
       pay_supplier_if_unchanged: {
         Args: {
           p_allocations: Json
@@ -4451,6 +4796,19 @@ export type Database = {
         }
         Returns: Json
       }
+      place_order: {
+        Args: {
+          p_contact: Json
+          p_delivery_slot: string
+          p_fulfilment: string
+          p_lines: Json
+          p_note?: string
+          p_request_id: string
+          p_slug: string
+          p_token: string
+        }
+        Returns: Json
+      }
       post_expense: {
         Args: {
           p_amount_paise: number
@@ -4541,6 +4899,10 @@ export type Database = {
         Returns: Json
       }
       public_catalog_categories: { Args: { p_slug: string }; Returns: Json }
+      public_order_status: {
+        Args: { p_ref: string; p_token: string }
+        Returns: Json
+      }
       public_storefront: { Args: { p_slug: string }; Returns: Json }
       r0_round_off: { Args: { p_total: number }; Returns: number }
       r0_sync_post_sale: {
@@ -4644,6 +5006,15 @@ export type Database = {
       set_item_tax_rate: {
         Args: { p_item_id: string; p_tax_rate_bp: number }
         Returns: number
+      }
+      set_order_status: {
+        Args: {
+          p_order_id: string
+          p_reason?: string
+          p_revision: number
+          p_to: string
+        }
+        Returns: Json
       }
       set_storefront_items: {
         Args: { p_client_id: string; p_items: Json; p_shop_id: string }
