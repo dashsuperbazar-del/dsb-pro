@@ -8,15 +8,21 @@
 -- removed) raises DSB_ORDER_REQUOTE_REQUIRED and rolls EVERYTHING back (holds, sale, payments, numbering). Staff
 -- then cancel the order and ask the customer to order again at today's price; a price difference is never hidden
 -- as a discount. Requires MANAGE_ORDERS and POST_SALES. Exact replay returns the same sale (post_sale is
--- idempotent on the client id). No new table. Forward-only.
+-- idempotent on the client id). Takes the shop finance lock first (same order as POS: no deadlock). No new table.
+-- Forward-only.
 
 create function fulfil_order(p_order_id uuid,p_revision integer,p_payments jsonb,p_customer_id uuid default null)
 returns jsonb language plpgsql security definer set search_path=public as $$
-declare o orders; v_lines jsonb; v_sale uuid; v_total bigint; v_client text; v_date date;
+declare o orders; v_lines jsonb; v_sale uuid; v_total bigint; v_client text; v_date date; v_shop uuid;
 begin
  if not has_perm('MANAGE_ORDERS') or not has_perm('POST_SALES') then raise exception 'not permitted'; end if;
+ -- Same lock order as a POS sale: shop finance lock FIRST, then the order row, then stock rows. (Taking the
+ -- order/stock rows first and the finance lock inside post_sale would deadlock with a concurrent counter sale.)
+ select shop_id into v_shop from orders where id=p_order_id and tenant_id=current_tenant_id();
+ if v_shop is null or not c1_shop_visible(v_shop) then raise exception 'DSB_ORDER_NOT_FOUND: order not found'; end if;
+ perform dsb_lock_shop_finance(phase3_assert_shop(v_shop),v_shop);
  select * into o from orders where id=p_order_id and tenant_id=current_tenant_id() for update;
- if not found or not c1_shop_visible(o.shop_id) then raise exception 'DSB_ORDER_NOT_FOUND: order not found'; end if;
+ if not found or o.shop_id<>v_shop then raise exception 'DSB_ORDER_NOT_FOUND: order not found'; end if;
  v_client:='order-sale:'||o.id::text;
  -- Exact replay after success: same sale, nothing new.
  if o.status='DELIVERED' and o.sale_invoice_id is not null then

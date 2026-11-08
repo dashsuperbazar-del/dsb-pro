@@ -1478,7 +1478,7 @@ do $$ begin
 end $$;
 select (select present from _orderfulfil_receipt),
  (select count(*) from (values
-   (exists(select 1 from pg_proc where oid=to_regprocedure('public.fulfil_order(uuid,integer,jsonb,uuid)') and prosecdef and position('post_sale(' in prosrc)>0 and position('DSB_ORDER_REQUOTE_REQUIRED' in prosrc)>0 and position('order_release_holds' in prosrc)>0)),
+   (exists(select 1 from pg_proc where oid=to_regprocedure('public.fulfil_order(uuid,integer,jsonb,uuid)') and prosecdef and position('post_sale(' in prosrc)>0 and position('DSB_ORDER_REQUOTE_REQUIRED' in prosrc)>0 and position('order_release_holds' in prosrc)>0 and position('dsb_lock_shop_finance' in prosrc)>0)),
    (coalesce(has_function_privilege('authenticated',to_regprocedure('public.fulfil_order(uuid,integer,jsonb,uuid)'),'execute'),false)),
    (to_regprocedure('public.fulfil_order(uuid,integer,jsonb,uuid)') is not null and not coalesce(has_function_privilege('anon',to_regprocedure('public.fulfil_order(uuid,integer,jsonb,uuid)'),'execute'),false))
  ) p(ok) where ok);
