@@ -1380,7 +1380,7 @@ do $$ begin
 end $$;
 select (select present from _storefront_receipt),
  (select count(*) from (values
-   (to_regclass('public.storefront_settings') is not null and to_regclass('public.storefront_items') is not null),
+   (to_regclass('public.storefront_settings') is not null and to_regclass('public.storefront_items') is not null and position('''storefrontItems'',coalesce' in coalesce(pg_get_functiondef(to_regprocedure('public.phase6_export_tenant(uuid)')),''))>0),
    (exists(select 1 from pg_proc where oid=to_regprocedure('public.set_storefront_settings(uuid,jsonb,text)') and prosecdef and position('MANAGE_STOREFRONT' in prosrc)>0 and position('phase3_assert_shop' in prosrc)>0)),
    (exists(select 1 from pg_proc where oid=to_regprocedure('public.set_storefront_items(uuid,jsonb,text)') and prosecdef and position('MANAGE_STOREFRONT' in prosrc)>0)),
    (exists(select 1 from role_permissions where role='cashier' and code='MANAGE_ORDERS') and not exists(select 1 from role_permissions where role='cashier' and code='MANAGE_STOREFRONT')),

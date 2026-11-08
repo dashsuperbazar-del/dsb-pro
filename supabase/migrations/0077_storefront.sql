@@ -184,3 +184,32 @@ exception when invalid_text_representation then
 end $$;
 revoke all on function set_storefront_items(uuid,jsonb,text) from public,anon;
 grant execute on function set_storefront_items(uuid,jsonb,text) to authenticated;
+
+-- The business export carries the online shop settings and published items (coverage test: every table exported).
+create or replace function phase6_export_tenant(p_shop_id uuid)
+returns jsonb language plpgsql stable security definer set search_path=public as $$
+declare v_base jsonb; v_tenant uuid;
+begin
+ v_base:=phase6_export_tenant_v4_base(p_shop_id); v_tenant:=(v_base->>'tenantId')::uuid;
+ return v_base || jsonb_build_object(
+  'schemaVersion',4,
+  'saleReturns',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from sale_returns where tenant_id=v_tenant and shop_id=p_shop_id) x),'[]'::jsonb),
+  'saleReturnLines',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from sale_return_items where tenant_id=v_tenant and shop_id=p_shop_id) x),'[]'::jsonb),
+  'purchaseReturns',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from purchase_returns where tenant_id=v_tenant and shop_id=p_shop_id) x),'[]'::jsonb),
+  'purchaseReturnLines',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from purchase_return_items where tenant_id=v_tenant and shop_id=p_shop_id) x),'[]'::jsonb),
+  'accountOpenings',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from account_openings where tenant_id=v_tenant and shop_id=p_shop_id) x),'[]'::jsonb),
+  'openingSettlements',coalesce((select jsonb_agg(to_jsonb(x)) from (select * from opening_settlements where tenant_id=v_tenant and shop_id=p_shop_id) x),'[]'::jsonb),
+  -- D3a: the request ledger (payload + result of every money request) and the shop's allocation-date
+  -- trust marker, so a restore keeps replay protection and dated reports.
+  'financialRequests',coalesce((select jsonb_agg(to_jsonb(x) order by x.created_at,x.id) from (select * from financial_requests where tenant_id=v_tenant and shop_id=p_shop_id) x),'[]'::jsonb),
+  'shopFinancialHistory',coalesce((select jsonb_agg(to_jsonb(x) order by x.created_at,x.id) from (select * from shop_financial_history where tenant_id=v_tenant and shop_id=p_shop_id) x),'[]'::jsonb),
+  'supplierPaymentSchedules',coalesce((select jsonb_agg(to_jsonb(x) order by x.created_at,x.id) from (select * from supplier_payment_schedules where tenant_id=v_tenant and shop_id=p_shop_id) x),'[]'::jsonb),
+  'partyMerges',coalesce((select jsonb_agg(to_jsonb(x) order by x.created_at,x.id) from (select * from party_merges where tenant_id=v_tenant) x),'[]'::jsonb),
+  'purchaseCharges',coalesce((select jsonb_agg(to_jsonb(x) order by x.created_at,x.id) from (select * from purchase_bill_charges where tenant_id=v_tenant and shop_id=p_shop_id) x),'[]'::jsonb),
+  'purchaseImages',coalesce((select jsonb_agg(to_jsonb(x) order by x.created_at,x.id) from (select * from purchase_bill_images where tenant_id=v_tenant and shop_id=p_shop_id) x),'[]'::jsonb),
+  'documentRemarks',coalesce((select jsonb_agg(to_jsonb(x) order by x.created_at,x.id) from (select * from document_remarks where tenant_id=v_tenant and shop_id=p_shop_id) x),'[]'::jsonb),
+  'documentRemarkEvents',coalesce((select jsonb_agg(to_jsonb(x) order by x.created_at,x.version,x.id) from (select * from document_remark_events where tenant_id=v_tenant and shop_id=p_shop_id) x),'[]'::jsonb),
+  'storefrontSettings',coalesce((select jsonb_agg(to_jsonb(x) order by x.created_at,x.id) from (select * from storefront_settings where tenant_id=v_tenant and shop_id=p_shop_id) x),'[]'::jsonb),
+  'storefrontItems',coalesce((select jsonb_agg(to_jsonb(x) order by x.created_at,x.id) from (select * from storefront_items where tenant_id=v_tenant and shop_id=p_shop_id) x),'[]'::jsonb)
+ );
+end $$;
