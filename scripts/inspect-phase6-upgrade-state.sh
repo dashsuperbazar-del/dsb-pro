@@ -1371,11 +1371,44 @@ if [[ "$shopcontact" != '0' && "$supplierbillsearch" != '2' && ! ( "$shopcontact
  echo 'Shop contact (0076) appears ahead of completed supplierbillsearch. Refusing migration.' >&2; exit 1
 fi
 
+storefront_probe=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -F' ' <<'SQL'
+do $$ begin
+ create temp table _storefront_receipt (present boolean);
+ if to_regclass('public.app_migration_receipts') is not null then
+   insert into _storefront_receipt select exists(select 1 from public.app_migration_receipts where version='0077');
+ else insert into _storefront_receipt values(false); end if;
+end $$;
+select (select present from _storefront_receipt),
+ (select count(*) from (values
+   (to_regclass('public.storefront_settings') is not null and to_regclass('public.storefront_items') is not null),
+   (exists(select 1 from pg_proc where oid=to_regprocedure('public.set_storefront_settings(uuid,jsonb,text)') and prosecdef and position('MANAGE_STOREFRONT' in prosrc)>0 and position('phase3_assert_shop' in prosrc)>0)),
+   (exists(select 1 from pg_proc where oid=to_regprocedure('public.set_storefront_items(uuid,jsonb,text)') and prosecdef and position('MANAGE_STOREFRONT' in prosrc)>0)),
+   (exists(select 1 from role_permissions where role='cashier' and code='MANAGE_ORDERS') and not exists(select 1 from role_permissions where role='cashier' and code='MANAGE_STOREFRONT')),
+   (not coalesce(has_function_privilege('anon',to_regprocedure('public.set_storefront_settings(uuid,jsonb,text)'),'execute'),false) and not coalesce((select has_table_privilege('anon',c.oid,'select') from pg_class c where c.oid=to_regclass('public.storefront_settings')),false))
+ ) p(ok) where ok);
+SQL
+)
+read -r storefront_receipt storefront_anchors <<<"$(tail -n 1 <<<"$storefront_probe")"
+case "$storefront_receipt:$storefront_anchors" in
+ f:0) storefront=0; needs_storefront=true ;;
+ f:5) storefront=1; needs_storefront=true ;;
+ t:5) storefront=2; needs_storefront=false ;;
+ *) echo "Online shop settings (0077) partial/drift state ($storefront_receipt/$storefront_anchors). Refusing migration." >&2; exit 1 ;;
+esac
+if [[ "$storefront" == '2' ]]; then
+ storefront_expected=$(sha256sum "$repo_root/supabase/migrations/0077_storefront.sql" | cut -d' ' -f1)
+ storefront_recorded=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -c "select checksum_sha256 from public.app_migration_receipts where version='0077'")
+ [[ "$storefront_expected" == "$storefront_recorded" ]] || { echo '0077 receipt checksum mismatch. Refusing migration.' >&2; exit 1; }
+fi
+if [[ "$storefront" != '0' && "$shopcontact" != '2' && ! ( "$storefront" == '1' && "$shopcontact" == '1' ) ]]; then
+ echo 'Online shop settings (0077) appears ahead of completed shopcontact. Refusing migration.' >&2; exit 1
+fi
+
 emit_state() {
   local needs_foundation=$1 needs_hardening=$2 needs_phase65=$3 needs_batcha=$4 needs_batchb=$5 needs_p1=$6 needs_p2=$7 needs_c0=$8 needs_c1=$9 needs_c2=${10} needs_c3=${11} needs_c3b=${12} needs_r0=${13} needs_d1=${14} needs_r0b=${15} needs_o1=${16} needs_o2=${17} needs_d2b=${18} needs_d3a=${19}
   local needs_upgrade=true
   if [[ "$needs_foundation:$needs_hardening:$needs_phase65:$needs_batcha:$needs_batchb:$needs_p1:$needs_p2:$needs_c0:$needs_c1:$needs_c2:$needs_c3:$needs_c3b:$needs_r0:$needs_d1:$needs_r0b:$needs_o1:$needs_o2:$needs_d2b:$needs_d3a" == "false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false" ]]; then
-    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" && "$needs_supplierschedule" == "false" && "$needs_partymerge" == "false" && "$needs_itemindex" == "false" && "$needs_billextras" == "false" && "$needs_salepricing" == "false" && "$needs_billedit" == "false" && "$needs_remarks" == "false" && "$needs_remarksfix" == "false" && "$needs_billcode" == "false" && "$needs_backlog" == "false" && "$needs_offlineitems" == "false" && "$needs_offlinebillchange" == "false" && "$needs_itemnamelock" == "false" && "$needs_offlinesupplierpay" == "false" && "$needs_supplierbillsearch" == "false" && "$needs_shopcontact" == "false" ]]; then needs_upgrade=false; fi
+    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" && "$needs_supplierschedule" == "false" && "$needs_partymerge" == "false" && "$needs_itemindex" == "false" && "$needs_billextras" == "false" && "$needs_salepricing" == "false" && "$needs_billedit" == "false" && "$needs_remarks" == "false" && "$needs_remarksfix" == "false" && "$needs_billcode" == "false" && "$needs_backlog" == "false" && "$needs_offlineitems" == "false" && "$needs_offlinebillchange" == "false" && "$needs_itemnamelock" == "false" && "$needs_offlinesupplierpay" == "false" && "$needs_supplierbillsearch" == "false" && "$needs_shopcontact" == "false" && "$needs_storefront" == "false" ]]; then needs_upgrade=false; fi
   fi
   printf 'observed_state=%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s\n' "$foundation" "$hardening" "$phase65" "$batcha" "$batchb" "$p1" "$p2" "$c0" "$c1" "$c2" "$c3" "$c3b" "$r0" "$d1" "$r0b" "$o1" "$o2" "$d2b" "$d3a"
   printf 'needs_upgrade=%s\n' "$needs_upgrade"
@@ -1436,6 +1469,8 @@ emit_state() {
   printf 'needs_supplierbillsearch=%s\n' "$needs_supplierbillsearch"
   printf 'shopcontact_state=%s\n' "$shopcontact"
   printf 'needs_shopcontact=%s\n' "$needs_shopcontact"
+  printf 'storefront_state=%s\n' "$storefront"
+  printf 'needs_storefront=%s\n' "$needs_storefront"
 }
 
 # Legacy (0030-0043) classification is unchanged from before Packet P1: the

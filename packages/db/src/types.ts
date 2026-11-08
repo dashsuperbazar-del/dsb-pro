@@ -3115,6 +3115,163 @@ export type Database = {
           },
         ]
       }
+      storefront_items: {
+        Row: {
+          client_id: string
+          created_at: string
+          created_by: string
+          deleted_at: number | null
+          description: string | null
+          id: string
+          item_id: string
+          published: boolean
+          shop_id: string
+          tenant_id: string
+          updated_at: number
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          created_by?: string
+          deleted_at?: number | null
+          description?: string | null
+          id?: string
+          item_id: string
+          published?: boolean
+          shop_id: string
+          tenant_id: string
+          updated_at?: number
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          created_by?: string
+          deleted_at?: number | null
+          description?: string | null
+          id?: string
+          item_id?: string
+          published?: boolean
+          shop_id?: string
+          tenant_id?: string
+          updated_at?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "storefront_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "storefront_items_tenant_id_item_id_fkey"
+            columns: ["tenant_id", "item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "storefront_items_tenant_id_shop_id_fkey"
+            columns: ["tenant_id", "shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["tenant_id", "id"]
+          },
+        ]
+      }
+      storefront_settings: {
+        Row: {
+          client_id: string
+          created_at: string
+          created_by: string
+          deleted_at: number | null
+          delivery_enabled: boolean
+          delivery_fee_paise: number
+          delivery_note: string | null
+          delivery_slots: Json
+          display_name: string
+          enabled: boolean
+          free_delivery_above_paise: number | null
+          id: string
+          max_lines: number
+          min_order_paise: number
+          order_hours: string | null
+          pickup_enabled: boolean
+          pickup_note: string | null
+          public_contact: string | null
+          reservation_minutes: number
+          shop_id: string
+          slug: string
+          tenant_id: string
+          updated_at: number
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          created_by?: string
+          deleted_at?: number | null
+          delivery_enabled?: boolean
+          delivery_fee_paise?: number
+          delivery_note?: string | null
+          delivery_slots?: Json
+          display_name: string
+          enabled?: boolean
+          free_delivery_above_paise?: number | null
+          id?: string
+          max_lines?: number
+          min_order_paise?: number
+          order_hours?: string | null
+          pickup_enabled?: boolean
+          pickup_note?: string | null
+          public_contact?: string | null
+          reservation_minutes?: number
+          shop_id: string
+          slug: string
+          tenant_id: string
+          updated_at?: number
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          created_by?: string
+          deleted_at?: number | null
+          delivery_enabled?: boolean
+          delivery_fee_paise?: number
+          delivery_note?: string | null
+          delivery_slots?: Json
+          display_name?: string
+          enabled?: boolean
+          free_delivery_above_paise?: number | null
+          id?: string
+          max_lines?: number
+          min_order_paise?: number
+          order_hours?: string | null
+          pickup_enabled?: boolean
+          pickup_note?: string | null
+          public_contact?: string | null
+          reservation_minutes?: number
+          shop_id?: string
+          slug?: string
+          tenant_id?: string
+          updated_at?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "storefront_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "storefront_settings_tenant_id_shop_id_fkey"
+            columns: ["tenant_id", "shop_id"]
+            isOneToOne: true
+            referencedRelation: "shops"
+            referencedColumns: ["tenant_id", "id"]
+          },
+        ]
+      }
       supplier_payment_schedules: {
         Row: {
           client_id: string
@@ -4474,6 +4631,14 @@ export type Database = {
       set_item_tax_rate: {
         Args: { p_item_id: string; p_tax_rate_bp: number }
         Returns: number
+      }
+      set_storefront_items: {
+        Args: { p_client_id: string; p_items: Json; p_shop_id: string }
+        Returns: number
+      }
+      set_storefront_settings: {
+        Args: { p_client_id: string; p_settings: Json; p_shop_id: string }
+        Returns: string
       }
       set_supplier_payment_schedule: {
         Args: {

@@ -55,6 +55,9 @@ export function MoreScreen({
       title: 'Shop & devices',
       links: [
         ...(role === 'owner' ? ([[appRoute.team, 'Team', 'people']] as Link[]) : []),
+        ...(role === 'owner' || role === 'manager'
+          ? ([[appRoute.onlineShop, 'Online shop', 'bill']] as Link[])
+          : []),
         [appRoute.sync, 'Sync & offline', 'sync'],
         [appRoute.devices, 'Devices', 'settings'],
         [appRoute.settings, 'Settings', 'settings'],
