@@ -4529,6 +4529,19 @@ export type Database = {
           unknown_qty: number
         }[]
       }
+      public_catalog: {
+        Args: {
+          p_after_id?: string
+          p_after_name?: string
+          p_category?: string
+          p_limit?: number
+          p_query?: string
+          p_slug: string
+        }
+        Returns: Json
+      }
+      public_catalog_categories: { Args: { p_slug: string }; Returns: Json }
+      public_storefront: { Args: { p_slug: string }; Returns: Json }
       r0_round_off: { Args: { p_total: number }; Returns: number }
       r0_sync_post_sale: {
         Args: {
@@ -4703,6 +4716,49 @@ export type Database = {
           p_shop_id: string
         }
         Returns: Json
+      }
+      storefront_public_shop: {
+        Args: { p_slug: string }
+        Returns: {
+          client_id: string
+          created_at: string
+          created_by: string
+          deleted_at: number | null
+          delivery_enabled: boolean
+          delivery_fee_paise: number
+          delivery_note: string | null
+          delivery_slots: Json
+          display_name: string
+          enabled: boolean
+          free_delivery_above_paise: number | null
+          id: string
+          max_lines: number
+          min_order_paise: number
+          order_hours: string | null
+          pickup_enabled: boolean
+          pickup_note: string | null
+          public_contact: string | null
+          reservation_minutes: number
+          shop_id: string
+          slug: string
+          tenant_id: string
+          updated_at: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "storefront_settings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      storefront_retail_price: {
+        Args: {
+          p_item: string
+          p_level: number
+          p_shop: string
+          p_tenant: string
+        }
+        Returns: number
       }
       update_shop_contact: {
         Args: { p_footer: string; p_phone: string; p_shop_id: string }

@@ -69,6 +69,7 @@ const GROUP_ORDER = [
   'supplierbillsearch',
   'shopcontact',
   'storefront',
+  'publiccatalog',
 ];
 
 /**
