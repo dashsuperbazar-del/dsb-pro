@@ -65,6 +65,7 @@ export const ALLOWED_GROUPS = Object.freeze([
   'supplierbillsearch',
   'shopcontact',
   'storefront',
+  'publiccatalog',
 ]);
 
 const VERSION_RE = /^[0-9]{4}$/;
@@ -253,6 +254,7 @@ const EXPECTED_IN_FLIGHT_GROUP_AND_PATH = Object.freeze({
   '0075': ['supplierbillsearch', 'supabase/migrations/0075_supplier_bill_duplicates.sql'],
   '0076': ['shopcontact', 'supabase/migrations/0076_shop_contact.sql'],
   '0077': ['storefront', 'supabase/migrations/0077_storefront.sql'],
+  '0078': ['publiccatalog', 'supabase/migrations/0078_public_catalog.sql'],
 });
 
 /**

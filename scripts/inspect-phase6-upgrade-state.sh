@@ -1404,11 +1404,43 @@ if [[ "$storefront" != '0' && "$shopcontact" != '2' && ! ( "$storefront" == '1' 
  echo 'Online shop settings (0077) appears ahead of completed shopcontact. Refusing migration.' >&2; exit 1
 fi
 
+publiccatalog_probe=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -F' ' <<'SQL'
+do $$ begin
+ create temp table _publiccatalog_receipt (present boolean);
+ if to_regclass('public.app_migration_receipts') is not null then
+   insert into _publiccatalog_receipt select exists(select 1 from public.app_migration_receipts where version='0078');
+ else insert into _publiccatalog_receipt values(false); end if;
+end $$;
+select (select present from _publiccatalog_receipt),
+ (select count(*) from (values
+   (exists(select 1 from pg_proc where oid=to_regprocedure('public.public_catalog(text,text,uuid,text,uuid,integer)') and prosecdef and position('storefront_public_shop' in prosrc)>0 and position('escape' in prosrc)>0)),
+   (exists(select 1 from pg_proc where oid=to_regprocedure('public.public_storefront(text)') and prosecdef) and exists(select 1 from pg_proc where oid=to_regprocedure('public.public_catalog_categories(text)') and prosecdef)),
+   (coalesce(has_function_privilege('anon',to_regprocedure('public.public_catalog(text,text,uuid,text,uuid,integer)'),'execute'),false)),
+   (exists(select 1 from pg_proc where oid=to_regprocedure('public.storefront_retail_price(uuid,uuid,uuid,integer)') and position('retail' in prosrc)>0) and not coalesce(has_function_privilege('anon',to_regprocedure('public.storefront_retail_price(uuid,uuid,uuid,integer)'),'execute'),false) and not coalesce(has_function_privilege('anon',to_regprocedure('public.storefront_public_shop(text)'),'execute'),false))
+ ) p(ok) where ok);
+SQL
+)
+read -r publiccatalog_receipt publiccatalog_anchors <<<"$(tail -n 1 <<<"$publiccatalog_probe")"
+case "$publiccatalog_receipt:$publiccatalog_anchors" in
+ f:0) publiccatalog=0; needs_publiccatalog=true ;;
+ f:4) publiccatalog=1; needs_publiccatalog=true ;;
+ t:4) publiccatalog=2; needs_publiccatalog=false ;;
+ *) echo "Public shop catalog (0078) partial/drift state ($publiccatalog_receipt/$publiccatalog_anchors). Refusing migration." >&2; exit 1 ;;
+esac
+if [[ "$publiccatalog" == '2' ]]; then
+ publiccatalog_expected=$(sha256sum "$repo_root/supabase/migrations/0078_public_catalog.sql" | cut -d' ' -f1)
+ publiccatalog_recorded=$(psql "$database_url" -X -v ON_ERROR_STOP=1 -At -c "select checksum_sha256 from public.app_migration_receipts where version='0078'")
+ [[ "$publiccatalog_expected" == "$publiccatalog_recorded" ]] || { echo '0078 receipt checksum mismatch. Refusing migration.' >&2; exit 1; }
+fi
+if [[ "$publiccatalog" != '0' && "$storefront" != '2' && ! ( "$publiccatalog" == '1' && "$storefront" == '1' ) ]]; then
+ echo 'Public shop catalog (0078) appears ahead of completed storefront. Refusing migration.' >&2; exit 1
+fi
+
 emit_state() {
   local needs_foundation=$1 needs_hardening=$2 needs_phase65=$3 needs_batcha=$4 needs_batchb=$5 needs_p1=$6 needs_p2=$7 needs_c0=$8 needs_c1=$9 needs_c2=${10} needs_c3=${11} needs_c3b=${12} needs_r0=${13} needs_d1=${14} needs_r0b=${15} needs_o1=${16} needs_o2=${17} needs_d2b=${18} needs_d3a=${19}
   local needs_upgrade=true
   if [[ "$needs_foundation:$needs_hardening:$needs_phase65:$needs_batcha:$needs_batchb:$needs_p1:$needs_p2:$needs_c0:$needs_c1:$needs_c2:$needs_c3:$needs_c3b:$needs_r0:$needs_d1:$needs_r0b:$needs_o1:$needs_o2:$needs_d2b:$needs_d3a" == "false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false:false" ]]; then
-    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" && "$needs_supplierschedule" == "false" && "$needs_partymerge" == "false" && "$needs_itemindex" == "false" && "$needs_billextras" == "false" && "$needs_salepricing" == "false" && "$needs_billedit" == "false" && "$needs_remarks" == "false" && "$needs_remarksfix" == "false" && "$needs_billcode" == "false" && "$needs_backlog" == "false" && "$needs_offlineitems" == "false" && "$needs_offlinebillchange" == "false" && "$needs_itemnamelock" == "false" && "$needs_offlinesupplierpay" == "false" && "$needs_supplierbillsearch" == "false" && "$needs_shopcontact" == "false" && "$needs_storefront" == "false" ]]; then needs_upgrade=false; fi
+    if [[ "$needs_billdocs" == "false" && "$needs_partyarchive" == "false" && "$needs_profit" == "false" && "$needs_supplierschedule" == "false" && "$needs_partymerge" == "false" && "$needs_itemindex" == "false" && "$needs_billextras" == "false" && "$needs_salepricing" == "false" && "$needs_billedit" == "false" && "$needs_remarks" == "false" && "$needs_remarksfix" == "false" && "$needs_billcode" == "false" && "$needs_backlog" == "false" && "$needs_offlineitems" == "false" && "$needs_offlinebillchange" == "false" && "$needs_itemnamelock" == "false" && "$needs_offlinesupplierpay" == "false" && "$needs_supplierbillsearch" == "false" && "$needs_shopcontact" == "false" && "$needs_storefront" == "false" && "$needs_publiccatalog" == "false" ]]; then needs_upgrade=false; fi
   fi
   printf 'observed_state=%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s\n' "$foundation" "$hardening" "$phase65" "$batcha" "$batchb" "$p1" "$p2" "$c0" "$c1" "$c2" "$c3" "$c3b" "$r0" "$d1" "$r0b" "$o1" "$o2" "$d2b" "$d3a"
   printf 'needs_upgrade=%s\n' "$needs_upgrade"
@@ -1471,6 +1503,8 @@ emit_state() {
   printf 'needs_shopcontact=%s\n' "$needs_shopcontact"
   printf 'storefront_state=%s\n' "$storefront"
   printf 'needs_storefront=%s\n' "$needs_storefront"
+  printf 'publiccatalog_state=%s\n' "$publiccatalog"
+  printf 'needs_publiccatalog=%s\n' "$needs_publiccatalog"
 }
 
 # Legacy (0030-0043) classification is unchanged from before Packet P1: the
