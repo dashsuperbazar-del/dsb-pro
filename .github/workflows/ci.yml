@@ -117,6 +117,8 @@ jobs:
         run: node scripts/test-invite-concurrency.mjs
       - name: Prove sale stock locking and idempotency under concurrency
         run: node scripts/test-sale-concurrency.mjs
+      - name: Prove online orders under concurrency (last-unit race, duplicate submit, POS vs fulfil, cancel vs fulfil)
+        run: node scripts/test-order-concurrency.mjs
       - name: Prove bill codes (parallel postings, same-candidate race, backfill on real rows)
         run: node scripts/test-bill-code-concurrency.mjs
       - name: Prove negative-stock recovery serialization
