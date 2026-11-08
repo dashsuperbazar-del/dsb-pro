@@ -62,6 +62,15 @@
       "optional": true
     },
     { "key": "storefrontItems", "table": "storefront_items", "scope": "shop", "optional": true },
+    { "key": "orders", "table": "orders", "scope": "shop", "optional": true },
+    { "key": "orderItems", "table": "order_items", "scope": "tenant", "optional": true },
+    { "key": "orderEvents", "table": "order_events", "scope": "tenant", "optional": true },
+    {
+      "key": "stockReservations",
+      "table": "stock_reservations",
+      "scope": "shop",
+      "optional": true
+    },
     { "key": "financialRequests", "table": "financial_requests", "scope": "shop" },
     { "key": "shopFinancialHistory", "table": "shop_financial_history", "scope": "shop" },
     { "key": "syncIdempotencyKeys", "table": "sync_idempotency_keys", "scope": "tenant" },
