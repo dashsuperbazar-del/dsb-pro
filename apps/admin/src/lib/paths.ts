@@ -28,4 +28,5 @@ export const appRoute = {
   search: appPath('/search'),
   auditLog: appPath('/audit-log'),
   onlineShop: appPath('/online-shop'),
+  orders: appPath('/orders'),
 };
