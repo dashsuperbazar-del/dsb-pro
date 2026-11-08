@@ -125,7 +125,12 @@ function Catalog({ shop, onAdd }: { shop: Shop; onAdd: (l: CartLine) => void }) 
     setError('');
     try {
       const last = reset ? null : items[items.length - 1];
-      const r = await getCatalog(shop.slug, q.trim() || null, cat, last ? { name: last.name, id: last.id } : null);
+      const r = await getCatalog(
+        shop.slug,
+        q.trim() || null,
+        cat,
+        last ? { name: last.name, id: last.id } : null,
+      );
       const next = r?.items ?? [];
       setItems(reset ? next : [...items, ...next]);
       setMore(!!r?.more);
@@ -150,7 +155,11 @@ function Catalog({ shop, onAdd }: { shop: Shop; onAdd: (l: CartLine) => void }) 
       />
       {cats.length > 0 && (
         <div class="chips" role="list">
-          <button type="button" class={cat === null ? 'chip on' : 'chip'} onClick={() => setCat(null)}>
+          <button
+            type="button"
+            class={cat === null ? 'chip on' : 'chip'}
+            onClick={() => setCat(null)}
+          >
             All
           </button>
           {cats.map((c) => (
@@ -213,7 +222,9 @@ function ProductCard({ p, onAdd }: { p: Product; onAdd: (l: CartLine) => void })
           <select
             aria-label={`Unit for ${p.name}`}
             value={level}
-            onChange={(e) => setLevel(Number((e.currentTarget as HTMLSelectElement).value) as 1 | 2 | 3)}
+            onChange={(e) =>
+              setLevel(Number((e.currentTarget as HTMLSelectElement).value) as 1 | 2 | 3)
+            }
           >
             {p.units.map((u) => (
               <option key={u.level} value={u.level}>
@@ -234,7 +245,14 @@ function ProductCard({ p, onAdd }: { p: Product; onAdd: (l: CartLine) => void })
           class="primary"
           disabled={!p.inStock || !ok}
           onClick={() =>
-            onAdd({ itemId: p.id, name: p.name, level: unit.level, unit: unit.unit, pricePaise: unit.pricePaise, qty: n })
+            onAdd({
+              itemId: p.id,
+              name: p.name,
+              level: unit.level,
+              unit: unit.unit,
+              pricePaise: unit.pricePaise,
+              qty: n,
+            })
           }
         >
           Add
@@ -286,11 +304,19 @@ function Checkout({
         token: pending.token,
         fulfilment: mode,
         slot: mode === 'delivery' ? slot || null : null,
-        contact: { name: name.trim(), phone: phone.trim(), ...(mode === 'delivery' ? { address: address.trim() } : {}) },
+        contact: {
+          name: name.trim(),
+          phone: phone.trim(),
+          ...(mode === 'delivery' ? { address: address.trim() } : {}),
+        },
         lines: cart.map((l) => ({ itemId: l.itemId, unitLevel: l.level, qty: String(l.qty) })),
         note: note.trim() || null,
       });
-      rememberOrder(shop.slug, { ref: r.ref, token: pending.token, placedAt: new Date().toISOString() });
+      rememberOrder(shop.slug, {
+        ref: r.ref,
+        token: pending.token,
+        placedAt: new Date().toISOString(),
+      });
       savePending(shop.slug, null);
       setCart([]);
       location.hash = `#/order/${r.ref}`;
@@ -332,8 +358,9 @@ function Checkout({
       </ul>
       <p>
         Items {rupees(sub.toString())}
-        {mode === 'delivery' && <> · Delivery {fee === 0n ? 'free' : rupees(fee.toString())}</>} ·{' '}
-        <strong>About {rupees((sub + fee).toString())}</strong>
+        {mode === 'delivery' && (
+          <> · Delivery {fee === 0n ? 'free' : rupees(fee.toString())}</>
+        )} · <strong>About {rupees((sub + fee).toString())}</strong>
       </p>
       <p class="muted">The shop confirms the final price when it receives your order.</p>
       {belowMin && <p class="note warn">Minimum order is {rupees(shop.minOrderPaise)}.</p>}
@@ -342,14 +369,18 @@ function Checkout({
           <legend>How do you want it?</legend>
           {shop.pickup && (
             <label>
-              <input type="radio" checked={mode === 'pickup'} onChange={() => setMode('pickup')} /> Pick up at the
-              shop
+              <input type="radio" checked={mode === 'pickup'} onChange={() => setMode('pickup')} />{' '}
+              Pick up at the shop
             </label>
           )}
           {shop.delivery && (
             <label>
-              <input type="radio" checked={mode === 'delivery'} onChange={() => setMode('delivery')} /> Deliver to
-              me
+              <input
+                type="radio"
+                checked={mode === 'delivery'}
+                onChange={() => setMode('delivery')}
+              />{' '}
+              Deliver to me
             </label>
           )}
           {mode === 'pickup' && shop.pickupNote && <p class="muted">{shop.pickupNote}</p>}
@@ -357,7 +388,10 @@ function Checkout({
           {mode === 'delivery' && shop.deliverySlots.length > 0 && (
             <label>
               Delivery time{' '}
-              <select value={slot} onChange={(e) => setSlot((e.currentTarget as HTMLSelectElement).value)}>
+              <select
+                value={slot}
+                onChange={(e) => setSlot((e.currentTarget as HTMLSelectElement).value)}
+              >
                 {shop.deliverySlots.map((s) => (
                   <option key={s}>{s}</option>
                 ))}
@@ -366,7 +400,13 @@ function Checkout({
           )}
         </fieldset>
         <label>
-          Your name <input required maxLength={80} value={name} onInput={(e) => setName((e.currentTarget as HTMLInputElement).value)} />
+          Your name{' '}
+          <input
+            required
+            maxLength={80}
+            value={name}
+            onInput={(e) => setName((e.currentTarget as HTMLInputElement).value)}
+          />
         </label>
         <label>
           Phone{' '}
@@ -393,10 +433,20 @@ function Checkout({
         )}
         <label>
           Note for the shop (optional){' '}
-          <input maxLength={300} value={note} onInput={(e) => setNote((e.currentTarget as HTMLInputElement).value)} />
+          <input
+            maxLength={300}
+            value={note}
+            onInput={(e) => setNote((e.currentTarget as HTMLInputElement).value)}
+          />
         </label>
         <label class="trap" aria-hidden="true">
-          Leave empty <input tabIndex={-1} autoComplete="off" value={trap} onInput={(e) => setTrap((e.currentTarget as HTMLInputElement).value)} />
+          Leave empty{' '}
+          <input
+            tabIndex={-1}
+            autoComplete="off"
+            value={trap}
+            onInput={(e) => setTrap((e.currentTarget as HTMLInputElement).value)}
+          />
         </label>
         {error && (
           <p class="note warn" role="alert">
@@ -435,7 +485,9 @@ function Status({ ref_ }: { ref_: string }) {
       <p class="status">{STATUS[s.status] ?? s.status}</p>
       {s.cancelReason && <p class="muted">{s.cancelReason}</p>}
       <p>
-        {s.fulfilment === 'delivery' ? `Delivery${s.deliverySlot ? `, ${s.deliverySlot}` : ''}` : 'Pickup at the shop'}
+        {s.fulfilment === 'delivery'
+          ? `Delivery${s.deliverySlot ? `, ${s.deliverySlot}` : ''}`
+          : 'Pickup at the shop'}
         {['NEW', 'CONFIRMED', 'PREPARING', 'READY'].includes(s.status) &&
           ` · held until ${new Date(s.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
       </p>
@@ -451,7 +503,8 @@ function Status({ ref_ }: { ref_: string }) {
       </ul>
       {BigInt(s.deliveryFeePaise) > 0n && <p>Delivery {rupees(s.deliveryFeePaise)}</p>}
       <p>
-        <strong>Total {rupees(s.totalPaise)}</strong> · pay at {s.fulfilment === 'delivery' ? 'delivery' : 'the shop'}
+        <strong>Total {rupees(s.totalPaise)}</strong> · pay at{' '}
+        {s.fulfilment === 'delivery' ? 'delivery' : 'the shop'}
       </p>
       <p class="muted">Keep this page: it updates by itself. Your order number is {s.ref}.</p>
     </main>

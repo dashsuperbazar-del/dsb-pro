@@ -48,7 +48,11 @@ async function rpc<T>(fn: string, body: Record<string, unknown>): Promise<T> {
   try {
     res = await fetch(`${URL_BASE}/rest/v1/rpc/${fn}`, {
       method: 'POST',
-      headers: { apikey: ANON, Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+      headers: {
+        apikey: ANON,
+        Authorization: `Bearer ${ANON}`,
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify(body),
     });
   } catch {
@@ -96,16 +100,19 @@ export const placeOrder = (args: {
   lines: { itemId: string; unitLevel: number; qty: string }[];
   note: string | null;
 }) =>
-  rpc<{ ref: string; status: string; totalPaise: string; expiresAt: string; replayed: boolean }>('place_order', {
-    p_slug: args.slug,
-    p_request_id: args.requestId,
-    p_token: args.token,
-    p_fulfilment: args.fulfilment,
-    p_delivery_slot: args.slot,
-    p_contact: args.contact,
-    p_lines: args.lines,
-    p_note: args.note,
-  });
+  rpc<{ ref: string; status: string; totalPaise: string; expiresAt: string; replayed: boolean }>(
+    'place_order',
+    {
+      p_slug: args.slug,
+      p_request_id: args.requestId,
+      p_token: args.token,
+      p_fulfilment: args.fulfilment,
+      p_delivery_slot: args.slot,
+      p_contact: args.contact,
+      p_lines: args.lines,
+      p_note: args.note,
+    },
+  );
 export const orderStatus = (ref: string, token: string) =>
   rpc<OrderStatus | null>('public_order_status', { p_ref: ref, p_token: token });
 

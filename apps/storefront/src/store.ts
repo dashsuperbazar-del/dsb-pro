@@ -58,5 +58,7 @@ export function lineEstimate(l: CartLine): bigint {
 export function addToCart(cart: CartLine[], line: CartLine): CartLine[] {
   const i = cart.findIndex((c) => c.itemId === line.itemId && c.level === line.level);
   if (i < 0) return [...cart, line];
-  return cart.map((c, n) => (n === i ? { ...c, qty: Math.round((c.qty + line.qty) * 1000) / 1000 } : c));
+  return cart.map((c, n) =>
+    n === i ? { ...c, qty: Math.round((c.qty + line.qty) * 1000) / 1000 } : c,
+  );
 }
