@@ -370,3 +370,11 @@ export {
   saveStorefrontItems,
 } from './storefront';
 export type { StorefrontSettings, StorefrontItem } from './storefront';
+export {
+  listOnlineOrders,
+  listOnlineOrderLines,
+  setOnlineOrderStatus,
+  fulfilOnlineOrder,
+  expireDueOnlineOrders,
+} from './orders';
+export type { OnlineOrder, OnlineOrderLine, OrderStatus } from './orders';

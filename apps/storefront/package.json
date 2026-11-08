@@ -1,0 +1,21 @@
+{
+  "name": "@dsb-pro/storefront",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b --noEmit",
+    "preview": "vite preview",
+    "test": "vitest run src"
+  },
+  "dependencies": {
+    "preact": "^10.29.8"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.6",
+    "typescript": "~6.0.2",
+    "vite": "^8.2.4"
+  }
+}

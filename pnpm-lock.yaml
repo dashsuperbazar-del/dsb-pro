@@ -85,6 +85,22 @@ importers:
         specifier: ^8.2.4
         version: 8.3.4(@types/node@24.13.3)(esbuild@0.28.1)
 
+  apps/storefront:
+    dependencies:
+      preact:
+        specifier: ^10.29.8
+        version: 10.29.8
+    devDependencies:
+      '@preact/preset-vite':
+        specifier: ^2.10.6
+        version: 2.10.6(@babel/core@7.29.7(supports-color@10.2.2))(preact@10.29.8)(supports-color@10.2.2)(vite@8.3.4(@types/node@24.13.3)(esbuild@0.28.1))
+      typescript:
+        specifier: ~6.0.2
+        version: 6.0.3
+      vite:
+        specifier: ^8.2.4
+        version: 8.3.4(@types/node@24.13.3)(esbuild@0.28.1)
+
   packages/adapters:
     dependencies:
       '@dsb-pro/core':

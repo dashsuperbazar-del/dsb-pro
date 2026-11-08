@@ -47,6 +47,7 @@ const StockAdjustScreen = lazyScreen(() =>
 const OpeningsScreen = lazyScreen(() => import('./rareScreens').then((m) => m.OpeningsScreen));
 const SearchScreen = lazyScreen(() => import('./rareScreens').then((m) => m.SearchScreen));
 const AuditLogScreen = lazyScreen(() => import('./rareScreens').then((m) => m.AuditLogScreen));
+const OrdersScreen = lazyScreen(() => import('./rareScreens').then((m) => m.OrdersScreen));
 const OnlineShopScreen = lazyScreen(() => import('./rareScreens').then((m) => m.OnlineShopScreen));
 
 // POS and purchase entry keep the money first: the health pill stays on Home/Settings (D4).
@@ -171,6 +172,7 @@ export function App() {
         <Route path={appRoute.search} component={SearchScreen} />
         <Route path={appRoute.auditLog} component={AuditLogScreen} />
         <Route path={appRoute.onlineShop} component={OnlineShopScreen} />
+        <Route path={appRoute.orders} component={OrdersScreen} />
         <Route
           default
           component={() => (isHomePath(currentPath) ? <Home session={session} /> : <NotFound />)}

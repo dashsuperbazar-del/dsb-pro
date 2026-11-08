@@ -1823,6 +1823,28 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy apps/admin/dist --project-name=dsb-pro
+      # SF4: the public online shop is a SEPARATE Cloudflare Pages project (dsb-shop.pages.dev). It never blocks the
+      # admin deploy: if the token cannot create/deploy that project the step is reported but the job continues.
+      - name: Build public online shop
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://zmtvvdgsbdwhowrzkcwr.supabase.co' }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InptdHZ2ZGdzYmR3aG93cnprY3dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg1MTY2NjgsImV4cCI6MjEwNDA5MjY2OH0.I6O33AReqJBkKwgtzejlS31Djwmdrp5pVF6Mxj4gnig' }}
+          VITE_SHOP_SLUG: ${{ vars.DSB_SHOP_SLUG || '' }}
+        run: pnpm --filter @dsb-pro/storefront run build
+      - name: Create the online shop Pages project if missing
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages project create dsb-shop --production-branch=main
+      - name: Deploy the online shop to Cloudflare Pages
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/storefront/dist --project-name=dsb-shop --branch=main
       - name: Build GitHub Pages fallback artifact
         env:
           VITE_BASE_PATH: /dsb-pro/
