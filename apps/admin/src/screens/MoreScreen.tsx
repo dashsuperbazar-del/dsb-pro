@@ -31,6 +31,7 @@ export function MoreScreen({
         ...(manage
           ? ([
               [appRoute.inventory, 'Stock & items', 'stock'],
+              [appRoute.customers, 'Customers', 'people'],
               [appRoute.expenses, 'Expenses', 'expense'],
             ] as Link[])
           : []),
