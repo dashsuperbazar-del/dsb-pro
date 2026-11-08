@@ -1384,7 +1384,7 @@ select (select present from _storefront_receipt),
    (exists(select 1 from pg_proc where oid=to_regprocedure('public.set_storefront_settings(uuid,jsonb,text)') and prosecdef and position('MANAGE_STOREFRONT' in prosrc)>0 and position('phase3_assert_shop' in prosrc)>0)),
    (exists(select 1 from pg_proc where oid=to_regprocedure('public.set_storefront_items(uuid,jsonb,text)') and prosecdef and position('MANAGE_STOREFRONT' in prosrc)>0)),
    (exists(select 1 from role_permissions where role='cashier' and code='MANAGE_ORDERS') and not exists(select 1 from role_permissions where role='cashier' and code='MANAGE_STOREFRONT')),
-   (not coalesce(has_function_privilege('anon',to_regprocedure('public.set_storefront_settings(uuid,jsonb,text)'),'execute'),false) and not coalesce((select has_table_privilege('anon',c.oid,'select') from pg_class c where c.oid=to_regclass('public.storefront_settings')),false))
+   (to_regprocedure('public.set_storefront_settings(uuid,jsonb,text)') is not null and to_regclass('public.storefront_settings') is not null and not coalesce(has_function_privilege('anon',to_regprocedure('public.set_storefront_settings(uuid,jsonb,text)'),'execute'),false) and not coalesce((select has_table_privilege('anon',c.oid,'select') from pg_class c where c.oid=to_regclass('public.storefront_settings')),false))
  ) p(ok) where ok);
 SQL
 )
