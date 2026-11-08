@@ -3,7 +3,7 @@
 -- minimum and slots are server rules; anon sees only its own order status; rate limit; staff steps are checked.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(31);
+select plan(34);
 insert into auth.users(id) values ('e7900000-0000-0000-0000-000000000001'),('e7900000-0000-0000-0000-000000000003');
 create function pg_temp.act(p_user text) returns void language sql as
  $$ select set_config('request.jwt.claims',json_build_object('sub',p_user,'role','authenticated')::text,true) $$;
@@ -103,6 +103,17 @@ select place_order('e79-shop','a0000000-0000-4000-8000-000000000007',pg_temp.tok
 reset role;
 select throws_ok($$ insert into stock_movements(tenant_id,shop_id,item_id,source_type,source_id,qty_base,client_id)
   values(pg_temp.id('tenant'),pg_temp.id('shop'),pg_temp.id('a'),'ADJUSTMENT',gen_random_uuid(),-5,'e79-count') $$,null,'insufficient stock','a count cannot take held stock either');
+
+-- An EXPIRED hold never blocks the counter: the sale releases it first.
+update orders set reservation_expires_at=clock_timestamp()-interval '1 minute' where request_id='a0000000-0000-4000-8000-000000000007';
+set role authenticated;
+select pg_temp.act('e7900000-0000-0000-0000-000000000001');
+select lives_ok($$ select post_sale(pg_temp.id('shop'),null,current_date,0,0,'e79-sale-3',
+  jsonb_build_array(jsonb_build_object('item_id',pg_temp.id('a'),'unit_level',2,'qty','6','price_kind','retail')),
+  '[{"mode":"cash","amount_paise":30000}]'::jsonb) $$,'an expired hold does not block a POS sale');
+select throws_ok($$ select token_digest from orders limit 1 $$,'42501',null,'staff cannot read the customer token digest');
+reset role;
+select is((select status from orders where request_id='a0000000-0000-4000-8000-000000000007'),'CANCELLED','the expired order was cancelled by that sale');
 
 -- Rate limit: 10 orders per 10 minutes per caller network.
 do $$ begin for i in 1..10 loop

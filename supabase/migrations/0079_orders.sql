@@ -32,6 +32,15 @@ begin
    -- Stock held for online orders is never sold, whatever the negative-stock setting. The message keeps
    -- 'insufficient stock' so offline sales treat it as a final refusal (packages/sync outbox) and show the
    -- usual "Not enough stock" text.
+   if v_reserved>0 and exists(select 1 from stock_reservations sr join orders o on o.id=sr.order_id
+        where sr.shop_id=new.shop_id and sr.item_id=new.item_id and sr.released_at is null
+          and o.reservation_expires_at<=clock_timestamp()) then
+     -- Holds that already expired must not block the counter: release them first (no cron needed).
+     perform order_expire_due(new.shop_id,200);
+     select on_hand,reserved into v_on_hand,v_reserved from stock_current
+      where tenant_id=new.tenant_id and shop_id=new.shop_id and item_id=new.item_id;
+     if v_on_hand>=v_reserved then return new; end if;
+   end if;
    if v_reserved>0 then
      raise exception 'DSB_STOCK_RESERVED: insufficient stock: this stock is held for online orders (cancel or fulfil the order first)';
    end if;
@@ -177,7 +186,11 @@ create policy order_events_read on order_events for select using(tenant_id=curre
  and exists(select 1 from orders o where o.id=order_id and c1_shop_visible(o.shop_id)));
 create policy stock_reservations_read on stock_reservations for select using(tenant_id=current_tenant_id() and c1_shop_visible(shop_id) and has_perm('MANAGE_ORDERS'));
 revoke all on orders,order_items,order_events,stock_reservations from public,anon,authenticated;
-grant select on orders,order_items,order_events,stock_reservations to authenticated;
+grant select on order_items,order_events,stock_reservations to authenticated;
+-- Staff never read the secret digests (customer token, caller network).
+grant select(id,tenant_id,shop_id,public_ref,status,fulfilment,delivery_slot,contact_name,contact_phone,contact_address,
+ customer_note,subtotal_paise,delivery_fee_paise,total_paise,request_id,reservation_expires_at,revision,sale_invoice_id,
+ cancel_reason,created_by,created_at,updated_at,deleted_at,client_id) on orders to authenticated;
 do $$
 begin
  if exists (select 1 from pg_roles where rolname='backup_ro') then
@@ -200,18 +213,30 @@ begin
 end $$;
 revoke all on function order_release_holds(uuid,text) from public,anon,authenticated;
 
--- Cancel open orders of a shop whose hold has expired (bounded batch). Returns how many were cancelled.
+-- Cancel ONE open order whose hold has expired (caller holds the order row lock). Returns true if cancelled.
+create function order_expire_one(p_order uuid) returns boolean
+language plpgsql security definer set search_path=public as $$
+declare o orders;
+begin
+ select * into o from orders where id=p_order for update;
+ if not found or o.status not in ('NEW','CONFIRMED','PREPARING','READY') or o.reservation_expires_at>clock_timestamp() then return false; end if;
+ perform order_release_holds(o.id,'EXPIRED');
+ update orders set status='CANCELLED',cancel_reason='Expired: not collected in time',revision=revision+1 where id=o.id;
+ insert into order_events(tenant_id,order_id,from_status,to_status,reason,actor,client_id)
+ values(o.tenant_id,o.id,o.status,'CANCELLED','EXPIRED',null,'expire:'||o.id::text);
+ return true;
+end $$;
+revoke all on function order_expire_one(uuid) from public,anon,authenticated;
+
+-- Cancel open orders of a shop whose hold has expired, oldest expiry first (bounded batch). Returns how many.
 create function order_expire_due(p_shop uuid,p_limit integer default 50) returns integer
 language plpgsql security definer set search_path=public as $$
 declare o record; n integer:=0;
 begin
- for o in select id,tenant_id,status from orders where shop_id=p_shop and status in ('NEW','CONFIRMED','PREPARING','READY')
-   and reservation_expires_at<=clock_timestamp() order by id limit greatest(1,least(coalesce(p_limit,50),200)) for update skip locked loop
-   perform order_release_holds(o.id,'EXPIRED');
-   update orders set status='CANCELLED',cancel_reason='Expired: not collected in time',revision=revision+1 where id=o.id;
-   insert into order_events(tenant_id,order_id,from_status,to_status,reason,actor,client_id)
-   values(o.tenant_id,o.id,o.status,'CANCELLED','EXPIRED',null,'expire:'||o.id::text);
-   n:=n+1;
+ for o in select id from orders where shop_id=p_shop and status in ('NEW','CONFIRMED','PREPARING','READY')
+   and reservation_expires_at<=clock_timestamp() order by reservation_expires_at,id
+   limit greatest(1,least(coalesce(p_limit,50),200)) for update skip locked loop
+   if order_expire_one(o.id) then n:=n+1; end if;
  end loop;
  return n;
 end $$;
@@ -221,7 +246,11 @@ create function order_caller_digest() returns text language plpgsql stable set s
 declare h json; ip text;
 begin
  begin h:=nullif(current_setting('request.headers',true),'')::json; exception when others then h:=null; end;
- ip:=coalesce(h->>'cf-connecting-ip',split_part(coalesce(h->>'x-forwarded-for',''),',',1),h->>'x-real-ip','unknown');
+ -- cf-connecting-ip is set by the edge and cannot be supplied by the caller. Otherwise use the LAST
+ -- x-forwarded-for hop (added by the trusted proxy), never the caller-controlled first one.
+ ip:=coalesce(nullif(btrim(h->>'cf-connecting-ip'),''),
+   nullif(btrim(regexp_replace(coalesce(h->>'x-forwarded-for',''),'^.*,','')),''),
+   nullif(btrim(h->>'x-real-ip'),''),'unknown');
  return encode(sha256(convert_to('dsb-order-caller:'||btrim(ip),'UTF8')),'hex');
 end $$;
 revoke all on function order_caller_digest() from public,anon,authenticated;
@@ -251,14 +280,6 @@ begin
      'expiresAt',o.reservation_expires_at,'replayed',true);
  end if;
 
- -- Serialise this shop's order placement and enforce the rate limits consistently.
- perform pg_advisory_xact_lock(hashtextextended('dsb-orders:'||s.shop_id::text,0));
- v_caller:=order_caller_digest();
- if (select count(*) from orders where caller_digest=v_caller and created_at>clock_timestamp()-interval '10 minutes')>=10
-    or (select count(*) from orders where shop_id=s.shop_id and created_at>clock_timestamp()-interval '1 hour')>=60 then
-   raise exception 'DSB_ORDER_RATE_LIMIT: too many orders just now, please try again in a few minutes';
- end if;
- perform order_expire_due(s.shop_id,50);
 
  v_name:=btrim(coalesce(p_contact->>'name','')); v_phone:=btrim(coalesce(p_contact->>'phone',''));
  v_addr:=nullif(btrim(coalesce(p_contact->>'address','')),''); v_note:=nullif(btrim(coalesce(p_note,'')),'');
@@ -280,6 +301,21 @@ begin
  if p_lines is null or jsonb_typeof(p_lines)<>'array' or jsonb_array_length(p_lines) not between 1 and s.max_lines then
    raise exception 'DSB_ORDER_INVALID: the cart must have 1 to % lines', s.max_lines;
  end if;
+
+ -- Serialise this shop's order placement (only after the cheap checks), then rate limits and replay recheck.
+ perform pg_advisory_xact_lock(hashtextextended('dsb-orders:'||s.shop_id::text,0));
+ select * into o from orders where shop_id=s.shop_id and request_id=p_request_id;
+ if found then
+   if o.token_digest<>v_digest then raise exception 'DSB_ORDER_INVALID: this order request was already used'; end if;
+   return jsonb_build_object('ref',o.public_ref,'status',o.status,'totalPaise',o.total_paise::text,
+     'expiresAt',o.reservation_expires_at,'replayed',true);
+ end if;
+ v_caller:=order_caller_digest();
+ if (select count(*) from orders where caller_digest=v_caller and created_at>clock_timestamp()-interval '10 minutes')>=10
+    or (select count(*) from orders where shop_id=s.shop_id and created_at>clock_timestamp()-interval '1 hour')>=60 then
+   raise exception 'DSB_ORDER_RATE_LIMIT: too many orders just now, please try again in a few minutes';
+ end if;
+ perform order_expire_due(s.shop_id,50);
 
  -- Price every line from the live catalog (published, active, retail price for that unit).
  create temp table if not exists _order_lines(no int,item_id uuid,item_name text,lvl smallint,unit text,qty numeric,base numeric,price bigint,total bigint) on commit drop;
@@ -386,7 +422,7 @@ begin
  select * into o from orders where id=p_order_id and tenant_id=current_tenant_id() for update;
  if not found or not c1_shop_visible(o.shop_id) then raise exception 'DSB_ORDER_NOT_FOUND: order not found'; end if;
  if o.status in ('NEW','CONFIRMED','PREPARING','READY') and o.reservation_expires_at<=clock_timestamp() then
-   perform order_expire_due(o.shop_id,200);
+   perform order_expire_one(o.id);
    return jsonb_build_object('status','CANCELLED','expired',true,
      'revision',(select revision from orders where id=o.id));
  end if;
