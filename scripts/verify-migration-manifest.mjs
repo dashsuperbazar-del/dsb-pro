@@ -67,6 +67,7 @@ export const ALLOWED_GROUPS = Object.freeze([
   'storefront',
   'publiccatalog',
   'orders',
+  'orderfulfil',
 ]);
 
 const VERSION_RE = /^[0-9]{4}$/;
@@ -257,6 +258,7 @@ const EXPECTED_IN_FLIGHT_GROUP_AND_PATH = Object.freeze({
   '0077': ['storefront', 'supabase/migrations/0077_storefront.sql'],
   '0078': ['publiccatalog', 'supabase/migrations/0078_public_catalog.sql'],
   '0079': ['orders', 'supabase/migrations/0079_orders.sql'],
+  '0080': ['orderfulfil', 'supabase/migrations/0080_order_fulfilment.sql'],
 });
 
 /**
