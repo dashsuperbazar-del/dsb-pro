@@ -46,3 +46,4 @@
 0074 offlinesupplierpay supabase/migrations/0074_offline_supplier_payments.sql
 0075 supplierbillsearch supabase/migrations/0075_supplier_bill_duplicates.sql
 0076 shopcontact supabase/migrations/0076_shop_contact.sql
+0077 storefront supabase/migrations/0077_storefront.sql

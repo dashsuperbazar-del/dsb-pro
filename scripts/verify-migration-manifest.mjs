@@ -64,6 +64,7 @@ export const ALLOWED_GROUPS = Object.freeze([
   'offlinesupplierpay',
   'supplierbillsearch',
   'shopcontact',
+  'storefront',
 ]);
 
 const VERSION_RE = /^[0-9]{4}$/;
@@ -251,6 +252,7 @@ const EXPECTED_IN_FLIGHT_GROUP_AND_PATH = Object.freeze({
   '0074': ['offlinesupplierpay', 'supabase/migrations/0074_offline_supplier_payments.sql'],
   '0075': ['supplierbillsearch', 'supabase/migrations/0075_supplier_bill_duplicates.sql'],
   '0076': ['shopcontact', 'supabase/migrations/0076_shop_contact.sql'],
+  '0077': ['storefront', 'supabase/migrations/0077_storefront.sql'],
 });
 
 /**

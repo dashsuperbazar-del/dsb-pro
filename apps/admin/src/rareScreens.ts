@@ -14,3 +14,4 @@ export { StockAdjustScreen } from './screens/StockAdjustScreen';
 export { OpeningsScreen } from './screens/OpeningsScreen';
 export { SearchScreen } from './screens/SearchScreen';
 export { AuditLogScreen } from './screens/AuditLogScreen';
+export { OnlineShopScreen } from './screens/OnlineShopScreen';

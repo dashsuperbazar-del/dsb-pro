@@ -68,6 +68,7 @@ const GROUP_ORDER = [
   'offlinesupplierpay',
   'supplierbillsearch',
   'shopcontact',
+  'storefront',
 ];
 
 /**

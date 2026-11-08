@@ -27,4 +27,5 @@ export const appRoute = {
   openings: appPath('/openings'),
   search: appPath('/search'),
   auditLog: appPath('/audit-log'),
+  onlineShop: appPath('/online-shop'),
 };
