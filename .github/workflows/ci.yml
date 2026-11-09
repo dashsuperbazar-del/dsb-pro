@@ -101,7 +101,7 @@ jobs:
         run: |
           docker ps -aq --filter 'name=supabase_' | xargs -r docker rm -f
           sudo fuser -k 54321/tcp 54322/tcp 54323/tcp 54324/tcp 54325/tcp 54326/tcp 54327/tcp 54328/tcp 54329/tcp || true
-      - run: supabase start
+      - run: scripts/supabase-start-retry.sh
       - run: supabase db reset
       - name: Generated DB types match the migrations (VF-001)
         run: |
@@ -154,11 +154,11 @@ jobs:
           bash scripts/remove-chrome-apt-source.sh
           sudo apt-get update
           sudo apt-get install -y age rclone
-          docker pull postgres:17
+          for i in 1 2 3; do docker pull postgres:17 && break; sleep $((30 * i)); done
       - name: Start source and a separate disposable target
         run: |
           set -euo pipefail
-          supabase start --exclude studio,imgproxy,inbucket,logflare,vector,supavisor
+          scripts/supabase-start-retry.sh --exclude studio,imgproxy,inbucket,logflare,vector,supavisor
           supabase db reset
           supabase status -o json > "$RUNNER_TEMP/document-source.json"
           TARGET_ROOT="$RUNNER_TEMP/document-restore-target"
@@ -174,7 +174,7 @@ jobs:
           p.write_text(s)
           PYCONFIG
           echo "DOCUMENT_TARGET_ROOT=$TARGET_ROOT" >> "$GITHUB_ENV"
-          supabase start --workdir "$TARGET_ROOT" --exclude studio,imgproxy,inbucket,logflare,vector,supavisor
+          scripts/supabase-start-retry.sh --workdir "$TARGET_ROOT" --exclude studio,imgproxy,inbucket,logflare,vector,supavisor
           supabase status --workdir "$TARGET_ROOT" -o json > "$RUNNER_TEMP/document-target.json"
       - name: Prove snapshot-bound private document backup and restore
         run: node scripts/prove-bill-document-restore.mjs "$RUNNER_TEMP/document-source.json" "$RUNNER_TEMP/document-target.json"
@@ -218,7 +218,7 @@ jobs:
           test "$(find "$PROOF_ROOT/supabase/migrations" -type f | wc -l)" -eq 29
           echo "PROOF_ROOT=$PROOF_ROOT" >> "$GITHUB_ENV"
       - name: Start the disposable Phase 5 target
-        run: supabase start --workdir "$PROOF_ROOT"
+        run: scripts/supabase-start-retry.sh --workdir "$PROOF_ROOT"
       - name: Prove the staged attended upgrade path through Batch B
         env:
           PROOF_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
@@ -1414,7 +1414,7 @@ jobs:
         run: |
           docker ps -aq --filter 'name=supabase_' | xargs -r docker rm -f
           sudo fuser -k 54321/tcp 54322/tcp 54323/tcp 54324/tcp 54325/tcp 54326/tcp 54327/tcp 54328/tcp 54329/tcp || true
-      - run: supabase start
+      - run: scripts/supabase-start-retry.sh
       - name: Export local Supabase URL/anon key
         run: |
           API_URL=$(supabase status -o env | grep '^API_URL=' | cut -d= -f2- | tr -d '"')
@@ -1665,7 +1665,7 @@ jobs:
           bash scripts/remove-chrome-apt-source.sh
           sudo apt-get update
           sudo apt-get install -y age rclone
-          docker pull postgres:17
+          for i in 1 2 3; do docker pull postgres:17 && break; sleep $((30 * i)); done
 
       - name: Configure backup destinations
         if: steps.preflight.outputs.needs_upgrade == 'true'
@@ -1941,7 +1941,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y age rclone
-          docker pull postgres:17
+          for i in 1 2 3; do docker pull postgres:17 && break; sleep $((30 * i)); done
       - name: Configure backup destinations
         if: steps.preflight.outputs.needs_upgrade == 'true'
         run: |
@@ -2315,7 +2315,7 @@ jobs:
           bash scripts/remove-chrome-apt-source.sh
           sudo apt-get update
           sudo apt-get install -y age rclone
-          docker pull postgres:17
+          for i in 1 2 3; do docker pull postgres:17 && break; sleep $((30 * i)); done
       - name: Configure verified destinations
         run: |
           mkdir -p ~/.config/rclone
@@ -2419,7 +2419,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker pull postgres:17
+          for i in 1 2 3; do docker pull postgres:17 && break; sleep $((30 * i)); done
           docker run --rm -v "$PWD:/dump" postgres:17 pg_dump --format=custom --schema=public "$BACKUP_RO_DATABASE_URL" -f /dump/phase6-portable.pgcustom
           sudo chown "$(id -u):$(id -g)" phase6-portable.pgcustom
           test "$(stat -c%s phase6-portable.pgcustom)" -ge 1000
