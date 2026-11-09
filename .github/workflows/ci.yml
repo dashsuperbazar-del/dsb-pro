@@ -50,7 +50,7 @@ jobs:
       - name: Optional apt source cleanup regression tests
         run: node --test scripts/test-remove-chrome-apt-source.mjs
       - name: Check Pages Function syntax
-        run: node --check apps/admin/functions/api/item-images.js
+        run: node --check apps/admin/functions/api/item-images.js && node --check apps/admin/functions/api/shop-image.js
 
   typecheck:
     runs-on: ubuntu-latest

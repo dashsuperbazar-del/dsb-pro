@@ -369,8 +369,10 @@ export {
   listStorefrontItems,
   saveStorefrontItems,
   saveStorefrontUpi,
+  getStorefrontExtras,
+  saveStorefrontExtras,
 } from './storefront';
-export type { StorefrontSettings, StorefrontItem } from './storefront';
+export type { StorefrontSettings, StorefrontItem, StorefrontExtras } from './storefront';
 export {
   listOnlineOrders,
   listOnlineOrderLines,
