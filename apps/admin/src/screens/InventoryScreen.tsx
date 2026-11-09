@@ -1,3 +1,4 @@
+import { confirmNewPartyName } from '../lib/partyNames';
 import { errorText } from '../lib/friendlyError';
 import { formatQuantity, purchaseBillTotals } from '@dsb-pro/core';
 import { CameraScanner } from '../components/CameraScanner';
@@ -1819,6 +1820,7 @@ export function InventoryScreen({
     }
     const form = ev.currentTarget as HTMLFormElement;
     const f = new FormData(form);
+    if (!confirmNewPartyName(String(f.get('name') ?? ''), parties)) return;
     try {
       const party = await createParty({
         tenantId,

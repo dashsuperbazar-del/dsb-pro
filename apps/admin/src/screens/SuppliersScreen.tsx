@@ -1,3 +1,4 @@
+import { confirmNewPartyName, oldestUnpaidDays } from '../lib/partyNames';
 import { errorText } from '../lib/friendlyError';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { withAccountLock } from '../lib/accountLock';
@@ -12,6 +13,7 @@ import {
   getSupplierOutstanding,
   createParty,
   getSupplierPaymentsDue,
+  getAgingReportV2,
   listPurchaseHistory,
   listSupplierAllocations,
   listSupplierBills,
@@ -92,6 +94,9 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
   // Read separately and ignored on any failure; they never change a figure or a payment.
   const [lastBill, setLastBill] = useState<Map<string, string>>(new Map());
   const [overdue, setOverdue] = useState<Map<string, number>>(new Map());
+  // Age of the oldest bill still owed per supplier (owner: bills are usually paid in 2–4 months).
+  const [unpaidAge, setUnpaidAge] = useState<Map<string, number>>(new Map());
+  const [sortOldest, setSortOldest] = useState(false);
   const [summary, setSummary] = useState<SupplierOutstandingRow[]>([]);
   const [partyId, setPartyId] = useState('');
   // The supplier on screen right now; refreshes from actions that started under another supplier are
@@ -197,11 +202,22 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
               next.set(d.partyId, Math.max(next.get(d.partyId) ?? 0, d.daysOverdue));
           setOverdue(next);
         }),
+      Promise.resolve()
+        .then(() => getAgingReportV2('supplier', shop, date))
+        .then((r) => {
+          const next = new Map<string, number>();
+          for (const a of r.accounts) {
+            const d = oldestUnpaidDays(a.details ?? []);
+            if (d !== null) next.set(a.accountId, d);
+          }
+          setUnpaidAge(next);
+        }),
     ];
     return Promise.allSettled(hints).then(() => undefined);
   }
   async function createSupplier(v: { name: string; phone: string; gstin: string }) {
     if (!tenantId) throw new Error('Shop data is still loading. Try again in a moment.');
+    if (!confirmNewPartyName(v.name, allParties)) return;
     const made = await createParty({
       tenantId,
       name: v.name,
@@ -508,10 +524,24 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
             onCreate={createSupplier}
           />
         )}
+        {unpaidAge.size > 0 && (
+          <label>
+            <input
+              type="checkbox"
+              checked={sortOldest}
+              onChange={(e) => setSortOldest(e.currentTarget.checked)}
+            />
+            Oldest unpaid first
+          </label>
+        )}
         <ul class="supplier-cards">
           {summary
             .filter((s) => s.partyName.toLowerCase().includes(supplierSearch.toLowerCase()))
+            .sort((a, b) =>
+              sortOldest ? (unpaidAge.get(b.partyId) ?? -1) - (unpaidAge.get(a.partyId) ?? -1) : 0,
+            )
             .map((s) => {
+              const age = unpaidAge.get(s.partyId);
               const net = BigInt(s.netLedgerBalance);
               const late = overdue.get(s.partyId);
               const last = lastBill.get(s.partyId);
@@ -524,6 +554,14 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
                     <button class="link" onClick={() => void changeParty(s.partyId)}>
                       {s.partyName}
                     </button>
+                    {age !== undefined && age > 0 && (
+                      <span
+                        class={`badge ${age > 120 ? 'settle-unpaid' : age > 60 ? 'settle-partial' : 'muted'}`}
+                        data-testid="supplier-unpaid-age"
+                      >
+                        Unpaid {age} day{age === 1 ? '' : 's'}
+                      </span>
+                    )}
                     {late !== undefined && (
                       <span class="badge settle-unpaid" data-testid="supplier-overdue">
                         Payment overdue · {late} day{late === 1 ? '' : 's'}
