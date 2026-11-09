@@ -11,27 +11,30 @@ export function isTypingTarget(el: Element | null): boolean {
 }
 
 /**
- * On touch phones, mark <html class="kbd-open"> while a text field has focus so the
- * fixed bottom nav and sticky Post/total bars step aside and the field stays visible.
+ * On touch phones, mark <html class="kbd-open"> only while a text field has focus AND the visible
+ * screen has really shrunk (an on-screen keyboard is up), so the fixed bottom nav and sticky
+ * Post/total bars step aside. No keyboard (desktop, hardware keyboard, tests) = nothing changes.
  */
 export function useKeyboardOpen(): void {
   useEffect(() => {
-    if (!window.matchMedia?.('(pointer: coarse)').matches) return;
+    const vv = window.visualViewport;
+    if (!vv || !window.matchMedia?.('(pointer: coarse)').matches) return;
     const root = document.documentElement;
+    let full = Math.max(window.innerHeight, vv.height);
     const sync = () => {
-      const open = isTypingTarget(document.activeElement);
-      root.classList.toggle('kbd-open', open);
-      if (open) {
-        const el = document.activeElement as HTMLElement;
-        setTimeout(() => el.scrollIntoView?.({ block: 'center' }), 250);
-      }
+      const h = vv.height;
+      const typing = isTypingTarget(document.activeElement);
+      if (!typing) full = Math.max(window.innerHeight, h);
+      root.classList.toggle('kbd-open', typing && h < full * 0.8);
     };
-    const onOut = () => setTimeout(sync, 0);
+    const later = () => setTimeout(sync, 0);
+    vv.addEventListener('resize', sync);
     document.addEventListener('focusin', sync);
-    document.addEventListener('focusout', onOut);
+    document.addEventListener('focusout', later);
     return () => {
+      vv.removeEventListener('resize', sync);
       document.removeEventListener('focusin', sync);
-      document.removeEventListener('focusout', onOut);
+      document.removeEventListener('focusout', later);
       root.classList.remove('kbd-open');
     };
   }, []);
