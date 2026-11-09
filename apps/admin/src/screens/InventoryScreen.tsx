@@ -3473,6 +3473,76 @@ export function InventoryScreen({
               </label>
             </div>
           </fieldset>
+          {purchaseEditOf && (
+            <p class="muted" data-testid="edit-photos-note">
+              Bill photos stay on the original bill.
+            </p>
+          )}
+          {draftPrefix && !purchaseEditOf && (
+            <BillAttachmentEditor
+              openByDefault
+              key={purchaseClientId}
+              scope={draftPrefix}
+              tenantId={tenantId}
+              shopId={shopId}
+              clientId={purchaseClientId}
+              documents={billDocuments}
+              deferUpload={!online}
+              deferNote="Kept on this device; uploads when the bill syncs"
+              disabled={purchaseLocked || contextBusy || !purchaseContextReady || accountChanged}
+              onProblem={(message) => {
+                if (purchaseClientRef.current === purchaseClientId) setDocumentSaveError(message);
+              }}
+              onBusy={(busy) => {
+                if (purchaseClientRef.current === purchaseClientId) setDocumentBusy(busy);
+              }}
+              beforePicker={() => {
+                if (
+                  lockedPurchase.current ||
+                  contextBusy ||
+                  documentBusy ||
+                  !purchaseContextReady ||
+                  accountChanged
+                )
+                  return false;
+                try {
+                  const notice =
+                    'Document selection needs review. Select the file again, or explicitly continue with the current attachment.';
+                  savePurchaseDraft(draftPrefix, draftWriter.current, {
+                    ...draftSnapshot,
+                    documentIssue: notice,
+                    savedAt: Date.now(),
+                  });
+                  setDocumentSaveError(notice);
+                  return true;
+                } catch (e) {
+                  setDocumentSaveError(
+                    `Draft could not be kept before opening the picker: ${errorText(e)}`,
+                  );
+                  return false;
+                }
+              }}
+              onChange={(docs) => {
+                if (purchaseClientRef.current !== purchaseClientId || lockedPurchase.current)
+                  return;
+                try {
+                  savePurchaseDraft(draftPrefix, draftWriter.current, {
+                    ...draftSnapshot,
+                    document: docs[0] ?? null,
+                    documents: docs,
+                    documentIssue: '',
+                    savedAt: Date.now(),
+                  });
+                  setBillDocuments(docs);
+                  setDraftTouched(true);
+                  setDocumentSaveError('');
+                } catch (e) {
+                  setDocumentSaveError(errorText(e));
+                  throw e;
+                }
+              }}
+            />
+          )}
           {purchaseOnly && purchaseSupplier && usual && usual.key === usualKey && (
             <UsualItems
               key={usual.key}
@@ -3687,78 +3757,6 @@ export function InventoryScreen({
                   </small>
                 </label>
               </fieldset>
-              {purchaseEditOf && (
-                <p class="muted" data-testid="edit-photos-note">
-                  Bill photos stay on the original bill.
-                </p>
-              )}
-              {draftPrefix && !purchaseEditOf && (
-                <BillAttachmentEditor
-                  key={purchaseClientId}
-                  scope={draftPrefix}
-                  tenantId={tenantId}
-                  shopId={shopId}
-                  clientId={purchaseClientId}
-                  documents={billDocuments}
-                  deferUpload={!online}
-                  deferNote="Kept on this device; uploads when the bill syncs"
-                  disabled={
-                    purchaseLocked || contextBusy || !purchaseContextReady || accountChanged
-                  }
-                  onProblem={(message) => {
-                    if (purchaseClientRef.current === purchaseClientId)
-                      setDocumentSaveError(message);
-                  }}
-                  onBusy={(busy) => {
-                    if (purchaseClientRef.current === purchaseClientId) setDocumentBusy(busy);
-                  }}
-                  beforePicker={() => {
-                    if (
-                      lockedPurchase.current ||
-                      contextBusy ||
-                      documentBusy ||
-                      !purchaseContextReady ||
-                      accountChanged
-                    )
-                      return false;
-                    try {
-                      const notice =
-                        'Document selection needs review. Select the file again, or explicitly continue with the current attachment.';
-                      savePurchaseDraft(draftPrefix, draftWriter.current, {
-                        ...draftSnapshot,
-                        documentIssue: notice,
-                        savedAt: Date.now(),
-                      });
-                      setDocumentSaveError(notice);
-                      return true;
-                    } catch (e) {
-                      setDocumentSaveError(
-                        `Draft could not be kept before opening the picker: ${errorText(e)}`,
-                      );
-                      return false;
-                    }
-                  }}
-                  onChange={(docs) => {
-                    if (purchaseClientRef.current !== purchaseClientId || lockedPurchase.current)
-                      return;
-                    try {
-                      savePurchaseDraft(draftPrefix, draftWriter.current, {
-                        ...draftSnapshot,
-                        document: docs[0] ?? null,
-                        documents: docs,
-                        documentIssue: '',
-                        savedAt: Date.now(),
-                      });
-                      setBillDocuments(docs);
-                      setDraftTouched(true);
-                      setDocumentSaveError('');
-                    } catch (e) {
-                      setDocumentSaveError(errorText(e));
-                      throw e;
-                    }
-                  }}
-                />
-              )}
             </div>
           </div>
           {documentSaveError && (

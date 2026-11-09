@@ -37,7 +37,7 @@ const api = vi.hoisted(() => ({
   REMARK_MAX_LENGTH: 300,
 }));
 vi.mock('@dsb-pro/adapters', () => api);
-vi.mock('./InventoryScreen', () => ({
+vi.mock('../workScreens', () => ({
   InventoryScreen: ({ onPurchasePosted }: { onPurchasePosted: () => void }) => (
     <button onClick={onPurchasePosted}>Post fixture purchase</button>
   ),

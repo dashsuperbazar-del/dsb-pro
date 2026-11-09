@@ -125,3 +125,38 @@ export async function expireDueOnlineOrders(shopId: string): Promise<number> {
   if (error) throw fail(error);
   return Number(data ?? 0);
 }
+
+/** Light read for staff alerts: open orders with their status and hold expiry only. */
+export async function openOrderPulse(
+  shopId: string,
+): Promise<{ id: string; status: OrderStatus; expiresAt: string }[]> {
+  const { data, error } = await getSupabaseClient()
+    .from('orders')
+    .select('id,status,reservation_expires_at')
+    .eq('shop_id', shopId)
+    .in('status', ['NEW', 'CONFIRMED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY'])
+    .limit(200);
+  if (error) throw fail(error);
+  return ((data ?? []) as Row[]).map((r) => ({
+    id: String(r.id),
+    status: r.status as OrderStatus,
+    expiresAt: String(r.reservation_expires_at),
+  }));
+}
+
+/** Reduce or remove lines of an open order (never increase). Each change needs a reason. */
+export async function adjustOnlineOrder(
+  orderId: string,
+  revision: number,
+  changes: { lineNo: number; qty: string }[],
+  reason: string,
+): Promise<{ status: OrderStatus; totalPaise: string }> {
+  const { data, error } = await getSupabaseClient().rpc('adjust_order', {
+    p_order_id: orderId,
+    p_revision: revision,
+    p_changes: changes,
+    p_reason: reason,
+  });
+  if (error) throw fail(error);
+  return data as unknown as { status: OrderStatus; totalPaise: string };
+}

@@ -8,7 +8,7 @@
 //             (entry script, modulepreloads, stylesheets): <= 260 KiB, the
 //             ratified ceiling, now applied to what blocks the first paint;
 //   total   — every emitted JS/CSS file, which the service worker also
-//             downloads once at install (dist/precache.json): <= 310 KiB (raised from 300 on 9 Nov 2026 for the on-demand online-shop + orders screens; the initial 260 KiB gate is unchanged).
+//             downloads once at install (dist/precache.json): <= 330 KiB (300 → 310 → 330 on 9 Nov 2026: on-demand online-shop/orders screens and the workScreens split; the initial gate was LOWERED to 220 KiB the same day).
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { dirname, join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,8 +16,8 @@ import { gzipSync } from 'node:zlib';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const assets = join(root, 'apps', 'admin', 'dist', 'assets');
-const LIMIT = 260 * 1024; // initial, 260 KiB (plan §12 was 250 KiB; see header)
-const TOTAL_LIMIT = 310 * 1024; // every JS/CSS file (precached at install)
+const LIMIT = 220 * 1024; // initial, 220 KiB (lowered from 260 on 9 Nov 2026 after Inventory/Suppliers moved to the workScreens chunk)
+const TOTAL_LIMIT = 330 * 1024; // every JS/CSS file (precached at install)
 
 if (!existsSync(assets)) {
   console.error(`check-bundle-size: ${assets} does not exist — run the build first.`);

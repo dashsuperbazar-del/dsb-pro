@@ -74,6 +74,7 @@ const GROUP_ORDER = [
   'orderfulfil',
   'storefrontupi',
   'storefrontux',
+  'orderadjust',
 ];
 
 /**

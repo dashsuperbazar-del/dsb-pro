@@ -8,15 +8,14 @@ import { SignupScreen } from './screens/SignupScreen';
 import { NoTenantScreen } from './screens/NoTenantScreen';
 import { JoinInviteScreen } from './screens/JoinInviteScreen';
 import { PurchasesScreen } from './screens/PurchasesScreen';
-import { InventoryScreen } from './screens/InventoryScreen';
 import { PosScreen } from './screens/PosScreen';
-import { SuppliersScreen } from './screens/SuppliersScreen';
 import { DayBookTile } from './components/DayBookTile';
 import { AttentionTile } from './components/AttentionTile';
 import { OpenRemarksTile } from './components/OpenRemarksTile';
 import { QuickEntry } from './components/QuickEntry';
 import { HomeRow } from './components/HomeRow';
 import { BottomNav } from './components/BottomNav';
+import { useOrderAlerts } from './lib/orderAlerts';
 import { t } from './lib/i18n';
 import { VerificationBanner } from './components/VerificationBanner';
 import { MoreScreen } from './screens/MoreScreen';
@@ -30,6 +29,8 @@ import { appRoute } from './lib/paths';
 import { lazyScreen } from './lib/lazyScreen';
 
 // Rarely used screens load on demand (D2 bundle room); the service worker precaches their chunks.
+const InventoryScreen = lazyScreen(() => import('./workScreens').then((m) => m.InventoryScreen));
+const SuppliersScreen = lazyScreen(() => import('./workScreens').then((m) => m.SuppliersScreen));
 const TeamScreen = lazyScreen(() => import('./rareScreens').then((m) => m.TeamScreen));
 const DevicesScreen = lazyScreen(() => import('./rareScreens').then((m) => m.DevicesScreen));
 const CustomersScreen = lazyScreen(() => import('./rareScreens').then((m) => m.CustomersScreen));
@@ -91,9 +92,16 @@ export function App() {
     if (!active) return;
     const idle = (cb: () => void) =>
       'requestIdleCallback' in window ? window.requestIdleCallback(cb) : setTimeout(cb, 1500);
-    idle(() => void import('./rareScreens').catch(() => undefined));
+    idle(() => {
+      void import('./workScreens').catch(() => undefined);
+      void import('./rareScreens').catch(() => undefined);
+    });
   }, [active]);
   const testMode = import.meta.env.VITE_TEST_MODE === 'phase4-shop-test';
+  const orderPulse = useOrderAlerts(
+    session.status === 'active' &&
+      ['owner', 'manager', 'cashier'].includes(session.membership.role),
+  );
   return (
     <>
       <SyncRuntime session={session} />
@@ -114,6 +122,20 @@ export function App() {
           </a>
         )}
       </header>
+      {(orderPulse.fresh > 0 || orderPulse.expiring > 0) && currentPath !== appRoute.orders && (
+        <a
+          class="order-alert no-print"
+          href={appRoute.orders}
+          role="status"
+          data-testid="order-alert"
+        >
+          {orderPulse.fresh > 0 &&
+            `${orderPulse.fresh} new online order${orderPulse.fresh === 1 ? '' : 's'}`}
+          {orderPulse.fresh > 0 && orderPulse.expiring > 0 && ' · '}
+          {orderPulse.expiring > 0 && `${orderPulse.expiring} expiring in 10 min`}
+          <strong> View ›</strong>
+        </a>
+      )}
       {testMode && (
         <div class="shop-test-banner" role="status">
           <strong>PHASE 4 SHOP TEST</strong> — Use legacy DSB as the official record today. Enter
@@ -179,7 +201,11 @@ export function App() {
         />
       </Router>
       {session.status === 'active' && (
-        <BottomNav role={session.membership.role} currentPath={currentPath} />
+        <BottomNav
+          role={session.membership.role}
+          currentPath={currentPath}
+          moreBadge={orderPulse.open}
+        />
       )}
     </>
   );
