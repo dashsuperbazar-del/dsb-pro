@@ -17,6 +17,7 @@ import { OpenRemarksTile } from './components/OpenRemarksTile';
 import { QuickEntry } from './components/QuickEntry';
 import { HomeRow } from './components/HomeRow';
 import { BottomNav } from './components/BottomNav';
+import { useOrderAlerts } from './lib/orderAlerts';
 import { t } from './lib/i18n';
 import { VerificationBanner } from './components/VerificationBanner';
 import { MoreScreen } from './screens/MoreScreen';
@@ -94,6 +95,10 @@ export function App() {
     idle(() => void import('./rareScreens').catch(() => undefined));
   }, [active]);
   const testMode = import.meta.env.VITE_TEST_MODE === 'phase4-shop-test';
+  const orderPulse = useOrderAlerts(
+    session.status === 'active' &&
+      ['owner', 'manager', 'cashier'].includes(session.membership.role),
+  );
   return (
     <>
       <SyncRuntime session={session} />
@@ -114,6 +119,20 @@ export function App() {
           </a>
         )}
       </header>
+      {(orderPulse.fresh > 0 || orderPulse.expiring > 0) && currentPath !== appRoute.orders && (
+        <a
+          class="order-alert no-print"
+          href={appRoute.orders}
+          role="status"
+          data-testid="order-alert"
+        >
+          {orderPulse.fresh > 0 &&
+            `${orderPulse.fresh} new online order${orderPulse.fresh === 1 ? '' : 's'}`}
+          {orderPulse.fresh > 0 && orderPulse.expiring > 0 && ' · '}
+          {orderPulse.expiring > 0 && `${orderPulse.expiring} expiring in 10 min`}
+          <strong> View ›</strong>
+        </a>
+      )}
       {testMode && (
         <div class="shop-test-banner" role="status">
           <strong>PHASE 4 SHOP TEST</strong> — Use legacy DSB as the official record today. Enter
@@ -179,7 +198,11 @@ export function App() {
         />
       </Router>
       {session.status === 'active' && (
-        <BottomNav role={session.membership.role} currentPath={currentPath} />
+        <BottomNav
+          role={session.membership.role}
+          currentPath={currentPath}
+          moreBadge={orderPulse.open}
+        />
       )}
     </>
   );

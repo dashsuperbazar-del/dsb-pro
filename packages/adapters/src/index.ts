@@ -379,5 +379,6 @@ export {
   setOnlineOrderStatus,
   fulfilOnlineOrder,
   expireDueOnlineOrders,
+  openOrderPulse,
 } from './orders';
 export type { OnlineOrder, OnlineOrderLine, OrderStatus } from './orders';
