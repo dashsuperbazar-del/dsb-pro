@@ -7,14 +7,18 @@ const SLUG = /^[a-z0-9-]{3,40}$/;
 function plain(message, status) {
   return new Response(message, {
     status,
-    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=300' },
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'public, max-age=300',
+    },
   });
 }
 
 export async function onRequest(context) {
   const { request, env } = context;
   if (request.method !== 'GET') return plain('Method not allowed.', 405);
-  if (!env.ITEM_IMAGES || !env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return plain('Not configured.', 503);
+  if (!env.ITEM_IMAGES || !env.SUPABASE_URL || !env.SUPABASE_ANON_KEY)
+    return plain('Not configured.', 503);
   const url = new URL(request.url);
   const shop = (url.searchParams.get('shop') || '').toLowerCase();
   const item = (url.searchParams.get('item') || '').toLowerCase();
@@ -30,7 +34,8 @@ export async function onRequest(context) {
   }).catch(() => null);
   if (!r || !r.ok) return plain('Not found.', 404);
   const path = await r.json().catch(() => null);
-  if (typeof path !== 'string' || !path || path.includes('..') || !path.includes('/items/')) return plain('Not found.', 404);
+  if (typeof path !== 'string' || !path || path.includes('..') || !path.includes('/items/'))
+    return plain('Not found.', 404);
   const object = await env.ITEM_IMAGES.get(path);
   if (!object) return plain('Not found.', 404);
   const headers = new Headers();
