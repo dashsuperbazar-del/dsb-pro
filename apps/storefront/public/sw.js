@@ -1,3 +1,4 @@
+/* global self, caches, fetch, location, URL */
 // Online shop service worker: caches the app shell only. API calls (prices, stock, orders) always go to the network.
 const CACHE = 'dsb-shop-v1';
 self.addEventListener('install', (e) => {
