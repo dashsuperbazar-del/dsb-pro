@@ -16,6 +16,7 @@ import { QuickEntry } from './components/QuickEntry';
 import { HomeRow } from './components/HomeRow';
 import { BottomNav } from './components/BottomNav';
 import { useOrderAlerts } from './lib/orderAlerts';
+import { useKeyboardOpen } from './lib/keyboardOpen';
 import { t } from './lib/i18n';
 import { VerificationBanner } from './components/VerificationBanner';
 import { MoreScreen } from './screens/MoreScreen';
@@ -81,6 +82,7 @@ function NotFound() {
 }
 
 export function App() {
+  useKeyboardOpen();
   const session = useSession();
   useEffect(() => {
     applyTheme(readTheme());

@@ -2885,3 +2885,15 @@ kbd {
   width: 72px;
   min-height: 40px;
 }
+
+/* Phone keyboard open (lib/keyboardOpen.ts): give the screen back to the field being typed in. */
+.kbd-open {
+  --bottom-clear: 0px;
+}
+.kbd-open .bottom-nav {
+  display: none;
+}
+.kbd-open .bill-bar,
+.kbd-open .checkout-actions {
+  position: static;
+}
