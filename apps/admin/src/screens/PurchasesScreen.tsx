@@ -18,7 +18,9 @@ import {
   type PurchaseRecord,
 } from '@dsb-pro/adapters';
 import { BillDocumentPreview } from '../components/BillDocumentPreview';
-import { InventoryScreen } from './InventoryScreen';
+import { lazyScreen } from '../lib/lazyScreen';
+
+const InventoryScreen = lazyScreen(() => import('../workScreens').then((m) => m.InventoryScreen));
 import { shopContext } from '../lib/shopContext';
 import { getOfflineRuntimeIdentity, waitForOfflineRuntime } from '../lib/offlineSync';
 import { appRoute } from '../lib/paths';

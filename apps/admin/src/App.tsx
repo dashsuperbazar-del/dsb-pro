@@ -8,9 +8,7 @@ import { SignupScreen } from './screens/SignupScreen';
 import { NoTenantScreen } from './screens/NoTenantScreen';
 import { JoinInviteScreen } from './screens/JoinInviteScreen';
 import { PurchasesScreen } from './screens/PurchasesScreen';
-import { InventoryScreen } from './screens/InventoryScreen';
 import { PosScreen } from './screens/PosScreen';
-import { SuppliersScreen } from './screens/SuppliersScreen';
 import { DayBookTile } from './components/DayBookTile';
 import { AttentionTile } from './components/AttentionTile';
 import { OpenRemarksTile } from './components/OpenRemarksTile';
@@ -31,6 +29,8 @@ import { appRoute } from './lib/paths';
 import { lazyScreen } from './lib/lazyScreen';
 
 // Rarely used screens load on demand (D2 bundle room); the service worker precaches their chunks.
+const InventoryScreen = lazyScreen(() => import('./workScreens').then((m) => m.InventoryScreen));
+const SuppliersScreen = lazyScreen(() => import('./workScreens').then((m) => m.SuppliersScreen));
 const TeamScreen = lazyScreen(() => import('./rareScreens').then((m) => m.TeamScreen));
 const DevicesScreen = lazyScreen(() => import('./rareScreens').then((m) => m.DevicesScreen));
 const CustomersScreen = lazyScreen(() => import('./rareScreens').then((m) => m.CustomersScreen));
@@ -92,7 +92,10 @@ export function App() {
     if (!active) return;
     const idle = (cb: () => void) =>
       'requestIdleCallback' in window ? window.requestIdleCallback(cb) : setTimeout(cb, 1500);
-    idle(() => void import('./rareScreens').catch(() => undefined));
+    idle(() => {
+      void import('./workScreens').catch(() => undefined);
+      void import('./rareScreens').catch(() => undefined);
+    });
   }, [active]);
   const testMode = import.meta.env.VITE_TEST_MODE === 'phase4-shop-test';
   const orderPulse = useOrderAlerts(
