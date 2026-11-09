@@ -38,7 +38,7 @@ select set_config('e80.o',(select id::text from orders where request_id='b000000
 
 set role authenticated;
 select pg_temp.act('e8000000-0000-0000-0000-000000000003');
-select throws_like($$ select fulfil_order(pg_temp.id('o'),1,'[{"mode":"cash","amount_paise":23000}]') $$,'%only a READY order%','a NEW order cannot be handed over');
+select throws_like($$ select fulfil_order(pg_temp.id('o'),1,'[{"mode":"cash","amount_paise":23000}]') $$,'%only a READY%','a NEW order cannot be handed over');
 select set_order_status(pg_temp.id('o'),'CONFIRMED',1);
 select set_order_status(pg_temp.id('o'),'PREPARING',2);
 select set_order_status(pg_temp.id('o'),'READY',3);

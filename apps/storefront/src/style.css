@@ -269,3 +269,265 @@ footer {
 a.button.wide {
   display: block;
 }
+.banner {
+  background: var(--ok-bg);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+.secttl {
+  font-size: 17px;
+  margin: 16px 0 8px;
+}
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 8px;
+}
+.tile {
+  min-height: 64px;
+  border: 0;
+  border-radius: 12px;
+  color: #fff;
+  font-weight: 700;
+  padding: 8px;
+  text-align: left;
+}
+.shelf {
+  margin-top: 18px;
+}
+.shelfhead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.shelfhead h2 {
+  font-size: 17px;
+  margin: 0 0 8px;
+}
+.rail {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(150px, 46%);
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scroll-snap-type: x proximity;
+}
+.rail .card {
+  scroll-snap-align: start;
+}
+@media (min-width: 700px) {
+  .rail {
+    grid-auto-columns: 200px;
+  }
+}
+.card.out {
+  opacity: 0.65;
+}
+.cardopen {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  min-height: 0;
+  color: inherit;
+}
+.thumb {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 10px;
+  background: var(--line);
+}
+.thumb.ph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 800;
+  font-size: 28px;
+}
+.thumb.big {
+  max-height: 260px;
+}
+.add {
+  width: 100%;
+}
+.stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--green);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.stepper button {
+  border: 0;
+  border-radius: 0;
+  background: var(--green);
+  color: #fff;
+  min-width: 44px;
+  font-size: 20px;
+}
+.stepper span {
+  flex: 1;
+  text-align: center;
+  font-weight: 700;
+}
+.link {
+  background: none;
+  border: 0;
+  color: var(--green);
+  padding: 0;
+  min-height: 32px;
+  font-weight: 600;
+}
+.crumb {
+  margin: 10px 0;
+}
+.cartbar {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--green);
+  color: #fff;
+  text-decoration: none;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  z-index: 3;
+}
+body {
+  padding-bottom: 84px;
+}
+.sheetwrap {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 5;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.sheet {
+  background: var(--card);
+  width: 100%;
+  max-width: 560px;
+  max-height: 90vh;
+  overflow: auto;
+  border-radius: 16px 16px 0 0;
+  padding: 16px;
+  position: relative;
+}
+.close {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  min-width: 44px;
+  font-size: 22px;
+}
+.okmark {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--green);
+  color: #fff;
+  font-size: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 12px 0 0;
+}
+.steps {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+}
+.steps li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  color: var(--muted);
+}
+.steps .dot {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+.steps li.done,
+.steps li.now {
+  color: var(--ink);
+}
+.steps li.done .dot {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+.steps li.now {
+  font-weight: 700;
+}
+.steps li.now .dot {
+  border-color: var(--green);
+  color: var(--green);
+}
+.sdot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--line);
+  margin-right: 6px;
+}
+.sdot.live {
+  background: var(--green);
+}
+.pill {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+.pill.on {
+  background: var(--ok-bg);
+  color: var(--green);
+}
+.pill.off {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+.sk {
+  background: linear-gradient(90deg, var(--line), var(--card), var(--line));
+  background-size: 200% 100%;
+  animation: sk 1.2s infinite;
+}
+.sk-bar {
+  height: 44px;
+  border-radius: 10px;
+  margin-bottom: 12px;
+}
+@keyframes sk {
+  to {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sk {
+    animation: none;
+  }
+}

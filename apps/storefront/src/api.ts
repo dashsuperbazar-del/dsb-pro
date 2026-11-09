@@ -11,6 +11,7 @@ export type Product = {
   description: string | null;
   units: Unit[];
   inStock: boolean;
+  hasImage?: boolean;
 };
 export type Shop = {
   slug: string;
@@ -28,6 +29,13 @@ export type Shop = {
   maxLines: number;
   upiId: string | null;
   upiName: string | null;
+  minDeliveryPaise?: string;
+  open?: boolean;
+  closedMessage?: string | null;
+  banner?: string | null;
+  address?: string | null;
+  mapUrl?: string | null;
+  licence?: string | null;
 };
 export type OrderStatus = {
   ref: string;
@@ -124,3 +132,12 @@ export const rupees = (paise: string | number) => {
   const a = neg ? -n : n;
   return `${neg ? '−' : ''}₹${(a / 100n).toLocaleString('en-IN')}.${String(a % 100n).padStart(2, '0')}`;
 };
+export const findOrder = (slug: string, phone: string, ref: string) =>
+  rpc<OrderStatus | null>('find_order', { p_slug: slug, p_phone: phone, p_ref: ref });
+
+/** Public photo of a published item (served by the shop app's image endpoint). */
+const IMG_BASE = (
+  (import.meta.env.VITE_SHOP_IMAGE_BASE as string | undefined) || 'https://dsb-pro.pages.dev'
+).replace(/\/$/, '');
+export const imageUrl = (slug: string, itemId: string) =>
+  `${IMG_BASE}/api/shop-image?shop=${encodeURIComponent(slug)}&item=${encodeURIComponent(itemId)}`;

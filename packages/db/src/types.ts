@@ -3515,7 +3515,9 @@ export type Database = {
       }
       storefront_settings: {
         Row: {
+          banner_text: string | null
           client_id: string
+          closed_message: string | null
           created_at: string
           created_by: string
           deleted_at: number | null
@@ -3527,14 +3529,19 @@ export type Database = {
           enabled: boolean
           free_delivery_above_paise: number | null
           id: string
+          licence_line: string | null
+          map_url: string | null
           max_lines: number
+          min_delivery_paise: number | null
           min_order_paise: number
           order_hours: string | null
           pickup_enabled: boolean
           pickup_note: string | null
           public_contact: string | null
           reservation_minutes: number
+          shop_address: string | null
           shop_id: string
+          shop_open: boolean
           slug: string
           tenant_id: string
           updated_at: number
@@ -3542,7 +3549,9 @@ export type Database = {
           upi_name: string | null
         }
         Insert: {
+          banner_text?: string | null
           client_id: string
+          closed_message?: string | null
           created_at?: string
           created_by?: string
           deleted_at?: number | null
@@ -3554,14 +3563,19 @@ export type Database = {
           enabled?: boolean
           free_delivery_above_paise?: number | null
           id?: string
+          licence_line?: string | null
+          map_url?: string | null
           max_lines?: number
+          min_delivery_paise?: number | null
           min_order_paise?: number
           order_hours?: string | null
           pickup_enabled?: boolean
           pickup_note?: string | null
           public_contact?: string | null
           reservation_minutes?: number
+          shop_address?: string | null
           shop_id: string
+          shop_open?: boolean
           slug: string
           tenant_id: string
           updated_at?: number
@@ -3569,7 +3583,9 @@ export type Database = {
           upi_name?: string | null
         }
         Update: {
+          banner_text?: string | null
           client_id?: string
+          closed_message?: string | null
           created_at?: string
           created_by?: string
           deleted_at?: number | null
@@ -3581,14 +3597,19 @@ export type Database = {
           enabled?: boolean
           free_delivery_above_paise?: number | null
           id?: string
+          licence_line?: string | null
+          map_url?: string | null
           max_lines?: number
+          min_delivery_paise?: number | null
           min_order_paise?: number
           order_hours?: string | null
           pickup_enabled?: boolean
           pickup_note?: string | null
           public_contact?: string | null
           reservation_minutes?: number
+          shop_address?: string | null
           shop_id?: string
+          shop_open?: boolean
           slug?: string
           tenant_id?: string
           updated_at?: number
@@ -4340,6 +4361,10 @@ export type Database = {
           total_paise: number
         }[]
       }
+      find_order: {
+        Args: { p_phone: string; p_ref: string; p_slug: string }
+        Returns: Json
+      }
       find_supplier_bill_duplicates: {
         Args: {
           p_bill_no: string
@@ -4914,6 +4939,10 @@ export type Database = {
         Returns: Json
       }
       public_catalog_categories: { Args: { p_slug: string }; Returns: Json }
+      public_item_image_path: {
+        Args: { p_item: string; p_slug: string }
+        Returns: string
+      }
       public_order_status: {
         Args: { p_ref: string; p_token: string }
         Returns: Json
@@ -5031,6 +5060,10 @@ export type Database = {
         }
         Returns: Json
       }
+      set_storefront_extras: {
+        Args: { p_extras: Json; p_shop_id: string }
+        Returns: undefined
+      }
       set_storefront_items: {
         Args: { p_client_id: string; p_items: Json; p_shop_id: string }
         Returns: number
@@ -5110,7 +5143,9 @@ export type Database = {
       storefront_public_shop: {
         Args: { p_slug: string }
         Returns: {
+          banner_text: string | null
           client_id: string
+          closed_message: string | null
           created_at: string
           created_by: string
           deleted_at: number | null
@@ -5122,14 +5157,19 @@ export type Database = {
           enabled: boolean
           free_delivery_above_paise: number | null
           id: string
+          licence_line: string | null
+          map_url: string | null
           max_lines: number
+          min_delivery_paise: number | null
           min_order_paise: number
           order_hours: string | null
           pickup_enabled: boolean
           pickup_note: string | null
           public_contact: string | null
           reservation_minutes: number
+          shop_address: string | null
           shop_id: string
+          shop_open: boolean
           slug: string
           tenant_id: string
           updated_at: number

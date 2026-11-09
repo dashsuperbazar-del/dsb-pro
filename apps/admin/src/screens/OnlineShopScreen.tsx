@@ -8,6 +8,9 @@ import {
   saveStorefrontItems,
   saveStorefrontSettings,
   saveStorefrontUpi,
+  getStorefrontExtras,
+  saveStorefrontExtras,
+  type StorefrontExtras,
   type Item,
   type StorefrontSettings,
 } from '@dsb-pro/adapters';
@@ -54,6 +57,16 @@ export function OnlineShopScreen() {
   const [published, setPublished] = useState<Map<string, boolean>>(new Map());
   const [changed, setChanged] = useState<Set<string>>(new Set());
   const [find, setFind] = useState('');
+  const [x, setX] = useState<StorefrontExtras>({
+    shopOpen: true,
+    closedMessage: null,
+    bannerText: null,
+    shopAddress: null,
+    mapUrl: null,
+    licenceLine: null,
+    minDeliveryPaise: null,
+  });
+  const [minDel, setMinDel] = useState('');
   const [upiId, setUpiId] = useState('');
   const [upiName, setUpiName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -78,6 +91,11 @@ export function OnlineShopScreen() {
         setFreeAbove(money(v.freeDeliveryAbovePaise));
         setSlots(v.deliverySlots.join('\n'));
         setUpiId(v.upiId ?? '');
+        const ex = cfg ? await getStorefrontExtras(shop).catch(() => null) : null;
+        if (ex) {
+          setX(ex);
+          setMinDel(ex.minDeliveryPaise === null ? '' : money(ex.minDeliveryPaise));
+        }
         setUpiName(v.upiName ?? '');
         setItems(list);
         setPublished(new Map(pub.map((p) => [p.itemId, p.published])));
@@ -130,6 +148,33 @@ export function OnlineShopScreen() {
       setBusy(false);
     }
   }
+
+  async function saveExtras(ev: Event) {
+    ev.preventDefault();
+    setError('');
+    setMsg('');
+    const md = minDel.trim() ? rupeesTextToPaise(minDel) : null;
+    if (minDel.trim() && md === null)
+      return setError('Enter the delivery minimum in rupees, like 300.');
+    setBusy(true);
+    try {
+      await saveStorefrontExtras(shopId, {
+        ...x,
+        minDeliveryPaise: md === null ? null : Number(md),
+      });
+      setMsg(
+        x.shopOpen
+          ? 'Shop page saved.'
+          : 'Shop page saved. The shop is CLOSED: customers can look but not order.',
+      );
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  const sx = <K extends keyof StorefrontExtras>(k: K, v: StorefrontExtras[K]) =>
+    setX((o) => ({ ...o, [k]: v }));
 
   async function saveUpi(ev: Event) {
     ev.preventDefault();
@@ -348,6 +393,80 @@ export function OnlineShopScreen() {
         <button type="submit" class="primary" disabled={ro || !shopId}>
           Save online shop settings
         </button>
+      </form>
+
+      <form onSubmit={saveExtras} class="settings-form" data-testid="online-extras">
+        <fieldset disabled={ro}>
+          <legend>Shop page</legend>
+          <label>
+            <input
+              type="checkbox"
+              checked={x.shopOpen}
+              onChange={(e) => sx('shopOpen', (e.currentTarget as HTMLInputElement).checked)}
+            />{' '}
+            Taking orders now (untick to close for a while; customers can still look)
+          </label>
+          <label>
+            Message when closed{' '}
+            <input
+              maxLength={200}
+              value={x.closedMessage ?? ''}
+              placeholder="Back at 4 pm"
+              onInput={(e) =>
+                sx('closedMessage', (e.currentTarget as HTMLInputElement).value || null)
+              }
+            />
+          </label>
+          <label>
+            Banner at the top of the shop{' '}
+            <input
+              maxLength={200}
+              value={x.bannerText ?? ''}
+              placeholder="Diwali offers on dry fruits"
+              onInput={(e) => sx('bannerText', (e.currentTarget as HTMLInputElement).value || null)}
+            />
+          </label>
+          <label>
+            Shop address{' '}
+            <input
+              maxLength={300}
+              value={x.shopAddress ?? ''}
+              onInput={(e) =>
+                sx('shopAddress', (e.currentTarget as HTMLInputElement).value || null)
+              }
+            />
+          </label>
+          <label>
+            Map link (https://…){' '}
+            <input
+              maxLength={500}
+              value={x.mapUrl ?? ''}
+              placeholder="https://maps.app.goo.gl/…"
+              onInput={(e) => sx('mapUrl', (e.currentTarget as HTMLInputElement).value || null)}
+            />
+          </label>
+          <label>
+            Licence line (e.g. FSSAI){' '}
+            <input
+              maxLength={120}
+              value={x.licenceLine ?? ''}
+              onInput={(e) =>
+                sx('licenceLine', (e.currentTarget as HTMLInputElement).value || null)
+              }
+            />
+          </label>
+          <label>
+            Minimum order for delivery ₹ (blank = same as pickup){' '}
+            <input
+              inputMode="decimal"
+              value={minDel}
+              onInput={(e) => setMinDel((e.currentTarget as HTMLInputElement).value)}
+            />
+          </label>
+          <button type="submit" disabled={ro || !shopId}>
+            Save shop page
+          </button>
+        </fieldset>
       </form>
 
       <form onSubmit={saveUpi} class="settings-form" data-testid="online-upi">

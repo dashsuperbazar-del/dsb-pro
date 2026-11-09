@@ -23,6 +23,16 @@ export type StorefrontSettings = {
   upiId?: string | null;
   upiName?: string | null;
 };
+/** Shop page extras (mig 0082), saved with saveStorefrontExtras. */
+export type StorefrontExtras = {
+  shopOpen: boolean;
+  closedMessage: string | null;
+  bannerText: string | null;
+  shopAddress: string | null;
+  mapUrl: string | null;
+  licenceLine: string | null;
+  minDeliveryPaise: number | null;
+};
 export type StorefrontItem = { itemId: string; published: boolean; description: string | null };
 
 const fail = (error: unknown) =>
@@ -152,6 +162,36 @@ export async function saveStorefrontUpi(
     p_shop_id: shopId,
     p_upi_id: upiId,
     p_upi_name: upiName,
+  });
+  if (error) throw fail(error);
+}
+
+export async function getStorefrontExtras(shopId: string): Promise<StorefrontExtras | null> {
+  const { data, error } = await getSupabaseClient()
+    .from('storefront_settings')
+    .select(
+      'shop_open,closed_message,banner_text,shop_address,map_url,licence_line,min_delivery_paise',
+    )
+    .eq('shop_id', shopId)
+    .maybeSingle();
+  if (error) throw fail(error);
+  if (!data) return null;
+  const r = data as Record<string, unknown>;
+  return {
+    shopOpen: r.shop_open !== false,
+    closedMessage: (r.closed_message as string | null) ?? null,
+    bannerText: (r.banner_text as string | null) ?? null,
+    shopAddress: (r.shop_address as string | null) ?? null,
+    mapUrl: (r.map_url as string | null) ?? null,
+    licenceLine: (r.licence_line as string | null) ?? null,
+    minDeliveryPaise: r.min_delivery_paise == null ? null : Number(r.min_delivery_paise),
+  };
+}
+
+export async function saveStorefrontExtras(shopId: string, e: StorefrontExtras): Promise<void> {
+  const { error } = await getSupabaseClient().rpc('set_storefront_extras', {
+    p_shop_id: shopId,
+    p_extras: e as unknown as Json,
   });
   if (error) throw fail(error);
 }

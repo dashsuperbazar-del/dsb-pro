@@ -13,7 +13,21 @@ export type Pending = {
   token: string;
   payload: Record<string, unknown>;
 };
-export type MyOrder = { ref: string; token: string; placedAt: string };
+export type MyOrder = {
+  ref: string;
+  token: string;
+  placedAt: string;
+  /** Lines as ordered, for "Order again" and "Buy it again" (prices are re-checked by the server). */
+  lines?: CartLine[];
+  /** Last status seen, for the dot in My orders. */
+  status?: string;
+};
+export type Who = {
+  name: string;
+  phone: string;
+  address: string;
+  mode: 'pickup' | 'delivery' | '';
+};
 
 const key = (slug: string, what: string) => `dsb-shop:${slug}:${what}`;
 function read<T>(k: string, fallback: T): T {
@@ -83,4 +97,50 @@ export function upiPayLink(
     tn: `Order ${ref}`,
   });
   return `upi://pay?${q.toString().replace(/\+/g, '%20')}`;
+}
+
+export const loadWho = (slug: string) =>
+  read<Who>(key(slug, 'who'), { name: '', phone: '', address: '', mode: '' });
+export const saveWho = (slug: string, w: Who) => write(key(slug, 'who'), w);
+export function setOrderStatus(slug: string, ref: string, status: string) {
+  const all = loadMyOrders(slug).map((o) => (o.ref === ref ? { ...o, status } : o));
+  write(key(slug, 'orders'), all);
+}
+export const loadCatalogCache = <T>(slug: string) =>
+  read<{ at: number; items: T[] } | null>(key(slug, 'catalog'), null);
+export const saveCatalogCache = <T>(slug: string, items: T[]) =>
+  write(key(slug, 'catalog'), { at: Date.now(), items });
+
+/** Indian mobile: 10 digits starting 6-9 (a leading 0 or +91 is dropped). */
+export function mobile10(v: string): string | null {
+  const d = v.replace(/\D/g, '').replace(/^(91|0)(?=\d{10}$)/, '');
+  return /^[6-9]\d{9}$/.test(d) ? d : null;
+}
+
+/** Shareable tracking link: the order number and its secret travel in the #fragment (never sent to a server). */
+export const trackHash = (ref: string, token: string) => `#/t/${ref}.${token}`;
+export function parseTrackHash(h: string): { ref: string; token: string } | null {
+  const m = /^#\/t\/([A-Z2-9]{10})\.([0-9a-f]{64})$/.exec(h);
+  return m ? { ref: m[1]!, token: m[2]! } : null;
+}
+
+/** Steps shown on the tracking page (pickup orders never go out for delivery). */
+export function orderSteps(
+  status: string,
+  delivery: boolean,
+): { key: string; label: string; state: 'done' | 'now' | '' }[] {
+  const flow: [string, string][] = [
+    ['NEW', 'Order placed'],
+    ['CONFIRMED', 'Confirmed by shop'],
+    ['PREPARING', 'Being packed'],
+    ['READY', delivery ? 'Packed and ready' : 'Ready for pickup'],
+    ...(delivery ? ([['OUT_FOR_DELIVERY', 'Out for delivery']] as [string, string][]) : []),
+    ['DELIVERED', delivery ? 'Delivered' : 'Picked up'],
+  ];
+  const at = flow.findIndex((f) => f[0] === status);
+  return flow.map(([key, label], i) => ({
+    key,
+    label,
+    state: i < at ? 'done' : i === at ? 'now' : '',
+  }));
 }

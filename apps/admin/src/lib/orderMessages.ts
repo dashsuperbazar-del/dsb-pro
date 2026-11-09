@@ -22,6 +22,8 @@ export function orderMessage(
       return o.fulfilment === 'delivery'
         ? `${hi} your order ${o.publicRef} is ready and will be delivered${o.deliverySlot ? ` (${o.deliverySlot})` : ''}. Total ${total}.${upi}`
         : `${hi} your order ${o.publicRef} is ready for pickup. Total ${total}.${upi}`;
+    case 'OUT_FOR_DELIVERY':
+      return `${hi} your order ${o.publicRef} is out for delivery now. Total ${total}.${upi}`;
     case 'DELIVERED':
       return `${hi} thank you! Order ${o.publicRef} is complete (${total}).`;
     case 'CANCELLED':

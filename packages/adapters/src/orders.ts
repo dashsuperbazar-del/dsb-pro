@@ -2,7 +2,8 @@ import { getSupabaseClient } from './client';
 import { classifyError, errorMessage } from './errors';
 
 /** Online orders (mig 0079/0080). Money in integer paise (as numbers; well inside safe range). */
-export type OrderStatus = 'NEW' | 'CONFIRMED' | 'PREPARING' | 'READY' | 'DELIVERED' | 'CANCELLED';
+export type OrderStatus =
+  'NEW' | 'CONFIRMED' | 'PREPARING' | 'READY' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'CANCELLED';
 export type OnlineOrder = {
   id: string;
   publicRef: string;
@@ -60,7 +61,7 @@ export async function listOnlineOrders(shopId: string, open: boolean): Promise<O
   let q = getSupabaseClient().from('orders').select(COLS).eq('shop_id', shopId);
   q = open
     ? q
-        .in('status', ['NEW', 'CONFIRMED', 'PREPARING', 'READY'])
+        .in('status', ['NEW', 'CONFIRMED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY'])
         .order('created_at', { ascending: true })
     : q
         .in('status', ['DELIVERED', 'CANCELLED'])

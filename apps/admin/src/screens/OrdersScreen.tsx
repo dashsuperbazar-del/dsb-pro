@@ -29,6 +29,7 @@ const LABEL: Record<OrderStatus, string> = {
   CONFIRMED: 'Confirmed',
   PREPARING: 'Packing',
   READY: 'Ready',
+  OUT_FOR_DELIVERY: 'Out for delivery',
   DELIVERED: 'Handed over',
   CANCELLED: 'Cancelled',
 };
@@ -186,7 +187,22 @@ export function OrdersScreen() {
             {NEXT[o.status]!.label}
           </button>
         )}
-        {o.status === 'READY' && (
+        {o.status === 'READY' && o.fulfilment === 'delivery' && (
+          <button
+            type="button"
+            disabled={busy === o.id}
+            onClick={() =>
+              void act(
+                o,
+                () => setOnlineOrderStatus(o.id, 'OUT_FOR_DELIVERY', o.revision),
+                `Order ${o.publicRef}: out for delivery.`,
+              )
+            }
+          >
+            Out for delivery
+          </button>
+        )}
+        {(o.status === 'READY' || o.status === 'OUT_FOR_DELIVERY') && (
           <>
             <select
               aria-label={`Payment for ${o.publicRef}`}
@@ -209,7 +225,7 @@ export function OrdersScreen() {
             </button>
           </>
         )}
-        {['NEW', 'CONFIRMED', 'PREPARING', 'READY'].includes(o.status) && (
+        {['NEW', 'CONFIRMED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY'].includes(o.status) && (
           <button type="button" disabled={busy === o.id} onClick={() => cancel(o)}>
             Cancel order
           </button>
