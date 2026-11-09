@@ -50,3 +50,4 @@
 0078 publiccatalog supabase/migrations/0078_public_catalog.sql
 0079 orders supabase/migrations/0079_orders.sql
 0080 orderfulfil supabase/migrations/0080_order_fulfilment.sql
+0081 storefrontupi supabase/migrations/0081_storefront_upi.sql

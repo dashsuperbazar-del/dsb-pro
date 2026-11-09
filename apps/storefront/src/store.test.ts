@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { addToCart, lineEstimate, newToken, type CartLine } from './store';
+import { addToCart, lineEstimate, newToken, upiPayLink, type CartLine } from './store';
 
 const rice: CartLine = {
   itemId: 'i1',
@@ -28,4 +28,16 @@ test('the order token is 64 hex characters and random', () => {
   const a = newToken();
   expect(a).toMatch(/^[0-9a-f]{64}$/);
   expect(newToken()).not.toBe(a);
+});
+
+test('the UPI link carries the exact amount, payee and order reference', () => {
+  const link = upiPayLink('dsb.store@okaxis', 'Dash Super Bazar', '21050', 'Z9TL7KL4XV');
+  expect(link.startsWith('upi://pay?')).toBe(true);
+  const q = new URLSearchParams(link.slice('upi://pay?'.length));
+  expect(q.get('pa')).toBe('dsb.store@okaxis');
+  expect(q.get('am')).toBe('210.50');
+  expect(q.get('cu')).toBe('INR');
+  expect(q.get('pn')).toBe('Dash Super Bazar');
+  expect(q.get('tn')).toBe('Order Z9TL7KL4XV');
+  expect(link).not.toContain('+');
 });

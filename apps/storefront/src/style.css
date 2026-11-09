@@ -249,3 +249,23 @@ fieldset label {
 footer {
   font-size: 14px;
 }
+.button {
+  display: inline-block;
+  text-align: center;
+  text-decoration: none;
+  min-height: 44px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+}
+.button.primary {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+  font-weight: 600;
+}
+a.button.wide {
+  display: block;
+}

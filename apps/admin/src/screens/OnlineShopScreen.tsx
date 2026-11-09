@@ -7,6 +7,7 @@ import {
   listStorefrontItems,
   saveStorefrontItems,
   saveStorefrontSettings,
+  saveStorefrontUpi,
   type Item,
   type StorefrontSettings,
 } from '@dsb-pro/adapters';
@@ -53,6 +54,8 @@ export function OnlineShopScreen() {
   const [published, setPublished] = useState<Map<string, boolean>>(new Map());
   const [changed, setChanged] = useState<Set<string>>(new Set());
   const [find, setFind] = useState('');
+  const [upiId, setUpiId] = useState('');
+  const [upiName, setUpiName] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
@@ -74,6 +77,8 @@ export function OnlineShopScreen() {
         setMinOrder(money(v.minOrderPaise));
         setFreeAbove(money(v.freeDeliveryAbovePaise));
         setSlots(v.deliverySlots.join('\n'));
+        setUpiId(v.upiId ?? '');
+        setUpiName(v.upiName ?? '');
         setItems(list);
         setPublished(new Map(pub.map((p) => [p.itemId, p.published])));
       } catch (e) {
@@ -119,6 +124,25 @@ export function OnlineShopScreen() {
       );
       setS((x) => ({ ...x, slug: toSlug(x.slug || x.displayName), deliverySlots: slotList }));
       setMsg('Online shop settings saved.');
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveUpi(ev: Event) {
+    ev.preventDefault();
+    setError('');
+    setMsg('');
+    setBusy(true);
+    try {
+      await saveStorefrontUpi(shopId, upiId, upiName);
+      setMsg(
+        upiId.trim()
+          ? 'UPI ID saved. Customers see "Pay by UPI" on their order.'
+          : 'UPI payment turned off.',
+      );
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -324,6 +348,36 @@ export function OnlineShopScreen() {
         <button type="submit" class="primary" disabled={ro || !shopId}>
           Save online shop settings
         </button>
+      </form>
+
+      <form onSubmit={saveUpi} class="settings-form" data-testid="online-upi">
+        <fieldset disabled={ro}>
+          <legend>Pay by UPI</legend>
+          <p class="muted">
+            Customers get a "Pay by UPI" button with the exact amount. The money comes straight to
+            your UPI app. Check it arrived before you hand over the order as paid by UPI.
+          </p>
+          <label>
+            Your UPI ID{' '}
+            <input
+              maxLength={100}
+              value={upiId}
+              placeholder="shopname@okaxis"
+              onInput={(e) => setUpiId((e.currentTarget as HTMLInputElement).value)}
+            />
+          </label>
+          <label>
+            Name shown in the UPI app{' '}
+            <input
+              maxLength={60}
+              value={upiName}
+              onInput={(e) => setUpiName((e.currentTarget as HTMLInputElement).value)}
+            />
+          </label>
+          <button type="submit" disabled={ro || !shopId}>
+            Save UPI
+          </button>
+        </fieldset>
       </form>
 
       <section class="card" aria-label="Items sold online">

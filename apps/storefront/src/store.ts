@@ -62,3 +62,25 @@ export function addToCart(cart: CartLine[], line: CartLine): CartLine[] {
     n === i ? { ...c, qty: Math.round((c.qty + line.qty) * 1000) / 1000 } : c,
   );
 }
+
+/**
+ * UPI deep link (NPCI upi://pay) for the exact order amount: opens GPay / PhonePe / Paytm with everything filled
+ * in. The payment goes straight to the shop; nothing here proves it was paid (the shop checks its UPI app).
+ */
+export function upiPayLink(
+  upiId: string,
+  payee: string | null,
+  totalPaise: string,
+  ref: string,
+): string {
+  const p = BigInt(totalPaise);
+  const amount = `${p / 100n}.${String(p % 100n).padStart(2, '0')}`;
+  const q = new URLSearchParams({
+    pa: upiId,
+    pn: payee || 'Shop',
+    am: amount,
+    cu: 'INR',
+    tn: `Order ${ref}`,
+  });
+  return `upi://pay?${q.toString().replace(/\+/g, '%20')}`;
+}

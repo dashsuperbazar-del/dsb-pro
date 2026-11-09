@@ -3538,6 +3538,8 @@ export type Database = {
           slug: string
           tenant_id: string
           updated_at: number
+          upi_id: string | null
+          upi_name: string | null
         }
         Insert: {
           client_id: string
@@ -3563,6 +3565,8 @@ export type Database = {
           slug: string
           tenant_id: string
           updated_at?: number
+          upi_id?: string | null
+          upi_name?: string | null
         }
         Update: {
           client_id?: string
@@ -3588,6 +3592,8 @@ export type Database = {
           slug?: string
           tenant_id?: string
           updated_at?: number
+          upi_id?: string | null
+          upi_name?: string | null
         }
         Relationships: [
           {
@@ -5033,6 +5039,10 @@ export type Database = {
         Args: { p_client_id: string; p_settings: Json; p_shop_id: string }
         Returns: string
       }
+      set_storefront_upi: {
+        Args: { p_shop_id: string; p_upi_id: string; p_upi_name: string }
+        Returns: undefined
+      }
       set_supplier_payment_schedule: {
         Args: {
           p_active: boolean
@@ -5123,6 +5133,8 @@ export type Database = {
           slug: string
           tenant_id: string
           updated_at: number
+          upi_id: string | null
+          upi_name: string | null
         }
         SetofOptions: {
           from: "*"

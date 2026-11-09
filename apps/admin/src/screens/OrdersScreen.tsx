@@ -3,6 +3,7 @@ import {
   expireDueOnlineOrders,
   fulfilOnlineOrder,
   getDefaultShopId,
+  getStorefrontSettings,
   listOnlineOrderLines,
   listOnlineOrders,
   setOnlineOrderStatus,
@@ -13,6 +14,7 @@ import {
 import { appRoute } from '../lib/paths';
 import { errorText } from '../lib/friendlyError';
 import { rupees } from '../lib/money';
+import { orderMessage, whatsAppLink, type ShopInfo } from '../lib/orderMessages';
 
 // SF4: online orders for the shop (old DSB admin orders, G07/G08). Open orders oldest first; finished ones below.
 // Steps: New -> Confirmed -> Preparing -> Ready -> Hand over (one normal sale, paid in full) or Cancel with a reason.
@@ -31,14 +33,6 @@ const LABEL: Record<OrderStatus, string> = {
   CANCELLED: 'Cancelled',
 };
 const minutesLeft = (iso: string) => Math.round((new Date(iso).getTime() - Date.now()) / 60000);
-const waText = (o: OnlineOrder) =>
-  `Order ${o.publicRef}: ${LABEL[o.status]}. Total ${rupees(o.totalPaise)}.` +
-  (o.fulfilment === 'delivery'
-    ? ` Delivery${o.deliverySlot ? ` ${o.deliverySlot}` : ''}.`
-    : ' Pickup at the shop.');
-const waLink = (o: OnlineOrder) =>
-  `https://wa.me/${o.contactPhone.replace(/[^0-9]/g, '').replace(/^(?=\d{10}$)/, '91')}?text=${encodeURIComponent(waText(o))}`;
-
 export function OrdersScreen() {
   const [shopId, setShopId] = useState('');
   const [open, setOpen] = useState<OnlineOrder[]>([]);
@@ -48,6 +42,9 @@ export function OrdersScreen() {
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [payMode, setPayMode] = useState<Record<string, string>>({});
+  const [shopInfo, setShopInfo] = useState<ShopInfo>({ name: 'our shop', upiId: null });
+  // After a step: the ready-to-send WhatsApp update for that customer (one tap sends it from this phone).
+  const [notify, setNotify] = useState<{ order: OnlineOrder; text: string } | null>(null);
 
   async function load(shop = shopId) {
     if (!shop) return;
@@ -67,6 +64,9 @@ export function OrdersScreen() {
     void getDefaultShopId()
       .then((s) => {
         setShopId(s);
+        void getStorefrontSettings(s)
+          .then((c) => c && setShopInfo({ name: c.displayName, upiId: c.upiId ?? null }))
+          .catch(() => undefined);
         return load(s);
       })
       .catch((e: unknown) => setError(errorText(e)));
@@ -86,15 +86,23 @@ export function OrdersScreen() {
       setError(errorText(e));
     }
   }
-  async function act(o: OnlineOrder, run: () => Promise<{ expired?: boolean }>, ok: string) {
+  async function act(
+    o: OnlineOrder,
+    run: () => Promise<{ expired?: boolean; status?: OrderStatus }>,
+    ok: string,
+    reason?: string,
+  ) {
     setBusy(o.id);
     setError('');
     setMsg('');
+    setNotify(null);
     try {
       const r = await run();
       setMsg(
         r.expired ? `Order ${o.publicRef} had expired and was cancelled; its stock is free.` : ok,
       );
+      const to = r.status ?? (r.expired ? 'CANCELLED' : undefined);
+      if (to) setNotify({ order: o, text: orderMessage(o, to, shopInfo, reason) });
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -109,11 +117,16 @@ export function OrdersScreen() {
       o,
       () => setOnlineOrderStatus(o.id, 'CANCELLED', o.revision, reason),
       `Order ${o.publicRef} cancelled.`,
+      reason,
     );
   }
   function handOver(o: OnlineOrder) {
     const mode = payMode[o.id] ?? 'cash';
-    if (!confirm(`Hand over ${o.publicRef} and record ${rupees(o.totalPaise)} paid by ${mode}?`))
+    if (
+      !confirm(
+        `Hand over ${o.publicRef} and record ${rupees(o.totalPaise)} paid by ${mode}?${mode === 'upi' ? ' Check the money arrived in your UPI app first.' : ''}`,
+      )
+    )
       return;
     void act(
       o,
@@ -136,7 +149,11 @@ export function OrdersScreen() {
       </summary>
       <p>
         <a href={`tel:${o.contactPhone}`}>{o.contactPhone}</a> ·{' '}
-        <a href={waLink(o)} target="_blank" rel="noopener noreferrer">
+        <a
+          href={whatsAppLink(o.contactPhone, orderMessage(o, o.status, shopInfo))}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           WhatsApp status
         </a>
       </p>
@@ -218,6 +235,24 @@ export function OrdersScreen() {
         </p>
       )}
       {msg && <p role="status">{msg}</p>}
+      {notify && (
+        <p class="card" data-testid="wa-notify">
+          <a
+            class="button primary"
+            href={whatsAppLink(notify.order.contactPhone, notify.text)}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => setNotify(null)}
+          >
+            Send WhatsApp update to {notify.order.contactName}
+          </a>{' '}
+          <button type="button" onClick={() => setNotify(null)}>
+            Skip
+          </button>
+          <br />
+          <small class="muted">{notify.text}</small>
+        </p>
+      )}
       <h2>Open ({open.length})</h2>
       {open.length === 0 && <p class="muted">No open orders.</p>}
       {open.map(card)}
