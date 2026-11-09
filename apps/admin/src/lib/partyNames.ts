@@ -1,6 +1,6 @@
 /** Letters and digits only, lower case: "M. B lal Hindustan" and "M.b lal Hindustan" compare equal. */
 export function normalizePartyName(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9ऀ-ॿ]+/g, '');
+  return name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
 }
 
 function editDistance(a: string, b: string): number {
