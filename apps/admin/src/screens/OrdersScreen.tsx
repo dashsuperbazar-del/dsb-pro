@@ -6,6 +6,7 @@ import {
   getStorefrontSettings,
   listOnlineOrderLines,
   listOnlineOrders,
+  adjustOnlineOrder,
   setOnlineOrderStatus,
   type OnlineOrder,
   type OnlineOrderLine,
@@ -43,6 +44,8 @@ export function OrdersScreen() {
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [payMode, setPayMode] = useState<Record<string, string>>({});
+  // Order being changed: line number -> new quantity text (only reductions are accepted by the server).
+  const [editing, setEditing] = useState<{ id: string; qty: Record<number, string> } | null>(null);
   const [shopInfo, setShopInfo] = useState<ShopInfo>({ name: 'our shop', upiId: null });
   // After a step: the ready-to-send WhatsApp update for that customer (one tap sends it from this phone).
   const [notify, setNotify] = useState<{ order: OnlineOrder; text: string } | null>(null);
@@ -111,6 +114,34 @@ export function OrdersScreen() {
       await load();
     }
   }
+  function saveChange(o: OnlineOrder) {
+    const cur = new Map((lines[o.id] ?? []).map((l) => [l.lineNo, Number(l.qty)]));
+    const changes = Object.entries(editing?.qty ?? {})
+      .map(([n, v]) => ({ lineNo: Number(n), qty: v.trim() }))
+      .filter((c) => c.qty !== '' && Number(c.qty) !== cur.get(c.lineNo));
+    if (!changes.length) return setEditing(null);
+    const reason = prompt(
+      `Why is order ${o.publicRef} changing? (e.g. customer agreed on phone)`,
+    )?.trim();
+    if (!reason) return;
+    setLines((m) => {
+      const n = { ...m };
+      delete n[o.id];
+      return n;
+    });
+    void act(
+      o,
+      async () => {
+        const r = await adjustOnlineOrder(o.id, o.revision, changes, reason);
+        setEditing(null);
+        return r;
+      },
+      `Order ${o.publicRef} changed. New total will show after refresh.`,
+    ).then(() => setNotify({ order: o, text: changedMessage(o) }));
+  }
+  const changedMessage = (o: OnlineOrder) =>
+    `Hello ${o.contactName}, ${shopInfo.name}: we changed your order ${o.publicRef} as discussed. Please check the updated list and total on your order page.`;
+
   function cancel(o: OnlineOrder) {
     const reason = prompt(`Cancel order ${o.publicRef}? Give a reason:`)?.trim();
     if (!reason) return;
@@ -162,15 +193,61 @@ export function OrdersScreen() {
       {o.customerNote && <p>Note: {o.customerNote}</p>}
       {o.cancelReason && <p class="muted">Cancelled: {o.cancelReason}</p>}
       <ul class="record-list">
-        {(lines[o.id] ?? []).map((l) => (
-          <li key={l.lineNo}>
-            {l.qty} {l.unitName} {l.itemName} × {rupees(l.unitPricePaise)} ={' '}
-            {rupees(l.lineTotalPaise)}
-          </li>
-        ))}
+        {(lines[o.id] ?? [])
+          .filter((l) => Number(l.qty) > 0)
+          .map((l) => (
+            <li key={l.lineNo}>
+              {editing?.id === o.id ? (
+                <input
+                  class="qty-edit"
+                  inputMode="decimal"
+                  aria-label={`New quantity for ${l.itemName}`}
+                  value={editing.qty[l.lineNo] ?? String(Number(l.qty))}
+                  onInput={(e) => {
+                    const v = (e.currentTarget as HTMLInputElement).value;
+                    setEditing((x) => x && { ...x, qty: { ...x.qty, [l.lineNo]: v } });
+                  }}
+                />
+              ) : (
+                String(Number(l.qty))
+              )}{' '}
+              {l.unitName} {l.itemName} × {rupees(l.unitPricePaise)} = {rupees(l.lineTotalPaise)}
+            </li>
+          ))}
       </ul>
       {o.deliveryFeePaise > 0 && <p>Delivery fee {rupees(o.deliveryFeePaise)}</p>}
+      {editing?.id === o.id && (
+        <p class="muted">
+          Lower a quantity or set 0 to remove the line. Prices stay as ordered; the held stock is
+          released.
+        </p>
+      )}
       <div class="context-actions">
+        {['NEW', 'CONFIRMED', 'PREPARING', 'READY'].includes(o.status) &&
+          lines[o.id] &&
+          (editing?.id === o.id ? (
+            <>
+              <button
+                type="button"
+                class="primary"
+                disabled={busy === o.id}
+                onClick={() => saveChange(o)}
+              >
+                Save changes
+              </button>
+              <button type="button" onClick={() => setEditing(null)}>
+                Keep as is
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              disabled={busy === o.id}
+              onClick={() => setEditing({ id: o.id, qty: {} })}
+            >
+              Change quantities
+            </button>
+          ))}
         {NEXT[o.status] && (
           <button
             type="button"

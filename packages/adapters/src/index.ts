@@ -380,5 +380,6 @@ export {
   fulfilOnlineOrder,
   expireDueOnlineOrders,
   openOrderPulse,
+  adjustOnlineOrder,
 } from './orders';
 export type { OnlineOrder, OnlineOrderLine, OrderStatus } from './orders';

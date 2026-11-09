@@ -143,3 +143,20 @@ export async function openOrderPulse(
     expiresAt: String(r.reservation_expires_at),
   }));
 }
+
+/** Reduce or remove lines of an open order (never increase). Each change needs a reason. */
+export async function adjustOnlineOrder(
+  orderId: string,
+  revision: number,
+  changes: { lineNo: number; qty: string }[],
+  reason: string,
+): Promise<{ status: OrderStatus; totalPaise: string }> {
+  const { data, error } = await getSupabaseClient().rpc('adjust_order', {
+    p_order_id: orderId,
+    p_revision: revision,
+    p_changes: changes,
+    p_reason: reason,
+  });
+  if (error) throw fail(error);
+  return data as unknown as { status: OrderStatus; totalPaise: string };
+}

@@ -4061,6 +4061,15 @@ export type Database = {
         }
         Returns: string
       }
+      adjust_order: {
+        Args: {
+          p_changes: Json
+          p_order_id: string
+          p_reason: string
+          p_revision: number
+        }
+        Returns: Json
+      }
       allocate_customer_payment_v2: {
         Args: { p_allocations: Json; p_client_id: string; p_payment_id: string }
         Returns: Json
