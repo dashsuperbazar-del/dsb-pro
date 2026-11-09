@@ -19,6 +19,9 @@ export type StorefrontSettings = {
   freeDeliveryAbovePaise: number | null;
   deliverySlots: string[];
   deliveryNote: string | null;
+  /** mig 0081 (read only here; saved with saveStorefrontUpi). */
+  upiId?: string | null;
+  upiName?: string | null;
 };
 export type StorefrontItem = { itemId: string; published: boolean; description: string | null };
 
@@ -41,6 +44,8 @@ type Row = {
   free_delivery_above_paise: number | string | null;
   delivery_slots: unknown;
   delivery_note: string | null;
+  upi_id?: string | null;
+  upi_name?: string | null;
 };
 
 /** The shop's online shop settings, or null when never set up. */
@@ -48,7 +53,7 @@ export async function getStorefrontSettings(shopId: string): Promise<StorefrontS
   const { data, error } = await getSupabaseClient()
     .from('storefront_settings')
     .select(
-      'enabled,slug,display_name,public_contact,pickup_note,order_hours,reservation_minutes,max_lines,pickup_enabled,delivery_enabled,delivery_fee_paise,min_order_paise,free_delivery_above_paise,delivery_slots,delivery_note',
+      'enabled,slug,display_name,public_contact,pickup_note,order_hours,reservation_minutes,max_lines,pickup_enabled,delivery_enabled,delivery_fee_paise,min_order_paise,free_delivery_above_paise,delivery_slots,delivery_note,upi_id,upi_name',
     )
     .eq('shop_id', shopId)
     .maybeSingle();
@@ -74,6 +79,8 @@ export async function getStorefrontSettings(shopId: string): Promise<StorefrontS
       ? r.delivery_slots.filter((s): s is string => typeof s === 'string')
       : [],
     deliveryNote: r.delivery_note,
+    upiId: r.upi_id ?? null,
+    upiName: r.upi_name ?? null,
   };
 }
 
@@ -82,9 +89,12 @@ export async function saveStorefrontSettings(
   s: StorefrontSettings,
   clientId: string,
 ): Promise<void> {
+  const { upiId: _u, upiName: _n, ...settings } = s;
+  void _u;
+  void _n;
   const { error } = await getSupabaseClient().rpc('set_storefront_settings', {
     p_shop_id: shopId,
-    p_settings: s as unknown as Json,
+    p_settings: settings as unknown as Json,
     p_client_id: clientId,
   });
   if (error) throw fail(error);
@@ -130,4 +140,18 @@ export async function saveStorefrontItems(
     n += Number(data ?? 0);
   }
   return n;
+}
+
+/** The shop's UPI ID for "Pay by UPI" on the public order page (mig 0081). Blank clears it. */
+export async function saveStorefrontUpi(
+  shopId: string,
+  upiId: string,
+  upiName: string,
+): Promise<void> {
+  const { error } = await getSupabaseClient().rpc('set_storefront_upi', {
+    p_shop_id: shopId,
+    p_upi_id: upiId,
+    p_upi_name: upiName,
+  });
+  if (error) throw fail(error);
 }

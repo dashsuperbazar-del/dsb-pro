@@ -26,6 +26,8 @@ export type Shop = {
   deliverySlots: string[];
   deliveryNote: string | null;
   maxLines: number;
+  upiId: string | null;
+  upiName: string | null;
 };
 export type OrderStatus = {
   ref: string;

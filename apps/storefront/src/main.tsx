@@ -23,6 +23,7 @@ import {
   rememberOrder,
   saveCart,
   savePending,
+  upiPayLink,
   type CartLine,
 } from './store';
 
@@ -102,7 +103,7 @@ function App() {
       )}
       {view === 'shop' && <Catalog shop={shop} onAdd={(l) => setCart((c) => addToCart(c, l))} />}
       {view === 'cart' && <Checkout shop={shop} cart={cart} setCart={setCart} />}
-      {view === 'order' && <Status ref_={decodeURIComponent(hash.slice(8))} />}
+      {view === 'order' && <Status shop={shop} ref_={decodeURIComponent(hash.slice(8))} />}
       {view === 'mine' && <MyOrders />}
       <footer class="pad muted">
         {shop.contact && <span>Contact: {shop.contact}. </span>}
@@ -461,7 +462,7 @@ function Checkout({
   );
 }
 
-function Status({ ref_ }: { ref_: string }) {
+function Status({ shop, ref_ }: { shop: Shop; ref_: string }) {
   const mine = loadMyOrders(SLUG).find((o) => o.ref === ref_);
   const [s, setS] = useState<OrderStatus | null | undefined>(undefined);
   useEffect(() => {
@@ -506,6 +507,21 @@ function Status({ ref_ }: { ref_: string }) {
         <strong>Total {rupees(s.totalPaise)}</strong> · pay at{' '}
         {s.fulfilment === 'delivery' ? 'delivery' : 'the shop'}
       </p>
+      {shop.upiId && !['CANCELLED', 'DELIVERED'].includes(s.status) && (
+        <>
+          <a
+            class="button primary wide"
+            href={upiPayLink(shop.upiId, shop.upiName, s.totalPaise, s.ref)}
+          >
+            Pay {rupees(s.totalPaise)} by UPI
+          </a>
+          <p class="muted">
+            Opens your UPI app (GPay, PhonePe, Paytm…) with the amount filled in. Show the payment
+            to the shop if asked. You can also pay at{' '}
+            {s.fulfilment === 'delivery' ? 'delivery' : 'the shop'}.
+          </p>
+        </>
+      )}
       <p class="muted">Keep this page: it updates by itself. Your order number is {s.ref}.</p>
     </main>
   );

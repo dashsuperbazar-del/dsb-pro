@@ -368,6 +368,7 @@ export {
   saveStorefrontSettings,
   listStorefrontItems,
   saveStorefrontItems,
+  saveStorefrontUpi,
 } from './storefront';
 export type { StorefrontSettings, StorefrontItem } from './storefront';
 export {

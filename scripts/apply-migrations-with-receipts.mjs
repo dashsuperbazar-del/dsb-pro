@@ -72,6 +72,7 @@ const GROUP_ORDER = [
   'publiccatalog',
   'orders',
   'orderfulfil',
+  'storefrontupi',
 ];
 
 /**
