@@ -2897,3 +2897,22 @@ kbd {
 .kbd-open .checkout-actions {
   position: static;
 }
+
+/* Old DSB field look (owner, 9 Nov): soft grey fields, small bold muted labels. */
+input:not([type='checkbox']):not([type='radio']),
+select,
+textarea {
+  background: var(--bg);
+}
+input:focus,
+select:focus,
+textarea:focus {
+  background: var(--surface);
+  border-color: var(--brand);
+}
+label {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--text-muted);
+  letter-spacing: 0.2px;
+}
