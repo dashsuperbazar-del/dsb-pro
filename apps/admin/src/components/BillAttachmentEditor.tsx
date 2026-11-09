@@ -24,6 +24,7 @@ export function BillAttachmentEditor({
   clientId,
   documents,
   disabled,
+  openByDefault = false,
   beforePicker,
   deferUpload,
   deferNote,
@@ -38,6 +39,8 @@ export function BillAttachmentEditor({
   clientId: string;
   documents: BillDocument[];
   disabled: boolean;
+  /** Start open (purchase entry: photos are added to almost every bill). */
+  openByDefault?: boolean;
   beforePicker: () => boolean;
   /** Quick bill: keep the bytes on the device and upload only after the draft that records them is saved. */
   deferUpload?: boolean;
@@ -53,7 +56,7 @@ export function BillAttachmentEditor({
   const [picking, setPicking] = useState(false);
   const [busyIds, setBusyIds] = useState<string[]>([]);
   const [error, setError] = useState('');
-  const [expanded, setExpanded] = useState(documents.length > 0);
+  const [expanded, setExpanded] = useState(openByDefault || documents.length > 0);
   useEffect(() => {
     if (documents.length) setExpanded(true);
   }, [documents.length]);
