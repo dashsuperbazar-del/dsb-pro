@@ -380,7 +380,7 @@ export function ReportsScreen() {
       </section>
       <section class="card" hidden={view !== 'sales'}>
         <h2>GST summary</h2>
-        <p class="muted">
+        <p class="hint">
           Derived from immutable tax-rate snapshots. This is a bookkeeping summary, not filing
           advice.
         </p>
@@ -411,7 +411,7 @@ export function ReportsScreen() {
       </section>
       <section class="card" hidden={view !== 'stock'}>
         <h2>Low stock / reorder</h2>
-        <p class="muted">
+        <p class="hint">
           Items at or below their configured minimum stock, right now — not limited to the date
           range above.
         </p>

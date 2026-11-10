@@ -111,7 +111,7 @@ export function QuickBillEntry({
   return (
     <details class="card" aria-label="Quick bill" onToggle={onToggle}>
       <summary>Quick bill (total now, items later)</summary>
-      <p class="muted">
+      <p class="hint">
         Saves the paper bill, and any photo of it, as a draft. The supplier balance and stock change
         only when you add the items and post it; posting warns if the items do not match this total.
       </p>

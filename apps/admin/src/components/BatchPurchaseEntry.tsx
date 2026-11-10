@@ -134,7 +134,7 @@ export function BatchPurchaseEntry({
   return (
     <details class="card" aria-label="Batch bill entry" onToggle={onToggle} onKeyDown={enterToNext}>
       <summary>Batch entry (save several bills as drafts)</summary>
-      <p class="muted">
+      <p class="hint">
         One row per bill. Bills are saved as drafts and nothing posts until you review and post each
         one. For bills with several items, use the normal purchase form.
       </p>

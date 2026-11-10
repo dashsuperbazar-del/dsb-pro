@@ -217,7 +217,7 @@ export function OrdersScreen() {
       </ul>
       {o.deliveryFeePaise > 0 && <p>Delivery fee {rupees(o.deliveryFeePaise)}</p>}
       {editing?.id === o.id && (
-        <p class="muted">
+        <p class="hint">
           Lower a quantity or set 0 to remove the line. Prices stay as ordered; the held stock is
           released.
         </p>

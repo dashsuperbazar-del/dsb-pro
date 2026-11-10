@@ -266,7 +266,7 @@ export function SyncScreen() {
                 {attention + onHold.length} need attention
               </span>
             </div>
-            <p class="muted">
+            <p class="hint">
               Sales and bills saved on this device are sent to the shop when you are online.
               Anything the shop refuses stays here until you have looked at it.
             </p>

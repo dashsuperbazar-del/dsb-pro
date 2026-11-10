@@ -86,7 +86,7 @@ function AuditList() {
         <a href={appRoute.more}>← Shop tools</a>
       </p>
       <h1>Audit log</h1>
-      <p class="muted">
+      <p class="hint">
         Read-only. Voids, bill edits, credit-limit overrides, price and item changes, customer and
         team changes, newest first. Nothing here can be changed.
       </p>

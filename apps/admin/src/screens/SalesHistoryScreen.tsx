@@ -274,7 +274,7 @@ export function SalesHistoryScreen() {
             : 'compare with old DSB at shop close'
         }
       >
-        <p class="muted">
+        <p class="hint">
           Use this at shop close to compare DSB Pro with legacy DSB for the same business date.
         </p>
         <div class="filter-bar">
@@ -418,7 +418,7 @@ export function SalesHistoryScreen() {
             )}
             <hr />
             <h3>Compare with old DSB backup</h3>
-            <p class="muted">
+            <p class="hint">
               At shop closing, export a fresh JSON backup from old DSB and choose it here. The file
               is read in this browser; it is not uploaded to GitHub.
             </p>
