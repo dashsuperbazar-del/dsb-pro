@@ -596,6 +596,27 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
                       release
                     </p>
                   )}
+                  <div class="supplier-card-actions">
+                    {canPost && (
+                      <a
+                        class="kit-btn small"
+                        href={`${appRoute.purchases}?new=1&supplier=${s.partyId}`}
+                      >
+                        + New bill
+                      </a>
+                    )}
+                    {net > 0n && (
+                      <button
+                        type="button"
+                        class="kit-btn small primary"
+                        onClick={() => {
+                          void changeParty(s.partyId).then(() => setView('payment'));
+                        }}
+                      >
+                        Pay now
+                      </button>
+                    )}
+                  </div>
                 </li>
               );
             })}

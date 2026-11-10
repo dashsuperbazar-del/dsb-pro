@@ -1,3 +1,4 @@
+import { SalesOverview } from '../components/SalesOverview';
 import { formatQuantity } from '@dsb-pro/core';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { hiddenNote, hideVoided, loadShowVoided, saveShowVoided } from '../lib/voidedVisibility';
@@ -247,6 +248,7 @@ export function SalesHistoryScreen() {
         <LanguageToggle />
       </div>
       <h1 class="no-print">{t('salesHistory', locale)}</h1>
+      <SalesOverview shopId={shopId} />
       <SnapshotNote at={snapshotAt} failed={snapshotFailed} />
       {error && (
         <p role="alert" class="alert no-print">

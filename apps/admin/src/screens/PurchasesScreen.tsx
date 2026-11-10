@@ -1,3 +1,4 @@
+import { Tabs } from '../components/Kit';
 import { errorText } from '../lib/friendlyError';
 import { formatQuantity } from '@dsb-pro/core';
 import { useEffect, useRef, useState } from 'preact/hooks';
@@ -469,9 +470,14 @@ export function PurchasesScreen({ url }: { url?: string }) {
     voidedShown,
   );
   return (
-    <main class="purchase-workspace">
+    <main class={`purchase-workspace${entering ? ' bill-sheet' : ''}`}>
+      {entering && (
+        <a class="kit-close bill-sheet-close" href={appRoute.purchases} aria-label="Close">
+          ×
+        </a>
+      )}
       <div class="row">
-        <h1>{entering ? 'New purchase' : 'Purchases'}</h1>
+        <h1>{entering ? 'New Purchase Bill' : 'Purchases'}</h1>
         <a href={appRoute.inventory}>Stock</a>
       </div>
       <nav class="context-actions" aria-label="Purchase actions">
@@ -508,6 +514,19 @@ export function PurchasesScreen({ url }: { url?: string }) {
       )}
       <div hidden={entering}>
         <section class="card">
+          <Tabs
+            label="Show bills"
+            value={statusFilter}
+            options={[
+              { value: 'all', label: 'All' },
+              { value: 'unpaid', label: 'Credit' },
+              { value: 'partial', label: 'Partial' },
+              { value: 'paid', label: 'Paid' },
+              { value: 'pending', label: '⚡ Items pending' },
+              { value: 'void', label: 'Void' },
+            ]}
+            onChange={(v) => setStatusFilter(v)}
+          />
           <label class="search-field">
             Search loaded bills
             <input

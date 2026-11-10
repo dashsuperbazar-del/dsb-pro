@@ -249,3 +249,262 @@
   gap: 4px;
   justify-items: end;
 }
+/* L3 purchase bill: old-DSB party chips; Save bar at the end of the form (not pinned). */
+.party-chips button.owed {
+  border-color: var(--danger-border);
+  color: var(--danger);
+}
+.party-chips button[aria-pressed='true'] {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: var(--on-brand);
+}
+.owed-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+.bill-bar {
+  position: static;
+  margin-top: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--brand-subtle);
+}
+/* Main bill first (supplier, date, photos, items, total); Quick bill and Batch entry follow it. */
+.purchase-entry {
+  display: flex;
+  flex-direction: column;
+}
+.purchase-entry > * {
+  min-width: 0;
+}
+.purchase-entry > details[aria-label='Quick bill'],
+.purchase-entry > details[aria-label='Batch bill entry'] {
+  order: 1;
+}
+.purchase-entry > details[aria-label='Quick bill'] {
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+}
+/* L4 bill list: old-DSB cards (party, no. · date, badge left; amount right). */
+.record-list > button {
+  margin-bottom: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.record-list > button .record-value {
+  font-weight: var(--weight-bold);
+  font-size: 16px;
+}
+.badge.settle-unpaid {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.badge.settle-paid {
+  background: var(--success-bg);
+  color: var(--success);
+}
+.badge.settle-partial {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+.sales-overview {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.sales-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.supplier-card-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+/* ---- New Bill as an old-DSB slide-up sheet (rebuild R1) ---- */
+main.bill-sheet {
+  position: fixed;
+  inset: 6vh 0 0;
+  z-index: 120;
+  max-width: 720px;
+  margin: 0 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--surface);
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 0 0 100vmax var(--scrim);
+  padding: 26px 16px calc(32px + env(safe-area-inset-bottom));
+  animation: kit-up 0.22s var(--ease);
+}
+main.bill-sheet::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  width: 36px;
+  height: 4px;
+  margin-left: -18px;
+  border-radius: 2px;
+  background: var(--border);
+}
+.bill-sheet-close {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  text-decoration: none;
+  box-shadow: var(--shadow);
+  z-index: 2;
+}
+main.bill-sheet > .row > h1 {
+  font-size: var(--text-xl);
+}
+main.bill-sheet > .row > a,
+main.bill-sheet .shortcut-hint {
+  display: none;
+}
+/* Kept for screen readers and tests; the sheet title above is the visible heading. */
+main.bill-sheet .purchase-entry > h2 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+main.bill-sheet > nav.context-actions {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+main.bill-sheet > nav.context-actions a {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+main.bill-sheet > nav.context-actions a.primary {
+  display: none;
+}
+/* Field order of the old sheet: party + chips, date, payment, photos, quick bill, items, charges, total, save. */
+main.bill-sheet .purchase-entry > form {
+  display: contents;
+}
+main.bill-sheet .purchase-entry > form > * {
+  order: 70;
+}
+main.bill-sheet .purchase-entry > form > .alert,
+main.bill-sheet .purchase-entry > form > [role='alert'] {
+  order: 5;
+}
+main.bill-sheet .purchase-entry > form > .bill-head {
+  order: 10;
+}
+main.bill-sheet .bill-bar {
+  display: contents;
+}
+main.bill-sheet .purchase-entry .bill-bar > .bill-bar-edit {
+  order: 20;
+  margin: 4px 0 12px;
+}
+main.bill-sheet .purchase-entry > form > .bill-attachment {
+  order: 30;
+}
+main.bill-sheet .purchase-entry > details[aria-label='Quick bill'] {
+  order: 40;
+  border-radius: var(--radius-md);
+}
+main.bill-sheet .purchase-entry .bill-bar > .bill-bar-add {
+  order: 45;
+  align-self: flex-end;
+  border: 1.5px solid var(--brand);
+  border-style: solid;
+  color: var(--brand);
+  font-weight: 600;
+  min-height: 36px;
+  padding: 6px 14px;
+}
+main.bill-sheet .purchase-entry > form > fieldset.plain:not(.bill-head) {
+  order: 50;
+}
+main.bill-sheet .purchase-entry > form > .bill-details {
+  order: 60;
+}
+main.bill-sheet .purchase-entry .bill-bar > .bill-bar-problem {
+  order: 78;
+}
+main.bill-sheet .purchase-entry .bill-bar > .bill-bar-total {
+  order: 80;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 12px 0;
+  padding: 14px;
+  border: 1px solid var(--brand);
+  border-radius: var(--radius);
+  background: var(--brand-subtle);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--brand);
+}
+main.bill-sheet .purchase-entry .bill-bar > button.primary {
+  order: 90;
+  width: 100%;
+  min-height: 48px;
+  font-size: 15px;
+}
+main.bill-sheet .purchase-entry > details[aria-label='Batch bill entry'] {
+  order: 95;
+}
+main.bill-sheet
+  .purchase-entry
+  > details.card:not([aria-label='Quick bill']):not([aria-label='Batch bill entry']) {
+  order: 96;
+}
+/* Old form look: small bold uppercase captions, grey item cards. */
+main.bill-sheet label > small,
+main.bill-sheet .bill-bar-edit > small {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+main.bill-sheet .bill-items > * {
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+main.bill-sheet .bill-attachment {
+  border: 0;
+  padding: 0;
+  margin: 0 0 12px;
+}
+main.bill-sheet .bill-attachment > summary {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  list-style: none;
+  margin-bottom: 6px;
+}
+main.bill-sheet .bill-attachment > p:first-of-type {
+  display: none;
+}
+main.bill-sheet .bill-attachment button {
+  border: 1.5px solid var(--brand);
+  color: var(--brand);
+  font-weight: 600;
+}
