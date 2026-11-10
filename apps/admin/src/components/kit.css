@@ -315,3 +315,13 @@
   background: var(--warning-bg);
   color: var(--warning);
 }
+.sales-overview {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.sales-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
