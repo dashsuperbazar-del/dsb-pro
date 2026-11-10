@@ -39,10 +39,10 @@ async function ready(page: Page, path: string) {
       main.getByRole('combobox', { name: /^Item details\b/ }).locator('option'),
     ).toHaveCount(51); // "Choose…" + 50 matches: the picker no longer renders 10,001 options
   } else if (path === '/purchases') {
-    await check(main.getByRole('heading', { name: 'Purchases', exact: true })).toBeVisible();
+    await check(main.getByRole('heading', { name: 'Bills', exact: true })).toBeVisible();
     await check(main.getByText('Showing 0 of 0 loaded bills.', { exact: false })).toBeVisible();
     await check(main.getByText('Loading purchases…', { exact: true })).toHaveCount(0);
-    await check(main.getByRole('link', { name: 'New purchase', exact: true })).toBeVisible();
+    await check(main.getByRole('link', { name: '+ New Bill', exact: true })).toBeVisible();
   } else if (path === '/suppliers') {
     await check(
       main.getByRole('heading', { name: 'Suppliers & payments', exact: true }),

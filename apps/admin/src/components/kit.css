@@ -725,3 +725,67 @@ section[aria-label='Purchase detail'] > #bill-void {
 section[aria-label='Purchase detail'] > #bill-photos {
   order: 60;
 }
+/* R3: popup buttons in old-DSB wording and colours. */
+section[aria-label='Purchase detail'] > .bill-actions > .share-image {
+  display: contents;
+}
+section[aria-label='Purchase detail'] > .bill-actions > .share-image > button {
+  min-height: 46px;
+  border: 1.5px solid var(--brand);
+  color: var(--brand);
+  font-weight: 600;
+}
+section[aria-label='Purchase detail'] > .bill-actions > .share-image > :not(button) {
+  grid-column: 1 / -1;
+  font-size: 12px;
+}
+section[aria-label='Purchase detail'] > .bill-actions > .bd-delete {
+  grid-column: 1 / -1;
+  min-height: 40px;
+  border: 0;
+  background: none;
+  color: var(--danger);
+}
+section[aria-label='Purchase detail'] > nav.context-actions > a.bd-return {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+/* R3: Bills header (title + Batch + New Bill on one line) and card side (amount over badge). */
+main.purchase-workspace:not(.bill-sheet) {
+  position: relative;
+}
+main.purchase-workspace:not(.bill-sheet) > .row > a {
+  display: none;
+}
+main.purchase-workspace:not(.bill-sheet) > nav.context-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+main.purchase-workspace:not(.bill-sheet) > nav.context-actions > a.primary,
+main.purchase-workspace:not(.bill-sheet) > nav.context-actions > a.bills-batch {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  min-height: 40px;
+  padding: 8px 14px;
+  font-weight: 600;
+}
+main.purchase-workspace:not(.bill-sheet) > nav.context-actions > a.bills-batch {
+  right: 128px;
+  border: 1.5px solid var(--brand);
+  color: var(--brand);
+}
+main.purchase-workspace:not(.bill-sheet) > nav.context-actions > a:not(.primary):not(.bills-batch) {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+main.bill-sheet > nav.context-actions > a.bills-batch {
+  display: none;
+}
+.record-list > button .record-side {
+  display: grid;
+  gap: 4px;
+  justify-items: end;
+}

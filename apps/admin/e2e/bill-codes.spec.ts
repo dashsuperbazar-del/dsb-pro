@@ -70,7 +70,7 @@ test('a purchase bill and a sale invoice get a bill code that search, copy and t
   await page.getByRole('button', { name: 'Close detail' }).click();
 
   // Bill-list search: lower case, no dash, from 4 characters; 3 characters is not a code search.
-  const search = page.getByLabel('Search loaded bills');
+  const search = page.getByLabel('Search party, bill no., amount');
   await search.fill(purchaseCode.replace('-', '').toLowerCase());
   await expect(page.locator('main button').filter({ hasText: purchaseCode })).toHaveCount(1);
   await search.fill('ZZZZ-ZZZZ');
