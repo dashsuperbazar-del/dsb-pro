@@ -71,6 +71,9 @@ import {
   setItemPrice,
   PriceRefusedError,
   setItemMinStock,
+  archiveMaster,
+  listArchivedItems,
+  restoreItem,
   setItemTaxRate,
   type Item,
   type ItemPrice,
@@ -2731,6 +2734,50 @@ export function InventoryScreen({
       setError(errorText(e));
     }
   }
+  const [archived, setArchived] = useState<{ id: string; name: string }[] | null>(null);
+  async function loadArchived() {
+    try {
+      setArchived(await listArchivedItems());
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
+  async function restoreArchived(id: string, name: string) {
+    try {
+      await restoreItem(id);
+      setArchived((v) => (v ?? []).filter((a) => a.id !== id));
+      setItems(await listItems());
+      setMessage(
+        `Restored ${name}. It is back in search and billing (publish it again for the online shop).`,
+      );
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
+  async function archiveSelectedItem() {
+    if (!selectedItem) return;
+    if (Number(selectedStock) !== 0) {
+      setError(
+        `${selectedItem.name} still has ${selectedStock} in stock. Sell, return or count it to 0 first, then archive.`,
+      );
+      return;
+    }
+    if (
+      !window.confirm(
+        `Archive ${selectedItem.name}? It disappears from search, billing and the online shop. Old bills and reports keep it.`,
+      )
+    )
+      return;
+    try {
+      await archiveMaster('items', selectedItem.id);
+      const gone = selectedItem.id;
+      setItems((v) => v.filter((i) => i.id !== gone));
+      setSelected('');
+      setMessage(`Archived ${selectedItem.name}.`);
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
   async function changeMinStock(ev: Event) {
     ev.preventDefault();
     if (!selectedItem) return;
@@ -3088,6 +3135,38 @@ export function InventoryScreen({
             </label>{' '}
             <button disabled={!shopId}>Save reorder threshold</button>
           </form>
+        )}
+        {canSetSalePrices && (
+          <details
+            onToggle={(e) => {
+              if ((e.currentTarget as HTMLDetailsElement).open) void loadArchived();
+            }}
+          >
+            <summary>Archived items</summary>
+            {archived === null ? (
+              <p class="muted">Loading…</p>
+            ) : archived.length === 0 ? (
+              <p class="muted">No archived items.</p>
+            ) : (
+              <ul class="plain-list">
+                {archived.map((a) => (
+                  <li key={a.id}>
+                    {a.name}{' '}
+                    <button type="button" onClick={() => void restoreArchived(a.id, a.name)}>
+                      Restore
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </details>
+        )}
+        {selectedItem && (
+          <p>
+            <button type="button" class="danger" onClick={() => void archiveSelectedItem()}>
+              Archive item
+            </button>
+          </p>
         )}
         {selectedItem && (
           <form key={`barcode:${selectedItem.id}`} onSubmit={addBarcode}>

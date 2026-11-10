@@ -5039,6 +5039,7 @@ export type Database = {
       }
       remove_tenant_user: { Args: { p_user_id: string }; Returns: undefined }
       reopen_document_remark: { Args: { p_remark_id: string }; Returns: number }
+      restore_item: { Args: { p_item_id: string }; Returns: string }
       revoke_device: { Args: { p_id: string }; Returns: undefined }
       revoke_invite: { Args: { p_id: string }; Returns: undefined }
       set_device_label: {

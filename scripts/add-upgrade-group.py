@@ -22,6 +22,7 @@ migration's objects (expect state 0), node scripts/verify-migration-manifest.mjs
 """
 import sys,re
 grp,ver,fname,prev,title,anchors_sql,n,anon_grant,anon_revoke=sys.argv[1:10]
+anchors_sql=anchors_sql.rstrip().rstrip(',')  # the last anchor must not end with a comma
 def ed(p,a,b):
     s=open(p).read(); assert s.count(a)==1,(p,a[:60]); open(p,'w').write(s.replace(a,b,1))
 ed('scripts/apply-migrations-with-receipts.mjs',f"  '{prev}',\n];",f"  '{prev}',\n  '{grp}',\n];")

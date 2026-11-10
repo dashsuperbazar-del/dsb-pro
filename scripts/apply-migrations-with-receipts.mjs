@@ -75,6 +75,7 @@ const GROUP_ORDER = [
   'storefrontupi',
   'storefrontux',
   'orderadjust',
+  'itemrestore',
 ];
 
 /**

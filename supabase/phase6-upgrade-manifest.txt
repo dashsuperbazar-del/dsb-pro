@@ -53,3 +53,4 @@
 0081 storefrontupi supabase/migrations/0081_storefront_upi.sql
 0082 storefrontux supabase/migrations/0082_storefront_ux.sql
 0083 orderadjust supabase/migrations/0083_order_adjust.sql
+0084 itemrestore supabase/migrations/0084_item_restore.sql
