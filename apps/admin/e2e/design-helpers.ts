@@ -38,10 +38,9 @@ export async function openPurchaseFilter(page: Page) {
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
 }
-// D5: Void sits behind the bill's More menu; open the void panel (reason + Void bill).
+// Old-DSB popup: "Delete Bill" opens the void panel (reason + Void bill); a bill is voided, never deleted.
 export async function openVoidPanel(detail: Locator) {
-  await detail.getByRole('button', { name: 'More actions for this bill' }).click();
-  await detail.getByRole('menuitem', { name: 'Void bill…' }).click();
+  await detail.getByRole('button', { name: 'Delete Bill', exact: true }).click();
 }
 export async function addCustomerForm(page: Page) {
   const details = page

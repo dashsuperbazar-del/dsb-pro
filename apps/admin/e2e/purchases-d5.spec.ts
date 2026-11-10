@@ -83,15 +83,14 @@ test('purchases list: Filter row starts collapsed with a summary; credit bills r
   await page.getByLabel('Status').selectOption('unpaid');
   await expect(row).toContainText('Owed');
   await expect(page.getByRole('button', { name: /D4-STOCK/ })).toBeVisible();
-  // Open the bill: main actions are buttons, Void is behind More, Payments can be folded.
+  // Open the bill: main actions are buttons, Void opens from Delete Bill, Payments can be folded.
   await page.getByRole('button', { name: /D4-STOCK/ }).click();
   const detail = page.getByLabel('Purchase detail');
-  await expect(detail.getByRole('link', { name: 'Pay', exact: true })).toBeVisible();
-  await expect(detail.getByRole('link', { name: 'Edit bill' })).toBeVisible();
+  await expect(detail.getByRole('link', { name: 'Record Payment', exact: true })).toBeVisible();
+  await expect(detail.getByRole('link', { name: 'Edit Bill' })).toBeVisible();
   await expect(detail.getByRole('button', { name: 'Remarks' })).toBeVisible();
   await expect(detail.getByRole('button', { name: 'Void bill', exact: true })).toBeHidden();
-  await detail.getByRole('button', { name: 'More actions for this bill' }).click();
-  await detail.getByRole('menuitem', { name: 'Void bill…' }).click();
+  await detail.getByRole('button', { name: 'Delete Bill', exact: true }).click();
   await expect(detail.getByLabel('Reason for voiding')).toBeVisible();
   await expect(detail.getByRole('button', { name: 'Void bill', exact: true })).toBeVisible();
   const payments = detail.locator('.home-row-toggle').filter({ hasText: /^Payments/ });

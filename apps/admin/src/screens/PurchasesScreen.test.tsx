@@ -372,7 +372,7 @@ test('role gating: an accountant cannot void a credit bill; a manager can', asyn
   await openCash('manager', extras('unpaid', 'credit'), creditDetail());
   await vi.waitFor(() => expect(voidBtn().textContent).toBe('Void bill'));
   // 0066: a manager may correct the bill (one server transaction); an accountant never sees it.
-  await vi.waitFor(() => expect(host.textContent).toContain('Edit bill'));
+  await vi.waitFor(() => expect(host.textContent).toContain('Edit Bill'));
 });
 
 test('list shows Paid/Part paid/Owed/Void from the ledger and filters by it', async () => {

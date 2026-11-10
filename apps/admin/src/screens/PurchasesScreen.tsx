@@ -36,7 +36,6 @@ import {
 } from '../lib/purchaseListFilter';
 import { HomeRow } from '../components/HomeRow';
 import '../d5.css';
-import { MoreMenu } from '../components/MoreMenu';
 import { billCodeMatch } from '../lib/billCode';
 import { BillCodeChip } from '../components/BillCodeChip';
 import {
@@ -58,7 +57,7 @@ import { RemarkBox } from '../components/RemarkBox';
 import { pendingDocIds } from '../lib/remarkQueue';
 import { createDetailCache } from '../lib/detailCache';
 import { ShareImageButton } from '../components/ShareImageButton';
-import { purchaseBillDoc } from '../lib/shareImage';
+import { purchaseBillDoc, renderReceiptCanvas } from '../lib/shareImage';
 import { loadShopProfile } from '../lib/shopProfile';
 
 type PurchaseListSnapshot = { rows: PurchaseRecord[]; parties: Party[] };
@@ -469,6 +468,32 @@ export function PurchasesScreen({ url }: { url?: string }) {
     (b) => b.status === 'VOID',
     voidedShown,
   );
+  // Print/PDF (old DSB): the same receipt picture as "share as image", opened for the browser's print dialog.
+  async function printBill() {
+    if (!detail) return;
+    try {
+      const party = parties.find((p) => p.id === detail.bill.party_id) ?? null;
+      const prof = await loadShopProfile(shop);
+      const canvas = renderReceiptCanvas(
+        purchaseBillDoc(
+          detail,
+          prof.profile,
+          party ? { name: party.name, phone: party.phone } : null,
+          extras?.lines ?? [],
+        ),
+      );
+      const w = window.open('', '_blank');
+      if (!w) throw new Error('Allow pop-ups to print.');
+      w.document.title = detail.bill.bill_no || 'Purchase bill';
+      const img = w.document.createElement('img');
+      img.src = canvas.toDataURL('image/png');
+      img.style.maxWidth = '100%';
+      img.onload = () => w.print();
+      w.document.body.appendChild(img);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
   return (
     <main class={`purchase-workspace${entering ? ' bill-sheet' : ''}`}>
       {entering && (
@@ -477,13 +502,18 @@ export function PurchasesScreen({ url }: { url?: string }) {
         </a>
       )}
       <div class="row">
-        <h1>{entering ? 'New Purchase Bill' : 'Purchases'}</h1>
+        <h1>{entering ? 'New Purchase Bill' : 'Bills'}</h1>
         <a href={appRoute.inventory}>Stock</a>
       </div>
       <nav class="context-actions" aria-label="Purchase actions">
         {canPost && (
+          <a class="button-link bills-batch" href={appRoute.purchases + '?new=1'}>
+            ⚡ Batch
+          </a>
+        )}
+        {canPost && (
           <a class="button-link primary" href={appRoute.purchases + '?new=1'}>
-            New purchase
+            + New Bill
           </a>
         )}
         <a href={appRoute.purchases}>Bill list</a>
@@ -528,7 +558,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
             onChange={(v) => setStatusFilter(v)}
           />
           <label class="search-field">
-            Search loaded bills
+            Search party, bill no., amount
             <input
               value={queryText}
               placeholder="Bill, bill code, supplier, date or amount"
@@ -633,6 +663,14 @@ export function PurchasesScreen({ url }: { url?: string }) {
                   <small>
                     {b.bill_no || b.bill_code || b.id.slice(0, 8)} · {b.business_date}
                   </small>
+                  {pending?.has(b.id) && (
+                    <span class="badge remark-open" data-testid="list-pending">
+                      ⚡ Items pending
+                    </span>
+                  )}
+                </span>
+                <span class="record-side">
+                  <span class="record-value">{rupees(b.total_paise)}</span>
                   {listBadge(settlements.get(b.id)) ? (
                     <span
                       class={`badge settle-${settlements.get(b.id)!.status}`}
@@ -645,13 +683,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
                       {b.status === 'VOID' ? 'Void' : 'Posted'}
                     </span>
                   )}
-                  {pending?.has(b.id) && (
-                    <span class="badge remark-open" data-testid="list-pending">
-                      Pending
-                    </span>
-                  )}
                 </span>
-                <span class="record-value">{rupees(b.total_paise)}</span>
               </button>
             ))}
           </div>
@@ -737,18 +769,6 @@ export function PurchasesScreen({ url }: { url?: string }) {
             <header class="bd-head">
               <div class="row">
                 <h2>{detail.bill.bill_no || 'Purchase bill'}</h2>
-                <ShareImageButton
-                  build={async () => {
-                    const party = parties.find((p) => p.id === detail.bill.party_id) ?? null;
-                    const prof = await loadShopProfile(shop);
-                    return purchaseBillDoc(
-                      detail,
-                      prof.profile,
-                      party ? { name: party.name, phone: party.phone } : null,
-                      extras?.lines ?? [],
-                    );
-                  }}
-                />
                 <button
                   type="button"
                   onClick={() => {
@@ -801,7 +821,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
                     encodeURIComponent(detail.bill.id)
                   }
                 >
-                  Pay
+                  Record Payment
                 </a>
               )}
               {canPost && detail.bill.status === 'POSTED' && links && !links.replacedById && (
@@ -810,7 +830,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
                   data-testid="edit-bill"
                   href={appRoute.purchases + '?new=1&edit=' + encodeURIComponent(detail.bill.id)}
                 >
-                  Edit bill
+                  Edit Bill
                 </a>
               )}
               {shop && userRef.current && (
@@ -823,20 +843,33 @@ export function PurchasesScreen({ url }: { url?: string }) {
                   Photos ({billPhotos.length})
                 </button>
               )}
+              <ShareImageButton
+                label="📤 WhatsApp"
+                build={async () => {
+                  const party = parties.find((p) => p.id === detail.bill.party_id) ?? null;
+                  const prof = await loadShopProfile(shop);
+                  return purchaseBillDoc(
+                    detail,
+                    prof.profile,
+                    party ? { name: party.name, phone: party.phone } : null,
+                    extras?.lines ?? [],
+                  );
+                }}
+              />
+              <button type="button" class="bd-print" onClick={() => void printBill()}>
+                🖨 Print/PDF
+              </button>
               {canVoidHere && (
-                <MoreMenu
-                  label="More actions for this bill"
-                  items={[
-                    {
-                      label: 'Void bill…',
-                      danger: true,
-                      onSelect: () => {
-                        setVoidOpen(true);
-                        goTo('bill-void');
-                      },
-                    },
-                  ]}
-                />
+                <button
+                  type="button"
+                  class="bd-delete"
+                  onClick={() => {
+                    setVoidOpen(true);
+                    goTo('bill-void');
+                  }}
+                >
+                  Delete Bill
+                </button>
               )}
             </div>
             {creditVoidNote && <p role="status">{creditVoidNote}</p>}
@@ -1051,7 +1084,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
                       encodeURIComponent(detail.bill.party_id)
                     }
                   >
-                    New purchase · same supplier
+                    ⚡ New Bill – Same Party
                   </a>
                   <a
                     href={
@@ -1064,6 +1097,11 @@ export function PurchasesScreen({ url }: { url?: string }) {
                     Supplier ledger
                   </a>
                 </>
+              )}
+              {canPost && detail.bill.status === 'POSTED' && (
+                <a class="bd-return" href={appRoute.returns}>
+                  ↩ Record Purchase Return
+                </a>
               )}
             </nav>
           </section>
