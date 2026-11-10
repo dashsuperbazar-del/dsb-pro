@@ -61,16 +61,7 @@ async function setup(page: Page) {
   ).toBeVisible();
 }
 
-async function barClearsNav(page: Page) {
-  const nav = await page.locator('.bottom-nav').boundingBox();
-  const bar = await purchaseSection(page).locator('.bill-bar').boundingBox();
-  expect(nav && bar).toBeTruthy();
-  // Fully on screen and fully above the nav (1px tolerance for sub-pixel rounding).
-  expect(bar!.y).toBeGreaterThanOrEqual(0);
-  expect(bar!.y + bar!.height).toBeLessThanOrEqual(nav!.y + 1);
-}
-
-test('purchase entry on a phone: the total/Post bar is always fully above the bottom nav', async ({
+test('purchase entry on a phone: Post sits at the end of the bill sheet and scrolls into reach', async ({
   page,
 }) => {
   test.setTimeout(120000);
@@ -78,17 +69,14 @@ test('purchase entry on a phone: the total/Post bar is always fully above the bo
   await page.goto('/purchases?new=1');
   const purchase = purchaseSection(page);
   await expect(purchase).toHaveAttribute('data-purchase-ready', 'true');
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await barClearsNav(page);
+  // Old-DSB sheet: the form is a slide-up sheet over the page; nothing is pinned inside it.
+  await expect(page.locator('main.bill-sheet')).toBeVisible();
   await purchase.locator('select[name="partyId"]').selectOption({ label: 'Sharma Traders' });
   await fillBillItem(purchase, 1, 'Basmati rice 1kg', '2', '95');
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await barClearsNav(page);
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-  await barClearsNav(page);
-  await expect(purchase.getByRole('button', { name: 'Post purchase' })).toBeInViewport({
-    ratio: 1,
-  });
+  const post = purchase.getByRole('button', { name: 'Post purchase' });
+  await post.scrollIntoViewIfNeeded();
+  await expect(post).toBeInViewport({ ratio: 1 });
+  await expect(post).toBeEnabled();
 });
 
 test('design screenshots: counter screens, phone + desktop, light + dark', async ({

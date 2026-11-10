@@ -44,7 +44,7 @@ test('pending purchase: Review brings the block into view, shows the bill and th
   await page.getByRole('button', { name: 'Review pending purchase' }).click();
   await expect(block).toBeFocused();
   await expect(block).toBeInViewport({ ratio: 1 });
-  const bar = await page.locator('.bill-bar').boundingBox();
+  const bar = await page.locator('.bill-bar > button.primary').boundingBox();
   const box = await block.boundingBox();
   expect(bar && box && box.y + box.height <= bar.y).toBe(true);
   await page.getByRole('button', { name: 'Retry same purchase · ₹3,000.00' }).click();

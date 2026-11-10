@@ -72,6 +72,7 @@ import {
   PriceRefusedError,
   setItemMinStock,
   archiveMaster,
+  getSupplierOutstanding,
   listArchivedItems,
   restoreItem,
   setItemTaxRate,
@@ -312,6 +313,24 @@ export function InventoryScreen({
   const [canReadSaleReturns, setCanReadSaleReturns] = useState(false);
   // Bill card "Sale prices" box: only roles that set_item_price accepts (MANAGE_MASTER_DATA).
   const [canSetSalePrices, setCanSetSalePrices] = useState(false);
+  // Party chips mark suppliers with money owed (old DSB red dot). Display only; failures leave no dots.
+  const [owedParties, setOwedParties] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!purchaseOnly || !shopId || !canSeePurchasePrices) return;
+    let live = true;
+    Promise.resolve()
+      .then(() => getSupplierOutstanding(shopId))
+      .then((rows) => {
+        if (live)
+          setOwedParties(
+            new Set(rows.filter((r) => BigInt(r.netLedgerBalance) > 0n).map((r) => r.partyId)),
+          );
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [purchaseOnly, shopId, canSeePurchasePrices]);
   const [saleUser, setSaleUser] = useState('');
   const saleEnabled = canSetSalePrices && !!saleUser;
   const [saleLoads, setSaleLoads] = useState<Record<string, PriceLoad>>({});
@@ -3513,13 +3532,15 @@ export function InventoryScreen({
                 ))}
               </select>
             </label>
-            {purchaseOnly && !purchaseSupplier && (
-              <div class="shortcut-chips" aria-label="Recent suppliers">
+            {purchaseOnly && (
+              <div class="shortcut-chips party-chips" aria-label="Recent suppliers">
                 {rankedPurchaseParties(parties, recentBills, businessDate)
-                  .slice(0, 6)
+                  .slice(0, 40)
                   .map((p) => (
                     <button
                       type="button"
+                      key={p.id}
+                      class={owedParties.has(p.id) ? 'owed' : undefined}
                       aria-pressed={purchaseSupplier === p.id}
                       onClick={() => {
                         setPurchaseSupplier(p.id);
@@ -3527,6 +3548,7 @@ export function InventoryScreen({
                       }}
                     >
                       {p.name}
+                      {owedParties.has(p.id) && <span class="owed-dot" aria-label="you owe" />}
                     </button>
                   ))}
               </div>
