@@ -249,3 +249,44 @@
   gap: 4px;
   justify-items: end;
 }
+/* L3 purchase bill: old-DSB party chips; Save bar at the end of the form (not pinned). */
+.party-chips button.owed {
+  border-color: var(--danger-border);
+  color: var(--danger);
+}
+.party-chips button[aria-pressed='true'] {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: var(--on-brand);
+}
+.owed-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+.bill-bar {
+  position: static;
+  margin-top: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--brand-subtle);
+}
+/* Main bill first (supplier, date, photos, items, total); Quick bill and Batch entry follow it. */
+.purchase-entry {
+  display: flex;
+  flex-direction: column;
+}
+.purchase-entry > * {
+  min-width: 0;
+}
+.purchase-entry > details[aria-label='Quick bill'],
+.purchase-entry > details[aria-label='Batch bill entry'] {
+  order: 1;
+}
+.purchase-entry > details[aria-label='Quick bill'] {
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+}
