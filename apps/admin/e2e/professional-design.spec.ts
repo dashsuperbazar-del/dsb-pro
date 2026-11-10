@@ -126,7 +126,7 @@ test('professional phone workspace preserves drafts across task views and has re
   await expect(page.getByRole('heading', { name: 'Item setup', exact: true })).toBeInViewport();
   await page.getByRole('button', { name: 'New item', exact: true }).click();
   await expect(page.getByPlaceholder('Item name', { exact: true })).toBeVisible();
-  await nav.getByRole('link', { name: 'More', exact: true }).click();
+  await page.getByRole('link', { name: 'Shop tools' }).click();
   await capture('07-more-phone');
   await page.getByLabel('Appearance').selectOption('dark');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');

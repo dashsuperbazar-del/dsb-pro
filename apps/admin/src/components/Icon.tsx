@@ -12,9 +12,11 @@ export type IconName =
   | 'settings'
   | 'arrow'
   | 'scan'
-  | 'mic';
+  | 'mic'
+  | 'bag';
 const paths: Record<IconName, string> = {
   home: 'M3 10l9-7 9 7M5 9v12h14V9M9 21v-7h6v7',
+  bag: 'M5 7h14l-1 14H6L5 7M9 7a3 3 0 0 1 6 0M9 11a3 3 0 0 0 6 0',
   bill: 'M5 3h14v18l-3-2-4 2-4-2-3 2V3M8 8h8M8 12h5',
   people: 'M8 8a4 4 0 1 0 8 0a4 4 0 1 0-8 0M4 21v-2a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v2',
   stock: 'M3 7l9-4 9 4v10l-9 4-9-4V7M3 7l9 4 9-4M12 11v10',

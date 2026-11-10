@@ -18,7 +18,7 @@ export function BottomNav({
       : [
           {
             href: appRoute.purchases,
-            label: 'Purchases',
+            label: 'Bills',
             icon: 'purchase' as const,
             active: currentPath === appRoute.purchases,
           },
@@ -35,20 +35,19 @@ export function BottomNav({
       icon: 'people',
       active: [appRoute.suppliers, appRoute.customers].includes(currentPath),
     },
-    {
-      href: appRoute.more,
-      label: 'More',
-      icon: 'more',
-      active: ![
-        appRoute.home,
-        appRoute.purchases,
-        appRoute.pos,
-        appRoute.salesHistory,
-        appRoute.returns,
-        appRoute.suppliers,
-        appRoute.customers,
-      ].includes(currentPath),
-    },
+    role === 'cashier'
+      ? {
+          href: appRoute.more,
+          label: 'More',
+          icon: 'more' as const,
+          active: currentPath === appRoute.more,
+        }
+      : {
+          href: appRoute.orders,
+          label: 'Orders',
+          icon: 'bag' as const,
+          active: currentPath === appRoute.orders,
+        },
   ];
   return (
     <nav class="bottom-nav" aria-label="Quick navigation">
@@ -56,7 +55,7 @@ export function BottomNav({
         <a key={link.href} href={link.href} aria-current={link.active ? 'page' : undefined}>
           <Icon name={link.icon} />
           <span>{link.label}</span>
-          {link.href === appRoute.more && moreBadge > 0 && (
+          {(link.href === appRoute.orders || link.href === appRoute.more) && moreBadge > 0 && (
             <span class="nav-badge" aria-label={`${moreBadge} open online orders`}>
               {moreBadge > 99 ? '99+' : moreBadge}
             </span>
