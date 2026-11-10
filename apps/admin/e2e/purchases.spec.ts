@@ -790,5 +790,5 @@ test('a repeated supplier bill number asks before posting, and global search ope
   await expect(bills).toContainText('Dup Supplier');
   await bills.getByRole('link', { name: 'DUP-7' }).click();
   await expect(page.getByLabel('Purchase detail')).toContainText('Dup Sugar');
-  await expect(page.getByRole('button', { name: 'Share as image' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '📤 WhatsApp' })).toBeVisible();
 });
