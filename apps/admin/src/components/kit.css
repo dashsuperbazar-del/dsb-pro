@@ -773,6 +773,7 @@ p.hint {
 }
 .info-float p:last-child {
   margin: 0;
+}
 /* R3: popup buttons in old-DSB wording and colours. */
 section[aria-label='Purchase detail'] > .bill-actions > .share-image {
   display: contents;
