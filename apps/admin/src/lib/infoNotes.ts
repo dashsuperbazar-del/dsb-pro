@@ -1,7 +1,7 @@
 import { useEffect } from 'preact/hooks';
 
 /**
- * Help notes (every <p class="hint">) stay out of the way: hidden by CSS, and shown as a floating card when
+ * Help notes (every <p class="hint"> and <small class="hint">) stay out of the way: hidden by CSS, and shown as a floating card when
  * the heading above them is tapped. The heading gets a small ⓘ. A note with no heading gets its own ⓘ button.
  * Display only: the notes stay in the page for screen readers (aria-describedby) and tests.
  */
@@ -23,10 +23,13 @@ function adopt(hint: HTMLElement) {
   if (hint.dataset.infoDone) return;
   hint.dataset.infoDone = '1';
   if (!hint.id) hint.id = `info-note-${++seq}`;
-  let head = headingFor(hint);
+  // A field-level hint (class "field") gets its own ⓘ beside the field instead of joining a heading.
+  let head = hint.classList.contains('field') ? null : headingFor(hint);
   if (!head) {
-    head = document.createElement('button');
-    head.setAttribute('type', 'button');
+    // A span, not a button: inside a <label> a button would become the label's control.
+    head = document.createElement('span');
+    head.setAttribute('role', 'button');
+    head.tabIndex = 0;
     head.className = 'info-dot';
     head.setAttribute('aria-label', 'About this');
     hint.before(head);
@@ -59,7 +62,7 @@ function hide() {
 
 export function useInfoNotes(): void {
   useEffect(() => {
-    const scan = () => document.querySelectorAll<HTMLElement>('p.hint').forEach(adopt);
+    const scan = () => document.querySelectorAll<HTMLElement>('p.hint, small.hint').forEach(adopt);
     let queued = false;
     const obs = new MutationObserver(() => {
       if (queued) return;
@@ -74,6 +77,8 @@ export function useInfoNotes(): void {
     const onClick = (e: MouseEvent) => {
       const open = !!document.querySelector('.info-float');
       const head = (e.target as Element | null)?.closest?.('[data-info]') as HTMLElement | null;
+      // An ⓘ inside a <label> must not also focus the field (and open the keyboard).
+      if (head?.classList.contains('info-dot')) e.preventDefault();
       hide();
       if (!head || open) return;
       // A <summary> also opens/closes its section: explain only when it is being opened.

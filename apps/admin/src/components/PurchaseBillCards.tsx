@@ -964,7 +964,9 @@ export function PurchaseBillCards(props: {
           >
             {savingAll ? 'Saving…' : `Save all new items (${pendingNew})`}
           </button>
-          <small class="muted">Saves each new item to your items list. Nothing is posted.</small>
+          <small class="hint field">
+            Saves each new item to your items list. Nothing is posted.
+          </small>
         </div>
       )}
       {props.showAdd !== false && (
@@ -1077,7 +1079,7 @@ function SalePriceBox(props: {
           Current prices could not be loaded. A price typed here replaces the current one.
         </small>
       ) : (
-        <small class="muted">Saved to the item only after the bill is posted.</small>
+        <small class="hint field">Saved to the item only after the bill is posted.</small>
       )}
     </div>
   );

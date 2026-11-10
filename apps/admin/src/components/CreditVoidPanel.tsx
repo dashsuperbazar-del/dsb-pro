@@ -231,7 +231,7 @@ export function CreditVoidPanel({
               onInput={(e) => setReason(e.currentTarget.value)}
             />
           </label>
-          <small class="muted">
+          <small class="hint field">
             Staff who can see this bill can read the reason. No colons (:).
           </small>
           <button
@@ -247,7 +247,7 @@ export function CreditVoidPanel({
           >
             {busy ? 'Voiding…' : pending ? 'Retry void (same request)' : 'Void bill'}
           </button>
-          <small class="muted">Reverses this bill's stock and the supplier balance.</small>
+          <small class="hint field">Reverses this bill's stock and the supplier balance.</small>
         </>
       )}
       {offlineCapable && !pending && !queuedOffline && (

@@ -333,7 +333,7 @@ export function SettingsScreen() {
                 onInput={(e) => setFooter((e.currentTarget as HTMLInputElement).value)}
               />
             </label>
-            <p class="muted">Printed on receipts and shared invoice images.</p>
+            <p class="hint field">Printed on receipts and shared invoice images.</p>
             <button type="submit" disabled={busy || !shopId}>
               Save receipt contact
             </button>

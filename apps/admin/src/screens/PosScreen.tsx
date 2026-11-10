@@ -1325,7 +1325,7 @@ export function PosScreen() {
         </a>
       </p>
       <h1>Sales POS</h1>
-      <p class="muted">Add items, review your bill, then enter the payment.</p>
+      <p class="hint field">Add items, review your bill, then enter the payment.</p>
       <div class="pos-overview no-print" aria-label="Bill summary">
         <div>
           <small>
@@ -1619,7 +1619,9 @@ export function PosScreen() {
                 </select>
               </label>
               <button>Add to bill</button>
-              <small>No stock is kept for it. It cannot be returned later.</small>
+              <small class="hint field">
+                No stock is kept for it. It cannot be returned later.
+              </small>
             </form>
           </details>
         )}

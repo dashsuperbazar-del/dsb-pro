@@ -2979,7 +2979,7 @@ export function InventoryScreen({
       })}
       <section hidden={purchaseOnly || view !== 'advanced'} aria-label="Import old DSB backup">
         <h2>Import old DSB backup</h2>
-        <p class="muted">
+        <p class="hint field">
           Shop-test setup only. This imports the current item master, sale prices, current stock,
           suppliers and real customers. It does not copy historical purchase bills, sales invoices
           or payments.
