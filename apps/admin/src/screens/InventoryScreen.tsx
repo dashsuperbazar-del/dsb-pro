@@ -71,6 +71,7 @@ import {
   setItemPrice,
   PriceRefusedError,
   setItemMinStock,
+  archiveMaster,
   setItemTaxRate,
   type Item,
   type ItemPrice,
@@ -2731,6 +2732,30 @@ export function InventoryScreen({
       setError(errorText(e));
     }
   }
+  async function archiveSelectedItem() {
+    if (!selectedItem) return;
+    if (Number(selectedStock) !== 0) {
+      setError(
+        `${selectedItem.name} still has ${selectedStock} in stock. Sell, return or count it to 0 first, then archive.`,
+      );
+      return;
+    }
+    if (
+      !window.confirm(
+        `Archive ${selectedItem.name}? It disappears from search, billing and the online shop. Old bills and reports keep it.`,
+      )
+    )
+      return;
+    try {
+      await archiveMaster('items', selectedItem.id);
+      const gone = selectedItem.id;
+      setItems((v) => v.filter((i) => i.id !== gone));
+      setSelected('');
+      setMessage(`Archived ${selectedItem.name}.`);
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
   async function changeMinStock(ev: Event) {
     ev.preventDefault();
     if (!selectedItem) return;
@@ -3088,6 +3113,13 @@ export function InventoryScreen({
             </label>{' '}
             <button disabled={!shopId}>Save reorder threshold</button>
           </form>
+        )}
+        {selectedItem && (
+          <p>
+            <button type="button" class="danger" onClick={() => void archiveSelectedItem()}>
+              Archive item
+            </button>
+          </p>
         )}
         {selectedItem && (
           <form key={`barcode:${selectedItem.id}`} onSubmit={addBarcode}>

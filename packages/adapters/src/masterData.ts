@@ -65,6 +65,8 @@ export async function listItems(): Promise<Item[]> {
     const { data, error } = await client
       .from('items')
       .select('id,name,sku,unit1,unit2,unit3,conv1,conv2,tax_rate_bp,min_stock,image_path')
+      // Owners/managers also match the write policy, which does not hide archived rows.
+      .is('deleted_at', null)
       .order('name')
       .order('id')
       .range(from, to);
