@@ -62,7 +62,7 @@ test('phone-width screens get a bottom navigation bar', async ({ page }) => {
   await createOwnerShop(page);
   const nav = page.getByRole('navigation', { name: 'Quick navigation' });
   await expect(nav).toBeVisible();
-  await nav.getByRole('link', { name: 'More' }).click();
+  await page.getByRole('link', { name: 'Shop tools' }).click();
   await page.getByRole('link', { name: 'Expenses', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Expenses', exact: true })).toBeVisible();
 });

@@ -14,6 +14,7 @@ import { AttentionTile } from './components/AttentionTile';
 import { OpenRemarksTile } from './components/OpenRemarksTile';
 import { QuickEntry } from './components/QuickEntry';
 import { HomeRow } from './components/HomeRow';
+import { HomeOverview } from './components/HomeOverview';
 import { BottomNav } from './components/BottomNav';
 import { useOrderAlerts } from './lib/orderAlerts';
 import { useKeyboardOpen } from './lib/keyboardOpen';
@@ -274,6 +275,7 @@ function Home({ session }: { session: ReturnType<typeof useSession> }) {
             later.
           </p>
         )}
+        {session.membership.role !== 'cashier' && <HomeOverview rev={rev} />}
         {session.membership.role !== 'cashier' && (
           <DayBookTile rev={rev} onRefresh={() => setRev((n) => n + 1)} />
         )}

@@ -3,6 +3,7 @@ import * as Sentry from '@sentry/browser';
 import { App } from './App';
 import './tokens.css';
 import './style.css';
+import './components/kit.css';
 import './d3.css';
 import './pickList.css';
 import './d3-screens.css';
