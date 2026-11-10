@@ -403,6 +403,7 @@ main.bill-sheet .purchase-entry > form {
 }
 main.bill-sheet .purchase-entry > form > * {
   order: 70;
+  flex-shrink: 0;
 }
 main.bill-sheet .purchase-entry > form > .alert,
 main.bill-sheet .purchase-entry > form > [role='alert'] {
@@ -507,4 +508,220 @@ main.bill-sheet .bill-attachment button {
   border: 1.5px solid var(--brand);
   color: var(--brand);
   font-weight: 600;
+}
+
+/* ---- Bill detail as an old-DSB popup sheet (rebuild R2) ---- */
+section[aria-label='Purchase detail'] {
+  position: fixed;
+  inset: 8vh 0 0;
+  z-index: 120;
+  max-width: 720px;
+  margin: 0 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--surface);
+  border: 0;
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 0 0 100vmax var(--scrim);
+  padding: 0 16px calc(32px + env(safe-area-inset-bottom));
+  animation: kit-up 0.22s var(--ease);
+}
+section[aria-label='Purchase detail'] > * {
+  order: 50;
+  margin: 0;
+  flex-shrink: 0;
+}
+section[aria-label='Purchase detail'] > [role='status'],
+section[aria-label='Purchase detail'] > [role='alert'] {
+  order: 5;
+  margin-top: 12px;
+}
+.bd-head {
+  order: 1 !important;
+  position: relative;
+  margin: 0 -16px !important;
+  padding: 26px 16px 16px;
+  background: var(--brand);
+  color: var(--on-brand);
+  border-radius: 20px 20px 0 0;
+}
+.bd-head::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  width: 36px;
+  height: 4px;
+  margin-left: -18px;
+  border-radius: 2px;
+  background: rgb(255 255 255 / 45%);
+}
+.bd-head .row {
+  display: block;
+}
+.bd-head h2 {
+  margin: 0 48px 2px 0;
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0.9;
+  overflow-wrap: anywhere;
+}
+.bd-head > p {
+  margin: 2px 0;
+  font-size: 13px;
+  opacity: 0.95;
+}
+.bd-head > p:first-of-type {
+  font-size: 18px;
+  font-weight: 700;
+  opacity: 1;
+}
+.bd-head > p:last-of-type {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 13px;
+}
+.bd-head > p:last-of-type > strong {
+  font-size: 24px;
+  margin-right: auto;
+}
+.bd-head .badge {
+  background: var(--surface);
+}
+.bd-head .row > button:last-child {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 50%;
+  border: 0;
+  background: var(--surface);
+  color: transparent;
+  font-size: 0;
+  box-shadow: var(--shadow);
+}
+.bd-head .row > button:last-child::after {
+  content: '×';
+  color: var(--text);
+  font-size: 22px;
+  line-height: 36px;
+}
+.bd-head .row > :not(h2):not(:last-child) {
+  display: inline-flex;
+  min-height: 30px;
+  margin: 4px 0;
+  padding: 4px 10px;
+  font-size: 12px;
+  background: var(--surface);
+  color: var(--brand);
+  border: 0;
+}
+.bd-head .bill-code {
+  font-size: 12px;
+}
+.bd-head .bill-code button {
+  min-height: 28px;
+  padding: 2px 8px;
+  color: var(--text);
+}
+section[aria-label='Purchase detail'] > #bill-remarks {
+  order: 44;
+}
+section[aria-label='Purchase detail'] > .bd-items-title {
+  order: 20;
+}
+section[aria-label='Purchase detail'] > .bd-items {
+  order: 21;
+  display: grid;
+  gap: 8px;
+}
+.bd-items .purchase-line {
+  padding: 12px 14px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+}
+.bd-items .purchase-line > strong {
+  color: var(--brand);
+}
+section[aria-label='Purchase detail'] > [data-testid='bill-charges'] {
+  order: 22;
+}
+section[aria-label='Purchase detail'] > .bd-totals {
+  order: 23;
+  font-size: 12px;
+}
+section[aria-label='Purchase detail'] > [data-testid='bill-notes'] {
+  order: 24;
+}
+section[aria-label='Purchase detail'] > .home-row {
+  order: 30;
+}
+.bd-due {
+  order: 31 !important;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px;
+  border: 1.5px solid var(--danger-border);
+  border-radius: var(--radius);
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-weight: 600;
+}
+.bd-due strong {
+  font-size: 20px;
+}
+.bd-due.paid {
+  border-color: var(--success-border);
+  background: var(--success-bg);
+  color: var(--success);
+}
+section[aria-label='Purchase detail'] > .bill-actions {
+  order: 40;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+section[aria-label='Purchase detail'] > .bill-actions > * {
+  min-height: 46px;
+  justify-content: center;
+  text-align: center;
+  border: 1.5px solid var(--brand);
+  color: var(--brand);
+  font-weight: 600;
+}
+section[aria-label='Purchase detail'] > .bill-actions > .primary {
+  color: var(--on-brand);
+}
+section[aria-label='Purchase detail'] > nav.context-actions {
+  order: 41;
+  display: grid;
+  gap: 8px;
+}
+section[aria-label='Purchase detail'] > nav.context-actions > a {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--success);
+  border-radius: var(--radius-md);
+  color: var(--success);
+  font-weight: 600;
+  text-decoration: none;
+}
+section[aria-label='Purchase detail'] > #bill-void {
+  order: 45;
+}
+section[aria-label='Purchase detail'] > #bill-photos {
+  order: 60;
 }

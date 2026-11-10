@@ -1,3 +1,4 @@
+import { closeBillSheet } from './design-helpers';
 import { readFile } from 'node:fs/promises';
 import { test, expect, type Request, type Response } from '@playwright/test';
 import { addItemForm, fillBillItem, openBillDetails } from './design-helpers';
@@ -149,6 +150,7 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
     'Purchase posted',
   );
   await page.getByRole('link', { name: 'Bill list', exact: true }).click();
+  await closeBillSheet(page);
   await page.getByRole('button', { name: /Daily Supplier.*DSB-1/ }).click();
   const detail = page.getByLabel('Purchase detail');
   await expect(detail).toContainText('Daily oil');
@@ -198,6 +200,7 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
   );
   await page.getByRole('link', { name: 'Bill list', exact: true }).click();
   // Repeating the same source again after posting must create a fresh, unposted draft.
+  await closeBillSheet(page);
   await page.getByRole('button', { name: /Daily Supplier.*DSB-1/ }).click();
   await detail.getByRole('link', { name: 'Repeat into new draft' }).click();
   await expect(
@@ -215,6 +218,7 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
   await expect(purchase.getByTestId('bill-total')).toContainText('₹240.00');
   page.once('dialog', (d) => void d.accept());
   await page.getByRole('link', { name: 'Bill list', exact: true }).click();
+  await closeBillSheet(page);
   await page.getByRole('button', { name: /Daily Supplier.*DSB-2/ }).click();
   await detail.getByRole('button', { name: 'View bill document' }).click();
   await expect(photo.getByRole('link', { name: 'Open PDF' })).toBeVisible();
@@ -243,6 +247,7 @@ test('DSB purchase detail, repeat and contextual payment use the same financial 
   ).toContainText('₹380.00');
   await capture('14-context-payment-phone');
   await page.goto('/purchases');
+  await closeBillSheet(page);
   await page.getByRole('button', { name: /Daily Supplier.*DSB-1/ }).click();
   await expect(page.getByLabel('Purchase detail')).toContainText('Due ₹140.00');
   await page.goto('/inventory');

@@ -734,51 +734,53 @@ export function PurchasesScreen({ url }: { url?: string }) {
                 </button>
               </p>
             )}
-            <div class="row">
-              <h2>{detail.bill.bill_no || 'Purchase bill'}</h2>
-              <ShareImageButton
-                build={async () => {
-                  const party = parties.find((p) => p.id === detail.bill.party_id) ?? null;
-                  const prof = await loadShopProfile(shop);
-                  return purchaseBillDoc(
-                    detail,
-                    prof.profile,
-                    party ? { name: party.name, phone: party.phone } : null,
-                    extras?.lines ?? [],
-                  );
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  generation.current++;
-                  setDetail(null);
-                  setOpenRow(null);
-                  setDetailLoading(false);
-                }}
-              >
-                Close detail
-              </button>
-            </div>
-            <p>
-              {name(detail.bill.party_id)} · {detail.bill.business_date}
-            </p>
-            <BillCodeChip code={detail.bill.bill_code} />
-            <p>
-              <strong>{rupees(detail.bill.total_paise)}</strong>
-              {extras && (
-                <>
-                  {' '}
-                  · {PAYMENT_LABEL[extras.paymentType]} bill ·{' '}
-                  <span
-                    class={`badge settle-${extras.settlement.status}`}
-                    data-testid="settlement-badge"
-                  >
-                    {settlementLabel(extras.settlement)}
-                  </span>
-                </>
-              )}
-            </p>
+            <header class="bd-head">
+              <div class="row">
+                <h2>{detail.bill.bill_no || 'Purchase bill'}</h2>
+                <ShareImageButton
+                  build={async () => {
+                    const party = parties.find((p) => p.id === detail.bill.party_id) ?? null;
+                    const prof = await loadShopProfile(shop);
+                    return purchaseBillDoc(
+                      detail,
+                      prof.profile,
+                      party ? { name: party.name, phone: party.phone } : null,
+                      extras?.lines ?? [],
+                    );
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    generation.current++;
+                    setDetail(null);
+                    setOpenRow(null);
+                    setDetailLoading(false);
+                  }}
+                >
+                  Close detail
+                </button>
+              </div>
+              <p>
+                {name(detail.bill.party_id)} · {detail.bill.business_date}
+              </p>
+              <BillCodeChip code={detail.bill.bill_code} />
+              <p>
+                <strong>{rupees(detail.bill.total_paise)}</strong>
+                {extras && (
+                  <>
+                    {' '}
+                    · {PAYMENT_LABEL[extras.paymentType]} bill ·{' '}
+                    <span
+                      class={`badge settle-${extras.settlement.status}`}
+                      data-testid="settlement-badge"
+                    >
+                      {settlementLabel(extras.settlement)}
+                    </span>
+                  </>
+                )}
+              </p>
+            </header>
             {extrasError && (
               <p class="muted">
                 <span class="badge" data-testid="settlement-badge">
@@ -911,6 +913,17 @@ export function PurchasesScreen({ url }: { url?: string }) {
                 </p>
               </HomeRow>
             )}
+            {detail.balance && detail.bill.status === 'POSTED' && (
+              <div
+                class={`bd-due${BigInt(detail.balance.outstanding_paise) > 0n ? '' : ' paid'}`}
+                data-testid="balance-due"
+              >
+                <span>
+                  {BigInt(detail.balance.outstanding_paise) > 0n ? 'Balance Due' : 'Fully paid'}
+                </span>
+                <strong class="num">{rupees(detail.balance.outstanding_paise)}</strong>
+              </div>
+            )}
             {billPhotos.length > 0 && (
               <div id="bill-photos" tabIndex={-1}>
                 {billPhotos.map((path, i) => (
@@ -922,7 +935,8 @@ export function PurchasesScreen({ url }: { url?: string }) {
                 ))}
               </div>
             )}
-            <div class="record-list">
+            <h3 class="kit-section bd-items-title">Items</h3>
+            <div class="record-list bd-items">
               {detail.lines.map((l) => {
                 const x = extras?.lines.find((e) => e.lineNo === l.line_no);
                 return (
@@ -947,7 +961,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
                 {extras.charges.map((c) => `${c.label} ${rupees(c.amountPaise)}`).join(' · ')}
               </p>
             )}
-            <p>
+            <p class="bd-totals muted">
               Items {rupees(detail.bill.subtotal_paise)} · Discount{' '}
               {rupees(detail.bill.discount_paise)} · Extra {rupees(detail.bill.extra_charges_paise)}
               {roundOffLabel(detail.bill.round_off_paise) &&

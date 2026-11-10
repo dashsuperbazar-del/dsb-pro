@@ -33,6 +33,7 @@ export async function openBillOptions(page: Page) {
 }
 // D5: the Purchases list filters sit behind a collapsed "Filter" row; open it before using them.
 export async function openPurchaseFilter(page: Page) {
+  await closeBillSheet(page);
   const toggle = page.locator('.home-row-toggle').filter({ hasText: /^Filter/ });
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
@@ -88,4 +89,10 @@ export async function openItemMore(purchase: Locator, n: number) {
   const more = purchase.getByRole('button', { name: `More for item ${n}`, exact: true });
   if ((await more.getAttribute('aria-expanded')) !== 'true') await more.click();
   await expect(more).toHaveAttribute('aria-expanded', 'true');
+}
+
+/** The bill detail is a popup sheet over the list (old-DSB layout): close it before using the list again. */
+export async function closeBillSheet(page: Page) {
+  const close = page.getByRole('button', { name: 'Close detail' });
+  if (await close.isVisible()) await close.click();
 }
