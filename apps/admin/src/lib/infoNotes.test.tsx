@@ -33,3 +33,29 @@ test('a hint is tied to its heading and shown as a floating note on tap; another
   expect(document.querySelector('.info-float')).toBeNull();
   render(null, host);
 });
+
+function Field() {
+  useInfoNotes();
+  return (
+    <section>
+      <h2>Units</h2>
+      <label>
+        Small unit <input />
+        <small class="hint field">Only the big unit is needed.</small>
+      </label>
+    </section>
+  );
+}
+
+test('a field hint gets its own ⓘ beside the field and leaves the heading alone', async () => {
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  await act(async () => render(<Field />, host));
+  expect(host.querySelector('h2')!.dataset.info).toBeUndefined();
+  const dot = host.querySelector<HTMLElement>('label .info-dot')!;
+  expect(dot.tagName).toBe('SPAN');
+  dot.click();
+  expect(document.querySelector('.info-float')!.textContent).toBe('Only the big unit is needed.');
+  document.body.click();
+  render(null, host);
+});

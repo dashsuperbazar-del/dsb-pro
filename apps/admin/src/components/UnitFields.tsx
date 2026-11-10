@@ -168,7 +168,7 @@ export function UnitFields({
         {field(FIELDS[1])}
         {field(FIELDS[2])}
       </div>
-      <p class="muted unit-help">
+      <p class="hint field unit-help">
         Only the big unit is needed. Leave the small unit and number blank for loose or single-unit
         items.
       </p>
