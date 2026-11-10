@@ -290,3 +290,28 @@
   background: var(--warning-bg);
   border-color: var(--warning-border);
 }
+/* L4 bill list: old-DSB cards (party, no. · date, badge left; amount right). */
+.record-list > button {
+  margin-bottom: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.record-list > button .record-value {
+  font-weight: var(--weight-bold);
+  font-size: 16px;
+}
+.badge.settle-unpaid {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.badge.settle-paid {
+  background: var(--success-bg);
+  color: var(--success);
+}
+.badge.settle-partial {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
