@@ -298,7 +298,7 @@ export function SettingsScreen() {
               </label>
               {!isOwner && <span class="muted"> (owner only)</span>}
             </p>
-            <p class="muted">
+            <p class="hint">
               On: a sale never blocks on stock — it posts, the item's stock can go negative, and you
               reconcile it at the next physical count. Off (default): a sale is blocked if it would
               take an item below zero.

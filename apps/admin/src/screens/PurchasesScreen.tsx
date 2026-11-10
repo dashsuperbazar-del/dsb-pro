@@ -637,7 +637,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
                 />
               </label>
             </div>
-            <p class="muted">
+            <p class="hint">
               Filters apply to loaded bills; load older bills to search more history.
             </p>
           </HomeRow>

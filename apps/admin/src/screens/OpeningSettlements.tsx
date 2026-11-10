@@ -131,7 +131,7 @@ export function OpeningSettlements(props: {
   return (
     <section class="card" aria-label="Settlements">
       <h2>Settle payments against openings</h2>
-      <p class="muted">
+      <p class="hint">
         When a customer pays an old due (or you pay a supplier's), link that payment to the opening
         so it stops showing as unassigned cash. Balances do not change.
       </p>

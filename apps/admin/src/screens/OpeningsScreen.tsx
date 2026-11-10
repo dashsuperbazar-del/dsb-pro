@@ -182,7 +182,7 @@ export function OpeningsScreen() {
         <h1>Opening balances</h1>
         <a href={appRoute.home}>Home</a>
       </div>
-      <p class="muted">
+      <p class="hint">
         What each customer and supplier stood at on your cutover date, before your first entry in
         DSB Pro. One opening per account; a wrong one is voided and entered again. Opening stock is
         entered with a physical count on <a href={appRoute.stockAdjust}>Stock adjust</a>.

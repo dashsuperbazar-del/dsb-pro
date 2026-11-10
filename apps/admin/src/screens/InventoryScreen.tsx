@@ -3418,7 +3418,7 @@ export function InventoryScreen({
         {savedDrafts.some((s) => s.draft.clientId !== purchaseClientId) && (
           <details class="card" aria-label="Saved purchase drafts">
             <summary>Saved purchase drafts</summary>
-            <p class="muted">
+            <p class="hint">
               Unposted work on this device, for your account and this shop. Resume to review;
               nothing posts automatically.
             </p>

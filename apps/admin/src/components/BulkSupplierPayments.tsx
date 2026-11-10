@@ -95,7 +95,7 @@ export function BulkSupplierPayments(props: {
   return (
     <details class="card" aria-label="Pay several suppliers">
       <summary>Record payments to several suppliers</summary>
-      <p class="muted">
+      <p class="hint">
         For money you have already paid. Each supplier is recorded on its own, oldest bills first;
         any extra stays as an advance. Date: {props.businessDate}.
       </p>

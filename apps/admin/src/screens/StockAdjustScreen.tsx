@@ -202,7 +202,7 @@ export function StockAdjustScreen() {
             {busy ? 'Posting…' : frozen ? 'Retry posting this count' : 'Post stock count'}
           </button>
         </form>
-        <p class="muted">
+        <p class="hint">
           Posting is refused if stock changed after the count snapshot, preventing a stale count
           from overwriting live movements.
         </p>

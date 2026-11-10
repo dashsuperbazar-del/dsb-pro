@@ -237,11 +237,11 @@ export function ReturnsScreen() {
         </a>
       </p>
       <h1>Returns</h1>
-      <p class="muted">
+      <p class="hint">
         Returns are separate immutable documents. The server calculates amounts, refund limits,
         stock movements and ledger entries.
       </p>
-      <p class="muted">
+      <p class="hint">
         Offline: accept the goods and note the provisional credit; tell the customer cash is
         available after reconnect and server confirmation. Only the latest 100 synced source
         documents of each type are available offline. Pending sales must sync first.

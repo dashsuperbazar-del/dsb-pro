@@ -472,7 +472,7 @@ export function OnlineShopScreen() {
       <form onSubmit={saveUpi} class="settings-form" data-testid="online-upi">
         <fieldset disabled={ro}>
           <legend>Pay by UPI</legend>
-          <p class="muted">
+          <p class="hint">
             Customers get a "Pay by UPI" button with the exact amount. The money comes straight to
             your UPI app. Check it arrived before you hand over the order as paid by UPI.
           </p>

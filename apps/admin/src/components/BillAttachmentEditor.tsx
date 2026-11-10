@@ -132,7 +132,7 @@ export function BillAttachmentEditor({
           : ''}
       </summary>
       <section aria-label={labelSuffix ? 'Quick bill photo attachment' : 'Bill attachment'}>
-        <p class="muted">
+        <p class="hint">
           Up to {MAX_BILL_PHOTOS} photos or PDFs per bill. Photos are compressed for readability;
           PDFs up to 5 MB. Each upload must be confirmed before posting.
         </p>
