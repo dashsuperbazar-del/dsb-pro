@@ -50,7 +50,7 @@ export {
   renameDevice,
   revokeDevice,
 } from './devices';
-export type { Item, Party, StockRow, PurchaseLine, ItemBarcode } from './masterData';
+export type { Item, Party, StockRow, PurchaseLine, ItemBarcode, ArchivedItem } from './masterData';
 export { getProfitReport, FREE_TEXT_REPORT_NAME } from './profit';
 export type { ProfitReport, ProfitSummary, ProfitItem } from './profit';
 export {
@@ -80,6 +80,8 @@ export {
   purgeItemImage,
   setItemMinStock,
   setItemTaxRate,
+  listArchivedItems,
+  restoreItem,
 } from './masterData';
 export type { ItemPrice } from './pricing';
 export { listCurrentPrices, listRetailPrices, PriceRefusedError, setItemPrice } from './pricing';

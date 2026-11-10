@@ -300,3 +300,25 @@ export async function uploadItemImage(
 export async function purgeItemImage(path: string): Promise<void> {
   await deleteItemImage(path);
 }
+
+export type ArchivedItem = { id: string; name: string };
+/** Archived items (only rows the caller may manage are visible: owners/managers). */
+export async function listArchivedItems(): Promise<ArchivedItem[]> {
+  const { data, error } = await getSupabaseClient()
+    .from('items')
+    .select('id,name')
+    .not('deleted_at', 'is', null)
+    .order('name')
+    .limit(500);
+  if (error) throw new Error(friendly(error));
+  return (data ?? []) as ArchivedItem[];
+}
+/** Restore an archived item (migration 0084). Refused when an active item already uses the name. */
+export async function restoreItem(itemId: string): Promise<void> {
+  const { error } = await getSupabaseClient().rpc('restore_item', { p_item_id: itemId });
+  if (error) {
+    const m = error.message ?? '';
+    const taken = /DSB_ITEM_NAME_TAKEN: (.*)/.exec(m);
+    throw new Error(taken ? taken[1] : friendly(error));
+  }
+}

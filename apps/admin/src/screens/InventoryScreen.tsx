@@ -72,6 +72,8 @@ import {
   PriceRefusedError,
   setItemMinStock,
   archiveMaster,
+  listArchivedItems,
+  restoreItem,
   setItemTaxRate,
   type Item,
   type ItemPrice,
@@ -2732,6 +2734,26 @@ export function InventoryScreen({
       setError(errorText(e));
     }
   }
+  const [archived, setArchived] = useState<{ id: string; name: string }[] | null>(null);
+  async function loadArchived() {
+    try {
+      setArchived(await listArchivedItems());
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
+  async function restoreArchived(id: string, name: string) {
+    try {
+      await restoreItem(id);
+      setArchived((v) => (v ?? []).filter((a) => a.id !== id));
+      setItems(await listItems());
+      setMessage(
+        `Restored ${name}. It is back in search and billing (publish it again for the online shop).`,
+      );
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
   async function archiveSelectedItem() {
     if (!selectedItem) return;
     if (Number(selectedStock) !== 0) {
@@ -3113,6 +3135,31 @@ export function InventoryScreen({
             </label>{' '}
             <button disabled={!shopId}>Save reorder threshold</button>
           </form>
+        )}
+        {canSetSalePrices && (
+          <details
+            onToggle={(e) => {
+              if ((e.currentTarget as HTMLDetailsElement).open) void loadArchived();
+            }}
+          >
+            <summary>Archived items</summary>
+            {archived === null ? (
+              <p class="muted">Loading…</p>
+            ) : archived.length === 0 ? (
+              <p class="muted">No archived items.</p>
+            ) : (
+              <ul class="plain-list">
+                {archived.map((a) => (
+                  <li key={a.id}>
+                    {a.name}{' '}
+                    <button type="button" onClick={() => void restoreArchived(a.id, a.name)}>
+                      Restore
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </details>
         )}
         {selectedItem && (
           <p>

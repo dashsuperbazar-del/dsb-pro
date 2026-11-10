@@ -71,6 +71,7 @@ export const ALLOWED_GROUPS = Object.freeze([
   'storefrontupi',
   'storefrontux',
   'orderadjust',
+  'itemrestore',
 ]);
 
 const VERSION_RE = /^[0-9]{4}$/;
@@ -265,6 +266,7 @@ const EXPECTED_IN_FLIGHT_GROUP_AND_PATH = Object.freeze({
   '0081': ['storefrontupi', 'supabase/migrations/0081_storefront_upi.sql'],
   '0082': ['storefrontux', 'supabase/migrations/0082_storefront_ux.sql'],
   '0083': ['orderadjust', 'supabase/migrations/0083_order_adjust.sql'],
+  '0084': ['itemrestore', 'supabase/migrations/0084_item_restore.sql'],
 });
 
 /**
