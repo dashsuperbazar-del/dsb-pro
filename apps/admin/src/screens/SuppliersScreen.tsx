@@ -1,4 +1,4 @@
-import { StatGrid, StatTile } from '../components/Kit';
+import { Sheet, StatGrid, StatTile } from '../components/Kit';
 import { confirmNewPartyName, oldestUnpaidDays } from '../lib/partyNames';
 import { errorText } from '../lib/friendlyError';
 import { useEffect, useRef, useState } from 'preact/hooks';
@@ -96,6 +96,11 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
   const [lastBill, setLastBill] = useState<Map<string, string>>(new Map());
   const [overdue, setOverdue] = useState<Map<string, number>>(new Map());
   // Age of the oldest bill still owed per supplier (owner: bills are usually paid in 2–4 months).
+  // Old-DSB ledger: '+ Payment' and 'Bulk Pay' open as sheets; ?pay=1 (Home 'Pay supplier') opens the first.
+  const [payOpen, setPayOpen] = useState(
+    () => new URLSearchParams(window.location.search).get('pay') === '1',
+  );
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [unpaidAge, setUnpaidAge] = useState<Map<string, number>>(new Map());
   const [sortOldest, setSortOldest] = useState(false);
   const [summary, setSummary] = useState<SupplierOutstandingRow[]>([]);
@@ -471,8 +476,14 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
 
   return (
     <main class="supplier-screen">
-      <div class="row">
+      <div class="row ledger-head">
         <h1>{t('suppliers')}</h1>
+        <button type="button" class="kit-btn small" onClick={() => setBulkOpen(true)}>
+          Bulk Pay
+        </button>
+        <button type="button" class="kit-btn small primary" onClick={() => setPayOpen(true)}>
+          + Payment
+        </button>
         <nav class="party-tabs" aria-label="Party type">
           <a href={appRoute.suppliers} aria-current="page">
             Suppliers
@@ -489,24 +500,30 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
         </p>
       )}
       {message && <p role="status">{message}</p>}
-      <PaySupplierPanel />
+      <Sheet open={payOpen} title="Pay supplier" onClose={() => setPayOpen(false)}>
+        <PaySupplierPanel />
+      </Sheet>
       <SnapshotNote at={snapshotAt} failed={snapshotFailed} />
-      {canPost && shopId && businessDate && snapshotAt === null && (
-        <BulkSupplierPayments
-          shopId={shopId}
-          businessDate={businessDate}
-          suppliers={summary}
-          onDone={(results) => {
-            // The open supplier's panel must not keep an amount that was just recorded in bulk.
-            if (results.some((r) => r.partyId === partyRef.current && r.status !== 'skipped')) {
-              setAmount('');
-              setAlloc({});
-              setConfirming(false);
-            }
-            void Promise.all([refreshParty(), refreshBase()]).catch((e) => setError(errorText(e)));
-          }}
-        />
-      )}
+      <Sheet open={bulkOpen} title="Bulk Pay" onClose={() => setBulkOpen(false)}>
+        {canPost && shopId && businessDate && snapshotAt === null && (
+          <BulkSupplierPayments
+            shopId={shopId}
+            businessDate={businessDate}
+            suppliers={summary}
+            onDone={(results) => {
+              // The open supplier's panel must not keep an amount that was just recorded in bulk.
+              if (results.some((r) => r.partyId === partyRef.current && r.status !== 'skipped')) {
+                setAmount('');
+                setAlloc({});
+                setConfirming(false);
+              }
+              void Promise.all([refreshParty(), refreshBase()]).catch((e) =>
+                setError(errorText(e)),
+              );
+            }}
+          />
+        )}
+      </Sheet>
 
       <section class="mobile-records">
         <h2>Summary</h2>

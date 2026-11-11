@@ -50,7 +50,7 @@ async function syncAll(page: Page) {
   await expect(page.getByTestId('sync-outbox-count')).toHaveText('0', { timeout: 20000 });
 }
 async function openSuppliersOnline(page: Page) {
-  await page.goto('/suppliers');
+  await page.goto('/suppliers?pay=1');
   // Online: the saved copy is refreshed (plain note, no "offline"/"could not refresh" warning).
   await expect(page.getByTestId('pay-copy-note')).toContainText(
     'Supplier list saved on this device',
@@ -101,7 +101,7 @@ test('offline supplier payment: saved on the device, applied on reconnect; stale
   await expect(pay.getByLabel('Supplier to pay')).toContainText('owed ₹150.00');
   await swReady(page);
   await context.setOffline(true);
-  await page.goto('/suppliers');
+  await page.goto('/suppliers?pay=1');
   await expect(page.getByTestId('pay-copy-note')).toContainText('You are offline');
   await expect(page.getByTestId('pay-copy-note')).toContainText('saved on this device');
   pay = panel(page);
@@ -116,7 +116,7 @@ test('offline supplier payment: saved on the device, applied on reconnect; stale
   await expect(pay.getByText(/earlier than bill PS-1/)).toBeVisible();
   await expect(pay.getByTestId('pay-review')).toHaveCount(0);
   await expect(rows(page, 'QUEUED')).toHaveCount(0);
-  await page.goto('/suppliers');
+  await page.goto('/suppliers?pay=1');
   pay = panel(page);
 
   // 2. A payment saved offline: review says it is not in the balance yet; the double tap saves once.
@@ -174,7 +174,7 @@ test('offline supplier payment: saved on the device, applied on reconnect; stale
   await expect(rows(page, 'QUEUED')).toHaveCount(1);
   await context.setOffline(false);
   await syncAll(page);
-  await page.goto('/suppliers');
+  await page.goto('/suppliers?pay=1');
   const refused = rows(page, 'REJECTED');
   await expect(refused).toHaveCount(1);
   await expect(refused).toContainText('Refused by the server — not recorded');

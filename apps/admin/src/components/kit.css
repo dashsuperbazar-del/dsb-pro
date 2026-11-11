@@ -1024,3 +1024,16 @@ select.ss-native {
   font-weight: 600;
   list-style: none;
 }
+/* R5 Ledger header: title + Bulk Pay + Payment on one line. */
+.ledger-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.ledger-head > h1 {
+  margin-right: auto;
+}
+.ledger-head > .party-tabs {
+  flex-basis: 100%;
+}

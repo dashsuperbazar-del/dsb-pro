@@ -17,7 +17,7 @@ export function QuickEntry({ role }: { role: string }) {
             <Icon name="purchase" />
             <span>Purchase</span>
           </a>
-          <a href={appRoute.suppliers}>
+          <a href={appRoute.suppliers + '?pay=1'}>
             <Icon name="money" />
             <span>Pay supplier</span>
           </a>
