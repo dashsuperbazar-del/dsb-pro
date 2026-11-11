@@ -1142,3 +1142,62 @@ section[aria-label='Stock items'] .record-list > button {
     display: none !important;
   }
 }
+/* ---- Day Book / Profit Report pages (rebuild R12) ---- */
+.db-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.db-back {
+  font-size: 22px;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.db-title {
+  flex: 1;
+  display: grid;
+}
+.db-title h1 {
+  margin: 0;
+  font-size: 18px;
+}
+.db-head input,
+.db-head select {
+  width: auto;
+  min-height: 36px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+.db-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.db-grid.three {
+  grid-template-columns: repeat(3, 1fr);
+}
+.db-grid .kit-stat,
+.db-net {
+  text-align: center;
+}
+.db-grid.three .kit-stat-value {
+  font-size: 16px;
+}
+.db-net {
+  padding: 20px;
+  margin-bottom: 12px;
+}
+.db-net-value {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--success);
+}
+.db-net-value.danger {
+  color: var(--danger);
+}
+.db-grid .kit-stat-value,
+.db-net .db-net-value {
+  text-align: center;
+}

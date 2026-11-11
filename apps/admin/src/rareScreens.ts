@@ -16,3 +16,4 @@ export { SearchScreen } from './screens/SearchScreen';
 export { AuditLogScreen } from './screens/AuditLogScreen';
 export { OnlineShopScreen } from './screens/OnlineShopScreen';
 export { OrdersScreen } from './screens/OrdersScreen';
+export { DayBookScreen, ProfitScreen } from './screens/DayBookScreen';

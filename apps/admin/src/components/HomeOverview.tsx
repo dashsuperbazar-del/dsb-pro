@@ -145,10 +145,10 @@ export function HomeOverview({ rev }: { rev: number }) {
           🛠 Tools
         </a>
       </div>
-      <a class="kit-btn wide" href={appRoute.reports}>
+      <a class="kit-btn wide" href={appRoute.daybook}>
         📒 Day Book — Today's Summary
       </a>
-      <a class="kit-btn wide" href={appRoute.reports + '?tab=profit'}>
+      <a class="kit-btn wide" href={appRoute.profit}>
         📈 Profit Report
       </a>
       {d.recent.length > 0 && (
