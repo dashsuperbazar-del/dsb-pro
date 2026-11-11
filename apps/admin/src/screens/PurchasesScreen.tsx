@@ -719,7 +719,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
           )}
         </section>
         {!detail && openRow && (
-          <section class="card" aria-label="Purchase detail">
+          <section class="card doc-sheet" aria-label="Purchase detail">
             <div class="row">
               <h2>{openRow.bill_no || 'Purchase bill'}</h2>
               <button
@@ -752,7 +752,7 @@ export function PurchasesScreen({ url }: { url?: string }) {
           </section>
         )}
         {detail && (
-          <section class="card" aria-label="Purchase detail" aria-busy={detailLoading}>
+          <section class="card doc-sheet" aria-label="Purchase detail" aria-busy={detailLoading}>
             {detailLoading && (
               <p class="muted" role="status">
                 Refreshing…

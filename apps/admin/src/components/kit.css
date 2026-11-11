@@ -511,7 +511,7 @@ main.bill-sheet .bill-attachment button {
 }
 
 /* ---- Bill detail as an old-DSB popup sheet (rebuild R2) ---- */
-section[aria-label='Purchase detail'] {
+.doc-sheet {
   position: fixed;
   inset: 8vh 0 0;
   z-index: 120;
@@ -529,13 +529,13 @@ section[aria-label='Purchase detail'] {
   padding: 0 16px calc(32px + env(safe-area-inset-bottom));
   animation: kit-up 0.22s var(--ease);
 }
-section[aria-label='Purchase detail'] > * {
+.doc-sheet > * {
   order: 50;
   margin: 0;
   flex-shrink: 0;
 }
-section[aria-label='Purchase detail'] > [role='status'],
-section[aria-label='Purchase detail'] > [role='alert'] {
+.doc-sheet > [role='status'],
+.doc-sheet > [role='alert'] {
   order: 5;
   margin-top: 12px;
 }
@@ -633,13 +633,13 @@ section[aria-label='Purchase detail'] > [role='alert'] {
   padding: 2px 8px;
   color: var(--text);
 }
-section[aria-label='Purchase detail'] > #bill-remarks {
+.doc-sheet > #bill-remarks {
   order: 44;
 }
-section[aria-label='Purchase detail'] > .bd-items-title {
+.doc-sheet > .bd-items-title {
   order: 20;
 }
-section[aria-label='Purchase detail'] > .bd-items {
+.doc-sheet > .bd-items {
   order: 21;
   display: grid;
   gap: 8px;
@@ -653,17 +653,17 @@ section[aria-label='Purchase detail'] > .bd-items {
 .bd-items .purchase-line > strong {
   color: var(--brand);
 }
-section[aria-label='Purchase detail'] > [data-testid='bill-charges'] {
+.doc-sheet > [data-testid='bill-charges'] {
   order: 22;
 }
-section[aria-label='Purchase detail'] > .bd-totals {
+.doc-sheet > .bd-totals {
   order: 23;
   font-size: 12px;
 }
-section[aria-label='Purchase detail'] > [data-testid='bill-notes'] {
+.doc-sheet > [data-testid='bill-notes'] {
   order: 24;
 }
-section[aria-label='Purchase detail'] > .home-row {
+.doc-sheet > .home-row {
   order: 30;
 }
 .bd-due {
@@ -686,13 +686,13 @@ section[aria-label='Purchase detail'] > .home-row {
   background: var(--success-bg);
   color: var(--success);
 }
-section[aria-label='Purchase detail'] > .bill-actions {
+.doc-sheet > .bill-actions {
   order: 40;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
-section[aria-label='Purchase detail'] > .bill-actions > * {
+.doc-sheet > .bill-actions > * {
   min-height: 46px;
   justify-content: center;
   text-align: center;
@@ -700,15 +700,15 @@ section[aria-label='Purchase detail'] > .bill-actions > * {
   color: var(--brand);
   font-weight: 600;
 }
-section[aria-label='Purchase detail'] > .bill-actions > .primary {
+.doc-sheet > .bill-actions > .primary {
   color: var(--on-brand);
 }
-section[aria-label='Purchase detail'] > nav.context-actions {
+.doc-sheet > nav.context-actions {
   order: 41;
   display: grid;
   gap: 8px;
 }
-section[aria-label='Purchase detail'] > nav.context-actions > a {
+.doc-sheet > nav.context-actions > a {
   min-height: 46px;
   display: flex;
   align-items: center;
@@ -719,10 +719,10 @@ section[aria-label='Purchase detail'] > nav.context-actions > a {
   font-weight: 600;
   text-decoration: none;
 }
-section[aria-label='Purchase detail'] > #bill-void {
+.doc-sheet > #bill-void {
   order: 45;
 }
-section[aria-label='Purchase detail'] > #bill-photos {
+.doc-sheet > #bill-photos {
   order: 60;
 }
 
@@ -780,27 +780,27 @@ small.hint {
   margin: 0;
 }
 /* R3: popup buttons in old-DSB wording and colours. */
-section[aria-label='Purchase detail'] > .bill-actions > .share-image {
+.doc-sheet > .bill-actions > .share-image {
   display: contents;
 }
-section[aria-label='Purchase detail'] > .bill-actions > .share-image > button {
+.doc-sheet > .bill-actions > .share-image > button {
   min-height: 46px;
   border: 1.5px solid var(--brand);
   color: var(--brand);
   font-weight: 600;
 }
-section[aria-label='Purchase detail'] > .bill-actions > .share-image > :not(button) {
+.doc-sheet > .bill-actions > .share-image > :not(button) {
   grid-column: 1 / -1;
   font-size: 12px;
 }
-section[aria-label='Purchase detail'] > .bill-actions > .bd-delete {
+.doc-sheet > .bill-actions > .bd-delete {
   grid-column: 1 / -1;
   min-height: 40px;
   border: 0;
   background: none;
   color: var(--danger);
 }
-section[aria-label='Purchase detail'] > nav.context-actions > a.bd-return {
+.doc-sheet > nav.context-actions > a.bd-return {
   border-color: var(--warning);
   color: var(--warning);
 }

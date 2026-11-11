@@ -1,4 +1,5 @@
 import {
+  closeBillSheet,
   addItemForm,
   fillBillItem,
   reviewPayment,
@@ -124,8 +125,11 @@ test('remarks on a purchase bill and a sale invoice: add, settle, reopen, badges
   await sale.getByRole('button', { name: 'Add remark' }).click();
   await expect(sale.getByTestId('remark')).toContainText('Customer collects 1 item tomorrow');
   await expect(page.getByTestId('sale-pending')).toHaveCount(1);
+  await closeBillSheet(page);
   await page.getByLabel('Only invoices with pending items').check();
   await expect(page.getByTestId('sale-pending')).toHaveCount(1);
+  // The invoice opens as a popup over the list (old DSB): open it again to settle the remark.
+  await page.getByRole('button', { name: 'View' }).first().click();
   await sale.getByRole('button', { name: 'Mark settled' }).click();
   await expect(sale.getByText('Settled (1)')).toBeVisible();
   await expect(page.getByTestId('sale-pending')).toHaveCount(0);
