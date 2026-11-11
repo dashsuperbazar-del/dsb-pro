@@ -1,3 +1,4 @@
+import { Tabs } from '../components/Kit';
 import { confirmNewPartyName } from '../lib/partyNames';
 import { errorText } from '../lib/friendlyError';
 import { formatQuantity, purchaseBillTotals } from '@dsb-pro/core';
@@ -1555,10 +1556,17 @@ export function InventoryScreen({
   const detailPicker = boundedItemOptions(items, itemSearch, selected);
   // D3: the item list shows each shown item's current retail price beside its stock (read-only, only for
   // the rows on screen; a failed read leaves the price out, never a guess).
+  // Old DSB: All Items / Low Stock tabs over the item list.
+  const [stockTab, setStockTab] = useState<'all' | 'low'>('all');
   const listedItems = items
     .filter((item) =>
       (item.name + ' ' + (item.sku ?? '')).toLowerCase().includes(itemSearch.toLowerCase()),
     )
+    .filter((item) => {
+      if (stockTab === 'all') return true;
+      const qty = stock.find((row) => row.item_id === item.id)?.qty_base;
+      return (item.min_stock ?? 0) > 0 && Number(qty ?? 0) <= Number(item.min_stock);
+    })
     .slice(0, 50);
   const listedKey = listedItems.map((i) => i.id).join(',');
   const [listPrices, setListPrices] = useState<Map<string, ItemPrice[]>>(new Map());
@@ -2847,6 +2855,15 @@ export function InventoryScreen({
         </p>
       )}
       <section class="card" hidden={purchaseOnly || view !== 'items'} aria-label="Stock items">
+        <Tabs
+          label="Show items"
+          value={stockTab}
+          options={[
+            { value: 'all', label: 'All Items' },
+            { value: 'low', label: 'Low Stock' },
+          ]}
+          onChange={setStockTab}
+        />
         <label class="search-field">
           Find stock item
           <input

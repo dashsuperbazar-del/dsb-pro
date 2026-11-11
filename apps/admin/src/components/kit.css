@@ -1077,3 +1077,12 @@ select.ss-native {
 .orders-empty p {
   margin: 4px 0 0;
 }
+/* R9 Stock list: old-DSB item cards. */
+section[aria-label='Stock items'] .record-list > button {
+  margin-bottom: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
