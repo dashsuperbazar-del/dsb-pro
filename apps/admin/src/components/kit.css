@@ -896,3 +896,131 @@ select.ss-native {
   color: var(--text-muted);
   cursor: default;
 }
+
+/* ---- Individual supplier as an old-DSB popup sheet (rebuild R4) ---- */
+.party-sheet {
+  position: fixed;
+  inset: 6vh 0 0;
+  z-index: 120;
+  max-width: 720px;
+  margin: 0 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--surface);
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 0 0 100vmax var(--scrim);
+  padding: 26px 16px calc(32px + env(safe-area-inset-bottom));
+  animation: kit-up 0.22s var(--ease);
+}
+.party-sheet > * {
+  flex-shrink: 0;
+  margin: 0;
+}
+.party-sheet::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  width: 36px;
+  height: 4px;
+  margin-left: -18px;
+  border-radius: 2px;
+  background: var(--border);
+}
+.ps-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ps-head h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.ps-close {
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 22px;
+  line-height: 1;
+  box-shadow: var(--shadow);
+}
+.ps-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ps-tools > * {
+  margin: 0;
+}
+.party-sheet .context-actions {
+  display: grid;
+  gap: 8px;
+}
+.party-sheet .context-actions > a {
+  display: flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--success);
+  border-radius: var(--radius-md);
+  color: var(--success);
+  font-weight: 600;
+  text-decoration: none;
+}
+@media print {
+  .supplier-screen > .party-sheet {
+    display: block !important;
+    position: static;
+    inset: auto;
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+    border-radius: 0;
+    box-shadow: none;
+    animation: none;
+  }
+  .supplier-screen > .party-sheet::before,
+  .party-sheet > :not(.supplier-ledger) {
+    display: none !important;
+  }
+}
+/* R4 order: header, tiles, edit/merge, tabs + records, buttons, schedule last. */
+.party-sheet > * {
+  order: 30;
+}
+.party-sheet > .ps-head {
+  order: 1;
+}
+.party-sheet > .kit-stats {
+  order: 2;
+}
+.party-sheet > .ps-tools {
+  order: 3;
+}
+.party-sheet > .context-actions {
+  order: 60;
+}
+.party-sheet > .supplier-schedule,
+.party-sheet > section[aria-label^='Payment schedule'] {
+  order: 70;
+}
+.party-sheet > p.context-actions > a:first-child {
+  background: var(--success);
+  border-color: var(--success);
+  color: var(--surface);
+}
+.ps-tools summary {
+  min-height: 32px;
+  padding: 4px 12px;
+  border: 1.5px solid var(--brand);
+  border-radius: var(--radius-md);
+  color: var(--brand);
+  font-size: 13px;
+  font-weight: 600;
+  list-style: none;
+}

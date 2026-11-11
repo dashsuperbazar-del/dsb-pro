@@ -1,3 +1,4 @@
+import { StatGrid, StatTile } from '../components/Kit';
 import { confirmNewPartyName, oldestUnpaidDays } from '../lib/partyNames';
 import { errorText } from '../lib/friendlyError';
 import { useEffect, useRef, useState } from 'preact/hooks';
@@ -642,71 +643,107 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
             ))}
           </select>
         </label>
-        {canPost &&
-          partyId &&
-          snapshotAt === null &&
-          (() => {
-            const party = allParties.find((p) => p.id === partyId);
-            if (!party) return null;
-            return (
-              <>
-                <PartyEditor
-                  key={party.id}
-                  kind="supplier"
-                  initial={{
-                    name: party.name,
-                    phone: party.phone,
-                    gstin: party.gstin,
-                    address: party.address ?? null,
-                  }}
-                  onSave={async (v) => {
-                    const saved = await updateParty({
-                      id: party.id,
-                      ...v,
-                      existing: { phone: party.phone, gstin: party.gstin, address: party.address },
-                    });
-                    await refreshBase();
-                    setMessage(`Details of ${saved.name} saved.`);
-                  }}
-                  onArchive={async () => {
-                    await archiveParty(party.id);
-                    await changeParty('');
-                    await refreshBase();
-                    setMessage(`${party.name} archived.`);
-                  }}
-                />
-                <PartyMergePanel
-                  shopId={shopId}
-                  party={{ id: party.id, name: party.name }}
-                  others={allParties
-                    .filter((p) => p.id !== party.id)
-                    .map((p) => ({ id: p.id, name: p.name }))}
-                  blockedReason={
-                    open.length > 0 || draft
-                      ? `A payment to ${party.name} is waiting or saved as a draft. Send or discard it first.`
-                      : null
-                  }
-                  onMerged={async (targetId, targetName) => {
-                    await changeParty(targetId);
-                    await refreshBase();
-                    setMessage(`${party.name} merged into ${targetName}. Nothing was deleted.`);
-                    setMergedInto({ id: targetId, name: targetName });
-                  }}
-                />
-              </>
-            );
-          })()}
-        {shopId && mergedInto && mergedInto.id === partyId && (
-          <DuplicateBillsCheck
-            shopId={shopId}
-            partyId={mergedInto.id}
-            partyName={mergedInto.name}
-          />
-        )}
       </section>
 
       {partyId && (
-        <>
+        <div class="party-sheet" role="dialog" aria-label="Supplier detail">
+          <header class="ps-head">
+            <h2>
+              {allParties.find((p) => p.id === partyId)?.name ??
+                summary.find((r) => r.partyId === partyId)?.partyName ??
+                'Supplier'}
+            </h2>
+            <button
+              type="button"
+              class="ps-close"
+              aria-label="Close supplier"
+              onClick={() => void changeParty('')}
+            >
+              ×
+            </button>
+          </header>
+          {(() => {
+            const row = summary.find((r) => r.partyId === partyId);
+            if (!row) return null;
+            const net = BigInt(row.netLedgerBalance);
+            return (
+              <StatGrid>
+                <StatTile
+                  label={net < 0n ? 'Credit with supplier' : 'Outstanding'}
+                  value={rupees(net < 0n ? (-net).toString() : row.netLedgerBalance)}
+                  tone={net > 0n ? 'danger' : 'success'}
+                />
+                <StatTile label="Open bills" value={rupees(row.grossOpenBills)} />
+              </StatGrid>
+            );
+          })()}
+          <div class="ps-tools">
+            {canPost &&
+              partyId &&
+              snapshotAt === null &&
+              (() => {
+                const party = allParties.find((p) => p.id === partyId);
+                if (!party) return null;
+                return (
+                  <>
+                    <PartyEditor
+                      key={party.id}
+                      kind="supplier"
+                      initial={{
+                        name: party.name,
+                        phone: party.phone,
+                        gstin: party.gstin,
+                        address: party.address ?? null,
+                      }}
+                      onSave={async (v) => {
+                        const saved = await updateParty({
+                          id: party.id,
+                          ...v,
+                          existing: {
+                            phone: party.phone,
+                            gstin: party.gstin,
+                            address: party.address,
+                          },
+                        });
+                        await refreshBase();
+                        setMessage(`Details of ${saved.name} saved.`);
+                      }}
+                      onArchive={async () => {
+                        await archiveParty(party.id);
+                        await changeParty('');
+                        await refreshBase();
+                        setMessage(`${party.name} archived.`);
+                      }}
+                    />
+                    <PartyMergePanel
+                      shopId={shopId}
+                      party={{ id: party.id, name: party.name }}
+                      others={allParties
+                        .filter((p) => p.id !== party.id)
+                        .map((p) => ({ id: p.id, name: p.name }))}
+                      blockedReason={
+                        open.length > 0 || draft
+                          ? `A payment to ${party.name} is waiting or saved as a draft. Send or discard it first.`
+                          : null
+                      }
+                      onMerged={async (targetId, targetName) => {
+                        await changeParty(targetId);
+                        await refreshBase();
+                        setMessage(`${party.name} merged into ${targetName}. Nothing was deleted.`);
+                        setMergedInto({ id: targetId, name: targetName });
+                      }}
+                    />
+                  </>
+                );
+              })()}
+            {shopId && mergedInto && mergedInto.id === partyId && (
+              <DuplicateBillsCheck
+                shopId={shopId}
+                partyId={mergedInto.id}
+                partyName={mergedInto.name}
+              />
+            )}
+          </div>
           {canPost && (
             <p class="context-actions">
               <a href={appRoute.purchases + '?new=1&supplier=' + encodeURIComponent(partyId)}>
@@ -1002,7 +1039,7 @@ export function SuppliersScreen({ url }: { url?: string } = {}) {
             </section>
           )}
           <RejectedCopy shopId={shopId} partyId={partyId} onCopied={() => void refreshParty()} />
-        </>
+        </div>
       )}
     </main>
   );
