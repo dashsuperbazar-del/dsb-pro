@@ -1086,3 +1086,42 @@ section[aria-label='Stock items'] .record-list > button {
   background: var(--surface);
   box-shadow: var(--shadow-sm);
 }
+
+/* R10: every task/party tab menu as old-DSB underline tabs. */
+.task-tabs,
+.party-tabs {
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.task-tabs button,
+.party-tabs a {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+.task-tabs button:hover:not(:disabled),
+.party-tabs a:hover {
+  background: none;
+  color: var(--text);
+}
+.task-tabs button[aria-pressed='true'],
+.party-tabs a[aria-current='page'] {
+  background: none;
+  box-shadow: none;
+  color: var(--brand);
+  border-bottom-color: var(--brand);
+}
