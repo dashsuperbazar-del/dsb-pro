@@ -1,3 +1,4 @@
+import { Tabs } from '../components/Kit';
 import { useEffect, useState } from 'preact/hooks';
 import {
   expireDueOnlineOrders,
@@ -12,7 +13,6 @@ import {
   type OnlineOrderLine,
   type OrderStatus,
 } from '@dsb-pro/adapters';
-import { appRoute } from '../lib/paths';
 import { errorText } from '../lib/friendlyError';
 import { rupees } from '../lib/money';
 import { orderMessage, whatsAppLink, type ShopInfo } from '../lib/orderMessages';
@@ -39,6 +39,8 @@ export function OrdersScreen() {
   const [shopId, setShopId] = useState('');
   const [open, setOpen] = useState<OnlineOrder[]>([]);
   const [done, setDone] = useState<OnlineOrder[]>([]);
+  // Old-DSB tabs: New / Active / Done / All.
+  const [tab, setTab] = useState<'new' | 'active' | 'done' | 'all'>('new');
   const [lines, setLines] = useState<Record<string, OnlineOrderLine[]>>({});
   const [busy, setBusy] = useState('');
   const [msg, setMsg] = useState('');
@@ -313,15 +315,31 @@ export function OrdersScreen() {
 
   return (
     <main class="page wide" data-testid="orders-screen">
-      <p>
-        <a class="back-home" href={appRoute.more}>
-          ← Shop tools
-        </a>
-      </p>
-      <h1>Online orders</h1>
-      <button type="button" onClick={() => void load()}>
-        Refresh
-      </button>
+      <div class="orders-head">
+        <h1>Online Orders</h1>
+        <button
+          type="button"
+          class="kit-btn small"
+          aria-label="Refresh"
+          onClick={() => void load()}
+        >
+          ↻
+        </button>
+      </div>
+      <Tabs
+        label="Show orders"
+        value={tab}
+        options={[
+          {
+            value: 'new',
+            label: `New${open.filter((o) => o.status === 'NEW').length ? ` (${open.filter((o) => o.status === 'NEW').length})` : ''}`,
+          },
+          { value: 'active', label: 'Active' },
+          { value: 'done', label: 'Done' },
+          { value: 'all', label: 'All' },
+        ]}
+        onChange={setTab}
+      />
       {error && (
         <p role="alert" class="alert">
           {error}
@@ -346,12 +364,24 @@ export function OrdersScreen() {
           <small class="muted">{notify.text}</small>
         </p>
       )}
-      <h2>Open ({open.length})</h2>
-      {open.length === 0 && <p class="muted">No open orders.</p>}
-      {open.map(card)}
-      <h2>Finished</h2>
-      {done.length === 0 && <p class="muted">Nothing yet.</p>}
-      {done.map(card)}
+      {(() => {
+        const shown =
+          tab === 'new'
+            ? open.filter((o) => o.status === 'NEW')
+            : tab === 'active'
+              ? open.filter((o) => o.status !== 'NEW')
+              : tab === 'done'
+                ? done
+                : [...open, ...done];
+        return shown.length ? (
+          shown.map(card)
+        ) : (
+          <div class="orders-empty">
+            <strong>No orders</strong>
+            <p class="muted">Customer orders from the shop appear here</p>
+          </div>
+        );
+      })()}
     </main>
   );
 }

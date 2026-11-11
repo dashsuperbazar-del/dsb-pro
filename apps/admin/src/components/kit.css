@@ -1061,3 +1061,19 @@ select.ss-native {
 .home-search input {
   border-radius: var(--radius);
 }
+/* R8 Orders: title + refresh, underline tabs, centred empty state. */
+.orders-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.orders-head h1 {
+  margin: 0;
+}
+.orders-empty {
+  padding: 64px 16px;
+  text-align: center;
+}
+.orders-empty p {
+  margin: 4px 0 0;
+}
