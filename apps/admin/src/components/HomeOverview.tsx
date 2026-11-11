@@ -56,6 +56,7 @@ function shortDate(d: string) {
 
 export function HomeOverview({ rev }: { rev: number }) {
   const [d, setD] = useState<Data>(EMPTY);
+  const [toolsOpen, setToolsOpen] = useState(false);
   useEffect(() => {
     let live = true;
     const put = (p: Partial<Data>) => live && setD((v) => ({ ...v, ...p }));
@@ -141,10 +142,49 @@ export function HomeOverview({ rev }: { rev: number }) {
         <a class="kit-btn" href={appRoute.pos}>
           ⚡ Walk-in Sale
         </a>
-        <a class="kit-btn" href={appRoute.more}>
-          🛠 Tools
-        </a>
+        <button
+          type="button"
+          class="kit-btn"
+          aria-expanded={toolsOpen}
+          onClick={() => setToolsOpen((o) => !o)}
+        >
+          🛠 Tools ▾
+        </button>
       </div>
+      {toolsOpen && (
+        <nav class="home-tools" aria-label="Tools">
+          <a class="kit-btn small primary" href={appRoute.inventory}>
+            📦 Stock
+          </a>
+          <a class="kit-btn small" href={appRoute.onlineShop}>
+            🛒 Shop Listing
+          </a>
+          <a class="kit-btn small" href={appRoute.expenses}>
+            💸 Add Expense
+          </a>
+          <a class="kit-btn small" href={appRoute.purchases + '?new=1'}>
+            ⚡ Batch Bills
+          </a>
+          <a class="kit-btn small" href={appRoute.returns}>
+            ↩ Returns
+          </a>
+          <a class="kit-btn small" href={appRoute.stockAdjust}>
+            ⚖ Stock Count
+          </a>
+          <a class="kit-btn small" href={appRoute.reports}>
+            📊 Reports
+          </a>
+          <a class="kit-btn small" href={appRoute.sync}>
+            🔄 Sync
+          </a>
+          <a class="kit-btn small" href={appRoute.settings}>
+            ⚙ Settings
+          </a>
+          <a class="kit-btn small" href={appRoute.more}>
+            ☰ All tools
+          </a>
+        </nav>
+      )}
       <a class="kit-btn wide" href={appRoute.daybook}>
         📒 Day Book — Today's Summary
       </a>

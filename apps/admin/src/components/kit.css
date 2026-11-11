@@ -1201,3 +1201,15 @@ section[aria-label='Stock items'] .record-list > button {
 .db-net .db-net-value {
   text-align: center;
 }
+/* R13: Home Tools ▾ row (old DSB). */
+.home-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.home-tools .kit-btn.small {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
