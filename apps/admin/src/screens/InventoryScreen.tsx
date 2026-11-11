@@ -2827,11 +2827,6 @@ export function InventoryScreen({
   const Container = purchaseOnly ? 'section' : 'main';
   return (
     <Container>
-      <p hidden={purchaseOnly}>
-        <a class="back-home" href={appRoute.home}>
-          ← Home
-        </a>
-      </p>
       {!purchaseOnly && <h1>Inventory & purchases</h1>}
       {!purchaseOnly && (
         <TaskTabs

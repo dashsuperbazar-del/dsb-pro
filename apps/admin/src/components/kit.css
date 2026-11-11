@@ -1125,3 +1125,20 @@ section[aria-label='Stock items'] .record-list > button {
   color: var(--brand);
   border-bottom-color: var(--brand);
 }
+@media print {
+  .customer-screen > .party-sheet {
+    display: block !important;
+    position: static;
+    inset: auto;
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+    border-radius: 0;
+    box-shadow: none;
+    animation: none;
+  }
+  .customer-screen > .party-sheet::before,
+  .customer-screen > .party-sheet > :not(.customer-ledger) {
+    display: none !important;
+  }
+}

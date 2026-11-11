@@ -18,7 +18,6 @@ import {
   type ShopDayReconciliation,
 } from '@dsb-pro/adapters';
 import { LanguageToggle } from '../components/LanguageToggle';
-import { appRoute } from '../lib/paths';
 import { getLocale, t } from '../lib/i18n';
 import { SaleReceiptPrint } from '../components/SaleReceiptPrint';
 import { loadShopProfile, type ProfileLoad } from '../lib/shopProfile';
@@ -244,7 +243,6 @@ export function SalesHistoryScreen() {
   return (
     <main class="page wide">
       <div class="row no-print">
-        <a href={appRoute.home}>← {t('home', locale)}</a>
         <LanguageToggle />
       </div>
       <h1 class="no-print">{t('salesHistory', locale)}</h1>
