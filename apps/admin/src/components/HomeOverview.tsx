@@ -119,7 +119,7 @@ export function HomeOverview({ rev }: { rev: number }) {
         <StatTile label="This month sales" value={money(d.monthSales)} tone="success" />
       </StatGrid>
       <div class="home-actions">
-        <a class="kit-btn primary" href={appRoute.purchases}>
+        <a class="kit-btn primary" href={appRoute.purchases + '?new=1'}>
           📦 New Bill
         </a>
         <a class="kit-btn" href={appRoute.pos}>
