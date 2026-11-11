@@ -100,7 +100,7 @@ type BillLists = {
   failed: string[];
 };
 export function SearchScreen() {
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '');
   const [data, setData] = useState<SearchData>({ items: [], customers: [], suppliers: [] });
   const [notes, setNotes] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);

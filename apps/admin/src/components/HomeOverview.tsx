@@ -105,6 +105,22 @@ export function HomeOverview({ rev }: { rev: number }) {
   const money = (v: number | bigint | null) => (v === null ? '…' : rupees(v.toString()));
   return (
     <section class="home-overview" aria-label="Shop overview">
+      <form
+        class="home-search"
+        role="search"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const q = new FormData(e.currentTarget).get('q');
+          window.location.href = appRoute.search + (q ? `?q=${encodeURIComponent(String(q))}` : '');
+        }}
+      >
+        <input
+          name="q"
+          type="search"
+          aria-label="Search everything"
+          placeholder="Search everything — bills, parties, items…"
+        />
+      </form>
       <StatGrid>
         <StatTile
           label="Total outstanding"
@@ -131,6 +147,9 @@ export function HomeOverview({ rev }: { rev: number }) {
       </div>
       <a class="kit-btn wide" href={appRoute.reports}>
         📒 Day Book — Today's Summary
+      </a>
+      <a class="kit-btn wide" href={appRoute.reports + '?tab=profit'}>
+        📈 Profit Report
       </a>
       {d.recent.length > 0 && (
         <>

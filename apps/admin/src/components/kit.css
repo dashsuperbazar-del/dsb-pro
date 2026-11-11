@@ -1037,3 +1037,27 @@ select.ss-native {
 .ledger-head > .party-tabs {
   flex-basis: 100%;
 }
+/* R6 Home: old-DSB order (search, tiles, actions, lists first; Pro's extra blocks after). */
+.dashboard {
+  display: flex;
+  flex-direction: column;
+}
+.dashboard > * {
+  order: 50;
+  flex-shrink: 0;
+}
+.dashboard > .dashboard-heading {
+  order: 1;
+}
+.dashboard > [role='status'] {
+  order: 2;
+}
+.dashboard > .home-overview {
+  order: 3;
+}
+.home-search {
+  margin-bottom: 12px;
+}
+.home-search input {
+  border-radius: var(--radius);
+}
