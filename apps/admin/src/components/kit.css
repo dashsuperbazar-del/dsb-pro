@@ -843,3 +843,56 @@ main.bill-sheet > nav.context-actions > a.bills-batch {
   gap: 4px;
   justify-items: end;
 }
+
+/* ---- Type-to-search pickers (lib/searchSelect.ts) ---- */
+select.ss-native {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  min-height: 1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  opacity: 0;
+  pointer-events: none;
+}
+.ss-wrap {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+.ss-input {
+  width: 100%;
+}
+.ss-list {
+  position: absolute;
+  z-index: 150;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+.ss-list li {
+  padding: 10px 14px;
+  font-size: 15px;
+  cursor: pointer;
+}
+.ss-list li.active,
+.ss-list li:hover {
+  background: var(--brand-subtle);
+}
+.ss-list li[aria-selected='true'] {
+  font-weight: 600;
+  color: var(--brand);
+}
+.ss-list li.ss-empty {
+  color: var(--text-muted);
+  cursor: default;
+}

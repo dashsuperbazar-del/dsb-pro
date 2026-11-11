@@ -19,6 +19,7 @@ import { BottomNav } from './components/BottomNav';
 import { useOrderAlerts } from './lib/orderAlerts';
 import { useKeyboardOpen } from './lib/keyboardOpen';
 import { useInfoNotes } from './lib/infoNotes';
+import { useSearchSelects } from './lib/searchSelect';
 import { t } from './lib/i18n';
 import { VerificationBanner } from './components/VerificationBanner';
 import { MoreScreen } from './screens/MoreScreen';
@@ -86,6 +87,7 @@ function NotFound() {
 export function App() {
   useKeyboardOpen();
   useInfoNotes();
+  useSearchSelects();
   const session = useSession();
   useEffect(() => {
     applyTheme(readTheme());
