@@ -1061,3 +1061,143 @@ select.ss-native {
 .home-search input {
   border-radius: var(--radius);
 }
+/* R8 Orders: title + refresh, underline tabs, centred empty state. */
+.orders-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.orders-head h1 {
+  margin: 0;
+}
+.orders-empty {
+  padding: 64px 16px;
+  text-align: center;
+}
+.orders-empty p {
+  margin: 4px 0 0;
+}
+/* R9 Stock list: old-DSB item cards. */
+section[aria-label='Stock items'] .record-list > button {
+  margin-bottom: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+/* R10: every task/party tab menu as old-DSB underline tabs. */
+.task-tabs,
+.party-tabs {
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.task-tabs button,
+.party-tabs a {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+.task-tabs button:hover:not(:disabled),
+.party-tabs a:hover {
+  background: none;
+  color: var(--text);
+}
+.task-tabs button[aria-pressed='true'],
+.party-tabs a[aria-current='page'] {
+  background: none;
+  box-shadow: none;
+  color: var(--brand);
+  border-bottom-color: var(--brand);
+}
+@media print {
+  .customer-screen > .party-sheet {
+    display: block !important;
+    position: static;
+    inset: auto;
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+    border-radius: 0;
+    box-shadow: none;
+    animation: none;
+  }
+  .customer-screen > .party-sheet::before,
+  .customer-screen > .party-sheet > :not(.customer-ledger) {
+    display: none !important;
+  }
+}
+/* ---- Day Book / Profit Report pages (rebuild R12) ---- */
+.db-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.db-back {
+  font-size: 22px;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.db-title {
+  flex: 1;
+  display: grid;
+}
+.db-title h1 {
+  margin: 0;
+  font-size: 18px;
+}
+.db-head input,
+.db-head select {
+  width: auto;
+  min-height: 36px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+.db-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.db-grid.three {
+  grid-template-columns: repeat(3, 1fr);
+}
+.db-grid .kit-stat,
+.db-net {
+  text-align: center;
+}
+.db-grid.three .kit-stat-value {
+  font-size: 16px;
+}
+.db-net {
+  padding: 20px;
+  margin-bottom: 12px;
+}
+.db-net-value {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--success);
+}
+.db-net-value.danger {
+  color: var(--danger);
+}
+.db-grid .kit-stat-value,
+.db-net .db-net-value {
+  text-align: center;
+}

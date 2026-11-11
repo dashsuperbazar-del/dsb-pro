@@ -38,6 +38,8 @@ const SuppliersScreen = lazyScreen(() => import('./workScreens').then((m) => m.S
 const TeamScreen = lazyScreen(() => import('./rareScreens').then((m) => m.TeamScreen));
 const DevicesScreen = lazyScreen(() => import('./rareScreens').then((m) => m.DevicesScreen));
 const CustomersScreen = lazyScreen(() => import('./rareScreens').then((m) => m.CustomersScreen));
+const DayBookScreen = lazyScreen(() => import('./rareScreens').then((m) => m.DayBookScreen));
+const ProfitScreen = lazyScreen(() => import('./rareScreens').then((m) => m.ProfitScreen));
 const SalesHistoryScreen = lazyScreen(() =>
   import('./rareScreens').then((m) => m.SalesHistoryScreen),
 );
@@ -183,6 +185,8 @@ export function App() {
         <Route path={appRoute.salesHistory} component={SalesHistoryScreen} />
         <Route path={appRoute.sync} component={SyncScreen} />
         <Route path={appRoute.reports} component={ReportsScreen} />
+        <Route path={appRoute.daybook} component={DayBookScreen} />
+        <Route path={appRoute.profit} component={ProfitScreen} />
         <Route path={appRoute.returns} component={ReturnsScreen} />
         <Route path={appRoute.settings} component={SettingsScreen} />
         <Route path={appRoute.suppliers} component={SuppliersScreen} />
