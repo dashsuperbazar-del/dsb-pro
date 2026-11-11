@@ -24,7 +24,8 @@ export function BottomNav({
           },
         ]),
     {
-      href: appRoute.pos,
+      // Old DSB: Sales opens the invoices page (tiles, Counter / Walk-in buttons); cashiers go straight to the till.
+      href: role === 'cashier' ? appRoute.pos : appRoute.salesHistory,
       label: 'Sales',
       icon: 'bill',
       active: [appRoute.pos, appRoute.salesHistory, appRoute.returns].includes(currentPath),

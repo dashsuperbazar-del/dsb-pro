@@ -504,30 +504,36 @@ export function SalesHistoryScreen() {
       </HomeRow>
 
       {viewing && (
-        <section class="card no-print" aria-label="Invoice detail">
-          <div class="row">
-            <h2>Invoice {viewing.invoice.doc_no}</h2>
-            <ShareImageButton
-              build={async () => {
-                const c = customerOf(viewing.invoice.customer_id);
-                const prof = await loadShopProfile(shopId);
-                return saleInvoiceDoc(
-                  viewing,
-                  prof.profile,
-                  c ? { name: c.name, phone: c.phone } : null,
-                );
-              }}
-            />
-            <button type="button" onClick={() => setViewing(null)}>
-              Close detail
-            </button>
-          </div>
-          <p>
-            {viewing.invoice.business_date} · {viewing.invoice.status} ·{' '}
-            {customerOf(viewing.invoice.customer_id)?.name ?? 'Walk-in customer'}
-          </p>
-          <BillCodeChip code={viewing.invoice.bill_code} />
-          <div class="record-list">
+        <section class="card no-print doc-sheet" aria-label="Invoice detail">
+          <header class="bd-head">
+            <div class="row">
+              <h2>Invoice {viewing.invoice.doc_no}</h2>
+              <ShareImageButton
+                build={async () => {
+                  const c = customerOf(viewing.invoice.customer_id);
+                  const prof = await loadShopProfile(shopId);
+                  return saleInvoiceDoc(
+                    viewing,
+                    prof.profile,
+                    c ? { name: c.name, phone: c.phone } : null,
+                  );
+                }}
+              />
+              <button type="button" onClick={() => setViewing(null)}>
+                Close detail
+              </button>
+            </div>
+            <p>
+              {viewing.invoice.business_date} · {viewing.invoice.status} ·{' '}
+              {customerOf(viewing.invoice.customer_id)?.name ?? 'Walk-in customer'}
+            </p>
+            <BillCodeChip code={viewing.invoice.bill_code} />
+            <p>
+              <strong>{money(viewing.invoice.total_paise)}</strong>
+            </p>
+          </header>
+          <h3 class="kit-section bd-items-title">Items</h3>
+          <div class="record-list bd-items">
             {viewing.lines.map((l, i) => (
               <div class="purchase-line" key={i}>
                 <span>
@@ -540,7 +546,7 @@ export function SalesHistoryScreen() {
               </div>
             ))}
           </div>
-          <p>
+          <p class="bd-totals">
             <strong>Total {money(viewing.invoice.total_paise)}</strong>
           </p>
           {me && shopId && (

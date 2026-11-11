@@ -76,6 +76,8 @@ test('professional phone workspace preserves drafts across task views and has re
     page.getByRole('status').filter({ hasText: 'Purchase posted' }).first(),
   ).toBeVisible();
   await nav.getByRole('link', { name: 'Sales', exact: true }).click();
+  // Old-DSB Sales page: the counter opens from its Counter button.
+  await page.getByRole('link', { name: '🏪 Counter' }).click();
   await addByTap(page, 'Daily rice', '2');
   await expect(page.locator('.pos-cart')).toContainText('₹40.00');
   await capture('03-billing-phone');
