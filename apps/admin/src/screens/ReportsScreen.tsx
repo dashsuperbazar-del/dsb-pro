@@ -54,7 +54,9 @@ function download(name: string, content: string | Uint8Array, type: string) {
 export function ReportsScreen() {
   const [view, setView] = useState<
     'money' | 'sales' | 'profit' | 'purchases' | 'stock' | 'outstanding' | 'recovery'
-  >('money');
+  >(() =>
+    new URLSearchParams(window.location.search).get('tab') === 'profit' ? 'profit' : 'money',
+  );
   const [profit, setProfit] = useState<ProfitReport | null>(null);
   const [profitBusy, setProfitBusy] = useState(false);
   const [shop, setShop] = useState('');
