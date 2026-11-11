@@ -3,10 +3,9 @@
 Process: `docs/SINGLE_BUILDER_PLAN.md` v2.0. Design/invariants: `docs/COMPLETE_REMAINING_BUILD_PLAN.md` v1.1.
 Never trust a SHA written here: check `git log origin/main -1`. Keep this file under 120 lines; put detail in PRs.
 
-## Live (9 Nov 2026)
+## Live (11 Nov 2026)
 
-- Database: every migration through **0082** applied live (each preflight showed only the expected group).
-  0083 `orderadjust` is in PR #177 (apply after merge; preflight must show only `needs_orderadjust`).
+- Database: every migration through **0084** (`itemrestore`) applied live (each preflight showed only the expected group).
 - Apps (Cloudflare Pages, deployed by `ci.yml` operation `deploy_production` from main):
   - Shop app (staff): https://dsb-pro.pages.dev/ (GitHub Pages fallback https://dashsuperbazar-del.github.io/dsb-pro/)
   - Public shop: https://dsb-shop.pages.dev/?shop=<slug> (project `dsb-shop`, `apps/storefront`)
@@ -24,6 +23,20 @@ Never trust a SHA written here: check `git log origin/main -1`. Keep this file u
 - Orders: NEW → CONFIRMED → PREPARING → READY → (OUT_FOR_DELIVERY) → DELIVERED via `fulfil_order` (one normal
   sale through `post_sale`), or CANCELLED. Stock is HELD (stock_current.reserved) from placement; holds expire
   after the shop's minutes (not while out for delivery).
+
+## Old-DSB layout rebuild (owner, 10–11 Nov) — done through PR #200
+
+Plan: `docs/OLD_LAYOUT_REBUILD_PLAN.md`. Layout only, money logic untouched. Kit: `components/Kit.tsx`, `kit.css`.
+
+- Nav Home/Bills/Sales/Ledger/Orders (cashier: More, Sales=POS). Sales tab opens the invoices page.
+- Popups (slide-up sheets): New Bill (`main.bill-sheet`), bill/invoice detail (`.doc-sheet`), supplier/customer
+  (`.party-sheet`, role=dialog — NOT a section, tests scope sections by heading), + Payment / Bulk Pay.
+- Home: search, 6 tiles, New Bill / Walk-in / Tools ▾ row, Day Book (/daybook), Profit Report (/profit).
+- `lib/searchSelect.ts`: party/customer/item <select>s become type-to-search boxes; the real select stays
+  (visually hidden, FIRST control in its label) so `selectOption` tests still work.
+- `lib/infoNotes.ts`: `p.hint` / `small.hint field` hidden; ⓘ on the heading/field shows a floating note.
+- Kept as is on purpose: POS counter layout (most-tested money screen); "Delete Bill" = void.
+- e2e tip: a popup covers the list — close it first (`closeBillSheet` in design-helpers).
 
 ## Decisions that must not be undone silently
 
