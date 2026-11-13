@@ -114,7 +114,8 @@ export function PurchaseBillCards(props: {
   const host = useRef<HTMLDivElement>(null);
   const [focusKey, setFocusKey] = useState('');
   const [pricesOpen, setPricesOpen] = useState<string[]>([]);
-  const [moreOpen, setMoreOpen] = useState<string[]>([]);
+  // Old DSB shows GST, discount and sale prices in every row: rows start open; a tap folds one.
+  const [moreClosed, setMoreClosed] = useState<string[]>([]);
   useEffect(() => {
     if (props.focusCard) setFocusKey(props.focusCard);
   }, [props.focusCard]);
@@ -477,7 +478,7 @@ export function PurchaseBillCards(props: {
           saleProblem ||
           (result.kind === 'problem' && /discount|GST/.test(result.message)) ||
           (card.costMode === 'total' && !!card.gst?.trim());
-        const open = forced || moreOpen.includes(card.key);
+        const open = forced || !moreClosed.includes(card.key);
         const conv = item ? conversionLines(item) : [];
         const hasMore = !!item || badges.length > 0;
         const suggested =
@@ -833,12 +834,12 @@ export function PurchaseBillCards(props: {
                   aria-expanded={open}
                   aria-label={`More for item ${n}`}
                   onClick={() =>
-                    setMoreOpen((o) =>
+                    setMoreClosed((o) =>
                       o.includes(card.key) ? o.filter((k) => k !== card.key) : [...o, card.key],
                     )
                   }
                 >
-                  More{' '}
+                  {open ? 'Less' : 'More'}{' '}
                   {badges.length > 0 && (
                     <span class="bill-row-badge" data-testid={`item-${n}-badge`}>
                       {badges.join(' ')}
