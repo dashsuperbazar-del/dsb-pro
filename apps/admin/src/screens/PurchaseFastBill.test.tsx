@@ -184,7 +184,7 @@ const line = (
   gst_bp: more.gst ?? null,
 });
 
-test('a typical 5-item credit bill: remembered supplier, keyboard entry, one tap to post; optional parts closed', async () => {
+test('a typical 5-item credit bill: remembered supplier, keyboard entry, one tap to post; optional parts open and empty', async () => {
   localStorage.setItem(LAST, 'p1');
   await mountEditor();
   // The last supplier is already chosen; its usual items list is offered (empty here).
@@ -216,8 +216,10 @@ test('a typical 5-item credit bill: remembered supplier, keyboard entry, one tap
     expect(document.activeElement).toBe(field(`Item ${n} rate ₹`));
     await typeText(rate!);
     if (n < bill.length) await enter(); // the next row's item name (a row is added)
-    // Every extra of this row is in the closed "More" part, and the row says nothing is set there.
-    expect(host.querySelector(`[data-testid="item-${n}-more"]`)!.hasAttribute('hidden')).toBe(true);
+    // Old-DSB rows: the extras (discount, GST, sale prices) are open from the start; nothing is set there.
+    expect(host.querySelector(`[data-testid="item-${n}-more"]`)!.hasAttribute('hidden')).toBe(
+      false,
+    );
     expect(host.querySelector(`[data-testid="item-${n}-badge"]`)).toBeNull();
   }
   expect(rows()).toHaveLength(5);
@@ -257,9 +259,9 @@ test('a value in a closed part is kept, shown as a badge, and posted; a problem 
   await tap(button('Sugar 1kg', field<HTMLElement>('Matches for item 1')));
   await setField(label('Item 1 quantity'), '10');
   await setField(label('Item 1 rate ₹'), '100');
+  // Old-DSB rows: discount, GST and sale prices are open from the start.
   const more = field<HTMLButtonElement>('More for item 1');
-  expect(more.getAttribute('aria-expanded')).toBe('false');
-  await tap(more);
+  expect(more.getAttribute('aria-expanded')).toBe('true');
   expect(host.querySelector('[data-testid="item-1-more"]')!.hasAttribute('hidden')).toBe(false);
   await setField(label('Item 1 discount %'), '2');
   await setField(label('Item 1 GST %'), '5');
