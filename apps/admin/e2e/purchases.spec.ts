@@ -195,8 +195,8 @@ test('a bill card shows the unit conversion and sets a retail price that POS the
   await form.getByLabel('Item 1 small units per big').fill('12');
   await form.getByRole('button', { name: 'Save item' }).click();
   await expect(form).toHaveCount(0);
-  // Conversion and sale prices sit behind the row's "More" toggle.
-  await expect(purchase.getByTestId('item-1-more')).toBeHidden();
+  // Old-DSB rows: conversion and sale prices are open from the start.
+  await expect(purchase.getByTestId('item-1-more')).toBeVisible();
   await openItemMore(purchase, 1);
   await expect(purchase.getByTestId('item-1-conversion')).toHaveText('1 ctn = 12 pcs');
   await purchase.getByLabel('Item 1 quantity', { exact: true }).fill('2');
@@ -400,8 +400,8 @@ test('a cash bill with item discount/GST and a named charge posts with its round
   await purchase.locator('input[name="billNo"]').fill('CASH-1');
   // 3 x 33.53 = 100.59, 2% off = 98.5782, +5% GST = 103.50711 -> ₹103.51 (core = server line total).
   await fillBillItem(purchase, 1, 'Cash Oil', '3', '33.53');
-  // Discount and GST are behind the row's "More"; Bill details (charges, notes) start closed.
-  await expect(purchase.getByLabel('Item 1 discount %', { exact: true })).toBeHidden();
+  // Old-DSB rows: discount and GST are open from the start; Bill details (charges, notes) start closed.
+  await expect(purchase.getByLabel('Item 1 discount %', { exact: true })).toBeVisible();
   await expect(purchase.locator('textarea[name="notes"]')).toBeHidden();
   await openItemMore(purchase, 1);
   await purchase.getByLabel('Item 1 discount %', { exact: true }).fill('2');
@@ -413,7 +413,7 @@ test('a cash bill with item discount/GST and a named charge posts with its round
     '5% GST added on top of the rate.',
   );
   await expect(purchase.getByTestId('item-1-amount')).toContainText('Item total ₹103.51');
-  // Closed again, the row keeps the values and names them.
+  // Folded ("Less"), the row keeps the values and names them.
   await purchase.getByRole('button', { name: 'More for item 1', exact: true }).click();
   await expect(purchase.getByLabel('Item 1 discount %', { exact: true })).toBeHidden();
   await expect(purchase.getByTestId('item-1-badge')).toHaveText('−2% +5% GST');
