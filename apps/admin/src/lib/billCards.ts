@@ -1,3 +1,4 @@
+import { defaultCostMode } from './costModePref';
 import {
   canonicalQuantity,
   parseRupeesToPaise,
@@ -69,7 +70,7 @@ export function emptyCard(): BillCard {
     unitLevel: 1,
     qty: '',
     price: '',
-    costMode: 'unit',
+    costMode: defaultCostMode(),
   };
 }
 
@@ -109,7 +110,7 @@ export function withItem<T extends BillCardDraft>(c: T, item: Item, unitLevel: 1
     unitLevel,
     qty: '',
     price: '',
-    costMode: 'unit',
+    costMode: defaultCostMode(),
     unitHint: undefined,
     // A rate suggested for the old item or unit no longer applies.
     suggested: undefined,

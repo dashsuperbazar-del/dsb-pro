@@ -1,3 +1,4 @@
+import { defaultCostMode, rememberCostMode } from '../lib/costModePref';
 import { errorText } from '../lib/friendlyError';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Item, Party } from '@dsb-pro/adapters';
@@ -243,7 +244,7 @@ export function PurchaseBillCards(props: {
           item,
           search: item.name,
           unitLevel: 1,
-          ...(keepFigures ? {} : { qty: '', price: '', costMode: 'unit' as const }),
+          ...(keepFigures ? {} : { qty: '', price: '', costMode: defaultCostMode() }),
           unitHint: undefined,
           sale: undefined,
         }));
@@ -528,7 +529,7 @@ export function PurchaseBillCards(props: {
                           unitLevel: 1,
                           qty: '',
                           price: '',
-                          costMode: 'unit',
+                          costMode: defaultCostMode(),
                           unitHint: undefined,
                           sale: undefined,
                           discount: undefined,
@@ -801,7 +802,10 @@ export function PurchaseBillCards(props: {
                   type="button"
                   aria-pressed={card.costMode === 'unit'}
                   disabled={disabled}
-                  onClick={() => patch(card.key, (c) => switchCostMode(c, 'unit'))}
+                  onClick={() => {
+                    rememberCostMode('unit');
+                    patch(card.key, (c) => switchCostMode(c, 'unit'));
+                  }}
                 >
                   Per unit
                 </button>
@@ -809,7 +813,10 @@ export function PurchaseBillCards(props: {
                   type="button"
                   aria-pressed={card.costMode === 'total'}
                   disabled={disabled}
-                  onClick={() => patch(card.key, (c) => switchCostMode(c, 'total'))}
+                  onClick={() => {
+                    rememberCostMode('total');
+                    patch(card.key, (c) => switchCostMode(c, 'total'));
+                  }}
                 >
                   Total
                 </button>
