@@ -9,6 +9,8 @@ export default defineConfig({
   retries: 0,
   use: {
     baseURL: 'http://localhost:4173',
+    // Specs were written for per-unit cost entry; the app now starts new bill rows on Total (owner, 13 Nov).
+    storageState: 'e2e/storage-state.json',
     // Without these a CI-only intermittent failure leaves nothing to diagnose,
     // which is exactly how the pos.spec.ts money-path failure went unexplained
     // across several runs.

@@ -23,7 +23,8 @@ export async function prepareBillDocument(file: File): Promise<Blob> {
   try {
     if (bitmap.width * bitmap.height > 48000000)
       throw new Error('This image is too large to process. Crop or scan it first.');
-    const scale = Math.min(1, 2400 / Math.max(bitmap.width, bitmap.height));
+    // A phone bill photo is kept readable at 1800 px on the long side (owner, 13 Nov: 932 KB was too big).
+    const scale = Math.min(1, 1800 / Math.max(bitmap.width, bitmap.height));
     const canvas = document.createElement('canvas');
     canvas.width = Math.max(1, Math.round(bitmap.width * scale));
     canvas.height = Math.max(1, Math.round(bitmap.height * scale));
@@ -33,12 +34,17 @@ export async function prepareBillDocument(file: File): Promise<Blob> {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    for (const quality of [0.92, 0.87, 0.82, 0.77]) {
+    // Aim for about 300 KB; a very detailed bill may use up to 1 MB rather than lose readability.
+    let fallback: Blob | null = null;
+    for (const quality of [0.78, 0.7, 0.62, 0.55]) {
       const blob = await new Promise<Blob | null>((resolve) =>
         canvas.toBlob(resolve, 'image/webp', quality),
       );
-      if (blob && blob.type === 'image/webp' && blob.size <= 1024 * 1024) return blob;
+      if (!blob || blob.type !== 'image/webp') continue;
+      if (blob.size <= 300 * 1024) return blob;
+      if (blob.size <= 1024 * 1024) fallback = blob;
     }
+    if (fallback) return fallback;
     throw new Error('Image is still too large to keep readable. Crop or scan it first.');
   } finally {
     bitmap.close();

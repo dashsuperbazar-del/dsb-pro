@@ -3544,7 +3544,8 @@ export function InventoryScreen({
                 ))}
               </select>
             </label>
-            {purchaseOnly && (
+            {/* Owner, 13 Nov: once a supplier is picked the chips step aside (tap the box to change). */}
+            {purchaseOnly && !purchaseSupplier && (
               <div class="shortcut-chips party-chips" aria-label="Recent suppliers">
                 {rankedPurchaseParties(parties, recentBills, businessDate)
                   .slice(0, 40)
